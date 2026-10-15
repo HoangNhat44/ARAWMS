@@ -1,0 +1,120 @@
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import User from '../models/User.js';
+
+/**
+ * Tạo JSON Web Token
+ */
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET || 'arawms_jwt_secret_key_2026', {
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  });
+};
+
+/**
+ * Đăng ký tài khoản người dùng mới
+ */
+export const registerUser = async ({ username, fullName, email, password, roles }) => {
+  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedUsername = username.trim();
+
+  // Kiểm tra trùng username hoặc email
+  const existingUser = await User.findOne({
+    $or: [{ email: normalizedEmail }, { username: normalizedUsername }],
+  });
+
+  if (existingUser) {
+    if (existingUser.email === normalizedEmail) {
+      throw new Error('Email này đã được đăng ký sử dụng');
+    }
+    throw new Error('Tên đăng nhập (username) này đã tồn tại');
+  }
+
+  // Hash mật khẩu
+  const salt = await bcrypt.genSalt(10);
+  const passwordHash = await bcrypt.hash(password, salt);
+
+  const user = await User.create({
+    username: normalizedUsername,
+    fullName: fullName.trim(),
+    email: normalizedEmail,
+    passwordHash,
+    roles: roles && roles.length > 0 ? roles : ['STAFF'],
+    status: 'ACTIVE',
+  });
+
+  const token = generateToken(user._id);
+
+  return {
+    user: {
+      id: user._id,
+      username: user.username,
+      fullName: user.fullName,
+      email: user.email,
+      roles: user.roles,
+      status: user.status,
+    },
+    token,
+  };
+};
+
+/**
+ * Đăng nhập người dùng (hỗ trợ nhập email hoặc username)
+ */
+export const loginUser = async ({ usernameOrEmail, password }) => {
+  if (!usernameOrEmail || !password) {
+    throw new Error('Vui lòng nhập tên đăng nhập/email và mật khẩu');
+  }
+
+  const cleanInput = usernameOrEmail.trim();
+
+  // Tìm theo email (lowercase) hoặc username
+  const user = await User.findOne({
+    $or: [
+      { email: cleanInput.toLowerCase() },
+      { username: cleanInput },
+    ],
+  }).select('+passwordHash');
+
+  if (!user || !user.passwordHash) {
+    throw new Error('Tài khoản hoặc mật khẩu không chính xác');
+  }
+
+  // Kiểm tra trạng thái tài khoản
+  if (user.status === 'LOCKED') {
+    throw new Error('Tài khoản của bạn đang tạm thời bị khóa. Vui lòng liên hệ quản trị viên');
+  }
+
+  if (user.status === 'DISABLED') {
+    throw new Error('Tài khoản này đã bị vô hiệu hóa');
+  }
+
+  // So sánh mật khẩu
+  const isMatch = await bcrypt.compare(password, user.passwordHash);
+  if (!isMatch) {
+    // Tăng số lần đăng nhập thất bại
+    user.failedLoginCount = (user.failedLoginCount || 0) + 1;
+    await user.save();
+    throw new Error('Tài khoản hoặc mật khẩu không chính xác');
+  }
+
+  // Reset failedLoginCount và cập nhật lastLoginAt
+  user.failedLoginCount = 0;
+  user.lastLoginAt = new Date();
+  await user.save();
+
+  const token = generateToken(user._id);
+
+  return {
+    user: {
+      id: user._id,
+      username: user.username,
+      fullName: user.fullName,
+      email: user.email,
+      roles: user.roles,
+      status: user.status,
+      avatarUrl: user.avatarUrl,
+    },
+    token,
+  };
+};

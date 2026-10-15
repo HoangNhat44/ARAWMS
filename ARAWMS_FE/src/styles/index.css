@@ -1,0 +1,344 @@
+/* ========================================================
+   ARA ATELIER & WAREHOUSE MANAGEMENT SYSTEM (ARAWMS)
+   THEME DESIGN SYSTEM - EDITORIAL LUXURY & REFINED BEIGE
+   ======================================================== */
+
+:root {
+  /* Core Brand Colors */
+  --ara-bg: #F4EFEB;
+  --ara-bg-surface: #FAF7F2;
+  --ara-bg-card: #FFFFFF;
+  --ara-bg-muted: #EBE4DA;
+  --ara-bg-soft: #F0EAE1;
+
+  /* Typography Colors */
+  --ara-noir: #1C1A17;
+  --ara-noir-soft: #2D2926;
+  --ara-text: #34302C;
+  --ara-text-muted: #7E766D;
+  --ara-text-light: #A49C92;
+
+  /* Brand Accents (Champagne Gold & Warm Taupe) */
+  --ara-gold: #9F8365;
+  --ara-gold-light: #C6B39C;
+  --ara-gold-hover: #846B50;
+  --ara-gold-subtle: rgba(159, 131, 101, 0.12);
+
+  /* Borders & Shadows */
+  --ara-border: #E3D9CD;
+  --ara-border-subtle: rgba(28, 26, 23, 0.08);
+  --ara-border-focus: #9F8365;
+  --ara-shadow-sm: 0 2px 8px rgba(28, 26, 23, 0.04);
+  --ara-shadow-md: 0 10px 30px -5px rgba(28, 26, 23, 0.08);
+  --ara-shadow-lg: 0 25px 50px -12px rgba(28, 26, 23, 0.12);
+
+  /* Status Colors */
+  --ara-error: #B93838;
+  --ara-error-bg: #FDF2F2;
+  --ara-success: #2E7D59;
+  --ara-success-bg: #F1F8F5;
+
+  /* Typography */
+  --font-serif: 'Cormorant Garamond', Georgia, serif;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Dimensions & Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 18px;
+  --radius-full: 9999px;
+  --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--ara-bg);
+  color: var(--ara-text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(159, 131, 101, 0.08) 0px, transparent 60%),
+    radial-gradient(at 100% 100%, rgba(28, 26, 23, 0.04) 0px, transparent 50%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Typography Utilities */
+h1, h2, h3, h4, .brand-title {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  color: var(--ara-noir);
+  letter-spacing: -0.01em;
+}
+
+/* App Container */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Navbar */
+.ara-navbar {
+  background: rgba(250, 247, 242, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--ara-border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  padding: 0.75rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ara-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  text-decoration: none;
+  color: var(--ara-noir);
+}
+
+.ara-brand-logo {
+  height: 42px;
+  width: auto;
+  object-fit: contain;
+  transition: transform 0.3s ease;
+}
+
+.ara-brand:hover .ara-brand-logo {
+  transform: scale(1.04);
+}
+
+.ara-brand-text {
+  font-family: var(--font-serif);
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ara-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  list-style: none;
+}
+
+.ara-nav-links a {
+  text-decoration: none;
+  color: var(--ara-noir-soft);
+  font-weight: 500;
+  font-size: 0.92rem;
+  transition: var(--transition);
+}
+
+.ara-nav-links a:hover {
+  color: var(--ara-gold);
+}
+
+/* Buttons */
+.btn-ara-primary {
+  background: var(--ara-noir);
+  color: #FFFFFF;
+  border: 1px solid var(--ara-noir);
+  padding: 0.85rem 1.6rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: var(--transition);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-decoration: none;
+}
+
+.btn-ara-primary:hover {
+  background: #2E2A27;
+  border-color: #2E2A27;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(28, 26, 23, 0.2);
+}
+
+.btn-ara-primary:active {
+  transform: translateY(0);
+}
+
+.btn-ara-secondary {
+  background: transparent;
+  color: var(--ara-noir);
+  border: 1px solid var(--ara-border);
+  padding: 0.85rem 1.6rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-decoration: none;
+}
+
+.btn-ara-secondary:hover {
+  background: var(--ara-bg-surface);
+  border-color: var(--ara-gold);
+  color: var(--ara-gold-hover);
+}
+
+.btn-ara-gold {
+  background: var(--ara-gold);
+  color: #FFFFFF;
+  border: 1px solid var(--ara-gold);
+  padding: 0.85rem 1.6rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-decoration: none;
+}
+
+.btn-ara-gold:hover {
+  background: var(--ara-gold-hover);
+  border-color: var(--ara-gold-hover);
+  box-shadow: 0 4px 14px rgba(159, 131, 101, 0.3);
+}
+
+/* Form Styles */
+.form-group {
+  margin-bottom: 1.35rem;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ara-noir-soft);
+  letter-spacing: 0.02em;
+  margin-bottom: 0.5rem;
+}
+
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon {
+  position: absolute;
+  left: 1rem;
+  color: var(--ara-text-muted);
+  pointer-events: none;
+  transition: var(--transition);
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.85rem 1rem 0.85rem 2.85rem;
+  background: var(--ara-bg-surface);
+  border: 1px solid var(--ara-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  color: var(--ara-noir);
+  outline: none;
+  transition: var(--transition);
+}
+
+.form-input::placeholder {
+  color: var(--ara-text-light);
+}
+
+.form-input:focus {
+  background: #FFFFFF;
+  border-color: var(--ara-gold);
+  box-shadow: 0 0 0 3px rgba(159, 131, 101, 0.15);
+}
+
+.input-action-btn {
+  position: absolute;
+  right: 0.85rem;
+  background: none;
+  border: none;
+  color: var(--ara-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: var(--transition);
+}
+
+.input-action-btn:hover {
+  color: var(--ara-noir);
+}
+
+/* Alert Boxes */
+.ara-alert {
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-bottom: 1.25rem;
+  line-height: 1.45;
+}
+
+.ara-alert-error {
+  background: var(--ara-error-bg);
+  border: 1px solid rgba(185, 56, 56, 0.25);
+  color: var(--ara-error);
+}
+
+.ara-alert-success {
+  background: var(--ara-success-bg);
+  border: 1px solid rgba(46, 125, 89, 0.25);
+  color: var(--ara-success);
+}
+
+/* Footer */
+.ara-footer {
+  border-top: 1px solid var(--ara-border);
+  background: var(--ara-bg-surface);
+  padding: 1.75rem 2rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--ara-text-muted);
+  margin-top: auto;
+}
