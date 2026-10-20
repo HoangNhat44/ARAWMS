@@ -33,6 +33,12 @@ const Navbar = () => {
           <li>
             <Link to="/">Trang chủ</Link>
           </li>
+          {user && (
+            <>
+              <li><Link to="/orders/qr">Chốt đơn / QR</Link></li>
+              <li><Link to="/packing/qr">Đóng hàng</Link></li>
+            </>
+          )}
           {user ? (
             <>
               <li style={{ 

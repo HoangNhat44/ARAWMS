@@ -29,7 +29,9 @@ api.interceptors.response.use(
       localStorage.removeItem(STORAGE_KEYS.USER);
     }
     const message = error.response?.data?.message || 'Có lỗi kết nối đến Server';
-    return Promise.reject(new Error(message));
+    const apiError = new Error(message);
+    apiError.code = error.response?.data?.errors?.code;
+    return Promise.reject(apiError);
   }
 );
 

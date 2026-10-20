@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "namespace": "DEMO-PACKING",
+  "demoOnly": true,
+  "description": "5 đơn mẫu chỉ xác định biến thể và số lượng cần lấy. Chưa sinh QR, chưa chọn vật phẩm vật lý và chưa gắn barcode vào đơn. Các mã variantId/sku là tham chiếu danh mục, không phải barcode từng món.",
+  "orders": [
+    {
+      "id": "DEMO-ORD-001",
+      "orderCode": "DEMO-ORD-001",
+      "status": "READY_TO_PACK",
+      "items": [
+        {
+          "id": "DEMO-ORD-001-LINE-1",
+          "variantId": "DEMO-VAR-01",
+          "sku": "DEMO-SKU-01",
+          "productName": "Áo thun basic",
+          "color": "Trắng",
+          "size": "M",
+          "quantity": 2
+        }
+      ]
+    },
+    {
+      "id": "DEMO-ORD-002",
+      "orderCode": "DEMO-ORD-002",
+      "status": "READY_TO_PACK",
+      "items": [
+        {
+          "id": "DEMO-ORD-002-LINE-1",
+          "variantId": "DEMO-VAR-02",
+          "sku": "DEMO-SKU-02",
+          "productName": "Áo thun basic",
+          "color": "Trắng",
+          "size": "L",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "id": "DEMO-ORD-003",
+      "orderCode": "DEMO-ORD-003",
+      "status": "READY_TO_PACK",
+      "items": [
+        {
+          "id": "DEMO-ORD-003-LINE-1",
+          "variantId": "DEMO-VAR-03",
+          "sku": "DEMO-SKU-03",
+          "productName": "Áo thun basic",
+          "color": "Đen",
+          "size": "M",
+          "quantity": 1
+        },
+        {
+          "id": "DEMO-ORD-003-LINE-2",
+          "variantId": "DEMO-VAR-04",
+          "sku": "DEMO-SKU-04",
+          "productName": "Áo polo",
+          "color": "Xanh navy",
+          "size": "L",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "id": "DEMO-ORD-004",
+      "orderCode": "DEMO-ORD-004",
+      "status": "READY_TO_PACK",
+      "items": [
+        {
+          "id": "DEMO-ORD-004-LINE-1",
+          "variantId": "DEMO-VAR-05",
+          "sku": "DEMO-SKU-05",
+          "productName": "Áo sơ mi",
+          "color": "Trắng",
+          "size": "M",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "id": "DEMO-ORD-005",
+      "orderCode": "DEMO-ORD-005",
+      "status": "READY_TO_PACK",
+      "items": [
+        {
+          "id": "DEMO-ORD-005-LINE-1",
+          "variantId": "DEMO-VAR-07",
+          "sku": "DEMO-SKU-07",
+          "productName": "Áo hoodie",
+          "color": "Xám",
+          "size": "L",
+          "quantity": 1
+        },
+        {
+          "id": "DEMO-ORD-005-LINE-2",
+          "variantId": "DEMO-VAR-09",
+          "sku": "DEMO-SKU-09",
+          "productName": "Quần short",
+          "color": "Đen",
+          "size": "M",
+          "quantity": 1
+        }
+      ]
+    }
+  ]
+}

@@ -3,7 +3,7 @@ import { sendSuccess, sendError } from '../utils/responseHandler.js';
 
 export const register = async (req, res, next) => {
   try {
-    const { username, fullName, name, email, password, roles } = req.body;
+    const { username, fullName, name, email, password } = req.body;
     const finalFullName = fullName || name;
     const finalUsername = username || (email ? email.split('@')[0] : '');
 
@@ -16,7 +16,6 @@ export const register = async (req, res, next) => {
       fullName: finalFullName,
       email,
       password,
-      roles,
     });
     return sendSuccess(res, 'Đăng ký tài khoản thành công', result, 201);
   } catch (error) {

@@ -4,6 +4,8 @@ import HomePage from '../pages/HomePage';
 import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
 import NotFoundPage from '../pages/NotFoundPage';
+import OrderQrPage from '../pages/OrderQrPage';
+import WarehousePackingPage from '../pages/WarehousePackingPage';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
@@ -14,6 +16,13 @@ const ProtectedRoute = ({ children }) => {
   if (loading) return <LoadingSpinner message="Đang xác thực thông tin đăng nhập..." />;
   if (!user) return <Navigate to="/login" replace />;
 
+  return children;
+};
+
+const WarehouseRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingSpinner message="Đang xác thực thông tin đăng nhập..." />;
+  if (!user) return <Navigate to="/login" replace />;
   return children;
 };
 
@@ -31,6 +40,8 @@ const AppRouter = () => {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route path="/orders/qr" element={<WarehouseRoute><OrderQrPage /></WarehouseRoute>} />
+      <Route path="/packing/qr" element={<WarehouseRoute><WarehousePackingPage /></WarehouseRoute>} />
       <Route
         path="/login"
         element={

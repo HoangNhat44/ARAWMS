@@ -68,6 +68,7 @@ const userSchema = new Schema(
         message: 'roles phải có ít nhất 1 phần tử',
       },
     },
+    warehouseIds: { type: [{ type: Schema.Types.ObjectId, ref: 'Config' }], default: [] },
     permissionOverrides: { type: [permissionOverrideSchema], default: [] },
     mustChangePassword: { type: Boolean },
     failedLoginCount: { type: Number, default: 0 },

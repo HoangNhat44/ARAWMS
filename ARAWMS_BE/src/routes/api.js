@@ -1,5 +1,6 @@
 import express from 'express';
 import authRoutes from './authRoutes.js';
+import orderQrRoutes from './orderQrRoutes.js';
 
 const router = express.Router();
 
@@ -14,5 +15,6 @@ router.get('/health', (req, res) => {
 
 // Các nhóm Route
 router.use('/auth', authRoutes);
+router.use('/', orderQrRoutes);
 
 export default router;

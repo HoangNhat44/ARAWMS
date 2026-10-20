@@ -6,7 +6,8 @@ import User from '../models/User.js';
  * Tạo JSON Web Token
  */
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET || 'arawms_jwt_secret_key_2026', {
+  if (!process.env.JWT_SECRET) throw new Error('Thiếu cấu hình JWT_SECRET');
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 };
@@ -14,7 +15,7 @@ const generateToken = (id) => {
 /**
  * Đăng ký tài khoản người dùng mới
  */
-export const registerUser = async ({ username, fullName, email, password, roles }) => {
+export const registerUser = async ({ username, fullName, email, password }) => {
   const normalizedEmail = email.toLowerCase().trim();
   const normalizedUsername = username.trim();
 
@@ -39,7 +40,7 @@ export const registerUser = async ({ username, fullName, email, password, roles 
     fullName: fullName.trim(),
     email: normalizedEmail,
     passwordHash,
-    roles: roles && roles.length > 0 ? roles : ['STAFF'],
+    roles: ['STAFF'],
     status: 'ACTIVE',
   });
 
