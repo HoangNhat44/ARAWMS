@@ -4,6 +4,8 @@ import HomePage from '../pages/HomePage';
 import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
 import NotFoundPage from '../pages/NotFoundPage';
+import SellerChatPage from '../pages/seller/SellerChatPage';
+import SellerOrdersPage from '../pages/seller/SellerOrdersPage';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
@@ -47,6 +49,11 @@ const AppRouter = () => {
           </PublicRoute>
         }
       />
+
+      {/* Phân hệ Seller Workspace (UC-69 -> UC-83) */}
+      <Route path="/seller/chat" element={<SellerChatPage />} />
+      <Route path="/seller/orders" element={<SellerOrdersPage />} />
+
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );

@@ -16,6 +16,15 @@ export const ENV = {
     SHOP_ID: process.env.GHN_SHOP_ID ? Number(process.env.GHN_SHOP_ID) : 232136,
     CLIENT_ID: process.env.GHN_CLIENT_ID ? Number(process.env.GHN_CLIENT_ID) : 2542532,
   },
+
+  // Facebook Messenger API Configuration
+  FB: {
+    APP_ID: process.env.FB_APP_ID,
+    APP_SECRET: process.env.FB_APP_SECRET,
+    PAGE_ACCESS_TOKEN: process.env.FB_PAGE_ACCESS_TOKEN,
+    VERIFY_TOKEN: process.env.FB_VERIFY_TOKEN || 'arawms_fb_verify_token_2026',
+    PAGE_ID: process.env.FB_PAGE_ID,
+  },
 };
 
 export default ENV;
