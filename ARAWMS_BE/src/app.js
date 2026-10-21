@@ -1,8 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import apiRoutes from './routes/api.js';
-import { notFoundHandler, globalErrorHandler } from './middlewares/errorHandler.js';
+import apiRoutes from './routes/index.js';
+import { errorHandler } from './common/middlewares/errorHandler.js';
 
 const app = express();
 
@@ -31,8 +31,16 @@ app.get('/', (req, res) => {
   res.send('Welcome to ARAWMS Express.js API Gateway');
 });
 
-// Xử lý 404 & Global Error
-app.use(notFoundHandler);
-app.use(globalErrorHandler);
+// 404 Handler
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Route not found',
+    error: { code: 'NOT_FOUND' }
+  });
+});
+
+// Global Error Handler
+app.use(errorHandler);
 
 export default app;
