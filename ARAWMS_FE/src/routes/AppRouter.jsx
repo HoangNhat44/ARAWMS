@@ -50,9 +50,23 @@ const AppRouter = () => {
         }
       />
 
-      {/* Phân hệ Seller Workspace (UC-69 -> UC-83) */}
-      <Route path="/seller/chat" element={<SellerChatPage />} />
-      <Route path="/seller/orders" element={<SellerOrdersPage />} />
+      {/* Phân hệ Seller Workspace (UC-69 -> UC-83) — yêu cầu đăng nhập */}
+      <Route
+        path="/seller/chat"
+        element={
+          <ProtectedRoute>
+            <SellerChatPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/seller/orders"
+        element={
+          <ProtectedRoute>
+            <SellerOrdersPage />
+          </ProtectedRoute>
+        }
+      />
 
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

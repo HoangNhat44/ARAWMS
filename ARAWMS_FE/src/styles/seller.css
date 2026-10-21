@@ -1,0 +1,607 @@
+/* ========================================================
+   ARAWMS SELLER WORKSPACE - ATELIER LUXURY STYLING
+   Combines Bootstrap 5 + ARA Atelier Design System
+   ======================================================== */
+
+/* Workspace Root Layout */
+.ara-seller-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 150px);
+  min-height: 620px;
+  background-color: var(--ara-bg, #F4EFEB);
+  overflow: hidden;
+}
+
+/* Header Bar */
+.ara-seller-header {
+  background: linear-gradient(135deg, #1C1A17 0%, #2A2622 100%);
+  color: #FFFFFF;
+  padding: 0.65rem 1.25rem;
+  border-bottom: 1px solid rgba(159, 131, 101, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+  z-index: 20;
+}
+
+.ara-seller-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ara-seller-brand-title {
+  font-family: var(--font-serif, 'Cormorant Garamond', Georgia, serif);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ara-seller-brand-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  background: rgba(159, 131, 101, 0.25);
+  color: var(--ara-gold-light, #C6B39C);
+  border: 1px solid rgba(159, 131, 101, 0.4);
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Triple-Pane Layout Container */
+.ara-seller-workspace-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background-color: #FFFFFF;
+}
+
+/* Pane 1: Left Sidebar - Conversation List */
+.ara-seller-pane-conversations {
+  width: 320px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--ara-border, #E3D9CD);
+  background: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Pane 2: Central Chat Window */
+.ara-seller-pane-chat {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ara-bg-surface, #FAF7F2);
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Pane 3: Right Sidebar - CRM & Widgets Tabs */
+.ara-seller-pane-widgets {
+  width: 380px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--ara-border, #E3D9CD);
+  background: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Conversation List Styling */
+.ara-conv-search-box {
+  padding: 0.75rem 0.9rem;
+  background: #FFFFFF;
+  border-bottom: 1px solid var(--ara-border, #E3D9CD);
+}
+
+.ara-input-search {
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--ara-border, #E3D9CD);
+  background-color: var(--ara-bg-surface, #FAF7F2);
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem 0.5rem 2.2rem;
+  transition: var(--transition, all 0.25s ease);
+}
+
+.ara-input-search:focus {
+  background-color: #FFFFFF;
+  border-color: var(--ara-gold, #9F8365);
+  box-shadow: 0 0 0 3px rgba(159, 131, 101, 0.15);
+}
+
+.ara-tag-pills-bar {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding: 0.5rem 0.9rem;
+  background: #FCFAF8;
+  border-bottom: 1px solid var(--ara-border-subtle, rgba(28,26,23,0.08));
+  scrollbar-width: none;
+}
+
+.ara-tag-pill {
+  padding: 0.25rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid var(--ara-border, #E3D9CD);
+  background: #FFFFFF;
+  color: var(--ara-text-muted, #7E766D);
+  cursor: pointer;
+  transition: var(--transition, all 0.25s ease);
+}
+
+.ara-tag-pill:hover {
+  border-color: var(--ara-gold, #9F8365);
+  color: var(--ara-noir, #1C1A17);
+}
+
+.ara-tag-pill.active {
+  background: var(--ara-gold, #9F8365);
+  border-color: var(--ara-gold, #9F8365);
+  color: #FFFFFF;
+}
+
+.ara-conv-item {
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border-bottom: 1px solid rgba(227, 217, 205, 0.45);
+  cursor: pointer;
+  transition: var(--transition, all 0.2s ease);
+  position: relative;
+}
+
+.ara-conv-item:hover {
+  background-color: #F8F4EE;
+}
+
+.ara-conv-item.active {
+  background-color: #F3ECE2;
+  border-left: 4px solid var(--ara-gold, #9F8365);
+}
+
+.ara-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--ara-noir, #1C1A17) 0%, #3D3730 100%);
+  color: var(--ara-gold-light, #C6B39C);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  flex-shrink: 0;
+}
+
+/* Chat Header */
+.ara-chat-header {
+  padding: 0.75rem 1.25rem;
+  background: #FFFFFF;
+  border-bottom: 1px solid var(--ara-border, #E3D9CD);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 5px rgba(28, 26, 23, 0.03);
+}
+
+/* Chat Messages Scroll Stream */
+.ara-chat-messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Message Bubbles */
+.ara-msg-wrapper {
+  display: flex;
+  gap: 0.65rem;
+  max-width: 78%;
+}
+
+.ara-msg-inbound {
+  align-self: flex-start;
+}
+
+.ara-msg-outbound {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.ara-msg-bubble {
+  padding: 0.75rem 1rem;
+  border-radius: 16px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+  position: relative;
+}
+
+.ara-msg-inbound .ara-msg-bubble {
+  background: #FFFFFF;
+  color: var(--ara-noir, #1C1A17);
+  border: 1px solid var(--ara-border, #E3D9CD);
+  border-bottom-left-radius: 4px;
+}
+
+.ara-msg-outbound .ara-msg-bubble {
+  background: linear-gradient(145deg, #2D2926 0%, #1C1A17 100%);
+  color: #FFFFFF;
+  border: 1px solid rgba(159, 131, 101, 0.3);
+  border-bottom-right-radius: 4px;
+}
+
+.ara-msg-time {
+  font-size: 0.7rem;
+  margin-top: 0.35rem;
+  opacity: 0.75;
+}
+
+/* SKU Card Inside Chat */
+.ara-msg-sku-card {
+  margin-top: 0.5rem;
+  padding: 0.65rem;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--ara-gold, #9F8365);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--ara-noir, #1C1A17);
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+/* Chat Input Bar */
+.ara-chat-input-bar {
+  padding: 0.85rem 1.25rem 0.85rem;
+  background: #FFFFFF;
+  border-top: 1px solid var(--ara-border, #E3D9CD);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.ara-chat-form {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 0.35rem;
+}
+
+.ara-chat-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.ara-chat-input-bar textarea {
+  flex: 1 1 0%;
+  width: 100%;
+  min-height: 80px;
+  max-height: 180px;
+  resize: vertical;
+  border-radius: var(--radius-sm, 8px);
+  border: 1.5px solid var(--ara-border, #E3D9CD);
+  font-size: 0.92rem;
+  padding: 0.75rem 1rem;
+  font-family: var(--font-sans);
+  line-height: 1.55;
+  color: var(--ara-noir);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  background: var(--ara-bg-surface, #FAF7F2);
+}
+
+.ara-chat-input-bar textarea:focus {
+  outline: none;
+  border-color: var(--ara-gold, #9F8365);
+  box-shadow: 0 0 0 3px rgba(159, 131, 101, 0.18);
+  background: #FFFFFF;
+}
+
+.ara-chat-input-bar textarea::placeholder {
+  color: var(--ara-text-light, #A49C92);
+  font-size: 0.88rem;
+}
+
+.ara-chat-send-btn {
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--ara-noir, #1C1A17);
+  color: #FFFFFF;
+  border: none;
+  cursor: pointer;
+  transition: var(--transition, all 0.25s ease);
+}
+
+.ara-chat-send-btn:hover:not(:disabled) {
+  background: #2E2A27;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(28, 26, 23, 0.25);
+}
+
+.ara-chat-send-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ara-send-hint {
+  font-size: 0.7rem;
+  color: var(--ara-text-light, #A49C92);
+  text-align: right;
+  margin-top: 0.1rem;
+}
+
+
+.ara-attached-sku-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.85rem;
+  background: #FDF9F3;
+  border: 1px solid var(--ara-gold-light, #C6B39C);
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.8rem;
+  color: var(--ara-gold-hover, #846B50);
+}
+
+/* Widget Tabs Navigation */
+.ara-widget-nav-tabs {
+  display: flex;
+  background: #F8F4EE;
+  border-bottom: 1px solid var(--ara-border, #E3D9CD);
+  padding: 0.35rem 0.35rem 0;
+  gap: 0.25rem;
+}
+
+.ara-widget-tab-btn {
+  flex: 1;
+  padding: 0.6rem 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  background: transparent;
+  color: var(--ara-text-muted, #7E766D);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transition: var(--transition, all 0.2s ease);
+}
+
+.ara-widget-tab-btn:hover {
+  color: var(--ara-noir, #1C1A17);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.ara-widget-tab-btn.active {
+  background: #FFFFFF;
+  color: var(--ara-gold-hover, #846B50);
+  border-color: var(--ara-border, #E3D9CD);
+  border-bottom-color: #FFFFFF;
+  margin-bottom: -1px;
+  box-shadow: 0 -2px 5px rgba(0,0,0,0.02);
+}
+
+.ara-widget-tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  background: #FFFFFF;
+}
+
+/* Custom Badges */
+.badge-ara-gold {
+  background-color: var(--ara-gold-subtle, rgba(159, 131, 101, 0.15));
+  color: var(--ara-gold-hover, #846B50);
+  border: 1px solid rgba(159, 131, 101, 0.3);
+  font-weight: 600;
+  padding: 0.25rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+}
+
+.badge-ara-success {
+  background-color: #EAF7EE;
+  color: #1F7A3E;
+  border: 1px solid #B8E4C7;
+  font-weight: 600;
+  padding: 0.25rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+}
+
+.badge-ara-warning {
+  background-color: #FEF6E6;
+  color: #A36800;
+  border: 1px solid #FCDFA6;
+  font-weight: 600;
+  padding: 0.25rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+}
+
+.badge-ara-danger {
+  background-color: #FDF0F0;
+  color: #C5221F;
+  border: 1px solid #F8C3C2;
+  font-weight: 600;
+  padding: 0.25rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+}
+
+.badge-ara-info {
+  background-color: #EEF4FD;
+  color: #185ABC;
+  border: 1px solid #C4DAFB;
+  font-weight: 600;
+  padding: 0.25rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+}
+
+/* Modal Luxury Tweaks */
+.modal-content.ara-modal {
+  border-radius: var(--radius-lg, 18px);
+  border: 1px solid var(--ara-border, #E3D9CD);
+  box-shadow: var(--ara-shadow-lg);
+  overflow: hidden;
+}
+
+.modal-header.ara-modal-header {
+  background: linear-gradient(135deg, #1C1A17 0%, #2A2622 100%);
+  color: #FFFFFF;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(159, 131, 101, 0.4);
+}
+
+.modal-header.ara-modal-header .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+.modal-header.ara-modal-header-rma {
+  background: linear-gradient(135deg, #7C4A1E 0%, #5C320E 100%);
+  color: #FFFFFF;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.modal-header.ara-modal-header-rma .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+/* Seller Orders Page */
+.ara-orders-page {
+  padding: 1.75rem 2rem;
+  max-width: 1300px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.ara-table-card {
+  background: #FFFFFF;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--ara-border, #E3D9CD);
+  box-shadow: var(--ara-shadow-sm);
+  overflow: hidden;
+}
+
+.ara-orders-table thead th {
+  background-color: #F8F4EE;
+  color: var(--ara-text-muted, #7E766D);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--ara-border, #E3D9CD);
+}
+
+.ara-orders-table tbody td {
+  padding: 0.9rem 1rem;
+  vertical-align: middle;
+  border-bottom: 1px solid #F2ECE4;
+  font-size: 0.85rem;
+}
+
+.ara-orders-table tbody tr:hover {
+  background-color: #FAF7F2;
+}
+
+/* ── Orders Page Root Layout ── */
+.ara-orders-root {
+  min-height: calc(100vh - 65px);
+  background-color: var(--ara-bg, #F4EFEB);
+  padding-bottom: 3rem;
+}
+
+/* ── Orders Page Title Bar ── */
+.ara-orders-titlebar {
+  background: #FFFFFF;
+  border-bottom: 1px solid var(--ara-border, #E3D9CD);
+  padding: 0.75rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  box-shadow: 0 2px 8px rgba(28, 26, 23, 0.04);
+}
+
+.ara-orders-title {
+  font-family: var(--font-serif, 'Cormorant Garamond', serif);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--ara-noir, #1C1A17);
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.ara-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.85rem;
+  background: transparent;
+  border: 1px solid var(--ara-border, #E3D9CD);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--ara-text-muted, #7E766D);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition, all 0.25s ease);
+  text-decoration: none;
+}
+
+.ara-back-btn:hover {
+  border-color: var(--ara-gold, #9F8365);
+  color: var(--ara-gold-hover, #846B50);
+  background: var(--ara-bg-surface, #FAF7F2);
+}
+
+/* ── Orders Filter Bar ── */
+.ara-orders-filter-bar {
+  padding: 0.85rem 1rem;
+  background: #FFFFFF;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--ara-border, #E3D9CD);
+  box-shadow: var(--ara-shadow-sm);
+  margin-bottom: 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+

@@ -69,24 +69,36 @@ const HomePage = () => {
         </p>
 
         {user ? (
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '1rem',
-            padding: '1rem 2rem',
-            background: 'var(--ara-bg-surface)',
-            border: '1px solid var(--ara-gold)',
-            borderRadius: 'var(--radius-full)',
-            boxShadow: 'var(--ara-shadow-sm)',
-          }}>
-            <CheckCircle2 color="var(--ara-success)" size={24} />
-            <div style={{ textAlign: 'left' }}>
-              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--ara-noir)' }}>
-                Xin chào, {user.fullName || user.username}!
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '1rem',
+              padding: '1rem 2rem',
+              background: 'var(--ara-bg-surface)',
+              border: '1px solid var(--ara-gold)',
+              borderRadius: 'var(--radius-full)',
+              boxShadow: 'var(--ara-shadow-sm)',
+            }}>
+              <CheckCircle2 color="var(--ara-success)" size={24} />
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--ara-noir)' }}>
+                  Xin chào, {user.fullName || user.username}!
+                </div>
+                <div style={{ fontSize: '0.82rem', color: 'var(--ara-text-muted)' }}>
+                  Tài khoản: <strong>{user.email || user.username}</strong> | Vai trò: <strong>{user.roleCode || user.roles?.join(', ') || 'USER'}</strong>
+                </div>
               </div>
-              <div style={{ fontSize: '0.82rem', color: 'var(--ara-text-muted)' }}>
-                Tài khoản: <strong>{user.username}</strong> | Vai trò: <strong>{user.roles?.join(', ') || 'USER'}</strong>
-              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+              <Link to="/seller/chat" className="btn-ara-primary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}>
+                <span>Vào Seller Chat Workspace (UC-69 - UC-83)</span>
+                <ArrowRight size={18} />
+              </Link>
+              <Link to="/seller/orders" className="btn-ara-secondary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}>
+                <span>Quản Lý Đơn Hàng</span>
+              </Link>
             </div>
           </div>
         ) : (
