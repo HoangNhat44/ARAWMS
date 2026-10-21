@@ -1,7 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, ArrowLeft, ShieldCheck, XCircle, Clock, Truck, CheckCircle2, Search } from 'lucide-react';
+import { Table } from 'react-bootstrap';
+import {
+  ShoppingBag, ArrowLeft, ShieldCheck, XCircle,
+  Search, Clock, CheckCircle2, RotateCcw, SlidersHorizontal
+} from 'lucide-react';
 import { sellerService } from '../../services/sellerService';
 import { useNavigate } from 'react-router-dom';
+import CreateRmaModal from '../../components/seller/CreateRmaModal';
+import { SkeletonOrderRow } from '../../components/common/Skeleton';
+
+const STATUS_OPTIONS = [
+  { id: '', label: 'Tất cả' },
+  { id: 'PENDING', label: '⏳ Chờ xác nhận' },
+  { id: 'CONFIRMED_RESERVED', label: '🔒 Đã giữ chỗ kho' },
+  { id: 'PACKED', label: '📦 Đã đóng gói' },
+  { id: 'DELIVERED', label: '✅ Đã giao hàng' },
+  { id: 'CANCELLED', label: '❌ Đã hủy' },
+];
 
 const SellerOrdersPage = () => {
   const navigate = useNavigate();
@@ -9,7 +24,9 @@ const SellerOrdersPage = () => {
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
-  const [actionLoading, setActionLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(null); // orderId or null
+  const [rmaModalOpen, setRmaModalOpen] = useState(false);
+  const [selectedOrderForRma, setSelectedOrderForRma] = useState(null);
 
   useEffect(() => {
     fetchOrders();
@@ -33,206 +50,308 @@ const SellerOrdersPage = () => {
   };
 
   const handleConfirmReserve = async (orderId) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xác nhận đơn và giữ chỗ tồn kho cho đơn hàng này?')) return;
+    if (!window.confirm('Bạn có chắc muốn xác nhận và giữ chỗ tồn kho cho đơn hàng này?')) return;
     try {
-      setActionLoading(true);
+      setActionLoading(orderId);
       const res = await sellerService.confirmOrderReserve(orderId);
       if (res.success) {
-        alert('Xác nhận đơn và giữ chỗ kho thành công!');
         fetchOrders();
       }
     } catch (err) {
       alert(`Lỗi: ${err.message}`);
     } finally {
-      setActionLoading(false);
+      setActionLoading(null);
     }
   };
 
   const handleCancelOrder = async (orderId) => {
     const reason = window.prompt('Nhập lý do hủy đơn hàng:');
     if (!reason) return;
-
     try {
-      setActionLoading(true);
+      setActionLoading(orderId);
       const res = await sellerService.cancelOrder(orderId, reason);
       if (res.success) {
-        alert('Hủy đơn hàng thành công! Đã giải phóng số lượng tồn kho giữ chỗ.');
         fetchOrders();
       }
     } catch (err) {
       alert(`Lỗi: ${err.message}`);
     } finally {
-      setActionLoading(false);
+      setActionLoading(null);
     }
+  };
+
+  const handleOpenRma = (order) => {
+    setSelectedOrderForRma(order);
+    setRmaModalOpen(true);
   };
 
   const getStatusBadge = (status) => {
     switch (status) {
       case 'CONFIRMED_RESERVED':
-        return <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full font-semibold text-xs">Đã Giữ Chỗ Kho</span>;
+        return <span className="badge-ara-info d-inline-flex align-items-center gap-1"><Clock size={11} /> Đã Giữ Chỗ Kho</span>;
       case 'PENDING':
-        return <span className="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full font-semibold text-xs">Chờ Xác Nhận</span>;
+        return <span className="badge-ara-warning d-inline-flex align-items-center gap-1"><Clock size={11} /> Chờ Xác Nhận</span>;
       case 'PACKED':
-        return <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full font-semibold text-xs">Đã Đóng Gói</span>;
+        return <span className="badge-ara-gold d-inline-flex align-items-center gap-1">📦 Đã Đóng Gói</span>;
       case 'DELIVERED':
-        return <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full font-semibold text-xs">Đã Giao Hàng</span>;
+        return <span className="badge-ara-success d-inline-flex align-items-center gap-1"><CheckCircle2 size={11} /> Đã Giao Hàng</span>;
       case 'CANCELLED':
-        return <span className="px-2.5 py-1 bg-red-50 text-red-700 rounded-full font-semibold text-xs">Đã Hủy</span>;
+        return <span className="badge-ara-danger d-inline-flex align-items-center gap-1"><XCircle size={11} /> Đã Hủy</span>;
       default:
-        return <span className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full font-semibold text-xs">{status}</span>;
+        return <span className="badge-ara-gold">{status}</span>;
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      {/* Header */}
-      <header className="h-14 bg-white border-b border-gray-200 px-6 flex items-center justify-between shadow-2xs">
-        <div className="flex items-center gap-3">
+    <div className="ara-orders-root">
+      {/* ── Page Title Bar ─── */}
+      <div className="ara-orders-titlebar">
+        <div className="d-flex align-items-center gap-3">
           <button
             type="button"
+            id="btn-back-to-chat"
             onClick={() => navigate('/seller/chat')}
-            className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-indigo-600 px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition"
+            className="ara-back-btn"
           >
-            <ArrowLeft size={14} /> Quay lại Chat Workspace
+            <ArrowLeft size={15} />
+            <span>Về Chat</span>
           </button>
-          <div className="h-5 w-px bg-gray-200" />
-          <h2 className="font-bold text-gray-900 text-base flex items-center gap-2">
-            <ShoppingBag size={18} className="text-indigo-600" />
-            Quản Lý Đơn Hàng Bán Lẻ (UC-78 - UC-81)
-          </h2>
-        </div>
-      </header>
 
-      {/* Main Container */}
-      <main className="max-w-6xl w-full mx-auto p-6 space-y-4">
-        {/* Filters */}
-        <div className="bg-white p-4 rounded-2xl border border-gray-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            {['', 'PENDING', 'CONFIRMED_RESERVED', 'PACKED', 'DELIVERED', 'CANCELLED'].map((st) => (
-              <button
-                key={st}
-                type="button"
-                onClick={() => setStatusFilter(st)}
-                className={`px-3 py-1.5 rounded-lg font-semibold transition ${
-                  statusFilter === st
-                    ? 'bg-indigo-600 text-white shadow-2xs'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {st === '' ? 'Tất cả' : st}
-              </button>
-            ))}
+          <div className="vr" style={{ height: '22px', opacity: 0.3 }} />
+
+          <div className="d-flex align-items-center gap-2">
+            <ShoppingBag size={18} color="var(--ara-gold)" />
+            <h1 className="ara-orders-title">
+              Quản Lý Đơn Hàng Bán Lẻ
+            </h1>
+            <span className="badge-ara-gold" style={{ fontSize: '0.68rem' }}>Seller</span>
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div className="d-flex align-items-center gap-3">
+          <span className="text-muted" style={{ fontSize: '0.82rem' }}>
+            Hiển thị <strong className="text-dark">{orders.length}</strong> đơn hàng
+          </span>
+        </div>
+      </div>
+
+      {/* ── Main Container ─── */}
+      <div className="ara-orders-page">
+        {/* Filter Bar */}
+        <div className="ara-orders-filter-bar">
+          <div className="d-flex align-items-center gap-2">
+            <SlidersHorizontal size={15} color="var(--ara-gold)" />
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--ara-text-muted)' }}>Lọc:</span>
+            <div className="d-flex flex-wrap gap-1">
+              {STATUS_OPTIONS.map((st) => (
+                <button
+                  key={st.id}
+                  type="button"
+                  onClick={() => setStatusFilter(st.id)}
+                  className={`ara-tag-pill ${statusFilter === st.id ? 'active' : ''}`}
+                  style={{ fontSize: '0.78rem' }}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
           </div>
 
+          {/* Search Form */}
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              fetchOrders();
-            }}
-            className="flex items-center gap-2"
+            onSubmit={(e) => { e.preventDefault(); fetchOrders(); }}
+            className="d-flex gap-2"
           >
-            <input
-              type="text"
-              placeholder="Tìm theo mã đơn, người nhận..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="px-3 py-1.5 border rounded-lg focus:outline-none w-56 text-xs"
-            />
+            <div className="position-relative">
+              <Search
+                className="position-absolute"
+                size={14}
+                style={{ left: '10px', top: '11px', color: 'var(--ara-gold)' }}
+              />
+              <input
+                id="orders-search-input"
+                type="text"
+                placeholder="Tìm mã đơn, người nhận, SĐT..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="form-control ara-input-search"
+                style={{ width: '260px', paddingLeft: '2.2rem' }}
+              />
+            </div>
             <button
               type="submit"
-              className="px-3 py-1.5 bg-gray-900 text-white rounded-lg font-medium hover:bg-black"
+              id="btn-orders-search"
+              className="btn-ara-primary"
+              style={{ padding: '0.5rem 1rem', fontSize: '0.82rem' }}
             >
-              Tìm
+              Tìm kiếm
             </button>
           </form>
         </div>
 
         {/* Orders Table */}
-        <div className="bg-white rounded-2xl border border-gray-200/80 shadow-2xs overflow-hidden">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 font-semibold uppercase tracking-wider">
+        <div className="ara-table-card">
+          <Table responsive hover className="ara-orders-table mb-0">
+            <thead>
               <tr>
-                <th className="py-3 px-4">Mã đơn</th>
-                <th className="py-3 px-4">Khách & Người nhận</th>
-                <th className="py-3 px-4">Sản phẩm</th>
-                <th className="py-3 px-4">Tổng tiền (COD)</th>
-                <th className="py-3 px-4">Trạng thái</th>
-                <th className="py-3 px-4 text-right">Thao tác Seller</th>
+                <th>Mã đơn</th>
+                <th>Khách hàng & Người nhận</th>
+                <th>Sản phẩm</th>
+                <th>Tổng thanh toán (COD)</th>
+                <th>Trạng thái</th>
+                <th className="text-end">Thao tác</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan="6" className="text-center py-10 text-gray-400">
-                    Đang tải danh sách đơn hàng...
-                  </td>
-                </tr>
+                <>
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <SkeletonOrderRow key={i} />
+                  ))}
+                </>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="text-center py-10 text-gray-400">
-                    Không tìm thấy đơn hàng nào
+                  <td colSpan="6" className="text-center py-5">
+                    <ShoppingBag size={36} style={{ color: 'var(--ara-gold)', opacity: 0.4 }} className="mb-2 d-block mx-auto" />
+                    <div className="text-muted" style={{ fontSize: '0.88rem' }}>Không tìm thấy đơn hàng nào phù hợp</div>
                   </td>
                 </tr>
               ) : (
                 orders.map((ord) => (
-                  <tr key={ord._id} className="hover:bg-gray-50/60 transition">
-                    <td className="py-3.5 px-4 font-mono font-bold text-indigo-600">
-                      {ord.orderCode}
-                      <div className="text-[10px] text-gray-400 font-sans font-normal mt-0.5">
-                        {new Date(ord.createdAt).toLocaleDateString('vi-VN')}
+                  <tr key={ord._id}>
+                    {/* Mã đơn + ngày */}
+                    <td>
+                      <span className="font-monospace fw-bold" style={{ color: 'var(--ara-gold-hover)', fontSize: '0.88rem' }}>
+                        {ord.orderCode}
+                      </span>
+                      <div className="text-muted" style={{ fontSize: '0.72rem', marginTop: '2px' }}>
+                        {new Date(ord.createdAt).toLocaleDateString('vi-VN')}{' '}
+                        {new Date(ord.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </td>
 
-                    <td className="py-3.5 px-4">
-                      <div className="font-semibold text-gray-900">{ord.shippingRecipient?.name || 'N/A'}</div>
-                      <div className="text-gray-500 text-[11px]">{ord.shippingRecipient?.phone}</div>
-                      <div className="text-gray-400 text-[11px] line-clamp-1">{ord.shippingRecipient?.address}</div>
+                    {/* Người nhận */}
+                    <td>
+                      <div className="fw-bold text-dark" style={{ fontSize: '0.88rem' }}>
+                        {ord.shippingRecipient?.name || 'Khách vãng lai'}
+                      </div>
+                      <div className="text-muted" style={{ fontSize: '0.75rem' }}>{ord.shippingRecipient?.phone}</div>
+                      <div className="text-secondary text-truncate" style={{ maxWidth: '220px', fontSize: '0.73rem' }}>
+                        {ord.shippingRecipient?.address}
+                      </div>
                     </td>
 
-                    <td className="py-3.5 px-4 space-y-1">
-                      {ord.items?.map((it, idx) => (
-                        <div key={idx} className="text-gray-700">
-                          <strong>{it.orderedQty}x</strong> {it.skuCode}
-                        </div>
-                      ))}
+                    {/* Sản phẩm */}
+                    <td>
+                      <div className="d-flex flex-column gap-1" style={{ fontSize: '0.78rem' }}>
+                        {ord.items?.map((it, idx) => (
+                          <div key={idx} className="text-dark">
+                            <strong>{it.orderedQty}x</strong> {it.skuCode}
+                          </div>
+                        ))}
+                      </div>
                     </td>
 
-                    <td className="py-3.5 px-4 font-bold text-gray-900">
-                      {(ord.financialSummary?.totalOrderAmount || 0).toLocaleString('vi-VN')} đ
+                    {/* Tổng tiền */}
+                    <td>
+                      <div className="fw-bold" style={{ color: 'var(--ara-noir)', fontSize: '0.92rem' }}>
+                        {(ord.financialSummary?.totalOrderAmount || 0).toLocaleString('vi-VN')} đ
+                      </div>
                     </td>
 
-                    <td className="py-3.5 px-4">{getStatusBadge(ord.status)}</td>
+                    {/* Trạng thái */}
+                    <td>{getStatusBadge(ord.status)}</td>
 
-                    <td className="py-3.5 px-4 text-right space-x-1.5">
-                      {ord.status === 'PENDING' && (
-                        <button
-                          type="button"
-                          disabled={actionLoading}
-                          onClick={() => handleConfirmReserve(ord._id)}
-                          className="px-2.5 py-1.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition"
-                        >
-                          Xác nhận & Giữ chỗ (UC-79)
-                        </button>
-                      )}
+                    {/* Thao tác */}
+                    <td className="text-end">
+                      <div className="d-flex justify-content-end gap-1 flex-wrap">
+                        {/* UC-79: Xác nhận giữ chỗ */}
+                        {ord.status === 'PENDING' && (
+                          <button
+                            type="button"
+                            disabled={actionLoading === ord._id}
+                            onClick={() => handleConfirmReserve(ord._id)}
+                            className="btn-ara-primary d-inline-flex align-items-center gap-1"
+                            style={{ fontSize: '0.75rem', padding: '0.3rem 0.7rem' }}
+                            title="Xác nhận đơn và giữ chỗ tồn kho (UC-79)"
+                          >
+                            {actionLoading === ord._id ? (
+                              <span className="spinner-border spinner-border-sm" role="status" style={{ width: '12px', height: '12px' }} />
+                            ) : (
+                              <ShieldCheck size={13} />
+                            )}
+                            <span>Giữ chỗ kho</span>
+                          </button>
+                        )}
 
-                      {!['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'CANCELLED'].includes(ord.status) && (
-                        <button
-                          type="button"
-                          disabled={actionLoading}
-                          onClick={() => handleCancelOrder(ord._id)}
-                          className="px-2.5 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg font-semibold hover:bg-red-100 transition"
-                        >
-                          Hủy đơn (UC-81)
-                        </button>
-                      )}
+                        {/* UC-82: Tạo RMA */}
+                        {['DELIVERED', 'COMPLETED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRma(ord)}
+                            className="d-inline-flex align-items-center gap-1"
+                            style={{
+                              fontSize: '0.75rem',
+                              padding: '0.3rem 0.65rem',
+                              background: '#FEF6E6',
+                              border: '1px solid #FCDFA6',
+                              color: '#A36800',
+                              borderRadius: 'var(--radius-sm)',
+                              cursor: 'pointer',
+                              fontWeight: 600,
+                            }}
+                            title="Tạo phiếu đổi/trả RMA (UC-82)"
+                          >
+                            <RotateCcw size={12} />
+                            <span>Đổi/Trả</span>
+                          </button>
+                        )}
+
+                        {/* UC-80: Hủy đơn */}
+                        {!['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'CANCELLED'].includes(ord.status) && (
+                          <button
+                            type="button"
+                            disabled={actionLoading === ord._id}
+                            onClick={() => handleCancelOrder(ord._id)}
+                            className="d-inline-flex align-items-center gap-1"
+                            style={{
+                              fontSize: '0.75rem',
+                              padding: '0.3rem 0.65rem',
+                              background: '#FDF0F0',
+                              border: '1px solid #F8C3C2',
+                              color: '#C5221F',
+                              borderRadius: 'var(--radius-sm)',
+                              cursor: 'pointer',
+                              fontWeight: 600,
+                            }}
+                            title="Hủy đơn hàng (UC-80)"
+                          >
+                            <XCircle size={12} />
+                            <span>Hủy đơn</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
-          </table>
+          </Table>
         </div>
-      </main>
+      </div>
+
+      {/* RMA Modal */}
+      <CreateRmaModal
+        isOpen={rmaModalOpen}
+        onClose={() => setRmaModalOpen(false)}
+        order={selectedOrderForRma}
+        onRmaCreated={() => {
+          alert('Phiếu RMA đã được tạo thành công!');
+          setRmaModalOpen(false);
+          fetchOrders();
+        }}
+      />
     </div>
   );
 };

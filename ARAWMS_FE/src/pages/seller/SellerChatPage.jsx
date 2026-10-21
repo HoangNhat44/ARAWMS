@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, PackageCheck, ShoppingBag, Clock, MessageSquare, Menu, LogOut } from 'lucide-react';
+import { User, PackageCheck, ShoppingBag } from 'lucide-react';
 import ConversationList from '../../components/seller/ConversationList';
 import ChatBox from '../../components/seller/ChatBox';
 import CustomerProfilePanel from '../../components/seller/CustomerProfilePanel';
@@ -8,13 +8,8 @@ import CustomerOrderHistory from '../../components/seller/CustomerOrderHistory';
 import QuickOrderModal from '../../components/seller/QuickOrderModal';
 import CreateRmaModal from '../../components/seller/CreateRmaModal';
 import { sellerService } from '../../services/sellerService';
-import { useAuth } from '../../hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
 
 const SellerChatPage = () => {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -85,60 +80,23 @@ const SellerChatPage = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-white text-gray-900 font-sans antialiased overflow-hidden">
-      {/* Top Navbar */}
-      <header className="h-13 bg-slate-900 text-white flex items-center justify-between px-4 shrink-0 shadow-md">
-        <div className="flex items-center gap-3">
-          <div className="font-extrabold text-base tracking-wider bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-            ARAWMS SELLER
-          </div>
-          <span className="text-xs text-slate-400 border-l border-slate-700 pl-3 hidden md:inline">
-            Không Gian Làm Việc Bán Hàng & CRM Hội Thoại
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3 text-xs">
-          <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="font-medium text-slate-300">
-              {user?.fullName || 'Seller'} ({user?.employeeCode || 'SELLER'})
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => navigate('/seller/orders')}
-            className="px-3 py-1.5 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-lg font-medium transition"
-          >
-            Quản Lý Đơn Hàng
-          </button>
-
-          <button
-            type="button"
-            onClick={logout}
-            title="Đăng xuất"
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
-          >
-            <LogOut size={16} />
-          </button>
-        </div>
-      </header>
-
-      {/* Triple-Pane Workspace Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Pane 1: Conversations List (280px) */}
-        <div className="w-80 shrink-0 border-r border-gray-200">
+    <div className="ara-seller-page">
+      {/* Triple-Pane Workspace Layout (Using standard App Navbar above) */}
+      <div className="ara-seller-workspace-body">
+        {/* Pane 1: Conversations Stream (320px) */}
+        <div className="ara-seller-pane-conversations">
           <ConversationList
             conversations={conversations}
             selectedId={selectedConversation?._id}
             onSelect={handleSelectConversation}
             onTagFilter={setActiveFilterTag}
             activeFilterTag={activeFilterTag}
+            loading={loading}
           />
         </div>
 
-        {/* Pane 2: Central Chat Window (Flex-1) */}
-        <div className="flex-1 flex flex-col min-w-0">
+        {/* Pane 2: Central Chat Window */}
+        <div className="ara-seller-pane-chat">
           <ChatBox
             conversation={selectedConversation}
             attachedSku={attachedSku}
@@ -151,47 +109,38 @@ const SellerChatPage = () => {
           />
         </div>
 
-        {/* Pane 3: Integrated Widgets & CRM Tabs (360px) */}
-        <div className="w-96 shrink-0 border-l border-gray-200 flex flex-col bg-white">
-          {/* Tabs Switcher */}
-          <div className="flex border-b border-gray-200 bg-gray-50/80 p-1 gap-1 text-xs font-semibold shrink-0">
+        {/* Pane 3: CRM & Stock Widgets (380px) */}
+        <div className="ara-seller-pane-widgets">
+          {/* Tabs Navigation */}
+          <div className="ara-widget-nav-tabs">
             <button
               type="button"
               onClick={() => setActiveTab('crm')}
-              className={`flex-1 py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition ${
-                activeTab === 'crm'
-                  ? 'bg-white text-indigo-600 shadow-xs'
-                  : 'text-gray-500 hover:text-gray-900'
-              }`}
+              className={`ara-widget-tab-btn ${activeTab === 'crm' ? 'active' : ''}`}
             >
-              <User size={14} /> CRM & Hồ sơ
+              <User size={15} />
+              <span>Hồ sơ CRM</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('stock')}
-              className={`flex-1 py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition ${
-                activeTab === 'stock'
-                  ? 'bg-white text-indigo-600 shadow-xs'
-                  : 'text-gray-500 hover:text-gray-900'
-              }`}
+              className={`ara-widget-tab-btn ${activeTab === 'stock' ? 'active' : ''}`}
             >
-              <PackageCheck size={14} /> Tồn kho (UC-77)
+              <PackageCheck size={15} />
+              <span>Tồn kho (UC-77)</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('history')}
-              className={`flex-1 py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition ${
-                activeTab === 'history'
-                  ? 'bg-white text-indigo-600 shadow-xs'
-                  : 'text-gray-500 hover:text-gray-900'
-              }`}
+              className={`ara-widget-tab-btn ${activeTab === 'history' ? 'active' : ''}`}
             >
-              <ShoppingBag size={14} /> Đơn mua (UC-76)
+              <ShoppingBag size={15} />
+              <span>Đơn mua (UC-76)</span>
             </button>
           </div>
 
           {/* Active Tab Body */}
-          <div className="flex-1 overflow-hidden">
+          <div className="ara-widget-tab-content">
             {activeTab === 'crm' && (
               <CustomerProfilePanel
                 customer={selectedConversation?.customerId}
