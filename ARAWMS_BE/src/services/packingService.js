@@ -32,6 +32,7 @@ const snapshotItems = (order) => order.items.map((item, index) => ({
 
 export const sessionView = (session) => ({
   id: String(session._id),
+  orderId: session.orderKey,
   state: session.state,
   leaseVersion: session.leaseVersion,
   leaseUntil: session.leaseUntil,
@@ -40,6 +41,11 @@ export const sessionView = (session) => ({
     scanned: session.scannedUnits.filter((scan) => scan.lineKey === item.lineKey).length,
   })),
   scannedBarcodes: session.scannedUnits.map((scan) => scan.barcode),
+  video: session.video?.publicId ? {
+    status: 'SAVED', durationMs: session.video.durationMs,
+    uploadedAt: session.video.uploadedAt,
+    playbackUrl: `/api/packing/sessions/${session._id}/video`,
+  } : null,
 });
 
 export const decideScan = (packing, unit, barcode) => {
@@ -86,7 +92,7 @@ export const preparePacking = async (order, operatorId, stationId) => {
       packing = await PackingSession.findOne(key);
     }
   }
-  if (!order.demoOnly && (!packing.orderVersion || !order.updatedAt ||
+  if (!order.demoOnly && !packing.video?.publicId && (!packing.orderVersion || !order.updatedAt ||
       packing.orderVersion.getTime() !== order.updatedAt.getTime())) {
     throw new PackingError('ORDER_CHANGED');
   }

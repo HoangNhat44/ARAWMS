@@ -9,6 +9,7 @@ import { findOrder, issueQr, publicOrderDetail, resolveQr } from '../services/or
 import { canPackOrder, canIssueQr } from '../services/orderAccessService.js';
 import { PackingError, heartbeatPacking, preparePacking, releasePacking, scanProduct, sessionView } from '../services/packingService.js';
 import { ensurePackingIndexes } from '../services/packingIndexes.js';
+import { uploadPackingVideo as saveVideo, syncPackingVideo as syncVideo, streamPackingVideo } from '../services/packingVideoService.js';
 
 const fail = (res, error) => sendError(res, error.code, { code: error.code }, error.status);
 
@@ -93,6 +94,50 @@ export const scan = async (req, res, next) => {
     const result = await scanProduct({ sessionId: req.params.id, ...req.body });
     return sendSuccess(res, result.result === 'ACCEPTED' ? 'Đã nhận sản phẩm' : 'Barcode không được chấp nhận', result);
   } catch (error) {
+    if (error instanceof PackingError) return fail(res, error);
+    next(error);
+  }
+};
+
+export const uploadPackingVideo = async (req, res, next) => {
+  try {
+    await authorizedSession(req);
+    const session = await saveVideo({
+      sessionId: req.params.id,
+      recordingId: req.header('X-Recording-Id'),
+      durationMs: Number(req.header('X-Video-Duration-Ms')),
+      mimeType: req.header('Content-Type')?.split(';')[0].toLowerCase(),
+      input: req,
+    });
+    return sendSuccess(res, session.status === 'COMPLETED' ? 'Đã lưu video đóng hàng' : 'Video đang chờ đồng bộ', session,
+      session.status === 'COMPLETED' ? 201 : 202);
+  } catch (error) {
+    if (error instanceof PackingError) return fail(res, error);
+    next(error);
+  }
+};
+
+export const syncPackingVideo = async (req, res, next) => {
+  try {
+    await authorizedSession(req);
+    const result = await syncVideo({
+      sessionId: req.params.id, recordingId: req.params.recordingId,
+      durationMs: Number(req.body?.durationMs) || 1,
+    });
+    return sendSuccess(res, result.status === 'COMPLETED' ? 'Đã đồng bộ video' : 'Video đang chờ đồng bộ', result,
+      result.status === 'COMPLETED' ? 200 : 202);
+  } catch (error) {
+    if (error instanceof PackingError) return fail(res, error);
+    next(error);
+  }
+};
+
+export const getPackingVideo = async (req, res, next) => {
+  try {
+    const packing = await authorizedSession(req);
+    await streamPackingVideo(packing, req.header('Range'), res);
+  } catch (error) {
+    if (res.headersSent) return res.destroy(error);
     if (error instanceof PackingError) return fail(res, error);
     next(error);
   }

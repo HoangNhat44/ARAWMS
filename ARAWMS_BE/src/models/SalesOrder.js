@@ -150,6 +150,8 @@ const salesOrderSchema = new Schema(
       startedAt: { type: Date },
       finishedAt: { type: Date },
       videoUrl: { type: String },
+      videoPublicId: { type: String },
+      videoAssetId: { type: String },
       videoDurationS: { type: Number },
       isComplete: { type: Boolean },
       scans: { type: [packingScanSchema], default: [] },

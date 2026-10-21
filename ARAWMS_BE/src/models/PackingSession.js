@@ -30,6 +30,16 @@ const packingSessionSchema = new Schema({
   state: { type: String, required: true, enum: ['SCANNING', 'READY_TO_RECORD'], default: 'SCANNING' },
   items: { type: [snapshotItemSchema], required: true },
   scannedUnits: { type: [scannedUnitSchema], default: [] },
+  video: {
+    recordingId: { type: String },
+    publicId: { type: String },
+    assetId: { type: String },
+    url: { type: String },
+    mimeType: { type: String },
+    sizeBytes: { type: Number },
+    durationMs: { type: Number },
+    uploadedAt: { type: Date },
+  },
   version: { type: Number, required: true, default: 0 },
 }, { timestamps: true, collection: 'packing_sessions' });
 

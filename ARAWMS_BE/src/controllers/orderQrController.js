@@ -1,6 +1,6 @@
 import { sendError, sendSuccess } from '../utils/responseHandler.js';
 import { findOrder, issueQr, listOrdersForQr, replaceQr, publicOrderDetail, resolveQr } from '../services/orderQrService.js';
-import { canViewOrder, canIssueQr } from '../services/orderAccessService.js';
+import { canViewOrder, canIssueQr, canPackOrder } from '../services/orderAccessService.js';
 
 const forbidden = (res) => sendError(res, 'Tài khoản chưa có quyền với đơn hàng này', { code: 'FORBIDDEN' }, 403);
 
@@ -60,7 +60,7 @@ export const resolveOrderQr = async (req, res, next) => {
     const result = await resolveQr(req.body.qrValue);
     if (result.error) return sendError(res, 'QR không hợp lệ hoặc không còn hiệu lực', { code: result.error }, 404);
     const order = await findOrder(result.order.id);
-    if (!order || !canViewOrder(req.user, order)) return forbidden(res);
+    if (!order || !canPackOrder(req.user, order)) return forbidden(res);
     return sendSuccess(res, 'Đã xác thực QR đơn hàng', { order: publicOrderDetail(order) });
   } catch (error) {
     next(error);

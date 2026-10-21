@@ -2,6 +2,8 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 
+const authError = (message, statusCode) => Object.assign(new Error(message), { statusCode });
+
 /**
  * Tạo JSON Web Token
  */
@@ -64,7 +66,7 @@ export const registerUser = async ({ username, fullName, email, password }) => {
  */
 export const loginUser = async ({ usernameOrEmail, password }) => {
   if (!usernameOrEmail || !password) {
-    throw new Error('Vui lòng nhập tên đăng nhập/email và mật khẩu');
+    throw authError('Vui lòng nhập tên đăng nhập/email và mật khẩu', 400);
   }
 
   const cleanInput = usernameOrEmail.trim();
@@ -78,16 +80,16 @@ export const loginUser = async ({ usernameOrEmail, password }) => {
   }).select('+passwordHash');
 
   if (!user || !user.passwordHash) {
-    throw new Error('Tài khoản hoặc mật khẩu không chính xác');
+    throw authError('Tài khoản hoặc mật khẩu không chính xác', 401);
   }
 
   // Kiểm tra trạng thái tài khoản
   if (user.status === 'LOCKED') {
-    throw new Error('Tài khoản của bạn đang tạm thời bị khóa. Vui lòng liên hệ quản trị viên');
+    throw authError('Tài khoản của bạn đang tạm thời bị khóa. Vui lòng liên hệ quản trị viên', 403);
   }
 
   if (user.status === 'DISABLED') {
-    throw new Error('Tài khoản này đã bị vô hiệu hóa');
+    throw authError('Tài khoản này đã bị vô hiệu hóa', 403);
   }
 
   // So sánh mật khẩu
@@ -96,7 +98,7 @@ export const loginUser = async ({ usernameOrEmail, password }) => {
     // Tăng số lần đăng nhập thất bại
     user.failedLoginCount = (user.failedLoginCount || 0) + 1;
     await user.save();
-    throw new Error('Tài khoản hoặc mật khẩu không chính xác');
+    throw authError('Tài khoản hoặc mật khẩu không chính xác', 401);
   }
 
   // Reset failedLoginCount và cập nhật lastLoginAt

@@ -1,5 +1,7 @@
 # Thiết kế chức năng đóng hàng có video theo đơn hàng
 
+> Lưu ý 21/10/2026: phần mô tả "quét trước quay" bên dưới là phương án thiết kế cũ. Luồng đang triển khai theo yêu cầu mới: quét QR mở đơn và bắt đầu quay ngay; quét QR đơn kế tiếp kết thúc video đơn hiện tại, đưa vào hàng chờ Cloudinary, rồi bắt đầu quay đơn mới. Cloudinary giữ video, MongoDB Atlas lưu URL và định danh; IndexedDB chỉ giữ bản tạm cho đến khi upload được xác nhận.
+
 Ngày cập nhật: 19/10/2026 — bản 2, quét trước quay và chỉ dùng lần final. Đây là khung nghiệp vụ và triển khai, chưa phải mã nguồn hoàn chỉnh. Các thời lượng, độ phân giải và thời hạn lưu dưới đây là đề xuất cần hiệu chỉnh sau thử nghiệm tại kho.
 
 ## 1. Hướng triển khai đề xuất — cập nhật theo quy trình mới

@@ -183,10 +183,23 @@ ARAWMS_BE/
    ```env
    PORT=5000
    NODE_ENV=development
-   MONGO_URI=mongodb+srv://<username>:<password>@cluster.mongodb.net/arawms?retryWrites=true&w=majority
+   MONGODB_URI=mongodb+srv://<username>:<password>@cluster.mongodb.net/arawms?retryWrites=true&w=majority
    JWT_SECRET=arawms_super_secret_jwt_key_2026
    CLIENT_URL=http://localhost:3000
+   CLOUDINARY_CLOUD_NAME=your_cloud_name
+   CLOUDINARY_API_KEY=your_api_key
+   CLOUDINARY_API_SECRET=your_api_secret
    ```
+
+   Video đóng hàng được upload lên Cloudinary dưới dạng `authenticated`. Chỉ đặt API secret ở backend,
+   không đưa vào frontend hoặc commit lên Git. Nếu chưa cấu hình ba biến Cloudinary, video sẽ nằm
+   trong hàng chờ tạm trên thiết bị quay và API upload báo `CLOUDINARY_NOT_CONFIGURED`.
+   Trình duyệt cần OPFS, IndexedDB và Web Locks để lưu video an toàn và tránh hai tab upload trùng.
+   File video tạm nằm trong OPFS; metadata queue nằm trong IndexedDB. Mặc định có tối đa 2 upload
+   đồng thời (`VITE_PACKING_UPLOAD_CONCURRENCY` ở frontend nếu cần đổi). Video đã lên Cloudinary
+   nhưng MongoDB chưa xác nhận sẽ ở trạng thái `SYNC_PENDING` để thử đồng bộ lại theo `recordingId`.
+   Backend nhận video qua chunked upload (giới hạn ứng dụng 512 MB; giới hạn tài khoản Cloudinary
+   có thể thấp hơn). Upload chỉ chạy khi trang web còn mở và người dùng đã đăng nhập.
 
 4. **Khởi chạy Server Backend:**
    - **Môi trường Phát triển (Development):**

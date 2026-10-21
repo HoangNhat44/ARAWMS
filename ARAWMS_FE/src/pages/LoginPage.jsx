@@ -9,14 +9,13 @@ import {
   EyeOff, 
   ArrowRight, 
   ShieldCheck, 
-  Sparkles, 
   CheckCircle2, 
   AlertCircle 
 } from 'lucide-react';
 
 const LoginPage = () => {
   const [formData, setFormData] = useState({
-    usernameOrEmail: 'admin',
+    usernameOrEmail: '',
     password: '',
   });
   const [showPassword, setShowPassword] = useState(false);
@@ -30,11 +29,6 @@ const LoginPage = () => {
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     if (error) setError('');
-  };
-
-  const handleQuickFill = (username, pass) => {
-    setFormData({ usernameOrEmail: username, password: pass });
-    setError('');
   };
 
   const handleSubmit = async (e) => {
@@ -221,7 +215,7 @@ const LoginPage = () => {
                   name="usernameOrEmail"
                   type="text"
                   className="form-input"
-                  placeholder="admin hoặc admin@arawms.com"
+                  placeholder="Tên đăng nhập hoặc email"
                   value={formData.usernameOrEmail}
                   onChange={handleChange}
                   autoComplete="username"
@@ -299,68 +293,6 @@ const LoginPage = () => {
               )}
             </button>
           </form>
-
-          {/* Khối tài khoản thử nghiệm nhanh */}
-          <div style={{
-            marginTop: '2rem',
-            paddingTop: '1.5rem',
-            borderTop: '1px dashed var(--ara-border)',
-          }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '0.75rem',
-            }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--ara-text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <Sparkles size={14} color="var(--ara-gold)" />
-                Tài khoản kiểm tra nhanh (Demo):
-              </span>
-            </div>
-
-            <div 
-              onClick={() => handleQuickFill('admin', 'Admin@123')}
-              style={{
-                background: 'var(--ara-bg-surface)',
-                border: '1px solid var(--ara-border)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '0.75rem 1rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                transition: 'var(--transition)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--ara-gold)';
-                e.currentTarget.style.background = '#FFFFFF';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--ara-border)';
-                e.currentTarget.style.background = 'var(--ara-bg-surface)';
-              }}
-              title="Nhấn để tự động điền tài khoản Admin"
-            >
-              <div>
-                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--ara-noir)' }}>
-                  👑 Quản trị viên (Admin)
-                </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)' }}>
-                  User: <strong style={{ color: 'var(--ara-noir-soft)' }}>admin</strong> | Pass: <strong style={{ color: 'var(--ara-noir-soft)' }}>Admin@123</strong>
-                </div>
-              </div>
-              <span style={{
-                fontSize: '0.78rem',
-                color: 'var(--ara-gold-hover)',
-                fontWeight: 600,
-                background: 'rgba(159, 131, 101, 0.12)',
-                padding: '0.25rem 0.65rem',
-                borderRadius: '4px',
-              }}>
-                Điền nhanh
-              </span>
-            </div>
-          </div>
 
           {/* Đăng ký */}
           <div style={{

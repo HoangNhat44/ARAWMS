@@ -14,4 +14,16 @@ export const orderQrService = {
   heartbeat: (sessionId, stationId, leaseVersion) => api.post(`/packing/sessions/${sessionId}/heartbeat`, { stationId, leaseVersion }),
   release: (sessionId, stationId, leaseVersion) => api.post(`/packing/sessions/${sessionId}/release`, { stationId, leaseVersion }),
   scan: (sessionId, payload) => api.post(`/packing/sessions/${sessionId}/scans`, payload),
+  uploadVideo: (job, blob, onUploadProgress) => api.post(`/packing/sessions/${job.sessionId}/video`, blob, {
+    headers: {
+      'Content-Type': job.mimeType,
+      'X-Recording-Id': job.recordingId,
+      'X-Video-Duration-Ms': String(job.durationMs),
+    },
+    onUploadProgress,
+  }),
+  syncVideo: (job) => api.post(`/packing/sessions/${job.sessionId}/video/${job.recordingId}/sync`, {
+    durationMs: job.durationMs,
+  }),
+  getVideo: (sessionId) => api.get(`/packing/sessions/${sessionId}/video`, { responseType: 'blob' }),
 };

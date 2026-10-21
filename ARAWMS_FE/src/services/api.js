@@ -31,6 +31,7 @@ api.interceptors.response.use(
     const message = error.response?.data?.message || 'Có lỗi kết nối đến Server';
     const apiError = new Error(message);
     apiError.code = error.response?.data?.errors?.code;
+    apiError.status = error.response?.status;
     return Promise.reject(apiError);
   }
 );

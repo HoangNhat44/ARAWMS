@@ -87,7 +87,8 @@ export const publicOrderDetail = (order) => order.demoOnly ? ({
     lineTotal: item.lineTotal ?? null,
   })),
   note: order.note || null,
-  packingStatus: order.packing?.isComplete ? 'LEGACY_COMPLETE' : 'NOT_STARTED',
+  packingStatus: order.packing?.isComplete ? 'LEGACY_COMPLETE' :
+    order.packing?.videoPublicId ? 'VIDEO_SAVED' : 'NOT_STARTED',
   demoOnly: false,
 });
 
