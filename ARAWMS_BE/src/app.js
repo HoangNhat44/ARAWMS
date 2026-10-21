@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import apiRoutes from './routes/api.js';
-import { notFoundHandler, globalErrorHandler } from './middlewares/errorHandler.js';
+import { notFoundHandler, globalErrorHandler } from './common/middlewares/errorHandler.js';
 
 const app = express();
 
