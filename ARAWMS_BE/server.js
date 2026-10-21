@@ -1,9 +1,6 @@
-import dotenv from 'dotenv';
+import 'dotenv/config';
 import app from './src/app.js';
 import connectDB from './src/config/db.js';
-
-// Load biến môi trường từ file .env
-dotenv.config();
 
 const PORT = process.env.PORT || 5000;
 

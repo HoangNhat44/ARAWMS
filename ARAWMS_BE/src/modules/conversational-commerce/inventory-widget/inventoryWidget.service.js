@@ -1,4 +1,5 @@
 import Sku from '../../../models/Sku.model.js';
+import '../../../models/Product.model.js'; // Đảm bảo Product schema đã được đăng ký với Mongoose trước khi populate
 
 /**
  * UC-77: Tra cứu số lượng tồn kho khả dụng theo từng mã SKU ngay trong màn hình chat (Lookup Real-time Available Stock by SKU)

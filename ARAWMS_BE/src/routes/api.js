@@ -14,7 +14,13 @@ import orderManagementRoutes from '../modules/order-fulfillment/order-management
 import returnMerchandiseAuthorizationRoutes from '../modules/reverse-logistics/return-merchandise-authorization/returnMerchandiseAuthorization.routes.js';
 import customerExchangeProcessingRoutes from '../modules/reverse-logistics/customer-exchange-processing/customerExchangeProcessing.routes.js';
 
+// 0. Major Feature: System Administration - Auth
+import authRoutes from '../modules/system-administration/authentication/auth.routes.js';
+
 const router = express.Router();
+
+// Authentication routes
+router.use('/auth', authRoutes);
 
 // Health check endpoint
 router.get('/health', (req, res) => {

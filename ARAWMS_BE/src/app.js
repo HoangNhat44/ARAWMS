@@ -3,6 +3,8 @@ import cors from 'cors';
 import morgan from 'morgan';
 import apiRoutes from './routes/api.js';
 import { notFoundHandler, globalErrorHandler } from './common/middlewares/errorHandler.js';
+// Import toàn bộ models để đảm bảo tất cả Mongoose schemas đã đăng ký trước khi bất kỳ populate() nào được gọi
+import './models/index.js';
 
 const app = express();
 
