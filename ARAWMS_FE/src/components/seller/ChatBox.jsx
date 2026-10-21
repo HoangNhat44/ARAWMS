@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Paperclip, ShoppingCart, Tag, CheckCheck, User, Package, Sparkles } from 'lucide-react';
+import { Send, ShoppingBag, Tag, CheckCheck, Package, Sparkles, MessageSquare } from 'lucide-react';
 import { sellerService } from '../../services/sellerService';
+import { SkeletonMessage } from '../common/Skeleton';
 
 const ChatBox = ({
   conversation,
@@ -87,13 +88,18 @@ const ChatBox = ({
 
   if (!conversation) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-gray-50/50 text-gray-400 text-sm">
-        <div className="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 mb-3 shadow-inner">
-          <Sparkles size={32} />
+      <div className="d-flex flex-column align-items-center justify-content-center h-100 p-5 text-center bg-light text-muted">
+        <div
+          className="d-flex align-items-center justify-content-center rounded-circle mb-3"
+          style={{ width: '64px', height: '64px', background: 'var(--ara-bg-surface, #FAF7F2)', border: '1px solid var(--ara-gold, #9F8365)' }}
+        >
+          <Sparkles size={28} color="var(--ara-gold, #9F8365)" />
         </div>
-        <h3 className="font-bold text-gray-700 text-base mb-1">Không gian làm việc Seller (UC-72/74)</h3>
-        <p className="max-w-xs text-xs">
-          Chọn một cuộc hội thoại từ danh sách bên trái để tiếp nhận tư vấn và bán hàng đa kênh.
+        <h4 className="fw-bold text-dark mb-1" style={{ fontFamily: 'var(--font-serif)' }}>
+          Không Gian Tư Vấn Khách Hàng (UC-72/74)
+        </h4>
+        <p className="text-secondary small mb-0" style={{ maxWidth: '320px' }}>
+          Vui lòng chọn một cuộc trò chuyện từ danh sách bên trái để tiếp nhận tư vấn và lên đơn hàng.
         </p>
       </div>
     );
@@ -102,56 +108,60 @@ const ChatBox = ({
   const customer = conversation.customerId;
 
   return (
-    <div className="flex flex-col h-full bg-slate-50/40">
-      {/* Header */}
-      <div className="px-4 py-3 bg-white border-b border-gray-200 flex items-center justify-between shadow-2xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
+    <div className="d-flex flex-column h-100 position-relative">
+      {/* Chat Top Header */}
+      <div className="ara-chat-header">
+        <div className="d-flex align-items-center gap-3">
+          <div className="ara-avatar">
             {customer?.fullName ? customer.fullName.charAt(0).toUpperCase() : 'K'}
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-bold text-gray-900 text-sm">{customer?.fullName || 'Khách hàng'}</h3>
-              <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                Facebook Messenger
-              </span>
+            <div className="d-flex align-items-center gap-2">
+              <h5 className="fw-bold mb-0 text-dark" style={{ fontSize: '0.95rem' }}>
+                {customer?.fullName || 'Khách hàng'}
+              </h5>
+              <span className="badge-ara-info">Facebook Messenger</span>
             </div>
-            <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500">
-              <span>Mã: <strong className="font-mono text-gray-700">{customer?.customerCode || 'N/A'}</strong></span>
-              {customer?.phone && <span>• SĐT: <strong>{customer.phone}</strong></span>}
+            <div className="d-flex align-items-center gap-2 text-muted" style={{ fontSize: '0.75rem', marginTop: '2px' }}>
+              <span>Mã: <strong className="text-dark">{customer?.customerCode || 'N/A'}</strong></span>
+              {customer?.phone && <span>• SĐT: <strong className="text-dark">{customer.phone}</strong></span>}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="d-flex align-items-center gap-2">
           {/* Tag conversation */}
-          <div className="relative">
+          <div className="position-relative">
             <button
               type="button"
               onClick={() => setShowTagPopup(!showTagPopup)}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-indigo-600 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition"
+              className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+              style={{ fontSize: '0.78rem', borderRadius: 'var(--radius-sm, 6px)' }}
             >
-              <Tag size={13} /> Gắn thẻ
+              <Tag size={13} />
+              <span>Gắn thẻ</span>
             </button>
 
             {showTagPopup && (
               <form
                 onSubmit={handleAddTag}
-                className="absolute right-0 mt-1 w-48 p-2 bg-white rounded-xl shadow-lg border border-gray-200 z-30"
+                className="position-absolute end-0 mt-1 p-2 bg-white rounded shadow-lg border"
+                style={{ width: '200px', zIndex: 100 }}
               >
                 <input
                   type="text"
-                  placeholder="Nhập tên tag..."
+                  placeholder="Tên thẻ (VD: VIP, Chờ size)..."
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
-                  className="w-full px-2 py-1 text-xs border rounded-lg focus:outline-none mb-1.5"
+                  className="form-control form-control-sm mb-2"
                   autoFocus
                 />
                 <button
                   type="submit"
-                  className="w-full py-1 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700"
+                  className="btn btn-sm btn-dark w-100"
+                  style={{ background: 'var(--ara-noir, #1C1A17)', fontSize: '0.75rem' }}
                 >
-                  Thêm tag
+                  Xác nhận thêm
                 </button>
               </form>
             )}
@@ -162,20 +172,31 @@ const ChatBox = ({
             <button
               type="button"
               onClick={onOpenQuickOrder}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 shadow-sm transition"
+              className="btn-ara-primary d-flex align-items-center gap-1"
+              style={{ padding: '0.45rem 0.85rem', fontSize: '0.78rem' }}
             >
-              <ShoppingCart size={14} /> Tạo đơn nhanh (UC-78)
+              <ShoppingBag size={14} />
+              <span>Tạo đơn nhanh (UC-78)</span>
             </button>
           )}
         </div>
       </div>
 
       {/* Messages Stream */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="ara-chat-messages-container">
         {loading ? (
-          <div className="text-center text-xs text-gray-400 py-8">Đang tải tin nhắn...</div>
+          <>
+            <SkeletonMessage align="left" />
+            <SkeletonMessage align="right" />
+            <SkeletonMessage align="left" />
+            <SkeletonMessage align="right" />
+            <SkeletonMessage align="left" />
+          </>
         ) : messages.length === 0 ? (
-          <div className="text-center text-xs text-gray-400 py-12">Chưa có tin nhắn nào trong hội thoại này</div>
+          <div className="text-center py-5 text-muted small">
+            <MessageSquare size={32} className="mb-2" style={{ color: 'var(--ara-gold)', opacity: 0.5 }} />
+            <div>Chưa có tin nhắn trong hội thoại này</div>
+          </div>
         ) : (
           messages.map((m) => {
             const isSeller = m.senderType === 'SELLER';
@@ -183,50 +204,48 @@ const ChatBox = ({
             return (
               <div
                 key={m._id}
-                className={`flex flex-col ${isSeller ? 'items-end' : 'items-start'}`}
+                className={`ara-msg-wrapper ${isSeller ? 'ara-msg-outbound' : 'ara-msg-inbound'}`}
               >
-                <div
-                  className={`max-w-[70%] p-3 rounded-2xl text-xs shadow-2xs space-y-1.5 ${
-                    isSeller
-                      ? 'bg-indigo-600 text-white rounded-br-xs'
-                      : 'bg-white text-gray-900 border border-gray-100 rounded-bl-xs'
-                  }`}
-                >
+                {!isSeller && (
+                  <div className="ara-avatar" style={{ width: '32px', height: '32px', fontSize: '0.75rem' }}>
+                    {customer?.fullName ? customer.fullName.charAt(0).toUpperCase() : 'K'}
+                  </div>
+                )}
+
+                <div className="ara-msg-bubble">
                   {/* Referenced SKU Card */}
                   {m.referencedSkuId && (
-                    <div
-                      className={`p-2 rounded-xl text-[11px] mb-1.5 border flex items-center gap-2 ${
-                        isSeller
-                          ? 'bg-indigo-700/60 border-indigo-400/40 text-white'
-                          : 'bg-indigo-50 border-indigo-100 text-gray-800'
-                      }`}
-                    >
-                      <Package size={20} className="shrink-0" />
+                    <div className="ara-msg-sku-card">
+                      <Package size={22} color="var(--ara-gold)" className="flex-shrink-0" />
                       <div>
-                        <div className="font-bold line-clamp-1">
+                        <div className="fw-bold" style={{ fontSize: '0.82rem' }}>
                           {m.referencedSkuId.styleName || m.referencedSkuId.skuCode}
                         </div>
-                        <div>
-                          Màu: {m.referencedSkuId.color} | Size: {m.referencedSkuId.size} |{' '}
-                          {m.referencedSkuId.retailPrice?.toLocaleString('vi-VN')} đ
+                        <div className="text-secondary small">
+                          Màu: {m.referencedSkuId.color} | Size: <strong>{m.referencedSkuId.size}</strong> |{' '}
+                          <span style={{ color: 'var(--ara-gold-hover)', fontWeight: 700 }}>
+                            {m.referencedSkuId.retailPrice?.toLocaleString('vi-VN')} đ
+                          </span>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Message Text */}
-                  {m.messageText && <p className="whitespace-pre-wrap">{m.messageText}</p>}
+                  {/* Text content */}
+                  {m.messageText && (
+                    <div style={{ whiteSpace: 'pre-wrap' }}>{m.messageText}</div>
+                  )}
 
-                  {/* Timestamp & Status */}
+                  {/* Timestamp */}
                   <div
-                    className={`flex items-center justify-end gap-1 text-[10px] ${
-                      isSeller ? 'text-indigo-200' : 'text-gray-400'
+                    className={`ara-msg-time d-flex align-items-center gap-1 ${
+                      isSeller ? 'justify-content-end text-light' : 'text-muted'
                     }`}
                   >
                     <span>
                       {new Date(m.sentAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                     </span>
-                    {isSeller && <CheckCheck size={12} />}
+                    {isSeller && <CheckCheck size={13} color="var(--ara-gold-light)" />}
                   </div>
                 </div>
               </div>
@@ -237,12 +256,12 @@ const ChatBox = ({
       </div>
 
       {/* Input Dock */}
-      <div className="p-3 bg-white border-t border-gray-200">
+      <div className="ara-chat-input-bar">
         {/* Attached SKU preview pill */}
         {attachedSku && (
-          <div className="mb-2 p-2 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between text-xs text-indigo-900">
-            <div className="flex items-center gap-2">
-              <Package size={14} className="text-indigo-600" />
+          <div className="ara-attached-sku-banner">
+            <div className="d-flex align-items-center gap-2">
+              <Package size={15} color="var(--ara-gold-hover)" />
               <span>
                 Đang đính kèm: <strong>{attachedSku.styleName}</strong> ({attachedSku.skuCode} - Size {attachedSku.size})
               </span>
@@ -250,29 +269,43 @@ const ChatBox = ({
             <button
               type="button"
               onClick={onClearAttachedSku}
-              className="text-gray-400 hover:text-red-500 font-bold px-1"
+              className="btn btn-sm btn-link text-danger p-0 text-decoration-none fw-bold"
             >
-              ✕
+              ✕ Hủy
             </button>
           </div>
         )}
 
-        <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-          <input
-            type="text"
-            placeholder="Gõ tin nhắn trả lời khách (sẽ gửi qua Messenger API)..."
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
-          />
-
-          <button
-            type="submit"
-            disabled={(!text.trim() && !attachedSku) || sending}
-            className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition shadow-sm"
-          >
-            <Send size={16} />
-          </button>
+        <form onSubmit={handleSendMessage} className="ara-chat-form">
+          <div className="ara-chat-input-row">
+            <textarea
+              placeholder="Nhập nội dung tư vấn gửi cho khách hàng..."
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage(e);
+                }
+              }}
+              rows={3}
+            />
+            <button
+              type="submit"
+              disabled={(!text.trim() && !attachedSku) || sending}
+              className="ara-chat-send-btn"
+              title="Gửi tin nhắn (Enter)"
+            >
+              {sending ? (
+                <span className="spinner-border spinner-border-sm" role="status" style={{ width: '16px', height: '16px' }} />
+              ) : (
+                <Send size={18} />
+              )}
+            </button>
+          </div>
+          <div className="ara-send-hint">
+            Enter để gửi · Shift+Enter xuống dòng
+          </div>
         </form>
       </div>
     </div>

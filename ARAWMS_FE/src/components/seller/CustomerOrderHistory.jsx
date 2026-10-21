@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, RotateCcw, ChevronRight, CheckCircle2, Clock, Truck, XCircle } from 'lucide-react';
+import { ShoppingBag, RotateCcw, CheckCircle2, Clock, Truck, XCircle } from 'lucide-react';
 import { sellerService } from '../../services/sellerService';
+import { SkeletonOrderHistoryCard } from '../common/Skeleton';
 
 const CustomerOrderHistory = ({ customerId, onRequestRma }) => {
   const [orders, setOrders] = useState([]);
@@ -32,37 +33,37 @@ const CustomerOrderHistory = ({ customerId, onRequestRma }) => {
     switch (status) {
       case 'DELIVERED':
         return (
-          <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+          <span className="badge-ara-success d-inline-flex align-items-center gap-1">
             <CheckCircle2 size={11} /> Đã giao thành công
           </span>
         );
       case 'CONFIRMED_RESERVED':
         return (
-          <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
+          <span className="badge-ara-info d-inline-flex align-items-center gap-1">
             <Clock size={11} /> Đã giữ chỗ kho
           </span>
         );
       case 'PENDING':
         return (
-          <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+          <span className="badge-ara-warning d-inline-flex align-items-center gap-1">
             <Clock size={11} /> Chờ xác nhận
           </span>
         );
       case 'HANDED_OVER_CARRIER':
         return (
-          <span className="flex items-center gap-1 text-[11px] font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">
+          <span className="badge-ara-info d-inline-flex align-items-center gap-1">
             <Truck size={11} /> Đang giao hàng
           </span>
         );
       case 'CANCELLED':
         return (
-          <span className="flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-50 px-2 py-0.5 rounded-full">
+          <span className="badge-ara-danger d-inline-flex align-items-center gap-1">
             <XCircle size={11} /> Đã hủy
           </span>
         );
       default:
         return (
-          <span className="text-[11px] font-semibold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
+          <span className="badge-ara-gold">
             {status}
           </span>
         );
@@ -70,64 +71,69 @@ const CustomerOrderHistory = ({ customerId, onRequestRma }) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white overflow-y-auto p-3 space-y-3">
-      {loading && <div className="text-center text-xs text-gray-400 py-6">Đang tải lịch sử mua hàng...</div>}
-      {error && <div className="text-xs text-red-600 bg-red-50 p-2.5 rounded-lg">{error}</div>}
+    <div className="d-flex flex-column h-100 overflow-auto d-flex flex-column gap-2.5">
+      {loading && (
+        <div className="d-flex flex-column gap-2">
+          <SkeletonOrderHistoryCard />
+          <SkeletonOrderHistoryCard />
+          <SkeletonOrderHistoryCard />
+        </div>
+      )}
+
+      {error && <div className="alert alert-danger py-2 px-3 small">{error}</div>}
 
       {!loading && orders.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-10 text-gray-400 text-xs text-center">
-          <ShoppingBag size={32} className="mb-2 text-gray-300" />
-          Khách hàng chưa có đơn hàng nào
+        <div className="text-center py-5 text-muted small">
+          <ShoppingBag size={32} className="mb-2" style={{ color: 'var(--ara-gold)', opacity: 0.5 }} />
+          <div>Khách hàng chưa có đơn hàng nào</div>
         </div>
       )}
 
       {!loading &&
-        orders.map((order) => (
+        orders.map((ord) => (
           <div
-            key={order._id}
-            className="p-3 bg-gray-50 border border-gray-100 rounded-xl space-y-2 hover:border-indigo-200 transition"
+            key={ord._id}
+            className="p-3 bg-white rounded border shadow-sm"
+            style={{ borderColor: 'var(--ara-border, #E3D9CD)' }}
           >
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">
-                {order.orderCode}
+            <div className="d-flex align-items-center justify-content-between mb-2">
+              <span className="font-monospace fw-bold" style={{ color: 'var(--ara-noir)', fontSize: '0.85rem' }}>
+                {ord.orderCode}
               </span>
-              {getOrderStatusBadge(order.status)}
+              {getOrderStatusBadge(ord.status)}
             </div>
 
-            <div className="text-xs text-gray-500">
-              Ngày đặt: {new Date(order.createdAt).toLocaleDateString('vi-VN')}
-            </div>
-
-            {/* Item list snapshot */}
-            <div className="space-y-1 pt-1 border-t border-gray-200/50">
-              {order.items?.map((it, idx) => (
-                <div key={idx} className="flex justify-between text-xs text-gray-700">
-                  <span className="line-clamp-1">
-                    {it.orderedQty}x {it.skuCode}
+            {/* Items summary */}
+            <div className="mb-2 text-secondary" style={{ fontSize: '0.78rem' }}>
+              {ord.items?.map((it, idx) => (
+                <div key={idx} className="d-flex justify-content-between py-0.5">
+                  <span>
+                    <strong>{it.orderedQty}x</strong> {it.skuCode}
                   </span>
-                  <span className="font-medium shrink-0">
-                    {(it.orderedQty * it.unitSalePrice).toLocaleString('vi-VN')} đ
-                  </span>
+                  <span>{(it.subtotalAmount || 0).toLocaleString('vi-VN')} đ</span>
                 </div>
               ))}
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-gray-200/60 text-xs">
+            {/* Total and Action */}
+            <div className="d-flex align-items-center justify-content-between pt-2 border-top" style={{ fontSize: '0.78rem' }}>
               <div>
-                <span className="text-gray-400 text-[11px]">Tổng đơn: </span>
-                <strong className="text-gray-900 font-bold">
-                  {(order.financialSummary?.totalOrderAmount || 0).toLocaleString('vi-VN')} đ
-                </strong>
+                <span className="text-muted small">Tổng: </span>
+                <span className="fw-bold" style={{ color: 'var(--ara-gold-hover)', fontSize: '0.88rem' }}>
+                  {(ord.financialSummary?.totalOrderAmount || 0).toLocaleString('vi-VN')} đ
+                </span>
               </div>
 
-              {/* UC-82: Trigger RMA button nếu đơn đã giao */}
-              {onRequestRma && ['DELIVERED', 'HANDED_OVER_CARRIER', 'PACKED'].includes(order.status) && (
+              {/* RMA Button (UC-82) */}
+              {['DELIVERED', 'COMPLETED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
                 <button
                   type="button"
-                  onClick={() => onRequestRma(order)}
-                  className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded-lg transition"
+                  onClick={() => onRequestRma && onRequestRma(ord)}
+                  className="btn btn-sm btn-outline-warning text-dark d-flex align-items-center gap-1"
+                  style={{ fontSize: '0.72rem', padding: '0.25rem 0.55rem', borderColor: '#FCDFA6' }}
                 >
-                  <RotateCcw size={11} /> Đổi / Trả (RMA)
+                  <RotateCcw size={12} color="#A36800" />
+                  <span>Đổi/Trả (RMA)</span>
                 </button>
               )}
             </div>

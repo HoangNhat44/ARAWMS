@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, RotateCcw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Modal } from 'react-bootstrap';
+import { RotateCcw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { sellerService } from '../../services/sellerService';
 
 const CreateRmaModal = ({ isOpen, onClose, order, onRmaCreated }) => {
@@ -66,148 +67,168 @@ const CreateRmaModal = ({ isOpen, onClose, order, onRmaCreated }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-amber-600 to-amber-700 text-white">
-          <div className="flex items-center gap-2">
-            <RotateCcw size={18} />
-            <h3 className="font-bold text-base">Tạo Phiếu Yêu Cầu Đổi / Trả (UC-82 RMA)</h3>
-          </div>
-          <button type="button" onClick={onClose} className="p-1 hover:bg-white/20 rounded-lg transition">
-            <X size={18} />
-          </button>
-        </div>
+    <Modal
+      show={isOpen}
+      onHide={onClose}
+      centered
+      size="lg"
+      contentClassName="ara-modal"
+    >
+      <Modal.Header closeButton className="ara-modal-header-rma">
+        <Modal.Title className="d-flex align-items-center gap-2" style={{ fontFamily: 'var(--font-serif)', fontSize: '1.25rem' }}>
+          <RotateCcw size={22} color="#FCDFA6" />
+          <span>Tạo Yêu Cầu Đổi / Trả Hàng (UC-82 RMA)</span>
+        </Modal.Title>
+      </Modal.Header>
 
-        <div className="p-5 overflow-y-auto space-y-4 text-xs">
-          {error && <div className="p-2.5 bg-red-50 text-red-600 rounded-lg">{error}</div>}
+      <Modal.Body className="p-4" style={{ backgroundColor: '#FAF7F2' }}>
+        {error && <div className="alert alert-danger py-2 px-3 small mb-3">{error}</div>}
 
-          {successRma ? (
-            <div className="py-8 text-center space-y-3">
-              <CheckCircle2 size={54} className="text-emerald-500 mx-auto" />
-              <h4 className="font-bold text-gray-900 text-base">Đã tạo phiếu RMA thành công!</h4>
-              <p className="text-gray-500">
-                Mã RMA: <strong className="font-mono text-amber-700 text-sm">{successRma.rmaCode}</strong>
-              </p>
-              <div className="p-3 bg-amber-50 text-amber-800 rounded-xl text-left space-y-1">
-                <div className="font-semibold flex items-center gap-1">
-                  <AlertCircle size={14} /> Lưu ý nghiệp vụ:
-                </div>
-                <div>Phiếu RMA đang ở trạng thái <strong>REQUESTED</strong>.</div>
-                <div>Nhân viên kho sẽ quét kiện hoàn và kiểm đếm trước khi tái nhập kho.</div>
+        {successRma ? (
+          <div className="text-center py-4">
+            <CheckCircle2 size={54} color="var(--ara-success, #2E7D59)" className="mb-3" />
+            <h4 className="fw-bold text-dark" style={{ fontFamily: 'var(--font-serif)' }}>
+              Đã Tạo Phiếu RMA Thành Công!
+            </h4>
+            <p className="text-secondary small">
+              Mã RMA: <strong className="font-monospace text-dark fs-6">{successRma.rmaCode}</strong>
+            </p>
+            <div className="p-3 bg-light border rounded text-start mb-4 small">
+              <div className="fw-bold text-dark d-flex align-items-center gap-1 mb-1">
+                <AlertCircle size={15} color="var(--ara-gold)" />
+                Lưu ý quy trình hoàn trả:
               </div>
-              <div className="pt-2">
+              <div className="text-muted">
+                Phiếu RMA đang ở trạng thái <strong>REQUESTED</strong>. Nhân viên kho sẽ quét mã vận đơn hoàn và kiểm đếm trước khi tái nhập kho hoàn tất.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-ara-primary px-4 py-2"
+            >
+              <span>Đóng cửa sổ</span>
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="d-flex flex-column gap-3" style={{ fontSize: '0.82rem' }}>
+            {/* Original Order Info */}
+            <div className="p-3 bg-white rounded border" style={{ borderColor: 'var(--ara-border)' }}>
+              <div className="d-flex justify-content-between align-items-center mb-1">
+                <span className="text-muted small">Đơn hàng gốc:</span>
+                <span className="font-monospace fw-bold text-dark">{order.orderCode}</span>
+              </div>
+              <div className="d-flex justify-content-between align-items-center">
+                <span className="text-muted small">Người nhận:</span>
+                <span className="fw-semibold text-dark">{order.shippingRecipient?.name} ({order.shippingRecipient?.phone})</span>
+              </div>
+            </div>
+
+            {/* Return Type Selection */}
+            <div className="p-3 bg-white rounded border" style={{ borderColor: 'var(--ara-border)' }}>
+              <label className="fw-bold text-dark d-block mb-2">Loại yêu cầu</label>
+              <div className="d-flex gap-2">
                 <button
                   type="button"
-                  onClick={onClose}
-                  className="px-6 py-2 bg-amber-600 text-white font-semibold rounded-lg hover:bg-amber-700"
+                  onClick={() => setReturnType('RETURN_FOR_REFUND')}
+                  className={`btn btn-sm flex-fill py-2 ${
+                    returnType === 'RETURN_FOR_REFUND' ? 'btn-dark' : 'btn-outline-secondary'
+                  }`}
+                  style={{ borderRadius: 'var(--radius-sm, 6px)' }}
                 >
-                  Đóng
+                  Trả Hàng Hoàn Tiền
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReturnType('EXCHANGE_PRODUCT')}
+                  className={`btn btn-sm flex-fill py-2 ${
+                    returnType === 'EXCHANGE_PRODUCT' ? 'btn-dark' : 'btn-outline-secondary'
+                  }`}
+                  style={{ borderRadius: 'var(--radius-sm, 6px)' }}
+                >
+                  Đổi Sản Phẩm Khác
                 </button>
               </div>
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-200">
-                <span className="text-gray-500">Đơn hàng gốc: </span>
-                <strong className="font-mono text-gray-900">{order.orderCode}</strong>
-              </div>
 
-              <div>
-                <label className="block text-gray-700 font-semibold mb-1">Loại yêu cầu</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setReturnType('RETURN_FOR_REFUND')}
-                    className={`py-2 px-3 rounded-xl border text-center font-medium transition ${
-                      returnType === 'RETURN_FOR_REFUND'
-                        ? 'border-amber-600 bg-amber-50 text-amber-800 font-bold'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
+            {/* Select Return Items */}
+            <div className="p-3 bg-white rounded border" style={{ borderColor: 'var(--ara-border)' }}>
+              <div className="fw-bold text-dark mb-2">Chọn sản phẩm cần đổi/trả</div>
+              <div className="d-flex flex-column gap-2" style={{ maxHeight: '160px', overflowY: 'auto' }}>
+                {order.items?.map((it, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2.5 bg-light rounded border d-flex align-items-center justify-content-between gap-2"
                   >
-                    Trả hàng & Hoàn tiền
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setReturnType('EXCHANGE_PRODUCT')}
-                    className={`py-2 px-3 rounded-xl border text-center font-medium transition ${
-                      returnType === 'EXCHANGE_PRODUCT'
-                        ? 'border-indigo-600 bg-indigo-50 text-indigo-800 font-bold'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Đổi hàng (Đổi size/mẫu)
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-gray-700 font-semibold mb-1">Mã vận đơn chiều hoàn (nếu có)</label>
-                <input
-                  type="text"
-                  placeholder="VD: GHN_RET_12345"
-                  value={returnWaybillCode}
-                  onChange={(e) => setReturnWaybillCode(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-gray-700 font-semibold mb-1">Lý do đổi / trả</label>
-                <textarea
-                  rows={2}
-                  placeholder="Khách mặc chật size, muốn đổi sang size lớn hơn..."
-                  value={reasonDescription}
-                  onChange={(e) => setReasonDescription(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-gray-700 font-semibold mb-1">Chọn sản phẩm cần đổi/trả</label>
-                <div className="space-y-2 border border-gray-100 rounded-xl p-2 bg-gray-50 max-h-40 overflow-y-auto">
-                  {order.items?.map((it, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-2 bg-white rounded-lg border">
-                      <div className="flex-1">
-                        <div className="font-semibold">{it.skuCode}</div>
-                        <div className="text-[11px] text-gray-400">Đã mua: {it.orderedQty} chiếc</div>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-gray-500 text-[11px]">Số lượng trả:</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max={it.orderedQty}
-                          value={selectedItems[it.skuId] || 0}
-                          onChange={(e) => handleQtyChange(it.skuId, e.target.value)}
-                          className="w-16 px-2 py-1 border rounded text-center font-bold"
-                        />
+                    <div>
+                      <div className="fw-bold text-dark">{it.skuCode}</div>
+                      <div className="text-muted small">
+                        Đã mua: <strong>{it.orderedQty}</strong> cái | Đơn giá: {(it.unitSalePrice || 0).toLocaleString('vi-VN')} đ
                       </div>
                     </div>
-                  ))}
-                </div>
+                    <div className="d-flex align-items-center gap-2">
+                      <span className="text-muted small">Số lượng hoàn:</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={it.orderedQty}
+                        value={selectedItems[it.skuId] || 0}
+                        onChange={(e) => handleQtyChange(it.skuId, e.target.value)}
+                        className="form-control form-control-sm text-center"
+                        style={{ width: '64px' }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Reason & Waybill */}
+            <div className="p-3 bg-white rounded border" style={{ borderColor: 'var(--ara-border)' }}>
+              <div className="mb-2">
+                <label className="fw-bold text-dark small mb-1">Mã vận đơn chiều gửi về (Return Waybill Code)</label>
+                <input
+                  type="text"
+                  placeholder="VD: GHN-RETURN-102938..."
+                  value={returnWaybillCode}
+                  onChange={(e) => setReturnWaybillCode(e.target.value)}
+                  className="form-control form-control-sm"
+                />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-4 py-2 border rounded-xl text-gray-600 hover:bg-gray-50"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-5 py-2 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 disabled:opacity-50"
-                >
-                  {loading ? 'Đang tạo...' : 'Tạo Phiếu RMA (REQUESTED)'}
-                </button>
+              <div>
+                <label className="fw-bold text-dark small mb-1">Lý do đổi trả của khách hàng</label>
+                <textarea
+                  rows={2}
+                  placeholder="VD: Khách mặc không vừa size L, muốn đổi sang size XL hoặc áo bị sút chỉ..."
+                  value={reasonDescription}
+                  onChange={(e) => setReasonDescription(e.target.value)}
+                  className="form-control form-control-sm"
+                  required
+                />
               </div>
-            </form>
-          )}
-        </div>
-      </div>
-    </div>
+            </div>
+
+            <div className="d-flex justify-content-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="btn btn-sm btn-outline-secondary px-3"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="btn-ara-primary px-4 py-2"
+              >
+                <span>{loading ? 'Đang tạo...' : 'Tạo Phiếu RMA'}</span>
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal.Body>
+    </Modal>
   );
 };
 

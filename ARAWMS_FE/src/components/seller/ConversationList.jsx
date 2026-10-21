@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Search, MessageSquare, Tag, Check, Filter } from 'lucide-react';
+import { Search, MessageSquare } from 'lucide-react';
+import { SkeletonConversationItem } from '../common/Skeleton';
 
-const ConversationList = ({ conversations, selectedId, onSelect, onTagFilter, activeFilterTag }) => {
+const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilter, activeFilterTag, loading }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredConversations = conversations.filter((c) => {
@@ -18,54 +19,53 @@ const ConversationList = ({ conversations, selectedId, onSelect, onTagFilter, ac
   });
 
   return (
-    <div className="flex flex-col h-full bg-white border-r border-gray-200">
-      {/* Search & Filter Header */}
-      <div className="p-3 border-b border-gray-100 space-y-2">
-        <div className="relative">
+    <div className="d-flex flex-column h-100 bg-white">
+      {/* Search Header */}
+      <div className="ara-conv-search-box">
+        <div className="position-relative">
+          <Search className="position-absolute" size={15} style={{ left: '10px', top: '10px', color: '#9F8365' }} />
           <input
             type="text"
             placeholder="Tìm theo tên, SĐT, mã khách..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+            className="form-control ara-input-search w-100"
           />
-          <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
-        </div>
-
-        {/* Quick Tag Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-          <button
-            type="button"
-            onClick={() => onTagFilter && onTagFilter('')}
-            className={`px-2.5 py-1 rounded-full whitespace-nowrap text-[11px] font-medium transition ${
-              !activeFilterTag ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Tất cả ({conversations.length})
-          </button>
-          {['VIP', 'Chờ chốt', 'Đã chốt đơn', 'Cần tư vấn size'].map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => onTagFilter && onTagFilter(t === activeFilterTag ? '' : t)}
-              className={`px-2.5 py-1 rounded-full whitespace-nowrap text-[11px] font-medium transition ${
-                activeFilterTag === t
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
         </div>
       </div>
 
-      {/* Conversations Stream */}
-      <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
-        {filteredConversations.length === 0 ? (
-          <div className="p-8 text-center text-gray-400 text-xs">
-            <MessageSquare size={32} className="mx-auto mb-2 text-gray-300" />
-            Không có cuộc hội thoại nào
+      {/* Quick Tag Pills Bar */}
+      <div className="ara-tag-pills-bar">
+        <button
+          type="button"
+          onClick={() => onTagFilter && onTagFilter('')}
+          className={`ara-tag-pill ${!activeFilterTag ? 'active' : ''}`}
+        >
+          Tất cả ({conversations.length})
+        </button>
+        {['VIP', 'Chờ chốt', 'Đã chốt đơn', 'Cần tư vấn size'].map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => onTagFilter && onTagFilter(t === activeFilterTag ? '' : t)}
+            className={`ara-tag-pill ${activeFilterTag === t ? 'active' : ''}`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* Conversation Stream List */}
+      <div className="flex-grow-1 overflow-auto">
+        {loading ? (
+          <div>
+            {[1, 2, 3, 4, 5].map((i) => <SkeletonConversationItem key={i} />)}
+          </div>
+        ) : filteredConversations.length === 0 ? (
+          <div className="text-center py-5 px-3 text-muted" style={{ fontSize: '0.85rem' }}>
+            <MessageSquare size={32} className="mb-2" style={{ color: 'var(--ara-gold, #9F8365)', opacity: 0.5 }} />
+            <div className="fw-semibold text-dark">Chưa có hội thoại nào</div>
+            <div className="small text-secondary">Tin nhắn Messenger của khách sẽ hiển thị tại đây</div>
           </div>
         ) : (
           filteredConversations.map((conv) => {
@@ -76,47 +76,57 @@ const ConversationList = ({ conversations, selectedId, onSelect, onTagFilter, ac
               <div
                 key={conv._id}
                 onClick={() => onSelect(conv)}
-                className={`p-3.5 flex items-start gap-3 cursor-pointer transition relative hover:bg-gray-50/80 ${
-                  isSelected ? 'bg-indigo-50/70 border-r-4 border-indigo-600' : ''
-                }`}
+                className={`ara-conv-item ${isSelected ? 'active' : ''}`}
               >
-                {/* Avatar */}
-                <div className="relative shrink-0">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 text-white flex items-center justify-center font-bold text-sm shadow-2xs">
+                {/* Avatar Icon */}
+                <div className="position-relative">
+                  <div className="ara-avatar">
                     {customer?.fullName ? customer.fullName.charAt(0).toUpperCase() : 'K'}
                   </div>
                   {conv.unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
+                    <span
+                      className="position-absolute badge rounded-pill bg-danger border border-white"
+                      style={{ top: '-4px', right: '-4px', fontSize: '0.65rem' }}
+                    >
                       {conv.unreadCount}
                     </span>
                   )}
                 </div>
 
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-1 mb-0.5">
-                    <h4 className="font-semibold text-gray-900 text-xs truncate">
+                {/* Conversation Details */}
+                <div className="flex-grow-1 min-w-0" style={{ overflow: 'hidden' }}>
+                  <div className="d-flex align-items-center justify-content-between mb-1">
+                    <span className="fw-bold text-dark text-truncate" style={{ fontSize: '0.88rem', maxWidth: '160px' }}>
                       {customer?.fullName || 'Khách chưa đặt tên'}
-                    </h4>
-                    <span className="text-[10px] text-gray-400 shrink-0 font-mono">
-                      {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
+                    <span className="text-muted" style={{ fontSize: '0.7rem' }}>
+                      {conv.lastMessageAt
+                        ? new Date(conv.lastMessageAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                        : ''}
                     </span>
                   </div>
 
-                  <p className="text-[11px] text-gray-500 truncate mb-1.5">
-                    {conv.lastMessagePreview || 'Chưa có tin nhắn'}
+                  {/* Last Message Preview */}
+                  <p
+                    className="text-secondary mb-1 text-truncate"
+                    style={{ fontSize: '0.78rem', lineHeight: '1.3' }}
+                  >
+                    {conv.lastMessagePreview || 'Bắt đầu cuộc trò chuyện...'}
                   </p>
 
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {conv.tags?.map((t) => (
-                      <span
-                        key={t}
-                        className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded font-medium"
-                      >
-                        {t}
-                      </span>
-                    ))}
-                  </div>
+                  {/* Tags */}
+                  {conv.tags && conv.tags.length > 0 && (
+                    <div className="d-flex flex-wrap gap-1 mt-1">
+                      {conv.tags.slice(0, 2).map((tg, idx) => (
+                        <span key={idx} className="badge-ara-gold">
+                          {tg}
+                        </span>
+                      ))}
+                      {conv.tags.length > 2 && (
+                        <span className="badge-ara-gold">+{conv.tags.length - 2}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );

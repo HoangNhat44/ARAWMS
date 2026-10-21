@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Phone, Mail, MapPin, Tag, Clock, Edit2, Save, X, Plus } from 'lucide-react';
 import { sellerService } from '../../services/sellerService';
+import { SkeletonCrmPanel, SkeletonBlock } from '../common/Skeleton';
 
 const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -98,30 +99,36 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
 
   if (!customer) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-6 text-gray-400 text-sm text-center">
-        <User size={36} className="mb-2 text-gray-300" />
-        Chưa có thông tin khách hàng được chọn
+      <div className="d-flex flex-column align-items-center justify-content-center h-100 p-4 text-muted text-center" style={{ fontSize: '0.85rem' }}>
+        <User size={36} className="mb-2" style={{ color: 'var(--ara-gold)', opacity: 0.5 }} />
+        <div>Chưa có thông tin khách hàng được chọn</div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-white overflow-y-auto">
-      {/* Header Info */}
-      <div className="p-4 bg-gradient-to-r from-indigo-50/70 to-blue-50/70 border-b border-indigo-100/60">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">
+    <div className="d-flex flex-column h-100">
+      {/* Customer Header Card */}
+      <div
+        className="p-3 mb-3 rounded"
+        style={{
+          background: 'linear-gradient(135deg, #FAF7F2 0%, #F4EFEB 100%)',
+          border: '1px solid var(--ara-border, #E3D9CD)',
+        }}
+      >
+        <div className="d-flex align-items-center justify-content-between">
+          <div className="d-flex align-items-center gap-2">
+            <div className="ara-avatar" style={{ width: '40px', height: '40px', fontSize: '0.9rem' }}>
               {customer.fullName ? customer.fullName.charAt(0).toUpperCase() : 'K'}
             </div>
             <div>
-              <h3 className="font-bold text-gray-900 text-base">{customer.fullName}</h3>
-              <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500 font-mono">
-                <span className="bg-white px-2 py-0.5 rounded border border-indigo-200 text-indigo-700 font-semibold">
-                  {customer.customerCode || 'CHƯA_CÓ_MÃ'}
-                </span>
+              <div className="fw-bold text-dark" style={{ fontSize: '0.92rem' }}>
+                {customer.fullName}
+              </div>
+              <div className="d-flex align-items-center gap-1">
+                <span className="badge-ara-gold">{customer.customerCode || 'CHƯA_CÓ_MÃ'}</span>
                 {customer.facebookPsid && (
-                  <span className="text-[11px] text-blue-600 font-sans">Facebook Linked</span>
+                  <span className="badge-ara-info">Facebook Linked</span>
                 )}
               </div>
             </div>
@@ -130,206 +137,203 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
           <button
             type="button"
             onClick={() => setIsEditing(!isEditing)}
-            className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-white rounded-lg border border-gray-200 transition"
+            className="btn btn-sm btn-outline-secondary p-1"
+            title={isEditing ? 'Hủy sửa' : 'Chỉnh sửa hồ sơ'}
           >
-            {isEditing ? <X size={16} /> : <Edit2 size={16} />}
+            {isEditing ? <X size={15} /> : <Edit2 size={15} />}
           </button>
         </div>
 
-        {/* Quick metrics */}
-        <div className="grid grid-cols-2 gap-2 mt-3 text-center">
-          <div className="bg-white p-2 rounded-lg border border-indigo-100 shadow-2xs">
-            <div className="text-[11px] text-gray-400 font-medium">Tổng đơn hàng</div>
-            <div className="text-sm font-bold text-gray-800">{customer.totalOrders || 0} đơn</div>
+        {/* Quick Customer Metrics */}
+        <div className="row g-2 mt-2 text-center" style={{ fontSize: '0.78rem' }}>
+          <div className="col-6">
+            <div className="p-2 bg-white rounded border">
+              <div className="text-muted" style={{ fontSize: '0.7rem' }}>Tổng đơn hàng</div>
+              <div className="fw-bold text-dark">{customer.totalOrders || 0} đơn</div>
+            </div>
           </div>
-          <div className="bg-white p-2 rounded-lg border border-indigo-100 shadow-2xs">
-            <div className="text-[11px] text-gray-400 font-medium">Tổng chi tiêu</div>
-            <div className="text-sm font-bold text-indigo-600">
-              {(customer.totalSpent || 0).toLocaleString('vi-VN')} đ
+          <div className="col-6">
+            <div className="p-2 bg-white rounded border">
+              <div className="text-muted" style={{ fontSize: '0.7rem' }}>Tổng chi tiêu</div>
+              <div className="fw-bold" style={{ color: 'var(--ara-gold-hover, #846B50)' }}>
+                {(customer.totalSpent || 0).toLocaleString('vi-VN')} đ
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {message && (
-        <div className={`p-2.5 text-xs text-center ${message.startsWith('Lỗi') ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>
+        <div className={`alert ${message.startsWith('Lỗi') ? 'alert-danger' : 'alert-success'} py-2 px-3 small text-center mb-3`}>
           {message}
         </div>
       )}
 
       {/* Profile Form / View */}
-      <div className="p-4 space-y-4">
+      <div className="flex-grow-1 overflow-auto">
         {isEditing ? (
-          <form onSubmit={handleSave} className="space-y-3 text-xs">
+          <form onSubmit={handleSave} className="d-flex flex-column gap-2" style={{ fontSize: '0.82rem' }}>
             <div>
-              <label className="block text-gray-600 font-semibold mb-1">Họ và tên</label>
+              <label className="form-label text-muted small fw-semibold mb-1">Họ và tên</label>
               <input
                 type="text"
                 value={formData.fullName}
                 onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="form-control form-control-sm"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-gray-600 font-semibold mb-1">Số điện thoại</label>
+              <label className="form-label text-muted small fw-semibold mb-1">Số điện thoại</label>
               <input
                 type="text"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="form-control form-control-sm"
               />
             </div>
 
             <div>
-              <label className="block text-gray-600 font-semibold mb-1">Email</label>
+              <label className="form-label text-muted small fw-semibold mb-1">Email</label>
               <input
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="form-control form-control-sm"
               />
             </div>
 
             <div>
-              <label className="block text-gray-600 font-semibold mb-1">Địa chỉ giao hàng mặc định</label>
+              <label className="form-label text-muted small fw-semibold mb-1">Địa chỉ nhận hàng</label>
               <textarea
                 rows={2}
                 value={formData.fullAddress}
                 onChange={(e) => setFormData({ ...formData, fullAddress: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="form-control form-control-sm"
               />
             </div>
 
             <div>
-              <label className="block text-gray-600 font-semibold mb-1">Thẻ phân loại (Tags)</label>
-              <div className="flex gap-1.5 mb-2">
+              <label className="form-label text-muted small fw-semibold mb-1">Thẻ phân loại (Tags)</label>
+              <div className="input-group input-group-sm mb-2">
                 <input
                   type="text"
                   placeholder="Thêm tag..."
                   value={formData.tagInput}
                   onChange={(e) => setFormData({ ...formData, tagInput: e.target.value })}
-                  className="flex-1 px-2.5 py-1.5 border rounded-lg focus:outline-none"
+                  className="form-control"
                 />
-                <button
-                  type="button"
-                  onClick={handleAddTag}
-                  className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium"
-                >
+                <button type="button" onClick={handleAddTag} className="btn btn-outline-secondary">
                   <Plus size={14} />
                 </button>
               </div>
-              <div className="flex flex-wrap gap-1">
+              <div className="d-flex flex-wrap gap-1">
                 {tags.map((t) => (
-                  <span
-                    key={t}
-                    className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-xs"
-                  >
+                  <span key={t} className="badge-ara-gold d-inline-flex align-items-center gap-1">
                     {t}
-                    <button type="button" onClick={() => handleRemoveTag(t)}>
-                      <X size={11} className="hover:text-red-500" />
-                    </button>
+                    <button type="button" onClick={() => handleRemoveTag(t)} className="btn-close btn-close-white p-0" style={{ width: '8px', height: '8px' }} />
                   </span>
                 ))}
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="d-flex justify-content-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setIsEditing(false)}
-                className="px-3 py-1.5 border rounded-lg text-gray-600 hover:bg-gray-50"
+                className="btn btn-sm btn-outline-secondary"
               >
                 Hủy
               </button>
               <button
                 type="submit"
                 disabled={saving}
-                className="flex items-center gap-1 px-4 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium disabled:opacity-50"
+                className="btn-ara-primary"
+                style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem' }}
               >
                 <Save size={13} /> {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
               </button>
             </div>
           </form>
         ) : (
-          <div className="space-y-3 text-xs text-gray-700">
-            <div className="flex items-start gap-2.5">
-              <Phone size={15} className="text-gray-400 mt-0.5 shrink-0" />
+          <div className="d-flex flex-column gap-3" style={{ fontSize: '0.82rem' }}>
+            <div className="d-flex align-items-start gap-2">
+              <Phone size={15} color="var(--ara-gold)" className="flex-shrink-0 mt-1" />
               <div>
-                <span className="text-gray-400 block text-[11px]">Số điện thoại</span>
-                <span className="font-medium text-gray-900">{customer.phone || 'Chưa cập nhật'}</span>
+                <span className="text-muted d-block small" style={{ fontSize: '0.72rem' }}>Số điện thoại</span>
+                <span className="fw-semibold text-dark">{customer.phone || 'Chưa cập nhật'}</span>
               </div>
             </div>
 
-            <div className="flex items-start gap-2.5">
-              <Mail size={15} className="text-gray-400 mt-0.5 shrink-0" />
+            <div className="d-flex align-items-start gap-2">
+              <Mail size={15} color="var(--ara-gold)" className="flex-shrink-0 mt-1" />
               <div>
-                <span className="text-gray-400 block text-[11px]">Email</span>
-                <span className="font-medium text-gray-900">{customer.email || 'Chưa cập nhật'}</span>
+                <span className="text-muted d-block small" style={{ fontSize: '0.72rem' }}>Email</span>
+                <span className="fw-semibold text-dark">{customer.email || 'Chưa cập nhật'}</span>
               </div>
             </div>
 
-            <div className="flex items-start gap-2.5">
-              <MapPin size={15} className="text-gray-400 mt-0.5 shrink-0" />
+            <div className="d-flex align-items-start gap-2">
+              <MapPin size={15} color="var(--ara-gold)" className="flex-shrink-0 mt-1" />
               <div>
-                <span className="text-gray-400 block text-[11px]">Địa chỉ giao hàng</span>
-                <span className="font-medium text-gray-900">
+                <span className="text-muted d-block small" style={{ fontSize: '0.72rem' }}>Địa chỉ giao hàng</span>
+                <span className="fw-semibold text-dark">
                   {customer.addresses?.[0]?.fullAddress || 'Chưa cập nhật'}
                 </span>
               </div>
             </div>
 
-            <div className="flex items-start gap-2.5">
-              <Tag size={15} className="text-gray-400 mt-0.5 shrink-0" />
-              <div className="flex-1">
-                <span className="text-gray-400 block text-[11px] mb-1">Thẻ phân loại</span>
-                <div className="flex flex-wrap gap-1">
+            <div className="d-flex align-items-start gap-2">
+              <Tag size={15} color="var(--ara-gold)" className="flex-shrink-0 mt-1" />
+              <div className="flex-grow-1">
+                <span className="text-muted d-block small" style={{ fontSize: '0.72rem' }}>Thẻ phân loại</span>
+                <div className="d-flex flex-wrap gap-1 mt-1">
                   {customer.tags && customer.tags.length > 0 ? (
                     customer.tags.map((t) => (
-                      <span
-                        key={t}
-                        className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full text-[11px]"
-                      >
+                      <span key={t} className="badge-ara-gold">
                         {t}
                       </span>
                     ))
                   ) : (
-                    <span className="text-gray-400 italic">Chưa gắn thẻ</span>
+                    <span className="text-muted fst-italic small">Chưa gắn thẻ</span>
                   )}
                 </div>
               </div>
             </div>
+
+            {/* UC-75: Lịch sử tương tác */}
+            <div className="pt-3 border-top mt-2">
+              <div className="d-flex align-items-center gap-1 fw-bold text-dark mb-2" style={{ fontSize: '0.82rem' }}>
+                <Clock size={14} color="var(--ara-gold)" />
+                <span>Lịch sử tương tác (UC-75)</span>
+              </div>
+
+              {loadingHistory ? (
+                <div className="d-flex flex-column gap-2">
+                  <SkeletonBlock height="52px" borderRadius="8px" />
+                  <SkeletonBlock height="52px" borderRadius="8px" />
+                </div>
+              ) : interactionHistory.length === 0 ? (
+                <div className="text-muted fst-italic small">Chưa có phiên chat trước đây</div>
+              ) : (
+                <div className="d-flex flex-column gap-2" style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                  {interactionHistory.map((h) => (
+                    <div key={h.conversationId} className="p-2 bg-light rounded border" style={{ fontSize: '0.75rem' }}>
+                      <div className="d-flex justify-content-between text-muted" style={{ fontSize: '0.68rem' }}>
+                        <span>Trực bởi: <strong>{h.assignedSeller?.fullName || 'Hệ thống'}</strong></span>
+                        <span>{new Date(h.lastMessageAt || h.createdAt).toLocaleDateString('vi-VN')}</span>
+                      </div>
+                      <div className="text-dark mt-1 fst-italic text-truncate">
+                        "{h.lastMessagePreview || 'Không có tin nhắn'}"
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
-
-        {/* UC-75: Lịch sử tương tác */}
-        <div className="pt-4 border-t border-gray-100">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-gray-800 mb-2.5">
-            <Clock size={14} className="text-indigo-600" />
-            Lịch sử tương tác (UC-75)
-          </div>
-
-          {loadingHistory ? (
-            <div className="text-xs text-gray-400 text-center py-2">Đang tải lịch sử...</div>
-          ) : interactionHistory.length === 0 ? (
-            <div className="text-xs text-gray-400 italic">Chưa có phiên chat trước đây</div>
-          ) : (
-            <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-              {interactionHistory.map((h) => (
-                <div key={h.conversationId} className="p-2 bg-gray-50 rounded-lg text-xs border border-gray-100">
-                  <div className="flex justify-between text-[11px] text-gray-400">
-                    <span>Trực bởi: <strong>{h.assignedSeller?.fullName || 'Hệ thống'}</strong></span>
-                    <span>{new Date(h.lastMessageAt || h.createdAt).toLocaleDateString('vi-VN')}</span>
-                  </div>
-                  <div className="text-gray-700 mt-1 line-clamp-1 italic">
-                    "{h.lastMessagePreview || 'Không có tin nhắn'}"
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
