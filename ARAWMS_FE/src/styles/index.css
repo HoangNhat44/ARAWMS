@@ -147,7 +147,7 @@ h1, h2, h3, h4, .brand-title {
   list-style: none;
 }
 
-.ara-nav-links a {
+.ara-nav-links a:not(.btn-ara-primary) {
   text-decoration: none;
   color: var(--ara-noir-soft);
   font-weight: 500;
@@ -155,7 +155,7 @@ h1, h2, h3, h4, .brand-title {
   transition: var(--transition);
 }
 
-.ara-nav-links a:hover {
+.ara-nav-links a:not(.btn-ara-primary):hover {
   color: var(--ara-gold);
 }
 

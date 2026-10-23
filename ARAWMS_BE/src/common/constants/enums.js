@@ -11,6 +11,15 @@ export const ROLES = [
   'ACCOUNTANT',
 ];
 
+export const ROLE_LABELS = {
+  OWNER: 'Chủ cửa hàng',
+  WAREHOUSE_MANAGER: 'Quản lý kho',
+  GARMENT_TECHNICIAN: 'Kỹ thuật xưởng',
+  WAREHOUSE_STAFF: 'Nhân viên kho',
+  SELLER: 'Nhân viên bán hàng',
+  ACCOUNTANT: 'Kế toán kho',
+};
+
 export const WAREHOUSE_TYPES = [
   'RAW_MATERIAL',
   'FINISHED_GOODS',

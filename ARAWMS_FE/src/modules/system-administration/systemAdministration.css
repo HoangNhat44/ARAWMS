@@ -1,0 +1,36 @@
+.ara-login-page { min-height: calc(100vh - 160px); display: flex; align-items: center; justify-content: center; padding: 2rem 1.5rem; }
+.ara-login-card { max-width: 980px; width: 100%; background: #fff; border-radius: var(--radius-lg); border: 1px solid var(--ara-border); box-shadow: var(--ara-shadow-lg); overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.ara-login-form { padding: 3.5rem 3rem; display: flex; flex-direction: column; justify-content: center; background: #fff; }
+.ara-login-heading { margin-bottom: 2rem; }
+.ara-eyebrow { font-size: .82rem; font-weight: 600; color: var(--ara-gold); text-transform: uppercase; letter-spacing: .1em; }
+.ara-login-heading h2 { font-size: 1.9rem; margin-top: .25rem; }
+.ara-login-heading p, .ara-account-heading p { color: var(--ara-text-muted); font-size: .92rem; margin-top: .35rem; line-height: 1.6; }
+.ara-password-label { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
+.ara-text-button { border: 0; background: none; color: var(--ara-gold-hover); cursor: pointer; font: inherit; font-size: .82rem; font-weight: 500; }
+.ara-password-input { padding-right: 2.75rem; }
+.ara-remember { display: flex; align-items: center; gap: .65rem; margin-bottom: 1.75rem; font-size: .88rem; color: var(--ara-text-muted); cursor: pointer; }
+.ara-remember input { accent-color: var(--ara-noir); width: 16px; height: 16px; flex-shrink: 0; }
+.ara-submit { width: 100%; padding: .95rem; }
+.ara-access-note { margin-top: 1.5rem; text-align: center; font-size: .88rem; line-height: 1.6; color: var(--ara-text-muted); }
+.ara-account-page { max-width: 1100px; margin: 0 auto; width: 100%; padding: 2.5rem 1.5rem; }
+.ara-account-heading { margin-bottom: 2rem; }
+.ara-account-heading h1 { display: flex; align-items: center; gap: .75rem; font-size: 2.3rem; overflow-wrap: anywhere; }
+.ara-account-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; align-items: start; }
+.ara-account-card { background: #fff; border: 1px solid var(--ara-border); border-radius: var(--radius-lg); padding: 2rem; box-shadow: var(--ara-shadow-sm); min-width: 0; }
+.ara-account-card h2 { font-size: 1.6rem; }
+.ara-section-note { color: var(--ara-text-muted); font-size: .9rem; margin: .5rem 0 1.5rem; line-height: 1.6; }
+.ara-plain-input { padding-left: 1rem; }
+.ara-account-details { margin: 1.5rem 0; }
+.ara-account-details > div { padding: .65rem 0; border-bottom: 1px solid var(--ara-border); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 1rem; font-size: .88rem; }
+.ara-account-details dt { color: var(--ara-text-muted); }
+.ara-account-details dd { overflow-wrap: anywhere; }
+.ara-password-toggle { display: flex; gap: .5rem; align-items: center; margin: 0 0 1.5rem; }
+.ara-logout-error { max-width: 450px; margin: .5rem auto; padding: .65rem 1rem; color: var(--ara-error); font-size: .85rem; }
+button:disabled { opacity: .65; cursor: not-allowed; }
+@media (max-width: 700px) {
+  .ara-login-card, .ara-account-grid { grid-template-columns: minmax(0, 1fr); }
+  .ara-login-form { padding: 2rem 1.5rem; }
+  .ara-account-card { padding: 1.5rem; }
+  .ara-navbar { padding: .75rem 1rem; flex-wrap: wrap; gap: .75rem; }
+  .ara-nav-links { flex-wrap: wrap; gap: .75rem; }
+}

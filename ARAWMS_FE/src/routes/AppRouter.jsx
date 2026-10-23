@@ -1,55 +1,38 @@
-import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import HomePage from '../pages/HomePage';
-import LoginPage from '../pages/LoginPage';
-import RegisterPage from '../pages/RegisterPage';
+import LoginPage from '../modules/system-administration/authentication/pages/LoginPage';
+import AccountPage from '../modules/system-administration/account-governance/pages/AccountPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
-// Route bảo vệ (yêu cầu phải đăng nhập mới truy cập được)
+const SessionError = ({ message, retry }) => <div className="ara-account-page">
+  <div className="ara-alert ara-alert-error" role="alert">{message}</div>
+  <button className="btn-ara-secondary" onClick={retry}>Thử kết nối lại</button>
+</div>;
+
 const ProtectedRoute = ({ children }) => {
-  const { user, loading } = useAuth();
-
+  const { user, loading, authError, refreshSession } = useAuth();
+  const location = useLocation();
   if (loading) return <LoadingSpinner message="Đang xác thực thông tin đăng nhập..." />;
-  if (!user) return <Navigate to="/login" replace />;
-
+  if (authError) return <SessionError message={authError} retry={refreshSession} />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   return children;
 };
 
-// Route công khai (nếu đã đăng nhập rồi thì chuyển sang HomePage)
 const PublicRoute = ({ children }) => {
   const { user, loading } = useAuth();
-
   if (loading) return <LoadingSpinner message="Đang tải..." />;
   if (user) return <Navigate to="/" replace />;
-
   return children;
 };
 
-const AppRouter = () => {
-  return (
-    <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route
-        path="/login"
-        element={
-          <PublicRoute>
-            <LoginPage />
-          </PublicRoute>
-        }
-      />
-      <Route
-        path="/register"
-        element={
-          <PublicRoute>
-            <RegisterPage />
-          </PublicRoute>
-        }
-      />
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
-  );
-};
-
-export default AppRouter;
+export default function AppRouter() {
+  return <Routes>
+    <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+    <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+    <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+    <Route path="/register" element={<Navigate to="/login" replace />} />
+    <Route path="*" element={<NotFoundPage />} />
+  </Routes>;
+}

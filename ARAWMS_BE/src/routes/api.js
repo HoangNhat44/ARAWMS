@@ -1,7 +1,11 @@
 import express from 'express';
 import ghnRoutes from './ghn.routes.js';
+import authRoutes from '../modules/system-administration/authentication/auth.routes.js';
+import accountRoutes from '../modules/system-administration/account-governance/accountGovernance.routes.js';
 
 const router = express.Router();
+router.use('/auth', authRoutes);
+router.use('/accounts', accountRoutes);
 
 // Health check endpoint
 router.get('/health', (req, res) => {

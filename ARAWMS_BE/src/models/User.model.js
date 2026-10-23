@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 import { ROLES } from '../common/constants/enums.js';
+import './Role.model.js';
 
 const { Schema } = mongoose;
 
@@ -19,6 +20,17 @@ const userSchema = new Schema(
     activeChatCount: { type: Number, default: 0 },
     avatarUrl: { type: String },
     lastLoginAt: { type: Date },
+    failedLoginAttempts: { type: Number, default: 0, select: false },
+    loginLockedUntil: { type: Date, select: false },
+    sessions: {
+      type: [{
+        _id: false,
+        sessionId: { type: String, required: true },
+        expiresAt: { type: Date, required: true },
+      }],
+      default: [],
+      select: false,
+    },
   },
   { collection: 'users' }
 );

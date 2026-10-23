@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { LogOut, User as UserIcon, LogIn, Shield } from 'lucide-react';
@@ -6,14 +6,21 @@ import { LogOut, User as UserIcon, LogIn, Shield } from 'lucide-react';
 const Navbar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await logout();
+      navigate('/login', { replace: true });
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
   };
 
   return (
-    <header className="ara-navbar">
+    <><header className="ara-navbar">
       <Link to="/" className="ara-brand">
         <img 
           src="/logo.png" 
@@ -48,8 +55,8 @@ const Navbar = () => {
                 fontWeight: 600 
               }}>
                 <UserIcon size={16} color="var(--ara-gold)" />
-                <span>{user.fullName || user.username}</span>
-                {user.roles && user.roles.includes('ADMIN') && (
+                <Link to="/account" title="Xem và cập nhật tài khoản">{user.fullName || user.employeeCode}</Link>
+                {user.roleCode === 'OWNER' && (
                   <span style={{
                     fontSize: '0.7rem',
                     background: 'var(--ara-noir)',
@@ -58,18 +65,19 @@ const Navbar = () => {
                     borderRadius: '4px',
                     marginLeft: '0.25rem',
                   }}>
-                    ADMIN
+                    OWNER
                   </span>
                 )}
               </li>
               <li>
                 <button 
                   onClick={handleLogout} 
+                  disabled={busy}
                   className="btn-ara-secondary" 
                   style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
                 >
                   <LogOut size={15} />
-                  <span>Đăng xuất</span>
+                  <span>{busy ? 'Đang đăng xuất...' : 'Đăng xuất'}</span>
                 </button>
               </li>
             </>
@@ -89,7 +97,7 @@ const Navbar = () => {
           )}
         </ul>
       </nav>
-    </header>
+    </header>{error && <div role="alert" className="ara-logout-error">{error}</div>}</>
   );
 };
 

@@ -1,5 +1,6 @@
 import axios from 'axios';
-import { API_BASE_URL, STORAGE_KEYS } from '../utils/constants';
+import { API_BASE_URL } from '../utils/constants';
+import { AUTH_EXPIRED_EVENT, clearAuth, getToken } from '../utils/authStorage';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -11,7 +12,7 @@ const api = axios.create({
 // Request Interceptor: Tự động đính kèm Bearer Token vào Header nếu có
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+    const token = getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -24,12 +25,13 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    if (error.response && error.response.status === 401) {
-      localStorage.removeItem(STORAGE_KEYS.TOKEN);
-      localStorage.removeItem(STORAGE_KEYS.USER);
+    if (error.response?.status === 401 && error.config?.headers?.Authorization
+      && error.config.headers.Authorization === `Bearer ${getToken()}`) {
+      clearAuth();
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     }
     const message = error.response?.data?.message || 'Có lỗi kết nối đến Server';
-    return Promise.reject(new Error(message));
+    return Promise.reject(Object.assign(new Error(message), { status: error.response?.status }));
   }
 );
 

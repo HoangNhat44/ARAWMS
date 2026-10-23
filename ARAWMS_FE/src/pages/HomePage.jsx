@@ -1,25 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { authService } from '../services/authService';
 import { useAuth } from '../hooks/useAuth';
-import { CheckCircle2, Server, Database, Layers, ArrowRight, Shield, Sparkles } from 'lucide-react';
+import { CheckCircle2, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const HomePage = () => {
   const { user } = useAuth();
-  const [backendStatus, setBackendStatus] = useState({ loading: true, online: false, message: '' });
-
-  useEffect(() => {
-    const checkApi = async () => {
-      try {
-        const res = await authService.checkHealth();
-        setBackendStatus({ loading: false, online: true, message: res.message || 'Kết nối máy chủ thành công' });
-      } catch (err) {
-        setBackendStatus({ loading: false, online: false, message: 'Chưa kết nối được tới Backend API' });
-      }
-    };
-
-    checkApi();
-  }, []);
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2.5rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '2.5rem', width: '100%' }}>
@@ -85,7 +71,7 @@ const HomePage = () => {
                 Xin chào, {user.fullName || user.username}!
               </div>
               <div style={{ fontSize: '0.82rem', color: 'var(--ara-text-muted)' }}>
-                Tài khoản: <strong>{user.username}</strong> | Vai trò: <strong>{user.roles?.join(', ') || 'USER'}</strong>
+                Tài khoản: <strong>{user.employeeCode}</strong> | Vai trò: <strong>{user.roleName || user.roleCode}</strong>
               </div>
             </div>
           </div>
@@ -99,89 +85,6 @@ const HomePage = () => {
         )}
       </div>
 
-      {/* Grid 3 Trụ cột chức năng */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
-        <div style={{
-          background: '#FFFFFF',
-          padding: '2rem',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--ara-border)',
-          boxShadow: 'var(--ara-shadow-sm)',
-        }}>
-          <div style={{
-            display: 'inline-flex',
-            padding: '0.75rem',
-            background: 'var(--ara-bg-surface)',
-            borderRadius: '12px',
-            color: 'var(--ara-gold)',
-            marginBottom: '1rem',
-          }}>
-            <Layers size={24} />
-          </div>
-          <h3 style={{ fontSize: '1.35rem', marginBottom: '0.65rem' }}>Quản lý Kho Vải & Phụ liệu</h3>
-          <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.92rem', lineHeight: 1.55 }}>
-            Theo dõi từng cây vải theo lô, số mét, độ co dãn, định mức tiêu hao và vị trí kệ chứa trong kho atelier.
-          </p>
-        </div>
-
-        <div style={{
-          background: '#FFFFFF',
-          padding: '2rem',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--ara-border)',
-          boxShadow: 'var(--ara-shadow-sm)',
-        }}>
-          <div style={{
-            display: 'inline-flex',
-            padding: '0.75rem',
-            background: 'var(--ara-bg-surface)',
-            borderRadius: '12px',
-            color: 'var(--ara-gold)',
-            marginBottom: '1rem',
-          }}>
-            <Database size={24} />
-          </div>
-          <h3 style={{ fontSize: '1.35rem', marginBottom: '0.65rem' }}>MongoDB Atlas Cloud</h3>
-          <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.92rem', lineHeight: 1.55 }}>
-            Dữ liệu đồng bộ trực tiếp lên Cloud Database Atlas, sẵn sàng với 31 Models chuẩn Data Dictionary.
-          </p>
-        </div>
-
-        <div style={{
-          background: '#FFFFFF',
-          padding: '2rem',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--ara-border)',
-          boxShadow: 'var(--ara-shadow-sm)',
-        }}>
-          <div style={{
-            display: 'inline-flex',
-            padding: '0.75rem',
-            background: 'var(--ara-bg-surface)',
-            borderRadius: '12px',
-            color: 'var(--ara-gold)',
-            marginBottom: '1rem',
-          }}>
-            <Server size={24} />
-          </div>
-          <h3 style={{ fontSize: '1.35rem', marginBottom: '0.65rem' }}>Trạng thái API Backend</h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-            <span style={{
-              width: '10px',
-              height: '10px',
-              borderRadius: '50%',
-              background: backendStatus.online ? 'var(--ara-success)' : 'var(--ara-error)',
-              display: 'inline-block',
-            }} />
-            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: backendStatus.online ? 'var(--ara-success)' : 'var(--ara-error)' }}>
-              {backendStatus.loading ? 'Đang kiểm tra...' : backendStatus.online ? 'Backend Sẵn Sàng (Online)' : 'Backend Chưa Sẵn Sàng'}
-            </span>
-          </div>
-          <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.85rem', marginTop: '0.35rem' }}>
-            {backendStatus.message}
-          </p>
-        </div>
-      </div>
     </div>
   );
 };
