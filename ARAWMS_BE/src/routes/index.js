@@ -4,6 +4,7 @@ import express from 'express';
 import authRoutes from '../modules/system-administration/authentication/auth.routes.js';
 import orderQrRoutes from '../modules/order-fulfillment/order-qr-management/orderQrManagement.routes.js';
 import packingRoutes from '../modules/order-fulfillment/packing-verification/packingVerification.routes.js';
+import productRoutes from '../modules/warehouse-management/products/product.routes.js';
 
 const router = express.Router();
 
@@ -16,6 +17,7 @@ router.get('/health', (req, res) => {
 router.use('/auth', authRoutes);
 router.use('/order-qr', orderQrRoutes);
 router.use('/packing', packingRoutes);
+router.use('/products', productRoutes);
 
 // Mount other module routes (from main branch)
 // TODO: Add other module routes as needed

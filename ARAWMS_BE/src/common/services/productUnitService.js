@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import ProductUnit from '../../models/ProductUnit.js';
 
-const demoUnitsUrl = new URL('../../../san-pham-mau-50-barcode.json', import.meta.url);
+const demoUnitsUrl = new URL('../../../../san-pham-mau-50-barcode.json', import.meta.url);
 
 export const findProductUnit = async (sourceType, barcode, dbSession) => {
   if (sourceType === 'DEMO') {

@@ -1,29 +1,12 @@
 import api from "./api";
 
 export const orderQrService = {
-  list: () => api.get('/orders/qr-list'),
-  lookup: (code) => api.get("/orders/lookup", { params: { code } }),
-  issueBulk: (orderIds) => api.post('/orders/packing-qr/bulk', { orderIds }),
-  confirm: (orderId) => api.post(`/orders/${encodeURIComponent(orderId)}/confirm`),
-  issue: (orderId) =>
-    api.post(`/orders/${encodeURIComponent(orderId)}/packing-qr`),
-  replace: (orderId) =>
-    api.post(`/orders/${encodeURIComponent(orderId)}/packing-qr/replace`),
-  resolve: (qrValue) => api.post("/packing/resolve-qr", { qrValue }),
-  prepare: (qrValue, stationId) => api.post('/packing/prepare', { qrValue, stationId }),
-  heartbeat: (sessionId, stationId, leaseVersion) => api.post(`/packing/sessions/${sessionId}/heartbeat`, { stationId, leaseVersion }),
-  release: (sessionId, stationId, leaseVersion) => api.post(`/packing/sessions/${sessionId}/release`, { stationId, leaseVersion }),
-  scan: (sessionId, payload) => api.post(`/packing/sessions/${sessionId}/scans`, payload),
-  uploadVideo: (job, blob, onUploadProgress) => api.post(`/packing/sessions/${job.sessionId}/video`, blob, {
-    headers: {
-      'Content-Type': job.mimeType,
-      'X-Recording-Id': job.recordingId,
-      'X-Video-Duration-Ms': String(job.durationMs),
-    },
-    onUploadProgress,
-  }),
-  syncVideo: (job) => api.post(`/packing/sessions/${job.sessionId}/video/${job.recordingId}/sync`, {
-    durationMs: job.durationMs,
-  }),
-  getVideo: (sessionId) => api.get(`/packing/sessions/${sessionId}/video`, { responseType: 'blob' }),
+  listOrdersForQr: () => api.get('/order-qr/orders'),
+  lookupOrderByCode: (code) => api.get('/order-qr/orders/lookup', { params: { code } }),
+  issueQrForOrders: (orderIds) => api.post('/order-qr/orders/qr/bulk', { orderIds }),
+  confirmOrder: (orderId) => api.post(`/order-qr/orders/${encodeURIComponent(orderId)}/confirm`),
+  getOrderQr: (orderId) =>
+    api.get(`/order-qr/orders/${encodeURIComponent(orderId)}/qr`),
+  replaceOrderQr: (orderId) =>
+    api.post(`/order-qr/orders/${encodeURIComponent(orderId)}/qr/replace`),
 };

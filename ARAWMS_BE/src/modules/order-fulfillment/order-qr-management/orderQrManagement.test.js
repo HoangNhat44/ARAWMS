@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newQrValue, parseQrValue, publicOrderDetail } from './orderQrService.js';
-import { findDemoOrder, listDemoOrders } from './demoOrderService.js';
+import { newQrValue, parseQrValue, publicOrderDetail } from './orderQrManagement.service.js';
+import { findDemoOrder, listDemoOrders } from '../../../common/services/demoOrderService.js';
 
 test('danh sách đơn mẫu hiển thị đủ đơn để chọn cấp QR hàng loạt', async () => {
   const orders = await listDemoOrders();

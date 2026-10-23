@@ -90,6 +90,11 @@ export const completePendingVideo = async (job) => {
   await removeFile(job.filePath).catch(() => {});
 };
 
+export const deletePendingVideo = async (job) => {
+  await removeFile(job.filePath);
+  await transact('readwrite', (store) => store.delete(job.recordingId));
+};
+
 export const migrateLegacyVideos = async () => {
   const jobs = await listPendingVideos();
   for (const job of jobs) {

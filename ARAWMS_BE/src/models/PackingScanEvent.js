@@ -11,6 +11,7 @@ const scanEventSchema = new Schema({
   lineKey: { type: String },
   phase: { type: String, required: true, default: 'PRE_RECORD' },
   videoOffsetMs: { type: Number, default: null },
+  reversedAt: { type: Date, default: null },
   serverTime: { type: Date, required: true, default: Date.now },
 }, { collection: 'packing_scan_events' });
 

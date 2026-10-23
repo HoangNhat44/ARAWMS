@@ -2,10 +2,11 @@ import mongoose from 'mongoose';
 import PackingSession from '../../../models/PackingSession.js';
 import ProductUnit from '../../../models/ProductUnit.js';
 import Sku from '../../../models/Sku.model.js';
+import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
 import { findOrder, issueQr, publicOrderDetail, resolveQr } from '../order-qr-management/orderQrManagement.service.js';
 import { canPackOrder, canIssueQr } from '../../../common/services/orderAccessService.js';
-import { PackingError, heartbeatPacking, preparePacking, releasePacking, scanProduct, sessionView } from './packingVerification.service.js';
+import { PackingError, discardPackingAttempt, openPackingSession, releasePackingSession, removeScannedBarcodeFromPacking, renewPackingSessionLease, scanProductBarcodeForPacking, toPackingSessionView } from './packingVerification.service.js';
 import { ensurePackingIndexes } from './packingIndexes.js';
 import { uploadPackingVideo as saveVideo, syncPackingVideo as syncVideo, streamPackingVideo } from './packingVideo.service.js';
 
@@ -20,13 +21,13 @@ const authorizedSession = async (req) => {
   return packing;
 };
 
-export const prepare = async (req, res, next) => {
+export const openPackingSessionRequest = async (req, res, next) => {
   try {
     const resolved = await resolveQr(req.body.qrValue);
     if (resolved.error) return sendError(res, 'QR không hợp lệ', { code: resolved.error }, 404);
     const order = await findOrder(resolved.order.id);
     if (!order || !canPackOrder(req.user, order)) return sendError(res, 'Không có quyền đóng đơn này', { code: 'FORBIDDEN' }, 403);
-    const session = await preparePacking(order, req.user._id, req.body.stationId);
+    const session = await openPackingSession(order, req.user._id, req.body.stationId);
     return sendSuccess(res, 'Đã mở phiên soạn hàng', { order: publicOrderDetail(order), session });
   } catch (error) {
     if (error instanceof PackingError) return fail(res, error);
@@ -37,17 +38,17 @@ export const prepare = async (req, res, next) => {
 export const getPackingSession = async (req, res, next) => {
   try {
     const packing = await authorizedSession(req);
-    return sendSuccess(res, 'Tiến độ soạn hàng', { session: sessionView(packing) });
+    return sendSuccess(res, 'Tiến độ soạn hàng', { session: toPackingSessionView(packing) });
   } catch (error) {
     if (error instanceof PackingError) return fail(res, error);
     next(error);
   }
 };
 
-export const heartbeat = async (req, res, next) => {
+export const renewPackingSessionLeaseRequest = async (req, res, next) => {
   try {
     await authorizedSession(req);
-    const session = await heartbeatPacking(req.params.id, req.body.stationId, req.body.leaseVersion);
+    const session = await renewPackingSessionLease(req.params.id, req.body.stationId, req.body.leaseVersion);
     return sendSuccess(res, 'Đã gia hạn phiên', { session });
   } catch (error) {
     if (error instanceof PackingError) return fail(res, error);
@@ -55,10 +56,10 @@ export const heartbeat = async (req, res, next) => {
   }
 };
 
-export const release = async (req, res, next) => {
+export const releasePackingSessionRequest = async (req, res, next) => {
   try {
     await authorizedSession(req);
-    const session = await releasePacking(req.params.id, req.body.stationId, req.body.leaseVersion);
+    const session = await releasePackingSession(req.params.id, req.body.stationId, req.body.leaseVersion);
     return sendSuccess(res, 'Đã tạm dừng phiên tại bàn này', { session });
   } catch (error) {
     if (error instanceof PackingError) return fail(res, error);
@@ -66,11 +67,33 @@ export const release = async (req, res, next) => {
   }
 };
 
-export const scan = async (req, res, next) => {
+export const discardPackingAttemptRequest = async (req, res, next) => {
   try {
     await authorizedSession(req);
-    const result = await scanProduct({ sessionId: req.params.id, ...req.body });
+    const session = await discardPackingAttempt(req.params.id, req.body.stationId, req.body.leaseVersion);
+    return sendSuccess(res, 'Đã kết thúc lần đóng hàng, đơn có thể đóng lại', { session });
+  } catch (error) {
+    if (error instanceof PackingError) return fail(res, error);
+    next(error);
+  }
+};
+
+export const scanPackingProductBarcodeRequest = async (req, res, next) => {
+  try {
+    await authorizedSession(req);
+    const result = await scanProductBarcodeForPacking({ sessionId: req.params.id, ...req.body });
     return sendSuccess(res, result.result === 'ACCEPTED' ? 'Đã nhận sản phẩm' : 'Barcode không được chấp nhận', result);
+  } catch (error) {
+    if (error instanceof PackingError) return fail(res, error);
+    next(error);
+  }
+};
+
+export const removeScannedBarcodeRequest = async (req, res, next) => {
+  try {
+    await authorizedSession(req);
+    const session = await removeScannedBarcodeFromPacking({ sessionId: req.params.id, ...req.body });
+    return sendSuccess(res, 'Đã gỡ barcode khỏi lần đóng hàng', { session });
   } catch (error) {
     if (error instanceof PackingError) return fail(res, error);
     next(error);
@@ -132,8 +155,7 @@ export const registerProductUnit = async (req, res, next) => {
     }
     const [sku, warehouse] = await Promise.all([
       Sku.findById(skuId).select('_id'),
-      // Config model no longer exists in new structure, need to adjust
-      mongoose.connection.db.collection('warehouse_locations').findOne({ _id: mongoose.Types.ObjectId(warehouseId) }),
+      WarehouseLocation.findById(warehouseId).select('_id'),
     ]);
     if (!sku || !warehouse) return sendError(res, 'SKU hoặc kho không tồn tại', { code: 'INVALID_UNIT' }, 400);
     const unit = await ProductUnit.create({ barcode, barcodeFormat: 'CODE_128', skuId, warehouseId });

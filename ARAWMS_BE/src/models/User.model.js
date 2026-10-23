@@ -14,6 +14,7 @@ const userSchema = new Schema(
     googleId: { type: String, sparse: true, index: true },
     roleId: { type: Schema.Types.ObjectId, ref: 'Role', required: true, index: true },
     roleCode: { type: String, enum: ROLES, required: true, index: true },
+    warehouseIds: [{ type: Schema.Types.ObjectId, ref: 'WarehouseLocation' }],
     status: { type: String, enum: ['ACTIVE', 'LOCKED'], default: 'ACTIVE', index: true },
     isOnlineForChat: { type: Boolean, default: false, index: true },
     activeChatCount: { type: Number, default: 0 },

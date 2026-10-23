@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { orderQrService } from '../services/orderQrService';
-import { savePendingVideo, listPendingVideos, storageEstimate } from '../services/packingVideoQueue';
-import { packingUploadManager } from '../services/packingUploadManager';
+import { packingSessionService } from '../services/packingSessionService';
+import { savePendingVideo, listPendingVideos, storageEstimate } from '../services/localPackingVideoQueue';
+import { packingVideoUploadManager } from '../services/packingVideoUploadManager';
 
 const panel = { background: '#fff', border: '1px solid var(--ara-border)', borderRadius: 10, padding: '1.5rem' };
 const inputStyle = { flex: '1 1 240px', padding: '0.7rem', border: '1px solid var(--ara-border)', borderRadius: 6 };
@@ -25,44 +25,46 @@ const reasons = {
   UNIT_UNAVAILABLE: 'Vật phẩm không sẵn sàng hoặc không dùng mã Code 128.',
   BARCODE_ALREADY_SCANNED: 'Vật phẩm này đã được quét trong đơn.',
   BARCODE_ALREADY_ASSIGNED: 'Vật phẩm đã được gắn với đơn này.',
+  BARCODE_NOT_SCANNED: 'Barcode này không còn trong danh sách đã quét của đơn.',
+  BARCODE_REMOVED: 'Barcode này đã được gỡ khỏi lần đóng hàng.',
+  BARCODE_ALLOCATION_MISSING: 'Không tìm thấy liên kết của barcode với đơn. Hãy tải lại phiên trước khi sửa.',
   BARCODE_ASSIGNED_OTHER_ORDER: 'Vật phẩm đã gắn với đơn khác.',
   ITEM_NOT_IN_ORDER: 'Biến thể/SKU này không nằm trong đơn.',
   QTY_EXCEEDED: 'Đơn đã đủ số lượng của biến thể này.',
   ORDER_LOCKED: 'Đơn đang được xử lý ở bàn kho khác.',
-  STATION_BUSY: 'Bàn này đang giữ một đơn khác. Hãy tạm dừng đơn hiện tại trước.',
+  STATION_BUSY: 'Bàn này đang giữ một đơn khác. Hãy kết thúc đơn hiện tại trước.',
   LEASE_EXPIRED: 'Phiên tại bàn đã hết hạn. Quét lại QR để tiếp tục.',
   ORDER_CHANGED: 'Nội dung đơn đã thay đổi. Cần đối soát lại trước khi quét tiếp.',
   SCAN_CLOSED: 'Đơn đã đủ hàng; không nhận thêm barcode.',
   CLOUDINARY_NOT_CONFIGURED: 'Chưa cấu hình Cloudinary trên backend. Video vẫn chờ tải lên trên thiết bị này.',
   VIDEO_TOO_LARGE: 'Video vượt giới hạn 512 MB. Cần quay đoạn ngắn hơn.',
-  LOCAL_STORAGE_FULL: 'Thiết bị không đủ dung lượng để lưu video an toàn. Hãy xử lý queue trước khi quay tiếp.',
+  LOCAL_STORAGE_FULL: 'Thiết bị không đủ dung lượng để lưu video an toàn. Hãy báo quản lý trước khi quay tiếp.',
   OPFS_UNAVAILABLE: 'Trình duyệt này không hỗ trợ lưu video tạm bằng OPFS.',
   AUTH_REQUIRED: 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại rồi thử upload video.',
 };
 
-function UploadQueuePanel({ queue }) {
+function VideoUploadStatusPanel({ queue }) {
   const jobs = queue.jobs;
   const active = jobs.filter((job) => job.status !== 'COMPLETED');
   const counts = Object.fromEntries(['UPLOADING', 'QUEUED', 'FAILED', 'SYNC_PENDING', 'COMPLETED']
     .map((status) => [status, jobs.filter((job) => job.status === status).length]));
+  const needsSupport = active.filter((job) => job.autoRetry === false).length;
+  const waiting = active.filter((job) => job.autoRetry !== false &&
+    ['QUEUED', 'FAILED', 'SYNC_PENDING'].includes(job.status)).length;
   const remaining = queue.quota ? queue.quota - queue.usage : null;
   return <section style={panel}>
-    <h2>Hàng chờ video</h2>
-    <p>Mạng: {queue.online ? 'Trực tuyến' : 'Ngoại tuyến'} · Tổng: {jobs.length} · Đang tải: {counts.UPLOADING} · Chờ: {counts.QUEUED} · Lỗi: {counts.FAILED} · Chờ đồng bộ: {counts.SYNC_PENDING} · Hoàn tất: {counts.COMPLETED}</p>
-    <p>Video cục bộ chờ xử lý: {formatBytes(active.reduce((sum, job) => sum + (job.fileSize || 0), 0))} · Dung lượng trình duyệt đã dùng: {formatBytes(queue.usage)}{queue.quota ? ` / ${formatBytes(queue.quota)}` : ''}</p>
-    {remaining !== null && remaining < 250 * 1024 * 1024 && <p role="alert" style={{ color: 'var(--ara-error)' }}>Dung lượng thiết bị sắp đầy. Hãy hoàn tất upload trước khi quay thêm.</p>}
-    {!!active.length && <p>Giữ dữ liệu website trên thiết bị này cho đến khi tất cả video hoàn tất. Đóng trình duyệt sẽ tạm dừng upload.</p>}
+    <h2>Trạng thái lưu video</h2>
+    <p>Mạng: {queue.online ? 'Đang kết nối' : 'Mất kết nối'} · Đang tải: {counts.UPLOADING} · Đang chờ: {waiting} · Cần hỗ trợ: {needsSupport} · Đã lưu: {counts.COMPLETED}</p>
+    <p>Video còn trên thiết bị: {formatBytes(active.reduce((sum, job) => sum + (job.fileSize || 0), 0))} · Dung lượng đã dùng: {formatBytes(queue.usage)}{queue.quota ? ` / ${formatBytes(queue.quota)}` : ''}</p>
+    {remaining !== null && remaining < 250 * 1024 * 1024 && <p role="alert" style={{ color: 'var(--ara-error)' }}>Thiết bị sắp đầy. Hãy báo quản lý trước khi quay thêm.</p>}
+    {!!active.length && <p>Video đang chờ được giữ trên thiết bị này. Giữ nguyên dữ liệu website; khi có mạng, hệ thống sẽ tự tải tiếp.</p>}
     {queue.error && <p role="alert" style={{ color: 'var(--ara-error)' }}>{queue.error}</p>}
-    <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
-      <button type="button" className="btn-ara-secondary" onClick={() => queue.paused ? packingUploadManager.resume() : packingUploadManager.pause()}>{queue.paused ? 'Tiếp tục queue' : 'Tạm dừng queue'}</button>
-      <button type="button" className="btn-ara-secondary" onClick={() => packingUploadManager.retryAll()}>Thử tải lại các video lỗi</button>
-    </div>
     {active.map((job) => <div key={job.recordingId} style={{ borderTop: '1px solid var(--ara-border)', paddingTop: '.65rem', marginTop: '.65rem', overflowWrap: 'anywhere' }}>
-      <strong>{job.orderId}</strong> · {job.fileName} · {formatBytes(job.fileSize || 0)} · {job.status} {job.status === 'UPLOADING' ? `· đã gửi tới backend ${job.progress || 0}%${job.progress === 99 ? ' (đang chờ Cloudinary xác nhận)' : ''}` : ''}
+      <strong>{job.orderId}</strong> · {formatBytes(job.fileSize || 0)} · {job.autoRetry === false ? 'Cần hỗ trợ' : job.status === 'UPLOADING' ? 'Đang tải' : job.status === 'SYNC_PENDING' ? 'Đang xác nhận lưu' : 'Đang chờ tải'} {job.status === 'UPLOADING' ? `· ${job.progress || 0}%${job.progress === 99 ? ' (đang xác nhận lưu)' : ''}` : ''}
       {job.status === 'UPLOADING' && <progress value={job.progress || 0} max="100" style={{ display: 'block', width: '100%' }} />}
-      <div>Ghi lúc {formatDate(job.createdAt)}{job.nextRetryAt ? ` · thử lại ${formatDate(job.nextRetryAt)}` : ''}</div>
+      <div>Quay lúc {formatDate(job.createdAt)}{job.nextRetryAt ? ` · hệ thống sẽ thử lại ${formatDate(job.nextRetryAt)}` : ''}</div>
       {job.lastError && <div role="alert" style={{ color: 'var(--ara-error)' }}>{reasons[job.lastError] || job.lastError}</div>}
-      {['FAILED', 'SYNC_PENDING'].includes(job.status) && <button type="button" className="btn-ara-secondary" onClick={() => packingUploadManager.retry(job.recordingId)}>Thử lại</button>}
+      {job.autoRetry === false && <div role="alert" style={{ color: 'var(--ara-error)' }}>Video vẫn ở thiết bị. Hãy báo quản lý để kiểm tra.</div>}
     </div>)}
   </section>;
 }
@@ -84,10 +86,9 @@ export default function WarehousePackingPage() {
   const [scanNotice, setScanNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [decodingImage, setDecodingImage] = useState(false);
   const [cameraMode, setCameraMode] = useState(null);
   const [recording, setRecording] = useState(false);
-  const [queue, setQueue] = useState(packingUploadManager.snapshot);
+  const [queue, setQueue] = useState(packingVideoUploadManager.snapshot);
   const [playbackUrl, setPlaybackUrl] = useState('');
   const videoRef = useRef(null);
   const recorderRef = useRef(null);
@@ -99,9 +100,10 @@ export default function WarehousePackingPage() {
   const currentQrRef = useRef('');
   const busyRef = useRef(false);
   const lastCameraValueRef = useRef({ value: '', at: 0 });
+  const removedCameraBarcodeRef = useRef('');
   const noticeTimerRef = useRef(null);
 
-  useEffect(() => packingUploadManager.subscribe(setQueue), []);
+  useEffect(() => packingVideoUploadManager.subscribe(setQueue), []);
 
   const showScanNotice = (value) => {
     clearTimeout(noticeTimerRef.current);
@@ -127,7 +129,7 @@ export default function WarehousePackingPage() {
         if (blob.size) await savePendingVideo({
           sessionId, orderId, recordingId: active.recordingId, blob, durationMs,
         });
-        await packingUploadManager.refresh();
+        await packingVideoUploadManager.refresh();
       }).catch((err) => console.error('Không lưu được video khi rời trang:', err))
         .finally(() => controlsRef.current?.stop());
     } else {
@@ -179,7 +181,7 @@ export default function WarehousePackingPage() {
     setRecording(true);
   };
 
-  const stopAndQueueRecording = async (activeSession) => {
+  const stopRecordingAndQueueVideo = async (activeSession) => {
     const active = recorderRef.current;
     if (!active) throw new Error('Video của đơn chưa được quay.');
     if (active.recorder.state === 'recording') active.recorder.stop();
@@ -189,15 +191,15 @@ export default function WarehousePackingPage() {
     await savePendingVideo({ sessionId: activeSession.id, orderId: activeSession.orderId,
       recordingId: active.recordingId, blob, durationMs });
     recorderRef.current = null;
-    await packingUploadManager.refresh();
-    packingUploadManager.pump();
+    await packingVideoUploadManager.refresh();
+    packingVideoUploadManager.pump();
   };
 
   const viewSavedVideo = async () => {
     if (!session) return;
     setError('');
     try {
-      const blob = await orderQrService.getVideo(session.id);
+      const blob = await packingSessionService.getSavedRecording(session.id);
       if (playbackUrlRef.current) URL.revokeObjectURL(playbackUrlRef.current);
       playbackUrlRef.current = URL.createObjectURL(blob);
       setPlaybackUrl(playbackUrlRef.current);
@@ -208,7 +210,7 @@ export default function WarehousePackingPage() {
     if (!session) return undefined;
     const timer = setInterval(async () => {
       try {
-        const response = await orderQrService.heartbeat(session.id, stationId, session.leaseVersion);
+        const response = await packingSessionService.renewSessionLease(session.id, stationId, session.leaseVersion);
         if (!busyRef.current) {
           sessionRef.current = response.data.session;
           setSession(response.data.session);
@@ -223,7 +225,7 @@ export default function WarehousePackingPage() {
     return () => clearInterval(timer);
   }, [session?.id, session?.leaseVersion]);
 
-  const openOrder = async (value) => {
+  const openPackingOrderFromQr = async (value) => {
     if (busyRef.current) return;
     const qrValue = value.trim();
     if (sessionRef.current && qrValue === currentQrRef.current) return;
@@ -236,26 +238,27 @@ export default function WarehousePackingPage() {
       }
       if (sessionRef.current) {
         // Check the next QR before ending the current recording.
-        const nextOrder = await orderQrService.resolve(qrValue);
+        const nextOrder = await packingSessionService.resolveOrderQr(qrValue);
         if (nextOrder.data.order.id === sessionRef.current.orderId) {
           setMessage('QR này thuộc đơn đang quay. Tiếp tục quay và quét QR đơn khác khi hoàn tất.');
           return;
         }
         const previous = sessionRef.current;
         const queued = (await listPendingVideos()).some((job) => job.sessionId === previous.id && job.status !== 'COMPLETED');
-        if (recorderRef.current) await stopAndQueueRecording(previous);
+        if (recorderRef.current) await stopRecordingAndQueueVideo(previous);
         else if (!previous.video && !queued) throw new Error('Đơn hiện tại chưa có video để lưu.');
-        await orderQrService.release(previous.id, stationId, previous.leaseVersion);
+        await packingSessionService.releaseSession(previous.id, stationId, previous.leaseVersion);
         sessionRef.current = null;
         setSession(null); setOrder(null);
       }
-      const response = await orderQrService.prepare(qrValue, stationId);
+      const response = await packingSessionService.openSession(qrValue, stationId);
       newlyPreparedSession = response.data.session;
       setOrder(response.data.order);
       sessionRef.current = response.data.session;
       setSession(response.data.session);
       setQrInput(qrValue);
       currentQrRef.current = qrValue;
+      removedCameraBarcodeRef.current = '';
       setBarcodeInput('');
       const queuedForOrder = (await listPendingVideos()).some((job) => job.sessionId === response.data.session.id && job.status !== 'COMPLETED');
       if (!response.data.session.video && !queuedForOrder) await startRecording();
@@ -263,7 +266,7 @@ export default function WarehousePackingPage() {
       showScanNotice(`✓ Đã quét QR đơn ${response.data.order.orderCode}`);
     } catch (err) {
       if (newlyPreparedSession && !recorderRef.current && !newlyPreparedSession.video) {
-        await orderQrService.release(newlyPreparedSession.id, stationId, newlyPreparedSession.leaseVersion).catch(() => {});
+        await packingSessionService.releaseSession(newlyPreparedSession.id, stationId, newlyPreparedSession.leaseVersion).catch(() => {});
         sessionRef.current = null;
         currentQrRef.current = '';
         setSession(null); setOrder(null); setQrInput('');
@@ -283,7 +286,7 @@ export default function WarehousePackingPage() {
     pendingScanRef.current = { barcode, id: clientEventId };
     setBusy(true); setError(''); setMessage('');
     try {
-      const response = await orderQrService.scan(activeSession.id, {
+      const response = await packingSessionService.scanProductBarcode(activeSession.id, {
         stationId, leaseVersion: activeSession.leaseVersion, clientEventId, barcode,
       });
       sessionRef.current = response.data.session;
@@ -299,18 +302,58 @@ export default function WarehousePackingPage() {
     finally { busyRef.current = false; setBusy(false); }
   };
 
-  const pauseOrder = async () => {
+  const removeScannedBarcode = async (barcode) => {
+    const activeSession = sessionRef.current;
+    if (!activeSession || !recording || busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const response = await packingSessionService.removeScannedBarcode(activeSession.id, {
+        stationId, leaseVersion: activeSession.leaseVersion, barcode,
+      });
+      sessionRef.current = response.data.session;
+      setSession(response.data.session);
+      pendingScanRef.current = null;
+      removedCameraBarcodeRef.current = barcode;
+      setMessage(`Đã gỡ barcode ${barcode}. Có thể quét barcode khác để thay thế.`);
+    } catch (err) { setError(reasons[err.code] || err.message); }
+    finally { busyRef.current = false; setBusy(false); }
+  };
+
+  const saveVideoAndReleaseOrder = async () => {
     if (!session) return;
     busyRef.current = true;
     setBusy(true); setError('');
     try {
-      if (recorderRef.current) await stopAndQueueRecording(session);
-      await orderQrService.release(session.id, stationId, session.leaseVersion);
+      if (recorderRef.current) await stopRecordingAndQueueVideo(session);
+      await packingSessionService.releaseSession(session.id, stationId, session.leaseVersion);
       sessionRef.current = null;
       setSession(null); setOrder(null); setQrInput(''); setBarcodeInput('');
       currentQrRef.current = '';
       setMessage('Đã kết thúc video và đưa vào hàng chờ lưu. Có thể quét QR đơn tiếp theo.');
     } catch (err) { setError(err.message); }
+    finally { busyRef.current = false; setBusy(false); }
+  };
+
+  const discardCurrentPackingAttempt = async () => {
+    const activeSession = sessionRef.current;
+    if (!activeSession || !recorderRef.current || busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const queued = (await listPendingVideos()).some((job) => job.sessionId === activeSession.id && job.status !== 'COMPLETED');
+      if (queued) throw new Error('Đơn này đã có video trong hàng chờ. Hãy xử lý video đó trước khi kết thúc lần đóng hàng.');
+      const active = recorderRef.current;
+      if (active.recorder.state === 'recording') active.recorder.stop();
+      await active.done;
+      await packingSessionService.discardAttempt(activeSession.id, stationId, activeSession.leaseVersion);
+      recorderRef.current = null;
+      pendingScanRef.current = null;
+      sessionRef.current = null;
+      currentQrRef.current = '';
+      setSession(null); setOrder(null); setQrInput(''); setBarcodeInput('');
+      setMessage('Đã kết thúc và bỏ video lần này. Đơn chưa được tính là đã đóng hàng; có thể quét QR để đóng lại.');
+    } catch (err) { setError(reasons[err.code] || err.message); }
     finally { busyRef.current = false; setBusy(false); }
   };
 
@@ -336,10 +379,12 @@ export default function WarehousePackingPage() {
           if (!result || requestId !== cameraRequestRef.current) return;
           const value = result.getText();
           if (busyRef.current) return;
+          if (value === removedCameraBarcodeRef.current) return;
+          removedCameraBarcodeRef.current = '';
           const now = Date.now();
           if (lastCameraValueRef.current.value === value && now - lastCameraValueRef.current.at < 2000) return;
           lastCameraValueRef.current = { value, at: now };
-          if (value.startsWith('PACK:v1:')) openOrder(value);
+          if (value.startsWith('PACK:v1:')) openPackingOrderFromQr(value);
           else if (sessionRef.current?.state === 'SCANNING' && !value.startsWith('PACK:v1:')) scanBarcode(value);
         }
       );
@@ -352,24 +397,6 @@ export default function WarehousePackingPage() {
     }
   };
 
-  const scanBarcodeImage = async (file) => {
-    if (!file || !session || busy || decodingImage) return;
-    setDecodingImage(true); setError(''); setMessage('');
-    const url = URL.createObjectURL(file);
-    try {
-      const { BarcodeFormat, BrowserMultiFormatReader } = await import('@zxing/browser');
-      const reader = new BrowserMultiFormatReader();
-      reader.possibleFormats = [BarcodeFormat.CODE_128];
-      const result = await reader.decodeFromImageUrl(url);
-      await scanBarcode(result.getText());
-    } catch (err) {
-      setError(`Không đọc được barcode trong ảnh: ${err.message}`);
-    } finally {
-      URL.revokeObjectURL(url);
-      setDecodingImage(false);
-    }
-  };
-
   return (
     <div style={{ width: 'min(100%, 950px)', margin: '2rem auto', padding: '0 1rem', display: 'grid', gap: '1rem' }}>
       <h1>Bàn đóng hàng</h1>
@@ -377,7 +404,7 @@ export default function WarehousePackingPage() {
       {scanNotice && <div role="status" className="packing-scan-notice">{scanNotice}</div>}
       {error && <div role="alert" style={{ ...panel, color: 'var(--ara-error)' }}>{error}</div>}
       {message && <div role="status" style={{ ...panel, color: 'var(--ara-success)' }}>{message}</div>}
-      <UploadQueuePanel queue={queue} />
+      <VideoUploadStatusPanel queue={queue} />
       <section style={panel}>
         <h2>1. Camera quét QR và barcode</h2>
         <p>{recording ? 'Đang quay đơn này. Quét QR đơn tiếp theo để tự kết thúc video và bắt đầu đơn mới.' :
@@ -388,7 +415,7 @@ export default function WarehousePackingPage() {
         {recording && <strong role="status" style={{ marginLeft: '1rem', color: 'var(--ara-error)' }}>● ĐANG QUAY</strong>}
         <video ref={videoRef} playsInline muted style={{ display: cameraMode ? 'block' : 'none', width: '100%', maxWidth: 720, marginTop: '1rem', borderRadius: 8 }} />
         <h3 style={{ marginTop: '1rem' }}>Nhập hoặc dùng máy quét QR</h3>
-        <form onSubmit={(event) => { event.preventDefault(); openOrder(qrInput); }} style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem', marginTop: '1rem' }}>
+        <form onSubmit={(event) => { event.preventDefault(); openPackingOrderFromQr(qrInput); }} style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem', marginTop: '1rem' }}>
           <input aria-label="QR đơn hàng" value={qrInput} onChange={(event) => setQrInput(event.target.value)} style={inputStyle} required placeholder="PACK:v1:..." />
           <button className="btn-ara-primary" type="submit" disabled={busy}>Mở đơn</button>
         </form>
@@ -460,14 +487,7 @@ export default function WarehousePackingPage() {
             <input aria-label="Barcode sản phẩm" value={barcodeInput} onChange={(event) => setBarcodeInput(event.target.value)} style={inputStyle} required placeholder="Quét Code 128 trên từng món" />
             <button className="btn-ara-primary" type="submit" disabled={busy}>Gắn sản phẩm với đơn</button>
           </form>
-          <p style={{ marginTop: '1rem' }}>Đưa barcode từng món vào khung camera ở trên, dùng máy quét hoặc chọn ảnh barcode để thử trên cùng thiết bị.</p>
-          <label style={{ display: 'block', marginTop: '.5rem' }}>Chọn ảnh barcode để quét
-            <input type="file" accept="image/svg+xml,image/png,image/jpeg,image/webp" disabled={busy || decodingImage} onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = '';
-              scanBarcodeImage(file);
-            }} style={{ display: 'block', marginTop: '.4rem' }} />
-          </label>
+          <p style={{ marginTop: '1rem' }}>Đưa barcode từng món vào khung camera ở trên hoặc dùng máy quét mã.</p>
         </>}
         {session.state === 'READY_TO_RECORD' && <p style={{ marginTop: '1rem', color: 'var(--ara-success)' }}>
           Đã quét đủ sản phẩm. Tiếp tục quay đến khi niêm phong xong, rồi quét QR đơn tiếp theo hoặc kết thúc đơn cuối.
@@ -477,10 +497,28 @@ export default function WarehousePackingPage() {
           <button type="button" className="btn-ara-secondary" onClick={viewSavedVideo}>Xem video đã lưu</button>
           {playbackUrl && <video controls src={playbackUrl} style={{ display: 'block', width: '100%', maxWidth: 720, marginTop: '1rem' }} />}
         </div>}
-        {!!session.scannedBarcodes.length && <p style={{ marginTop: '1rem', overflowWrap: 'anywhere' }}>Đã gắn: {session.scannedBarcodes.join(', ')}</p>}
-        <button type="button" className="btn-ara-secondary" disabled={busy} onClick={pauseOrder} style={{ marginTop: '1rem' }}>
-          {recording || recorderRef.current ? 'Kết thúc đơn cuối và lưu video' : 'Đóng phiên tại bàn'}
+        {!!session.scannedUnits?.length && <div style={{ marginTop: '1rem' }}>
+          <strong>Barcode đã quét:</strong>
+          <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: '.5rem' }}>
+            {session.scannedUnits.map((scan) => {
+              const item = session.items.find((entry) => entry.lineKey === scan.lineKey);
+              return <li key={scan.barcode} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '.5rem', overflowWrap: 'anywhere' }}>
+                <span><strong>{scan.barcode}</strong>{item && ` · ${item.skuCode || item.name}`}</span>
+                <button type="button" className="btn-ara-secondary" disabled={busy || !recording || !!session.video}
+                  aria-label={`Gỡ barcode ${scan.barcode} khỏi đơn`} onClick={() => removeScannedBarcode(scan.barcode)}>
+                  Gỡ mã
+                </button>
+              </li>;
+            })}
+          </ul>
+        </div>}
+        <button type="button" className="btn-ara-secondary" disabled={busy} onClick={saveVideoAndReleaseOrder} style={{ marginTop: '1rem' }}>
+          {recording || recorderRef.current ? 'Lưu video và hoàn tất đơn' : 'Đóng phiên tại bàn'}
         </button>
+        {!!recorderRef.current && <button type="button" className="btn-ara-secondary" disabled={busy} onClick={discardCurrentPackingAttempt} style={{ marginTop: '1rem', marginLeft: '.5rem' }}>
+          Kết thúc
+        </button>}
+        {!!recorderRef.current && <p style={{ marginTop: '.5rem' }}>“Kết thúc” bỏ video và kết quả quét lần này; đơn có thể đóng lại.</p>}
       </section>}
     </div>
   );

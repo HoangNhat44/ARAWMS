@@ -1,6 +1,6 @@
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
 import { findOrder, issueQr, listOrdersForQr, replaceQr, publicOrderDetail, resolveQr } from './orderQrManagement.service.js';
-import { canViewOrder, canIssueQr, canPackOrder } from '../../../common/services/orderAccessService.js';
+import { canViewOrder, canIssueQr, canPackOrder, canConfirmOrder } from '../../../common/services/orderAccessService.js';
 
 const forbidden = (res) => sendError(res, 'Tài khoản chưa có quyền với đơn hàng này', { code: 'FORBIDDEN' }, 403);
 
@@ -86,7 +86,7 @@ export const confirmOrder = async (req, res, next) => {
     const order = await findOrder(req.params.id);
     if (!order) return sendError(res, 'Không tìm thấy đơn', { code: 'ORDER_NOT_FOUND' }, 404);
     if (order.demoOnly) return sendError(res, 'Đơn mẫu đã ở trạng thái sẵn sàng', { code: 'DEMO_ORDER' }, 409);
-    if (!canIssueQr(req.user, order)) return sendError(res, 'Không có quyền chốt đơn', { code: 'FORBIDDEN' }, 403);
+    if (!canConfirmOrder(req.user, order)) return sendError(res, 'Không có quyền chốt đơn', { code: 'FORBIDDEN' }, 403);
     if (order.status !== 'PENDING') return sendError(res, 'Đơn không còn chờ chốt', { code: 'ORDER_NOT_PENDING' }, 409);
     const now = new Date();
     const confirmed = await SalesOrder.findOneAndUpdate(

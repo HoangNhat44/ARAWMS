@@ -101,6 +101,12 @@ const HomePage = () => {
 
       {/* Grid 3 Trụ cột chức năng */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+        {user?.roles?.includes('WAREHOUSE_MANAGER') && <Link to="/warehouse/finished-goods" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
+          <Layers size={28} color="var(--ara-gold)" />
+          <h3 style={{ margin: '1rem 0 .5rem' }}>Quản lý kho thành phẩm</h3>
+          <p style={{ color: 'var(--ara-text-muted)' }}>Xem sản phẩm trong kho, tạo sản phẩm mới, nhập kho và xuất kho.</p>
+          <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Mở kho thành phẩm →</span>
+        </Link>}
         <div style={{
           background: '#FFFFFF',
           padding: '2rem',

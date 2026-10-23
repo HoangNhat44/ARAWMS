@@ -4,8 +4,10 @@ import SalesOrder from '../../../models/SalesOrder.model.js';
 import Sku from '../../../models/Sku.model.js';
 import OrderQrToken from '../../../models/OrderQrToken.js';
 import DemoOrderQrToken from '../../../models/DemoOrderQrToken.js';
+import PackingSession from '../../../models/PackingSession.js';
 import { findDemoOrder, listDemoOrders } from '../../../common/services/demoOrderService.js';
 import { ensurePackingIndexes } from '../packing-verification/packingIndexes.js';
+import { canViewOrder, canIssueQr } from '../../../common/services/orderAccessService.js';
 
 const QR_PREFIX = 'PACK:v1:';
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
@@ -22,7 +24,7 @@ export const parseQrValue = (value) => {
 export const publicOrderDetail = (order) => order.demoOnly ? ({
   id: order.id,
   orderCode: order.orderCode,
-  status: order.status,
+  status: order.packingVideoUrl ? 'PACKED' : order.status,
   channel: null,
   externalOrderNo: null,
   createdAt: null,
@@ -41,7 +43,8 @@ export const publicOrderDetail = (order) => order.demoOnly ? ({
     quantity: item.quantity,
   })),
   note: null,
-  packingStatus: 'DEMO_NOT_STARTED',
+  packingStatus: order.packingVideoUrl ? 'VIDEO_SAVED' : 'DEMO_NOT_STARTED',
+  packagingVideoUrl: order.packingVideoUrl || null,
   demoOnly: true,
 }) : ({
   id: String(order._id),
@@ -56,11 +59,13 @@ export const publicOrderDetail = (order) => order.demoOnly ? ({
     name: order.customer.name || null,
     phone: order.customer.phone || null,
   } : null,
-  recipientName: order.recipient?.name || null,
-  recipient: order.recipient ? {
-    name: order.recipient.name,
-    phone: order.recipient.phone,
-    address: [order.recipient.addressLine, order.recipient.ward, order.recipient.district, order.recipient.province].filter(Boolean).join(', '),
+  recipientName: order.recipient?.name || order.shippingRecipient?.name || null,
+  recipient: (order.recipient || order.shippingRecipient) ? {
+    name: (order.recipient || order.shippingRecipient).name,
+    phone: (order.recipient || order.shippingRecipient).phone,
+    address: order.recipient
+      ? [order.recipient.addressLine, order.recipient.ward, order.recipient.district, order.recipient.province].filter(Boolean).join(', ')
+      : order.shippingRecipient.address,
   } : null,
   paymentMethod: order.paymentMethod || null,
   paymentStatus: order.paymentStatus || null,
@@ -69,11 +74,11 @@ export const publicOrderDetail = (order) => order.demoOnly ? ({
     carrierName: order.shipping.marketplaceCarrierName || null,
     feeCustomer: order.shipping.feeCustomer ?? null,
   } : null,
-  amounts: order.amounts ? {
-    subtotal: order.amounts.subtotal ?? null,
-    discount: order.amounts.discount ?? null,
-    total: order.amounts.total ?? null,
-    codAmount: order.amounts.codAmount ?? null,
+  amounts: (order.amounts || order.financialSummary) ? {
+    subtotal: order.amounts?.subtotal ?? order.financialSummary?.itemsSubtotal ?? null,
+    discount: order.amounts?.discount ?? order.financialSummary?.discountAmount ?? null,
+    total: order.amounts?.total ?? order.financialSummary?.totalOrderAmount ?? null,
+    codAmount: order.amounts?.codAmount ?? order.financialSummary?.expectedCodAmount ?? null,
   } : null,
   items: order.items.map((item) => ({
     skuId: String(item.skuId),
@@ -81,14 +86,16 @@ export const publicOrderDetail = (order) => order.demoOnly ? ({
     name: item.name || order.variantDetails?.[String(item.skuId)]?.productName || null,
     color: order.variantDetails?.[String(item.skuId)]?.color?.name || null,
     size: order.variantDetails?.[String(item.skuId)]?.size?.name || null,
-    quantity: item.quantity,
-    unitPrice: item.unitPrice ?? null,
+    quantity: item.quantity ?? item.orderedQty,
+    unitPrice: item.unitPrice ?? item.unitSalePrice ?? null,
     discountAmount: item.discountAmount ?? null,
-    lineTotal: item.lineTotal ?? null,
+    lineTotal: item.lineTotal ?? ((item.orderedQty != null && item.unitSalePrice != null)
+      ? item.orderedQty * item.unitSalePrice : null),
   })),
   note: order.note || null,
-  packingStatus: order.packing?.isComplete ? 'LEGACY_COMPLETE' :
-    order.packing?.videoPublicId ? 'VIDEO_SAVED' : 'NOT_STARTED',
+  packingStatus: order.warehouseFulfillment?.packagingVideoUrl || order.packing?.videoPublicId
+    ? 'VIDEO_SAVED' : order.packing?.isComplete ? 'LEGACY_COMPLETE' : 'NOT_STARTED',
+  packagingVideoUrl: order.warehouseFulfillment?.packagingVideoUrl || null,
   demoOnly: false,
 });
 
@@ -96,7 +103,11 @@ export const findOrder = async (idOrCode) => {
   if (typeof idOrCode !== 'string' || !idOrCode.trim()) return null;
   const value = idOrCode.trim();
   const demoOrder = await findDemoOrder(value);
-  if (demoOrder) return demoOrder;
+  if (demoOrder) {
+    const packing = await PackingSession.findOne({ sourceType: 'DEMO', orderKey: demoOrder.id })
+      .select('video.url').lean();
+    return { ...demoOrder, packingVideoUrl: packing?.video?.url || null };
+  }
   const query = mongoose.isValidObjectId(value)
     ? { $or: [{ _id: value }, { orderCode: value }] }
     : { orderCode: value };
@@ -111,39 +122,45 @@ export const findOrder = async (idOrCode) => {
 export const listOrdersForQr = async (user) => {
   const isAdmin = user.roles?.includes('ADMIN');
   const isSales = user.roles?.includes('SALES');
-  const query = isAdmin ? {} : isSales ? { sellerId: user._id } : null;
+  const isWarehouse = user.roles?.includes('WAREHOUSE_STAFF') || user.roles?.includes('WAREHOUSE_MANAGER');
+  const query = isAdmin || isWarehouse ? {} : isSales ? { sellerId: user._id } : null;
   const realOrders = query === null ? [] : await SalesOrder.find(query)
-    .select('_id orderCode status recipient.name items.quantity createdAt')
+    .select('_id orderCode status shippingRecipient.name recipient.name items.quantity items.orderedQty items.reservation.warehouseId items.fifoPickList.locationId createdAt')
     .sort({ createdAt: -1 }).lean();
+  const visibleRealOrders = realOrders.filter((order) => canViewOrder(user, order));
   const tokens = realOrders.length ? await OrderQrToken.find({
-    orderId: { $in: realOrders.map((order) => order._id) }, revokedAt: null,
+    orderId: { $in: visibleRealOrders.map((order) => order._id) }, revokedAt: null,
   }).select('orderId').lean() : [];
-  const demoOrders = await listDemoOrders();
+  const demoOrders = isAdmin || isSales || isWarehouse ? await listDemoOrders() : [];
+  const completedDemoSessions = demoOrders.length ? await PackingSession.find({
+    sourceType: 'DEMO', orderKey: { $in: demoOrders.map((order) => order.id) }, 'video.publicId': { $exists: true },
+  }).select('orderKey').lean() : [];
+  const packedDemoIds = new Set(completedDemoSessions.map((session) => session.orderKey));
   const demoTokens = demoOrders.length ? await DemoOrderQrToken.find({
     demoOrderId: { $in: demoOrders.map((order) => order.id) }, revokedAt: null,
   }).select('demoOrderId').lean() : [];
   const issuedReal = new Set(tokens.map((token) => String(token.orderId)));
   const issuedDemo = new Set(demoTokens.map((token) => token.demoOrderId));
   return [
-    ...realOrders.map((order) => ({
+    ...visibleRealOrders.map((order) => ({
       id: String(order._id), orderCode: order.orderCode, status: order.status,
-      recipientName: order.recipient?.name || null,
-      itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
+      recipientName: order.recipient?.name || order.shippingRecipient?.name || null,
+      itemCount: order.items.reduce((sum, item) => sum + (item.quantity ?? item.orderedQty ?? 0), 0),
       createdAt: order.createdAt, demoOnly: false, hasQr: issuedReal.has(String(order._id)),
-      canIssueQr: ['CONFIRMED', 'PICKING'].includes(order.status),
+      canIssueQr: canIssueQr(user, order) && ['CONFIRMED', 'CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(order.status),
     })),
     ...demoOrders.map((order) => ({
-      id: order.id, orderCode: order.orderCode, status: order.status,
+      id: order.id, orderCode: order.orderCode, status: packedDemoIds.has(order.id) ? 'PACKED' : order.status,
       recipientName: null,
       itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
       createdAt: null, demoOnly: true, hasQr: issuedDemo.has(order.id),
-      canIssueQr: !blockedStatuses.has(order.status),
+      canIssueQr: canIssueQr(user, order) && !blockedStatuses.has(order.status),
     })),
   ];
 };
 
 export const issueQr = async (order, userId) => {
-  if (order.demoOnly ? blockedStatuses.has(order.status) : !['CONFIRMED', 'PICKING'].includes(order.status)) {
+  if (order.demoOnly ? blockedStatuses.has(order.status) : !['CONFIRMED', 'CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(order.status)) {
     return { error: 'ORDER_NOT_CONFIRMED' };
   }
   const token = newQrValue().slice(QR_PREFIX.length);
@@ -168,7 +185,7 @@ export const issueQr = async (order, userId) => {
 };
 
 export const replaceQr = async (order, userId) => {
-  if (order.demoOnly ? blockedStatuses.has(order.status) : !['CONFIRMED', 'PICKING'].includes(order.status)) {
+  if (order.demoOnly ? blockedStatuses.has(order.status) : !['CONFIRMED', 'CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(order.status)) {
     return { error: 'ORDER_NOT_CONFIRMED' };
   }
   const token = newQrValue().slice(QR_PREFIX.length);

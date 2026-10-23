@@ -26,13 +26,15 @@ const inventoryTransactionSchema = new Schema(
         'DEFECT_QUARANTINE',
         'DEFECT_DISPOSAL',
         'STOCKTAKE_ADJUSTMENT',
+        'MANUAL_INBOUND',
+        'MANUAL_OUTBOUND',
       ],
       required: true,
       index: true,
     },
     referenceModel: {
       type: String,
-      enum: ['MaterialTicket', 'FinishedGoodsTicket', 'SalesOrder', 'ReturnRequest', 'StocktakeSession'],
+      enum: ['MaterialTicket', 'FinishedGoodsTicket', 'SalesOrder', 'ReturnRequest', 'StocktakeSession', 'Sku', 'FinishedGoodsBulkDocument'],
     },
     referenceId: { type: Schema.Types.ObjectId, required: true, index: true },
     quantityChange: { type: Number, required: true },
@@ -40,6 +42,7 @@ const inventoryTransactionSchema = new Schema(
     onHandAfter: { type: Number, required: true },
     unitCostSnapshot: { type: Number, default: 0 },
     performedByUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    note: { type: String, maxlength: 500 },
   },
   { collection: 'inventory_transactions' }
 );

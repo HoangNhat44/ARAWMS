@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-const demoOrdersUrl = new URL('../../../don-hang-mau.json', import.meta.url);
+const demoOrdersUrl = new URL('../../../../don-hang-mau.json', import.meta.url);
 
 export const listDemoOrders = async () => {
   try {

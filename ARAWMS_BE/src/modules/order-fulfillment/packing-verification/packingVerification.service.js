@@ -7,7 +7,7 @@ import { findProductUnit } from '../../../common/services/productUnitService.js'
 import { ensurePackingIndexes } from './packingIndexes.js';
 
 const LEASE_MS = 120_000;
-const packableStatuses = new Set(['CONFIRMED', 'PICKING']);
+const packableStatuses = new Set(['CONFIRMED', 'CONFIRMED_RESERVED', 'PICKING']);
 
 export class PackingError extends Error {
   constructor(code, status = 409) {
@@ -20,17 +20,17 @@ export class PackingError extends Error {
 const snapshotItems = (order) => order.items.map((item, index) => ({
   lineKey: order.demoOnly ? item.id : `${index}`,
   ...(order.demoOnly ? { variantId: item.variantId } : {
-    skuId: item.skuId, warehouseId: item.reservation?.warehouseId,
+    skuId: item.skuId, warehouseId: item.reservation?.warehouseId || item.fifoPickList?.[0]?.locationId,
   }),
   skuCode: order.demoOnly ? item.sku : item.skuCode,
   name: order.demoOnly ? [item.productName, item.color, item.size].filter(Boolean).join(' · ') :
     [item.name || order.variantDetails?.[String(item.skuId)]?.productName,
       order.variantDetails?.[String(item.skuId)]?.color?.name,
       order.variantDetails?.[String(item.skuId)]?.size?.name].filter(Boolean).join(' · '),
-  quantity: item.quantity,
+  quantity: item.quantity ?? item.orderedQty,
 }));
 
-export const sessionView = (session) => ({
+export const toPackingSessionView = (session) => ({
   id: String(session._id),
   orderId: session.orderKey,
   state: session.state,
@@ -41,14 +41,18 @@ export const sessionView = (session) => ({
     scanned: session.scannedUnits.filter((scan) => scan.lineKey === item.lineKey).length,
   })),
   scannedBarcodes: session.scannedUnits.map((scan) => scan.barcode),
+  scannedUnits: session.scannedUnits.map((scan) => ({
+    barcode: scan.barcode, lineKey: scan.lineKey, scannedAt: scan.scannedAt,
+  })),
   video: session.video?.publicId ? {
     status: 'SAVED', durationMs: session.video.durationMs,
     uploadedAt: session.video.uploadedAt,
+    url: session.video.url,
     playbackUrl: `/api/packing/sessions/${session._id}/video`,
   } : null,
 });
 
-export const decideScan = (packing, unit, barcode) => {
+export const evaluatePackingBarcodeScan = (packing, unit, barcode) => {
   if (!unit) return { reason: 'BARCODE_NOT_FOUND' };
   if (unit.barcodeFormat !== 'CODE_128' || unit.inventoryStatus !== 'AVAILABLE') {
     return { reason: 'UNIT_UNAVAILABLE' };
@@ -66,7 +70,7 @@ export const decideScan = (packing, unit, barcode) => {
   return { lineKey: line.lineKey };
 };
 
-export const preparePacking = async (order, operatorId, stationId) => {
+export const openPackingSession = async (order, operatorId, stationId) => {
   await ensurePackingIndexes();
   if (!/^[a-zA-Z0-9_-]{8,80}$/.test(stationId || '')) throw new PackingError('INVALID_STATION', 400);
   if (!order.demoOnly && !packableStatuses.has(order.status)) throw new PackingError('ORDER_NOT_PACKABLE');
@@ -112,30 +116,103 @@ export const preparePacking = async (order, operatorId, stationId) => {
     );
     if (!packing) throw new PackingError('ORDER_LOCKED');
   }
-  return sessionView(packing);
+  return toPackingSessionView(packing);
 };
 
-export const heartbeatPacking = async (sessionId, stationId, leaseVersion) => {
+export const renewPackingSessionLease = async (sessionId, stationId, leaseVersion) => {
   const packing = await PackingSession.findOneAndUpdate(
     { _id: sessionId, stationId, leaseVersion, leaseUntil: { $gt: new Date() } },
     { $set: { leaseUntil: new Date(Date.now() + LEASE_MS) } },
     { new: true }
   );
   if (!packing) throw new PackingError('LEASE_EXPIRED');
-  return sessionView(packing);
+  return toPackingSessionView(packing);
 };
 
-export const releasePacking = async (sessionId, stationId, leaseVersion) => {
+export const releasePackingSession = async (sessionId, stationId, leaseVersion) => {
   const packing = await PackingSession.findOneAndUpdate(
     { _id: sessionId, stationId, leaseVersion, leaseUntil: { $gt: new Date() } },
     { $set: { leaseUntil: new Date(0) }, $inc: { leaseVersion: 1 } },
     { new: true }
   );
   if (!packing) throw new PackingError('LEASE_EXPIRED');
-  return sessionView(packing);
+  return toPackingSessionView(packing);
 };
 
-export const scanProduct = async ({ sessionId, stationId, leaseVersion, clientEventId, barcode }) => {
+export const discardPackingAttempt = async (sessionId, stationId, leaseVersion) => {
+  if (!mongoose.isValidObjectId(sessionId)) throw new PackingError('INVALID_SESSION', 400);
+  const dbSession = await mongoose.startSession();
+  try {
+    let result;
+    await dbSession.withTransaction(async () => {
+      const packing = await PackingSession.findById(sessionId).session(dbSession);
+      if (!packing) throw new PackingError('SESSION_NOT_FOUND', 404);
+      if (packing.stationId !== stationId || packing.leaseVersion !== leaseVersion || packing.leaseUntil <= new Date()) {
+        throw new PackingError('LEASE_EXPIRED');
+      }
+      if (packing.video?.publicId) throw new PackingError('VIDEO_ALREADY_SAVED');
+      await ProductUnitAllocation.deleteMany({ sessionId: packing._id }, { session: dbSession });
+      await PackingScanEvent.deleteMany({ sessionId: packing._id }, { session: dbSession });
+      packing.scannedUnits = [];
+      packing.state = 'SCANNING';
+      packing.leaseUntil = new Date(0);
+      packing.leaseVersion += 1;
+      packing.version += 1;
+      await packing.save({ session: dbSession });
+      result = toPackingSessionView(packing);
+    });
+    return result;
+  } finally {
+    await dbSession.endSession();
+  }
+};
+
+export const removeScannedBarcodeFromPacking = async ({ sessionId, stationId, leaseVersion, barcode }) => {
+  if (!mongoose.isValidObjectId(sessionId)) throw new PackingError('INVALID_SESSION', 400);
+  if (!/^[a-zA-Z0-9_-]{8,80}$/.test(stationId || '')) throw new PackingError('INVALID_STATION', 400);
+  if (typeof barcode !== 'string' || !/^[A-Za-z0-9_-]{3,128}$/.test(barcode)) {
+    throw new PackingError('INVALID_BARCODE', 400);
+  }
+  const dbSession = await mongoose.startSession();
+  try {
+    let result;
+    await dbSession.withTransaction(async () => {
+      const packing = await PackingSession.findById(sessionId).session(dbSession);
+      if (!packing) throw new PackingError('SESSION_NOT_FOUND', 404);
+      if (packing.stationId !== stationId || packing.leaseVersion !== leaseVersion || packing.leaseUntil <= new Date()) {
+        throw new PackingError('LEASE_EXPIRED');
+      }
+      if (packing.video?.publicId) throw new PackingError('VIDEO_ALREADY_SAVED');
+      if (packing.sourceType === 'REAL') {
+        const order = await SalesOrder.findById(packing.orderId).select('updatedAt status').session(dbSession).lean();
+        if (!order || !packableStatuses.has(order.status) || !order.updatedAt || !packing.orderVersion ||
+            order.updatedAt.getTime() !== packing.orderVersion.getTime()) {
+          throw new PackingError('ORDER_CHANGED');
+        }
+      }
+      const scan = packing.scannedUnits.find((item) => item.barcode === barcode);
+      if (!scan) throw new PackingError('BARCODE_NOT_SCANNED');
+      const allocation = await ProductUnitAllocation.deleteOne({
+        sessionId: packing._id, sourceType: packing.sourceType, barcode,
+      }, { session: dbSession });
+      if (allocation.deletedCount !== 1) throw new PackingError('BARCODE_ALLOCATION_MISSING');
+      await PackingScanEvent.updateMany(
+        { sessionId: packing._id, barcode, result: 'ACCEPTED', reversedAt: null },
+        { $set: { reversedAt: new Date() } }, { session: dbSession }
+      );
+      packing.scannedUnits = packing.scannedUnits.filter((item) => item.barcode !== barcode);
+      packing.state = 'SCANNING';
+      packing.version += 1;
+      await packing.save({ session: dbSession });
+      result = toPackingSessionView(packing);
+    });
+    return result;
+  } finally {
+    await dbSession.endSession();
+  }
+};
+
+export const scanProductBarcodeForPacking = async ({ sessionId, stationId, leaseVersion, clientEventId, barcode }) => {
   await ensurePackingIndexes();
   if (!mongoose.isValidObjectId(sessionId)) throw new PackingError('INVALID_SESSION', 400);
   if (!/^[a-zA-Z0-9_-]{8,80}$/.test(stationId || '')) throw new PackingError('INVALID_STATION', 400);
@@ -144,7 +221,9 @@ export const scanProduct = async ({ sessionId, stationId, leaseVersion, clientEv
   const duplicate = await PackingScanEvent.findOne({ sessionId, clientEventId });
   if (duplicate) {
     const packing = await PackingSession.findById(sessionId);
-    return { result: duplicate.result, reason: duplicate.reason, duplicate: true, session: sessionView(packing) };
+    return { result: duplicate.reversedAt ? 'REJECTED' : duplicate.result,
+      reason: duplicate.reversedAt ? 'BARCODE_REMOVED' : duplicate.reason,
+      duplicate: true, session: toPackingSessionView(packing) };
   }
   const dbSession = await mongoose.startSession();
   try {
@@ -164,7 +243,7 @@ export const scanProduct = async ({ sessionId, stationId, leaseVersion, clientEv
         }
       }
       const unit = await findProductUnit(packing.sourceType, barcode, dbSession);
-      const decision = decideScan(packing, unit, barcode);
+      const decision = evaluatePackingBarcodeScan(packing, unit, barcode);
       let reason = decision.reason;
       if (!reason) {
         const allocation = await ProductUnitAllocation.findOne({ sourceType: packing.sourceType, barcode }).session(dbSession);
@@ -187,7 +266,7 @@ export const scanProduct = async ({ sessionId, stationId, leaseVersion, clientEv
         sessionId: packing._id, clientEventId, barcode, result: reason ? 'REJECTED' : 'ACCEPTED',
         reason, lineKey: decision.lineKey, phase: 'PRE_RECORD', videoOffsetMs: null,
       }], { session: dbSession });
-      response = { result: reason ? 'REJECTED' : 'ACCEPTED', reason, duplicate: false, session: sessionView(packing) };
+      response = { result: reason ? 'REJECTED' : 'ACCEPTED', reason, duplicate: false, session: toPackingSessionView(packing) };
     });
     return response;
   } catch (error) {
@@ -195,7 +274,9 @@ export const scanProduct = async ({ sessionId, stationId, leaseVersion, clientEv
       const duplicateEvent = await PackingScanEvent.findOne({ sessionId, clientEventId });
       if (duplicateEvent) {
         const packing = await PackingSession.findById(sessionId);
-        return { result: duplicateEvent.result, reason: duplicateEvent.reason, duplicate: true, session: sessionView(packing) };
+        return { result: duplicateEvent.reversedAt ? 'REJECTED' : duplicateEvent.result,
+          reason: duplicateEvent.reversedAt ? 'BARCODE_REMOVED' : duplicateEvent.reason,
+          duplicate: true, session: toPackingSessionView(packing) };
       }
       throw new PackingError('BARCODE_ASSIGNED_OTHER_ORDER');
     }

@@ -20,12 +20,13 @@ test('video upload dở sau refresh được kiểm tra lại; lỗi xác thực
   assert.equal(failure.nextRetryAt, null);
 });
 
-test('SYNC_PENDING giữ trạng thái và backoff; dừng tự thử sau giới hạn', () => {
+test('SYNC_PENDING giữ trạng thái và tiếp tục thử lỗi tạm thời sau giới hạn ban đầu', () => {
   const now = Date.now();
   const pending = retryPatch({ status: 'SYNC_PENDING', retryCount: 0 }, 'DATABASE_SYNC_FAILED', now);
   assert.equal(pending.status, 'SYNC_PENDING');
   assert.equal(Date.parse(pending.nextRetryAt) - now, 5000);
   const exhausted = retryPatch({ status: 'SYNC_PENDING', retryCount: 5 }, 'DATABASE_SYNC_FAILED', now);
-  assert.equal(exhausted.autoRetry, false);
-  assert.equal(exhausted.nextRetryAt, null);
+  assert.equal(exhausted.autoRetry, true);
+  assert.equal(Date.parse(exhausted.nextRetryAt) - now, 60_000);
+  assert.equal(selectRunnableJobs([{ ...exhausted, createdAt: '2026-01-01' }], now + 60_000, 2).length, 1);
 });

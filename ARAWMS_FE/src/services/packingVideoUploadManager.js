@@ -1,8 +1,8 @@
-import { orderQrService } from './orderQrService';
+import { packingSessionService } from './packingSessionService';
 import {
-  cleanupCompletedFiles, completePendingVideo, listPendingVideos, migrateLegacyVideos,
+  cleanupCompletedFiles, completePendingVideo, deletePendingVideo, listPendingVideos, migrateLegacyVideos,
   readPendingVideo, storageEstimate, updatePendingVideo,
-} from './packingVideoQueue';
+} from './localPackingVideoQueue';
 import { retryPatch, selectRunnableJobs } from './packingQueuePolicy';
 
 const LOCK_NAME = 'arawms-packing-video-upload';
@@ -14,7 +14,7 @@ const permanentErrors = new Set([
   'AUTH_REQUIRED',
 ]);
 
-class PackingUploadManager {
+class PackingVideoUploadManager {
   listeners = new Set();
   running = false;
   busy = false;
@@ -43,8 +43,20 @@ class PackingUploadManager {
   async start() {
     if (this.running) return;
     this.running = true;
+    // The warehouse screen no longer exposes pause; clear a value saved by older versions.
+    localStorage.removeItem(PAUSE_KEY);
     try {
       await migrateLegacyVideos();
+      // Older versions stopped transient retries after five failures. Resume those jobs on reopen.
+      for (const job of await listPendingVideos()) {
+        if (job.autoRetry !== false || !['FAILED', 'SYNC_PENDING'].includes(job.status)) continue;
+        if (['VIDEO_TOO_LARGE', 'UNSUPPORTED_VIDEO_TYPE', 'VIDEO_ALREADY_SAVED',
+          'FORBIDDEN', 'LOCAL_FILE_MISSING', 'ORDER_CHANGED'].includes(job.lastError)) continue;
+        await updatePendingVideo(job.recordingId, {
+          status: job.status === 'FAILED' ? 'QUEUED' : 'SYNC_PENDING',
+          autoRetry: true, retryCount: 0, nextRetryAt: null,
+        });
+      }
       await cleanupCompletedFiles();
       await this.refresh();
       await navigator.storage?.persist?.().catch(() => {});
@@ -90,6 +102,24 @@ class PackingUploadManager {
       if (job.status === 'FAILED' || job.status === 'SYNC_PENDING') await this.retry(job.recordingId);
     }
     this.pump();
+  }
+
+  async remove(recordingId) {
+    const wasPaused = localStorage.getItem(PAUSE_KEY) === '1';
+    await this.pause();
+    try {
+      const remove = async () => {
+        const job = (await listPendingVideos()).find((item) => item.recordingId === recordingId);
+        if (!job) return;
+        if (job.status === 'UPLOADING') throw new Error('Video đang upload; hãy đợi upload kết thúc rồi xóa.');
+        await deletePendingVideo(job);
+      };
+      if (navigator.locks?.request) await navigator.locks.request(LOCK_NAME, remove);
+      else await remove();
+      await this.refresh();
+    } finally {
+      if (!wasPaused) await this.resume();
+    }
   }
 
   async pump() {
@@ -144,7 +174,7 @@ class PackingUploadManager {
       await updatePendingVideo(job.recordingId, { status: job.status === 'SYNC_PENDING' ? 'SYNC_PENDING' : 'UPLOADING', lastError: null });
       await this.refresh();
       try {
-        const result = await orderQrService.syncVideo(job);
+        const result = await packingSessionService.syncRecording(job);
         if (result.data.status === 'COMPLETED') {
           await completePendingVideo(job);
           return;
@@ -166,7 +196,7 @@ class PackingUploadManager {
         }
         throw error;
       });
-      const result = await orderQrService.uploadVideo(job, blob, (event) => {
+      const result = await packingSessionService.uploadRecording(job, blob, (event) => {
         if (!event.total) return;
         const now = Date.now();
         if (now - (this.lastProgressAt.get(job.recordingId) || 0) < 250 && event.loaded < event.total) return;
@@ -193,4 +223,4 @@ class PackingUploadManager {
   }
 }
 
-export const packingUploadManager = new PackingUploadManager();
+export const packingVideoUploadManager = new PackingVideoUploadManager();
