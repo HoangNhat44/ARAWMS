@@ -13,6 +13,7 @@ export const ENV = {
   JWT_SECRET: process.env.JWT_SECRET || randomBytes(48).toString('hex'),
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
   CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:5173',
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
 
   // GHN Configuration
   GHN: {

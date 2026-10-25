@@ -30,7 +30,7 @@ export const validatePassword = (req, res, next) => {
   if (!onlyFields(body, ['currentPassword', 'newPassword', 'confirmPassword'])
     || typeof body.currentPassword !== 'string' || !body.currentPassword
     || Buffer.byteLength(body.currentPassword, 'utf8') > 72
-    || typeof body.newPassword !== 'string' || body.newPassword.length < 8
+    || typeof body.newPassword !== 'string' || !body.newPassword.trim() || body.newPassword.length < 8
     || Buffer.byteLength(body.newPassword, 'utf8') > 72) {
     return next(httpError(400, 'Mật khẩu mới phải có ít nhất 8 ký tự và tối đa 72 byte.'));
   }

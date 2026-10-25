@@ -13,6 +13,9 @@ const userSchema = new Schema(
     phone: { type: String, trim: true },
     passwordHash: { type: String, select: false },
     googleId: { type: String, sparse: true, index: true },
+    googleEmail: { type: String, lowercase: true, trim: true },
+    googleLinkedAt: { type: Date },
+    googleLinkVersion: { type: Number, default: 0, select: false },
     roleId: { type: Schema.Types.ObjectId, ref: 'Role', required: true, index: true },
     roleCode: { type: String, enum: ROLES, required: true, index: true },
     status: { type: String, enum: ['ACTIVE', 'LOCKED'], default: 'ACTIVE', index: true },
@@ -36,6 +39,10 @@ const userSchema = new Schema(
 );
 
 userSchema.plugin(baseSchemaPlugin);
+userSchema.index({ googleId: 1 }, {
+  name: 'linked_google_identity_unique', unique: true,
+  partialFilterExpression: { googleId: { $type: 'string' } },
+});
 
 const User = mongoose.model('User', userSchema);
 export default User;

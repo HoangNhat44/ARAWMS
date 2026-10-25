@@ -19,7 +19,6 @@ export const updateProfile = async (req) => {
 };
 
 export const changePassword = async (req) => {
-  if (req.user.roleCode === 'OWNER') throw httpError(403, 'Đổi mật khẩu chỉ áp dụng cho tài khoản nhân viên.');
   const user = await User.findOne({ _id: req.user._id, status: 'ACTIVE', isDeleted: { $ne: true } }).select('+passwordHash');
   if (!user?.passwordHash || !await bcrypt.compare(req.passwordInput.currentPassword, user.passwordHash)) {
     throw httpError(400, 'Mật khẩu hiện tại không đúng.');

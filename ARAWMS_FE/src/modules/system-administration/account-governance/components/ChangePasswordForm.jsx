@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../../../hooks/useAuth';
 import { accountService } from '../services/accountService';
+import { passwordError } from '../../authentication/validation/authValidation';
 
 export default function ChangePasswordForm() {
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -13,9 +14,12 @@ export default function ChangePasswordForm() {
   const navigate = useNavigate();
   const submit = async (event) => {
     event.preventDefault();
+    if (busy) return;
+    const invalidPassword = passwordError(form.currentPassword, 'Mật khẩu hiện tại') || passwordError(form.newPassword, 'Mật khẩu mới');
+    if (invalidPassword) return setError(invalidPassword);
+    if (!form.newPassword.trim() || form.newPassword.length < 8) return setError('Mật khẩu mới phải có ít nhất 8 ký tự.');
     if (form.newPassword !== form.confirmPassword) return setError('Xác nhận mật khẩu mới không khớp.');
     if (form.newPassword === form.currentPassword) return setError('Mật khẩu mới phải khác mật khẩu hiện tại.');
-    if (new TextEncoder().encode(form.newPassword).length > 72) return setError('Mật khẩu mới không được vượt quá 72 byte.');
     setBusy(true); setError('');
     try {
       const response = await accountService.changePassword(form);

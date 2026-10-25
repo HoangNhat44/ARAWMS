@@ -10,20 +10,16 @@ import { recordAccountActivity } from '../systemAudit.js';
 // Match bcrypt work even when the identifier does not exist.
 const dummyHash = bcrypt.hashSync('arawms-invalid-credential', 12);
 
-export const login = async ({ identifier, password, rememberMe }, req) => {
+export const verifyCredentials = async ({ identifier, password }) => {
   const user = await User.findOne({
     isDeleted: { $ne: true },
     $or: [{ email: identifier.toLowerCase() }, { employeeCode: identifier.toUpperCase() }],
-  }).select('+passwordHash +failedLoginAttempts +loginLockedUntil')
+  }).select('+passwordHash +failedLoginAttempts +loginLockedUntil +googleLinkVersion')
     .populate('roleId', 'roleName roleCode isActive isDeleted');
   const validPassword = await bcrypt.compare(password, user?.passwordHash || dummyHash);
   if (!user || user.status !== 'ACTIVE' || !user.roleId?.isActive || user.roleId.isDeleted
     || user.roleId.roleCode !== user.roleCode) {
     throw httpError(401, 'Thông tin đăng nhập không đúng hoặc tài khoản không được phép truy cập.');
-  }
-  // Owner authentication will be implemented separately through authorized Google accounts.
-  if (user.roleCode === 'OWNER') {
-    throw httpError(403, 'Đăng nhập dành cho Owner chưa được triển khai. Vui lòng sử dụng tài khoản nhân viên.');
   }
   if (user.loginLockedUntil && user.loginLockedUntil > new Date()) {
     throw httpError(429, 'Tài khoản tạm khóa do nhập sai mật khẩu. Vui lòng thử lại sau 30 phút.');
@@ -49,6 +45,10 @@ export const login = async ({ identifier, password, rememberMe }, req) => {
     }
     throw httpError(401, 'Thông tin đăng nhập không đúng hoặc tài khoản không được phép truy cập.');
   }
+  return user;
+};
+
+export const createSession = async (user, rememberMe, req, method = 'PASSWORD') => {
   const sessionId = randomUUID();
   const lifetime = rememberMe ? 7 * 24 * 60 * 60 : 8 * 60 * 60;
   const expiresAt = new Date(Date.now() + lifetime * 1000);
@@ -56,16 +56,21 @@ export const login = async ({ identifier, password, rememberMe }, req) => {
     subject: String(user._id), expiresIn: lifetime, algorithm: 'HS256', issuer: 'arawms', audience: 'arawms-web',
   });
   const updated = await User.findOneAndUpdate({
-    _id: user._id, status: 'ACTIVE', isDeleted: { $ne: true }, passwordHash: user.passwordHash, roleCode: user.roleCode,
+    _id: user._id, status: 'ACTIVE', isDeleted: { $ne: true }, roleCode: user.roleCode,
+    ...(method === 'GOOGLE' ? { googleId: user.googleId } : { passwordHash: user.passwordHash }),
     $or: [{ loginLockedUntil: { $lte: new Date() } }, { loginLockedUntil: null }],
   }, {
     $set: { lastLoginAt: new Date(), failedLoginAttempts: 0, loginLockedUntil: null },
     $push: { sessions: { $each: [{ sessionId, expiresAt }], $slice: -10 } },
   }, { new: true }).populate('roleId', 'roleName roleCode isActive isDeleted');
-  if (!updated) throw httpError(401, 'Tài khoản đã thay đổi. Vui lòng đăng nhập lại.');
-  await recordAccountActivity(req, updated, 'Authentication', 'LOGIN');
+  if (!updated || !updated.roleId?.isActive || updated.roleId.isDeleted || updated.roleId.roleCode !== updated.roleCode) {
+    throw httpError(401, 'Tài khoản đã thay đổi. Vui lòng đăng nhập lại.');
+  }
+  await recordAccountActivity(req, updated, 'Authentication', method === 'GOOGLE' ? 'GOOGLE_LOGIN' : 'LOGIN');
   return { user: accountProfile(updated), token, expiresAt };
 };
+
+export const login = async (input, req) => createSession(await verifyCredentials(input), input.rememberMe, req);
 
 export const logout = async (req) => {
   await User.updateOne({ _id: req.user._id }, {

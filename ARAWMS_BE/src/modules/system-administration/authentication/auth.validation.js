@@ -3,6 +3,7 @@ import { httpError } from '../../../common/utils/httpError.js';
 export const validateLogin = (req, res, next) => {
   const body = req.body;
   if (!body || typeof body !== 'object' || Array.isArray(body)
+    || Object.keys(body).some((key) => !['usernameOrEmail', 'password', 'rememberMe'].includes(key))
     || typeof body.usernameOrEmail !== 'string' || !body.usernameOrEmail.trim()
     || body.usernameOrEmail.trim().length > 254
     || typeof body.password !== 'string' || !body.password

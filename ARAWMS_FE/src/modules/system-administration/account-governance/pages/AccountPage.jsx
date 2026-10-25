@@ -5,6 +5,7 @@ import LoadingSpinner from '../../../../components/common/LoadingSpinner';
 import { accountService } from '../services/accountService';
 import ProfileForm from '../components/ProfileForm';
 import ChangePasswordForm from '../components/ChangePasswordForm';
+import GoogleLinkCard from '../components/GoogleLinkCard';
 import '../../systemAdministration.css';
 
 export default function AccountPage() {
@@ -27,7 +28,8 @@ export default function AccountPage() {
       <h1><User size={30} />{profile.fullName}</h1><p>Quản lý thông tin cá nhân và bảo mật tài khoản.</p>
     </header>
     <div className="ara-account-grid"><ProfileForm user={profile} onSaved={saved} />
-      {user.roleCode !== 'OWNER' && <ChangePasswordForm />}
+      <ChangePasswordForm />
+      {user.roleCode === 'OWNER' && <GoogleLinkCard user={profile} onSaved={saved} />}
     </div>
   </div>;
 }

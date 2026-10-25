@@ -7,7 +7,11 @@ export default function ProfileForm({ user, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
   const submit = async (event) => {
-    event.preventDefault(); setBusy(true); setNotice(null);
+    event.preventDefault();
+    if (busy) return;
+    if (!form.fullName.trim() || form.fullName.trim().length > 100) return setNotice({ ok: false, text: 'Họ tên phải có từ 1 đến 100 ký tự.' });
+    if (form.phone.trim() && !/^\+?[0-9][0-9 ()-]{7,19}$/.test(form.phone.trim())) return setNotice({ ok: false, text: 'Số điện thoại không hợp lệ.' });
+    setBusy(true); setNotice(null);
     try {
       const response = await accountService.updateProfile({ fullName: form.fullName.trim(), phone: form.phone.trim() });
       onSaved(response.data.user); setNotice({ ok: true, text: response.message });
