@@ -1,3 +1,9 @@
+/*
+ * File: PackingSession.js
+ * Author: Duy Anh
+ * Date: 2026-10-19
+ * Description: Models station leases, scanned units, and packing progress.
+ */
 import mongoose from 'mongoose';
 
 const { Schema } = mongoose;
@@ -5,7 +11,12 @@ const { Schema } = mongoose;
 const snapshotItemSchema = new Schema({
   lineKey: { type: String, required: true },
   skuId: { type: Schema.Types.ObjectId, ref: 'Sku' },
-  warehouseId: { type: Schema.Types.ObjectId, ref: 'Config' },
+  warehouseId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation' },
+  pickAllocations: [{
+    batchId: { type: Schema.Types.ObjectId, ref: 'FinishedGoodsBatch' },
+    locationId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation' },
+    allocatedQty: Number,
+  }],
   variantId: { type: String },
   skuCode: { type: String },
   name: { type: String },
@@ -15,6 +26,7 @@ const snapshotItemSchema = new Schema({
 const scannedUnitSchema = new Schema({
   barcode: { type: String, required: true },
   lineKey: { type: String, required: true },
+  batchId: { type: Schema.Types.ObjectId, ref: 'FinishedGoodsBatch' },
   scannedAt: { type: Date, required: true },
 }, { _id: false });
 
@@ -43,7 +55,7 @@ const packingSessionSchema = new Schema({
   version: { type: Number, required: true, default: 0 },
 }, { timestamps: true, collection: 'packing_sessions' });
 
-// Một phiên soạn hàng hiện hành cho mỗi đơn; repack sẽ cần revision/attempt riêng.
+// Keep one current session per order; repacking will require a separate attempt revision.
 packingSessionSchema.index({ sourceType: 1, orderKey: 1 }, { unique: true });
 
 export default mongoose.model('PackingSession', packingSessionSchema);

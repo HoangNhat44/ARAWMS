@@ -1,3 +1,9 @@
+/*
+ * File: packingVerification.routes.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Defines packing session, barcode, and video endpoints.
+ */
 import express from 'express';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { sendError } from '../../../common/utils/responseHandler.js';
@@ -17,7 +23,7 @@ import {
 
 const router = express.Router();
 
-// All routes require authentication
+// Authenticate every route; packing actions also require warehouse staff access.
 router.use(authenticate);
 
 router.post('/product-units/register', registerProductUnit);

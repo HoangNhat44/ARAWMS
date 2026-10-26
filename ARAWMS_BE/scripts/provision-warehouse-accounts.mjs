@@ -1,3 +1,9 @@
+/*
+ * File: provision-warehouse-accounts.mjs
+ * Author: Duy Anh
+ * Date: 2026-10-22
+ * Description: Creates warehouse manager and staff accounts.
+ */
 import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
@@ -17,6 +23,7 @@ if (!process.env.MONGODB_URI) throw new Error('Thiếu MONGODB_URI');
 try {
   await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 10000 });
 
+  // Refuse conflicting employee codes, emails, or roles before creating either account.
   const existing = await User.find({ $or: accounts.flatMap(({ employeeCode, email }) => [{ employeeCode }, { email }]) }).lean();
   for (const account of accounts) {
     const matching = existing.filter((user) => user.employeeCode === account.employeeCode || user.email === account.email);
@@ -25,6 +32,7 @@ try {
     }
   }
 
+  // Grant access to warehouses referenced by reservations or finished goods locations.
   const reservedIds = await SalesOrder.distinct('items.reservation.warehouseId');
   const locations = await WarehouseLocation.find({ isDeleted: { $ne: true } }).select('_id').lean();
   const warehouseIds = [...new Set([...reservedIds, ...locations.map((location) => location._id)].filter((id) => mongoose.isValidObjectId(id)).map(String))];
@@ -36,6 +44,7 @@ try {
     );
     if (!role.isActive || role.isDeleted) throw new Error(`Vai trò ${account.roleCode} không hoạt động`);
 
+    // Existing users keep their passwords; reruns only add missing warehouse access.
     if (existing.some((user) => user.employeeCode === account.employeeCode)) {
       await User.updateOne({ employeeCode: account.employeeCode }, { $addToSet: { warehouseIds: { $each: warehouseIds } } });
       console.log(`${account.roleCode}: ${account.employeeCode} (đã tồn tại; giữ nguyên mật khẩu)`);

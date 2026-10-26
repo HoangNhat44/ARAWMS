@@ -23,17 +23,13 @@ src/
 │   │   ├── order-qr-management/
 │   │   │   ├── orderQrManagement.controller.js
 │   │   │   ├── orderQrManagement.service.js
-│   │   │   ├── orderQrManagement.routes.js
-│   │   │   ├── orderQrManagement.validation.js
-│   │   │   └── orderQrManagement.test.js
+│   │   │   └── orderQrManagement.routes.js
 │   │   └── packing-verification/
 │   │       ├── packingVerification.controller.js
 │   │       ├── packingVerification.service.js
 │   │       ├── packingVerification.routes.js
-│   │       ├── packingVerification.validation.js
 │   │       ├── packingVideo.service.js
-│   │       ├── packingIndexes.js
-│   │       └── *.test.js
+│   │       └── packingIndexes.js
 │   └── [other domains]/
 └── routes/
     └── index.js          # Central route mounting
@@ -56,7 +52,6 @@ src/
 ### 2. Common Services
 Các services được share giữa nhiều modules đã được di chuyển vào `src/common/services/`:
 - `orderAccessService.js` - Authorization logic
-- `demoOrderService.js` - Demo order data
 - `productUnitService.js` - Product unit lookup
 
 ### 3. Models

@@ -1,3 +1,9 @@
+/*
+ * File: User.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Models employee accounts, roles, and warehouse assignments.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 import { ROLES } from '../common/constants/enums.js';

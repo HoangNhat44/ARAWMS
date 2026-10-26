@@ -1,9 +1,17 @@
+/*
+ * File: barcodePrint.js
+ * Author: Duy Anh
+ * Date: 2026-10-22
+ * Description: Generates printable Code 128 product barcodes.
+ */
 import { Code128Reader } from '@zxing/library';
 
+/** Encodes an uppercase unit barcode as a printable Code 128 SVG. */
 export const code128Svg = (value) => {
   if (!/^[A-Z0-9_-]{3,128}$/.test(value)) throw new Error('Barcode không hợp lệ');
   const patterns = Code128Reader.CODE_PATTERNS;
   const codes = [104, ...Array.from(value, (char) => char.charCodeAt(0) - 32)];
+  // Code 128 weights each data symbol by its one-based position after the start code.
   const checksum = codes.reduce((sum, code, index) => sum + (index === 0 ? code : code * index), 0) % 103;
   codes.push(checksum, 106);
   const runs = codes.flatMap((code) => Array.from(patterns[code]));
@@ -16,6 +24,7 @@ export const code128Svg = (value) => {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${x + 24}" height="116" viewBox="0 0 ${x + 24} 116"><rect width="100%" height="100%" fill="#fff"/><g fill="#000">${bars}</g><text x="50%" y="108" text-anchor="middle" font-family="Arial" font-size="14">${value}</text></svg>`;
 };
 
+/** Opens a print page containing one label for each received physical unit. */
 export const printBarcodes = (barcodes, tab = window.open('', '_blank')) => {
   if (!tab) throw new Error('Trình duyệt đang chặn cửa sổ in tem');
   const labels = barcodes.map((barcode) => `<article>${code128Svg(barcode)}</article>`).join('');

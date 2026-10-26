@@ -1,3 +1,9 @@
+/*
+ * File: SalesOrder.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Models sales orders, reserved picks, and fulfillment state.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 import { ORDER_STATUS, RECONCILIATION_STATUS } from '../common/constants/enums.js';
@@ -38,6 +44,11 @@ const salesOrderSchema = new Schema(
     orderType: { type: String, enum: ['DIRECT_SALES', 'EXCHANGE_ORDER'], default: 'DIRECT_SALES' },
     linkedReturnRequestId: { type: Schema.Types.ObjectId, ref: 'ReturnRequest', default: null },
     status: { type: String, enum: ORDER_STATUS, default: 'PENDING', index: true },
+    confirmedAt: Date,
+    statusHistory: [{
+      from: String, to: String,
+      by: { type: Schema.Types.ObjectId, ref: 'User' }, at: Date,
+    }],
     shippingRecipient: {
       name: String,
       phone: String,

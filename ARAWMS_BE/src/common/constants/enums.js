@@ -1,3 +1,9 @@
+/*
+ * File: enums.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Defines shared domain status and role values.
+ */
 /**
  * CENTRALIZED ENUMS FOR ARAWMS
  */

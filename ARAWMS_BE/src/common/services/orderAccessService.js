@@ -1,11 +1,18 @@
+/*
+ * File: orderAccessService.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Checks order visibility, QR issuance, and packing access.
+ */
 const hasRole = (user, role) => user.roles?.includes(role);
 const orderWarehouseIds = (order) => order.items.flatMap((item) => [
   item.reservation?.warehouseId,
   ...(item.fifoPickList || []).map((allocation) => allocation.locationId),
 ]).filter(Boolean).map(String);
 
+/** Allows warehouse users to view orders tied only to assigned locations. */
 export const canViewOrder = (user, order) => {
-  if (order.demoOnly) return true;
+  if (order.demoOnly) return false;
   if (hasRole(user, 'ADMIN')) return true;
   if (hasRole(user, 'SALES') && String(order.sellerId) === String(user._id)) return true;
   if (hasRole(user, 'WAREHOUSE_STAFF') || hasRole(user, 'WAREHOUSE_MANAGER')) {
@@ -16,18 +23,25 @@ export const canViewOrder = (user, order) => {
   return false;
 };
 
+/** Requires a warehouse staff member and complete FIFO batch allocations. */
 export const canPackOrder = (user, order) => {
   if (!hasRole(user, 'WAREHOUSE_STAFF')) return false;
-  if (order.demoOnly) return true;
-  return orderWarehouseIds(order).length > 0 && canViewOrder(user, order);
+  return order.items?.length > 0 && order.items.every((item) =>
+    item.fifoPickList?.length > 0 &&
+    item.fifoPickList.every((pick) => pick.batchId && pick.locationId && pick.allocatedQty > 0) &&
+    item.fifoPickList.reduce((total, pick) => total + pick.allocatedQty, 0) === (item.orderedQty ?? item.quantity)
+  ) && canViewOrder(user, order);
 };
 
+/** Restricts staff QR issuance to orders ready for packing or already packed. */
 export const canIssueQr = (user, order) => {
-  if (hasRole(user, 'WAREHOUSE_STAFF')) return canViewOrder(user, order);
-  if (order.demoOnly) return hasRole(user, 'ADMIN') || hasRole(user, 'SALES');
+  if (order.demoOnly) return false;
+  if (hasRole(user, 'WAREHOUSE_STAFF')) return order.status === 'PACKED'
+    ? canViewOrder(user, order) : canPackOrder(user, order);
   return hasRole(user, 'ADMIN') || (hasRole(user, 'SALES') && String(order.sellerId) === String(user._id));
 };
 
+/** Allows only the assigned seller or an administrator to confirm an order. */
 export const canConfirmOrder = (user, order) => {
   if (order.demoOnly) return false;
   return hasRole(user, 'ADMIN') || (hasRole(user, 'SALES') && String(order.sellerId) === String(user._id));

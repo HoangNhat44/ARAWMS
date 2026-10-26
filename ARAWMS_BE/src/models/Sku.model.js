@@ -1,3 +1,9 @@
+/*
+ * File: Sku.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Models product variants, prices, and stock balances.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

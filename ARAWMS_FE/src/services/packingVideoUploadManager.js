@@ -1,3 +1,9 @@
+/*
+ * File: packingVideoUploadManager.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Coordinates background recording uploads and retries.
+ */
 import { packingSessionService } from './packingSessionService';
 import {
   cleanupCompletedFiles, completePendingVideo, deletePendingVideo, listPendingVideos, migrateLegacyVideos,
@@ -11,7 +17,8 @@ const CONCURRENCY = Math.max(1, Math.min(8, Number(import.meta.env.VITE_PACKING_
 const permanentErrors = new Set([
   'CLOUDINARY_AUTH_FAILED', 'CLOUDINARY_NOT_CONFIGURED', 'UNSUPPORTED_VIDEO_TYPE',
   'VIDEO_TOO_LARGE', 'VIDEO_ALREADY_SAVED', 'FORBIDDEN', 'LOCAL_FILE_MISSING',
-  'AUTH_REQUIRED',
+  'AUTH_REQUIRED', 'SCAN_INCOMPLETE', 'UNIT_NOT_RESERVED', 'UNIT_UNAVAILABLE',
+  'BATCH_STOCK_CHANGED', 'SKU_STOCK_CHANGED', 'LOCATION_STOCK_CHANGED',
 ]);
 
 class PackingVideoUploadManager {
@@ -23,6 +30,7 @@ class PackingVideoUploadManager {
   progress = new Map();
   snapshot = { jobs: [], usage: 0, quota: 0, online: navigator.onLine, paused: localStorage.getItem(PAUSE_KEY) === '1', error: '' };
 
+  /** Subscribes a listener to upload queue snapshots. */
   subscribe(listener) {
     this.listeners.add(listener);
     listener(this.snapshot);
@@ -31,6 +39,7 @@ class PackingVideoUploadManager {
 
   emit() { for (const listener of this.listeners) listener(this.snapshot); }
 
+  /** Refreshes jobs and browser storage usage for subscribed views. */
   async refresh() {
     const [jobs, { usage, quota }] = await Promise.all([listPendingVideos(), storageEstimate()]);
     this.snapshot = {
@@ -40,6 +49,7 @@ class PackingVideoUploadManager {
     this.emit();
   }
 
+  /** Starts background queue processing for an authenticated session. */
   async start() {
     if (this.running) return;
     this.running = true;
@@ -72,6 +82,7 @@ class PackingVideoUploadManager {
     this.pump();
   }
 
+  /** Stops queue timers and listeners when the authenticated runner unmounts. */
   stop() {
     this.running = false;
     clearInterval(this.timer);
@@ -86,6 +97,7 @@ class PackingVideoUploadManager {
   async pause() { localStorage.setItem(PAUSE_KEY, '1'); await this.refresh(); }
   async resume() { localStorage.removeItem(PAUSE_KEY); await this.refresh(); this.pump(); }
 
+  /** Retries a failed recording or pending metadata synchronization. */
   async retry(recordingId) {
     const job = (await listPendingVideos()).find((item) => item.recordingId === recordingId);
     if (!job || job.status === 'COMPLETED') return;
@@ -104,6 +116,7 @@ class PackingVideoUploadManager {
     this.pump();
   }
 
+  /** Pauses processing before removing a local recording and its job. */
   async remove(recordingId) {
     const wasPaused = localStorage.getItem(PAUSE_KEY) === '1';
     await this.pause();
@@ -122,6 +135,7 @@ class PackingVideoUploadManager {
     }
   }
 
+  /** Acquires a cross-tab lock before processing the shared upload queue. */
   async pump() {
     if (!this.running || this.busy || !navigator.onLine || localStorage.getItem(PAUSE_KEY) === '1') return;
     this.busy = true;
@@ -142,6 +156,7 @@ class PackingVideoUploadManager {
     }
   }
 
+  /** Uses a renewed localStorage lease when Web Locks are unavailable. */
   async withLocalLease(work) {
     const key = `${LOCK_NAME}-lease`;
     const owner = crypto.randomUUID();
@@ -162,6 +177,7 @@ class PackingVideoUploadManager {
     }
   }
 
+  /** Processes due recordings up to the configured concurrency limit. */
   async processBatch() {
     const jobs = selectRunnableJobs(await listPendingVideos(), Date.now(), CONCURRENCY);
     await Promise.all(jobs.map((job) => this.processJob(job)));
@@ -169,6 +185,7 @@ class PackingVideoUploadManager {
     if (jobs.length && this.running) queueMicrotask(() => this.pump());
   }
 
+  /** Checks server state first, then uploads or retries metadata synchronization. */
   async processJob(job) {
     try {
       await updatePendingVideo(job.recordingId, { status: job.status === 'SYNC_PENDING' ? 'SYNC_PENDING' : 'UPLOADING', lastError: null });
@@ -181,7 +198,7 @@ class PackingVideoUploadManager {
         }
         await updatePendingVideo(job.recordingId, {
           ...retryPatch({ ...job, status: 'SYNC_PENDING' }, result.data.reason || 'DATABASE_SYNC_FAILED',
-            Date.now(), result.data.reason === 'ORDER_CHANGED'),
+            Date.now(), permanentErrors.has(result.data.reason) || result.data.reason === 'ORDER_CHANGED'),
           cloudinaryPublicId: result.data.publicId,
         });
         return;
@@ -209,7 +226,7 @@ class PackingVideoUploadManager {
       } else {
         await updatePendingVideo(job.recordingId, {
           ...retryPatch({ ...job, status: 'SYNC_PENDING' }, result.data.reason || 'DATABASE_SYNC_FAILED',
-            Date.now(), result.data.reason === 'ORDER_CHANGED'),
+            Date.now(), permanentErrors.has(result.data.reason) || result.data.reason === 'ORDER_CHANGED'),
           cloudinaryPublicId: result.data.publicId,
         });
       }

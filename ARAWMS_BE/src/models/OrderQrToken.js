@@ -1,3 +1,9 @@
+/*
+ * File: OrderQrToken.js
+ * Author: Duy Anh
+ * Date: 2026-10-19
+ * Description: Stores revocable QR tokens for real sales orders.
+ */
 import mongoose from 'mongoose';
 
 const { Schema } = mongoose;

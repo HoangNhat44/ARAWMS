@@ -1,3 +1,9 @@
+/*
+ * File: WarehousePackingPage.jsx
+ * Author: Duy Anh
+ * Date: 2026-10-19
+ * Description: Runs order QR scans, unit scans, and packing recordings.
+ */
 import { useEffect, useRef, useState } from 'react';
 import { packingSessionService } from '../services/packingSessionService';
 import { savePendingVideo, listPendingVideos, storageEstimate } from '../services/localPackingVideoQueue';
@@ -14,7 +20,8 @@ function Detail({ label, value }) {
   if (value == null || value === '') return null;
   return <div><span style={{ color: 'var(--ara-text-muted)' }}>{label}: </span><strong>{value}</strong></div>;
 }
-const randomId = (prefix) => {
+/** Creates an unpredictable ID for the station or a recording retry key. */
+const createRandomPackingId = (prefix) => {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return `${prefix}_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
@@ -35,6 +42,12 @@ const reasons = {
   STATION_BUSY: 'Bàn này đang giữ một đơn khác. Hãy kết thúc đơn hiện tại trước.',
   LEASE_EXPIRED: 'Phiên tại bàn đã hết hạn. Quét lại QR để tiếp tục.',
   ORDER_CHANGED: 'Nội dung đơn đã thay đổi. Cần đối soát lại trước khi quét tiếp.',
+  ORDER_NOT_PACKABLE: 'Đơn chưa được phân bổ đủ lô và vị trí kho để đóng hàng.',
+  SCAN_INCOMPLETE: 'Chưa quét đủ hàng của đơn. Hãy kiểm tra lại phiên đóng hàng.',
+  UNIT_NOT_RESERVED: 'Tem hàng không thuộc lô đã giữ cho đơn này.',
+  BATCH_STOCK_CHANGED: 'Tồn hoặc số giữ chỗ của lô đã thay đổi. Hãy báo quản lý kho đối soát.',
+  SKU_STOCK_CHANGED: 'Tồn hoặc số giữ chỗ của SKU đã thay đổi. Hãy báo quản lý kho đối soát.',
+  LOCATION_STOCK_CHANGED: 'Số lượng tại vị trí kho chưa khớp với lô. Hãy báo quản lý kho đối soát.',
   SCAN_CLOSED: 'Đơn đã đủ hàng; không nhận thêm barcode.',
   CLOUDINARY_NOT_CONFIGURED: 'Chưa cấu hình Cloudinary trên backend. Video vẫn chờ tải lên trên thiết bị này.',
   VIDEO_TOO_LARGE: 'Video vượt giới hạn 512 MB. Cần quay đoạn ngắn hơn.',
@@ -43,6 +56,7 @@ const reasons = {
   AUTH_REQUIRED: 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại rồi thử upload video.',
 };
 
+/** Displays recording upload progress, local storage use, and actionable errors. */
 function VideoUploadStatusPanel({ queue }) {
   const jobs = queue.jobs;
   const active = jobs.filter((job) => job.status !== 'COMPLETED');
@@ -69,10 +83,11 @@ function VideoUploadStatusPanel({ queue }) {
   </section>;
 }
 
+// Keep the station ID stable within this tab so the backend lease identifies one station.
 const stationId = (() => {
   const saved = sessionStorage.getItem('arawms_packing_station_id');
   if (saved) return saved;
-  const id = randomId('station');
+  const id = createRandomPackingId('station');
   sessionStorage.setItem('arawms_packing_station_id', id);
   return id;
 })();
@@ -103,14 +118,17 @@ export default function WarehousePackingPage() {
   const removedCameraBarcodeRef = useRef('');
   const noticeTimerRef = useRef(null);
 
+  // Subscribe to the shared upload queue so progress updates appear in this view.
   useEffect(() => packingVideoUploadManager.subscribe(setQueue), []);
 
+  /** Displays a brief result for a scan without replacing persistent errors. */
   const showScanNotice = (value) => {
     clearTimeout(noticeTimerRef.current);
     setScanNotice(value);
     noticeTimerRef.current = setTimeout(() => setScanNotice(''), 3000);
   };
 
+  /** Stops QR or barcode scanning and invalidates pending camera requests. */
   const stopCamera = () => {
     cameraRequestRef.current += 1;
     controlsRef.current?.stop();
@@ -118,6 +136,7 @@ export default function WarehousePackingPage() {
     setCameraMode(null);
   };
 
+  // Preserve an active recording in the local queue when the page unmounts.
   useEffect(() => () => {
     cameraRequestRef.current += 1;
     const active = recorderRef.current;
@@ -150,6 +169,7 @@ export default function WarehousePackingPage() {
     return () => window.removeEventListener('beforeunload', warnBeforeLeaving);
   }, []);
 
+  /** Starts recording the current camera stream; persistence follows when recording stops. */
   const startRecording = async () => {
     if (!window.indexedDB || !navigator.storage?.getDirectory) throw new Error('Trình duyệt này cần IndexedDB và OPFS để lưu video an toàn.');
     const { usage, quota } = await storageEstimate();
@@ -177,10 +197,11 @@ export default function WarehousePackingPage() {
       };
     });
     recorder.start(2000);
-    recorderRef.current = { recorder, done, recordingId: randomId('recording') };
+    recorderRef.current = { recorder, done, recordingId: createRandomPackingId('recording') };
     setRecording(true);
   };
 
+  /** Stops recording and queues the video in OPFS and IndexedDB. */
   const stopRecordingAndQueueVideo = async (activeSession) => {
     const active = recorderRef.current;
     if (!active) throw new Error('Video của đơn chưa được quay.');
@@ -195,6 +216,7 @@ export default function WarehousePackingPage() {
     packingVideoUploadManager.pump();
   };
 
+  /** Fetches an authorized saved recording for playback. */
   const viewSavedVideo = async () => {
     if (!session) return;
     setError('');
@@ -206,6 +228,7 @@ export default function WarehousePackingPage() {
     } catch (err) { setError(`Không xem được video: ${err.message}`); }
   };
 
+  // Renew the station lease each minute while its packing session is open.
   useEffect(() => {
     if (!session) return undefined;
     const timer = setInterval(async () => {
@@ -225,6 +248,7 @@ export default function WarehousePackingPage() {
     return () => clearInterval(timer);
   }, [session?.id, session?.leaseVersion]);
 
+  /** Finalizes the current recording before opening the next scanned order. */
   const openPackingOrderFromQr = async (value) => {
     if (busyRef.current) return;
     const qrValue = value.trim();
@@ -276,13 +300,14 @@ export default function WarehousePackingPage() {
     finally { busyRef.current = false; setBusy(false); }
   };
 
+  /** Scans a unit barcode and updates the session's accepted quantities. */
   const scanBarcode = async (value) => {
     const activeSession = sessionRef.current;
     if (!activeSession || busyRef.current) return;
     busyRef.current = true;
     const barcode = value.trim();
     const clientEventId = pendingScanRef.current?.barcode === barcode
-      ? pendingScanRef.current.id : randomId('event');
+      ? pendingScanRef.current.id : createRandomPackingId('event');
     pendingScanRef.current = { barcode, id: clientEventId };
     setBusy(true); setError(''); setMessage('');
     try {
@@ -302,6 +327,7 @@ export default function WarehousePackingPage() {
     finally { busyRef.current = false; setBusy(false); }
   };
 
+  /** Removes a scanned unit during recording so it can be replaced. */
   const removeScannedBarcode = async (barcode) => {
     const activeSession = sessionRef.current;
     if (!activeSession || !recording || busyRef.current) return;
@@ -320,6 +346,7 @@ export default function WarehousePackingPage() {
     finally { busyRef.current = false; setBusy(false); }
   };
 
+  /** Queues the recording before releasing the station lease. */
   const saveVideoAndReleaseOrder = async () => {
     if (!session) return;
     busyRef.current = true;
@@ -335,6 +362,7 @@ export default function WarehousePackingPage() {
     finally { busyRef.current = false; setBusy(false); }
   };
 
+  /** Discards the current attempt only when no video is awaiting upload. */
   const discardCurrentPackingAttempt = async () => {
     const activeSession = sessionRef.current;
     if (!activeSession || !recorderRef.current || busyRef.current) return;
@@ -357,6 +385,7 @@ export default function WarehousePackingPage() {
     finally { busyRef.current = false; setBusy(false); }
   };
 
+  /** Starts QR and Code 128 scanning while suppressing consecutive duplicate reads. */
   const startCamera = async () => {
     setError('');
     navigator.storage?.persist?.().catch(() => {});
@@ -422,7 +451,6 @@ export default function WarehousePackingPage() {
       </section>
       {order && <section style={panel}>
         <h2>2. Chi tiết đơn {order.orderCode}</h2>
-        {order.demoOnly && <p style={{ color: 'var(--ara-gold-hover)' }}>Đơn mẫu: file JSON không có tên, số điện thoại hoặc địa chỉ khách.</p>}
         <div className="packing-detail-grid">
           <Detail label="Mã đơn" value={order.orderCode} />
           <Detail label="Trạng thái" value={order.status} />

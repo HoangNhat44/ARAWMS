@@ -1,3 +1,9 @@
+/*
+ * File: ProductUnitAllocation.js
+ * Author: Duy Anh
+ * Date: 2026-10-19
+ * Description: Tracks the order assignment of each physical barcode.
+ */
 import mongoose from 'mongoose';
 
 const { Schema } = mongoose;

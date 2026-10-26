@@ -1,3 +1,9 @@
+/*
+ * File: ProductConfigurationPage.jsx
+ * Author: Duy Anh
+ * Date: 2026-10-22
+ * Description: Creates products manually or from Excel and edits existing product details.
+ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { productService } from '../services/productService';
@@ -35,10 +41,14 @@ export default function ProductConfigurationPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [importFile, setImportFile] = useState(null);
+  const [importPreview, setImportPreview] = useState(null);
 
+  // Load available products so the existing-product picker can search them.
   useEffect(() => {
     productService.list().then((response) => setProducts(response.data.products)).catch((requestError) => setError(requestError.message));
   }, []);
+  // Restore the product selected by a direct edit URL.
   useEffect(() => {
     if (!routeId) return;
     productService.getConfiguration(routeId).then((response) => {
@@ -62,7 +72,8 @@ export default function ProductConfigurationPage() {
   const activeCombinations = combinations.filter((item) => !excluded.includes(item.key));
   const matchingVariant = selected?.skus.find((sku) => variantKey(sku.color, sku.size) === variantKey(newVariant.color, newVariant.size));
 
-  const loadSelected = async (id) => {
+  /** Loads a product and its SKUs for editing or receiving selection. */
+  const loadProductConfiguration = async (id) => {
     setBusy(true); setError('');
     try {
       const response = await productService.getConfiguration(id);
@@ -79,7 +90,8 @@ export default function ProductConfigurationPage() {
     finally { setBusy(false); }
   };
 
-  const uploadFiles = async (productId, media) => {
+  /** Uploads product media while retaining failed files for retry. */
+  const uploadProductMediaFiles = async (productId, media) => {
     const failed = [];
     for (const item of media) {
       try {
@@ -94,7 +106,8 @@ export default function ProductConfigurationPage() {
     return failed;
   };
 
-  const saveNew = async (status) => {
+  /** Creates a product and its color and size SKUs before uploading media. */
+  const createProductConfiguration = async (status) => {
     if (busy) return;
     const variants = combinations.filter((item) => !excluded.includes(item.key)).map((item) => ({
       color: item.color, size: item.size, retailPrice: prices[item.key] === undefined || prices[item.key] === '' ? Number(catalog.basePrice) : Number(prices[item.key]),
@@ -109,9 +122,9 @@ export default function ProductConfigurationPage() {
       const product = response.data.product;
       const media = [files.image && { kind: 'image', file: files.image }, files.video && { kind: 'video', file: files.video },
         ...files.additional.map((file) => ({ kind: 'additional', file }))].filter(Boolean);
-      const failed = await uploadFiles(product.id || product._id, media);
+      const failed = await uploadProductMediaFiles(product.id || product._id, media);
       setFiles({ image: null, video: null, additional: [] });
-      await loadSelected(product.id || product._id);
+      await loadProductConfiguration(product.id || product._id);
       productService.list().then((result) => setProducts(result.data.products)).catch(() => {});
       if (status === 'ACTIVE') setSelectedSkuIds(response.data.skus.map((sku) => sku.id || sku._id));
       setMode('existing');
@@ -122,24 +135,26 @@ export default function ProductConfigurationPage() {
     finally { setBusy(false); }
   };
 
-  const saveCatalog = async (status) => {
+  /** Saves an existing product's details and any new media. */
+  const updateProductCatalog = async (status) => {
     if (!selected || busy) return;
     setBusy(true); setError(''); setMessage('');
     try {
       await productService.updateConfiguration(selected.product.id || selected.product._id, { ...catalog, basePrice: Number(catalog.basePrice), status });
       const media = [files.image && { kind: 'image', file: files.image }, files.video && { kind: 'video', file: files.video },
         ...files.additional.map((file) => ({ kind: 'additional', file }))].filter(Boolean);
-      const failed = await uploadFiles(selected.product.id || selected.product._id, media);
+      const failed = await uploadProductMediaFiles(selected.product.id || selected.product._id, media);
       setFiles({ image: null, video: null, additional: [] });
       const previouslySelected = selectedSkuIds;
-      await loadSelected(selected.product.id || selected.product._id);
+      await loadProductConfiguration(selected.product.id || selected.product._id);
       setSelectedSkuIds(previouslySelected);
       setMessage(failed.length ? 'Đã lưu thông tin; một số tệp chưa tải lên.' : 'Đã cập nhật thông tin sản phẩm.');
     } catch (requestError) { setError(requestError.message); }
     finally { setBusy(false); }
   };
 
-  const addVariant = async () => {
+  /** Adds new color and size variants and selects a newly created SKU. */
+  const addProductVariant = async () => {
     if (!selected || busy) return;
     setBusy(true); setError('');
     try {
@@ -148,7 +163,7 @@ export default function ProductConfigurationPage() {
         retailPrice: newVariant.retailPrice === '' ? undefined : Number(newVariant.retailPrice),
       }]);
       const previouslySelected = selectedSkuIds;
-      await loadSelected(selected.product.id || selected.product._id);
+      await loadProductConfiguration(selected.product.id || selected.product._id);
       setSelectedSkuIds([...previouslySelected, ...response.data.skus.map((sku) => sku.id || sku._id)]);
       setNewVariant({ color: '', size: 'M', retailPrice: '' });
       setShowVariantPanel(false);
@@ -157,7 +172,8 @@ export default function ProductConfigurationPage() {
     finally { setBusy(false); }
   };
 
-  const startNew = () => {
+  /** Resets the form and starts a new product creation request. */
+  const startNewProduct = () => {
     requestId.current = crypto.randomUUID();
     draftRef.current = null;
     setMode('new'); setSelected(null); setSelectedSkuIds([]);
@@ -166,7 +182,35 @@ export default function ProductConfigurationPage() {
     setError(''); setMessage(''); setShowCombinations(false); setShowFieldErrors(false);
   };
 
-  const saveSkuPrice = async (sku) => {
+  /** Keeps the reviewed workbook separate from the write request. */
+  const previewExcelImport = async () => {
+    if (!importFile || busy) return;
+    setBusy(true); setError(''); setMessage(''); setImportPreview(null);
+    try {
+      const response = await productService.previewImport(importFile);
+      setImportPreview(response.data);
+    } catch (requestError) { setError(requestError.message); }
+    finally { setBusy(false); }
+  };
+
+  /** Refreshes the catalog after the server commits the import. */
+  const submitExcelImport = async () => {
+    if (!importFile || !importPreview || importPreview.errors.length || busy) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const response = await productService.importExcel(importFile);
+      const result = await productService.list();
+      setProducts(result.data.products);
+      setImportFile(null); setImportPreview(null);
+      setMessage(`Đã import ${response.data.productCount} sản phẩm và ${response.data.variantCount} biến thể.`);
+    } catch (requestError) {
+      setError(requestError.message);
+      setImportPreview(null);
+    } finally { setBusy(false); }
+  };
+
+  /** Updates the retail price of the selected SKU. */
+  const updateSkuRetailPrice = async (sku) => {
     const skuId = sku.id || sku._id;
     if (!selected || busy) return;
     setBusy(true); setError('');
@@ -178,7 +222,8 @@ export default function ProductConfigurationPage() {
     finally { setBusy(false); }
   };
 
-  const switchMode = (nextMode) => {
+  /** Switches between new and existing products while retaining the unsaved draft. */
+  const switchProductMode = (nextMode) => {
     if (nextMode === mode) return;
     if (mode === 'new' && (catalog.productName || catalog.sampleCode || colors || selectedSizes.length || files.image || files.additional.length) &&
       !window.confirm('Dữ liệu cấu hình mới chưa lưu. Chuyển chế độ? Dữ liệu sẽ được giữ để bạn quay lại.')) return;
@@ -189,7 +234,7 @@ export default function ProductConfigurationPage() {
         setCatalog(draft.catalog); setColors(draft.colors); setSelectedSizes(draft.selectedSizes);
         setExcluded(draft.excluded); setPrices(draft.prices); setFiles(draft.files);
         setShowCombinations(draft.showCombinations); requestId.current = draft.requestId;
-      } else startNew();
+      } else startNewProduct();
     }
     setMode(nextMode);
     setError('');
@@ -216,13 +261,30 @@ export default function ProductConfigurationPage() {
     <header className="product-page-head"><div><p className="product-eyebrow">QUẢN LÝ KHO · NHẬP TỪ XƯỞNG</p><h1>Cấu hình sản phẩm</h1><p>Chọn mẫu và biến thể sản phẩm để tiếp tục kiểm nhận hàng từ xưởng.</p></div></header>
     <ol className="product-steps" aria-label="Tiến trình nhập kho"><li className="current"><span>01</span>Cấu hình sản phẩm</li><li><span>02</span>Kiểm nhận</li><li><span>03</span>Xác nhận nhập kho</li></ol>
     <div className="product-mode-grid">
-      <button type="button" className={`product-mode ${mode === 'new' ? 'active' : ''}`} aria-pressed={mode === 'new'} onClick={() => switchMode('new')}><span className="product-mode-icon">＋</span><span><strong>Tạo sản phẩm mới</strong><small>Mẫu sản phẩm chưa có trong danh mục</small></span><span className="product-mode-check">✓</span></button>
-      <button type="button" className={`product-mode ${mode === 'existing' ? 'active' : ''}`} aria-pressed={mode === 'existing'} onClick={() => switchMode('existing')}><span className="product-mode-icon">▤</span><span><strong>Sản phẩm hiện có</strong><small>Nhập thêm hàng cho mẫu đã được lưu</small></span><span className="product-mode-check">✓</span></button>
+      <button type="button" className={`product-mode ${mode === 'new' ? 'active' : ''}`} aria-pressed={mode === 'new'} onClick={() => switchProductMode('new')}><span className="product-mode-icon">＋</span><span><strong>Tạo sản phẩm mới</strong><small>Mẫu sản phẩm chưa có trong danh mục</small></span><span className="product-mode-check">✓</span></button>
+      <button type="button" className={`product-mode ${mode === 'existing' ? 'active' : ''}`} aria-pressed={mode === 'existing'} onClick={() => switchProductMode('existing')}><span className="product-mode-icon">▤</span><span><strong>Sản phẩm hiện có</strong><small>Nhập thêm hàng cho mẫu đã được lưu</small></span><span className="product-mode-check">✓</span></button>
     </div>
     {error && <p className="ara-alert ara-alert-error" role="alert">{error}</p>}
     {message && <p className="ara-alert ara-alert-success" role="status">{message}</p>}
-    {pendingMedia.length > 0 && selected && <button className="btn-ara-secondary" type="button" disabled={busy} onClick={() => uploadFiles(selected.product.id || selected.product._id, pendingMedia)}>Thử tải lại {pendingMedia.length} tệp</button>}
+    {pendingMedia.length > 0 && selected && <button className="btn-ara-secondary" type="button" disabled={busy} onClick={() => uploadProductMediaFiles(selected.product.id || selected.product._id, pendingMedia)}>Thử tải lại {pendingMedia.length} tệp</button>}
 
+    {mode === 'new' && <section className="product-card product-excel-import">
+      <div className="product-card-head"><div><h2>Import sản phẩm từ Excel</h2><p className="product-muted">Dùng cấu trúc file product_variation.xlsx. Các dòng cùng STT và mã sản phẩm tạo một sản phẩm với nhiều size.</p></div></div>
+      <label className="product-upload">File Excel (.xlsx)
+        <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy} onChange={(event) => {
+          const file = event.target.files?.[0] || null;
+          setImportFile(file); setImportPreview(null); setError(''); setMessage('');
+        }} />
+      </label>
+      <p className="product-muted">Import tên, mã sản phẩm, danh mục, ảnh, video, mã mẫu mã, size, giá bán và mã vạch. Ảnh/video được lưu vào Cloudinary theo mã sản phẩm. Số lượng tồn kho trong file không được nhập; hãy dùng bước kiểm nhận để đưa hàng vào kho.</p>
+      <div className="product-inline-actions"><button type="button" className="btn-ara-secondary" disabled={!importFile || busy} onClick={previewExcelImport}>{busy ? 'Đang xử lý...' : 'Kiểm tra file'}</button>
+        <button type="button" className="btn-ara-gold" disabled={!importPreview || importPreview.errors.length > 0 || busy} onClick={submitExcelImport}>Import {importPreview?.productCount || 0} sản phẩm</button></div>
+      {importPreview && <div className="product-import-preview"><p><strong>{importPreview.productCount} sản phẩm · {importPreview.variantCount} biến thể</strong></p>
+        {importPreview.errors.length ? <div className="ara-alert ara-alert-error" role="alert"><strong>{importPreview.errors.length} lỗi cần sửa trước khi import:</strong><ul>{importPreview.errors.slice(0, 20).map((item, index) => <li key={`${item.row}-${index}`}>Dòng {item.row}: {item.message}</li>)}</ul>{importPreview.errors.length > 20 && <p>Còn {importPreview.errors.length - 20} lỗi khác.</p>}</div>
+          : <p className="ara-alert ara-alert-success">File hợp lệ, sẵn sàng import.</p>}
+        <div className="product-table-scroll"><table className="product-table"><thead><tr><th>STT</th><th>Mã sản phẩm</th><th>Tên sản phẩm</th><th>Biến thể</th></tr></thead><tbody>{importPreview.products.map((product) => <tr key={product.productCode}><td>{product.stt}</td><td>{product.productCode}</td><td>{product.productName}</td><td>{product.sizes.join(', ')}</td></tr>)}</tbody></table></div>
+      </div>}
+    </section>}
     {mode === 'new' ? <div className="product-layout">
       <div className="product-main-column">
         <section className="product-card"><div className="product-card-head"><div><span className="product-section-number">01</span><h2>Thông tin chung</h2></div><p>Nhận diện mẫu sản phẩm trong danh mục.</p></div>{catalogFields}<div className="product-readonly"><span>Mã sản phẩm</span><strong>Tự động tạo khi lưu</strong></div></section>
@@ -237,19 +299,19 @@ export default function ProductConfigurationPage() {
         </section>
       </div>
       <aside className="product-side-column"><section className="product-card"><div className="product-card-head"><h2>Hình ảnh sản phẩm</h2></div><div className="product-image-placeholder">{files.image ? <span>{files.image.name}</span> : <span>Ảnh đại diện<br /><small>Chưa chọn ảnh</small></span>}</div>{mediaFields}</section><section className="product-card product-summary"><h2>Tóm tắt cấu hình</h2><dl><div><dt>Sản phẩm</dt><dd>{catalog.productName || 'Chưa nhập tên'}</dd></div><div><dt>Biến thể đã chọn</dt><dd>{activeCombinations.length}</dd></div><div><dt>Trạng thái</dt><dd>Chưa lưu</dd></div></dl><p>Barcode riêng từng chiếc được tạo sau khi xác nhận số lượng đạt nhập kho.</p></section></aside>
-      <div className="product-action-bar"><span>{busy ? 'Đang lưu cấu hình...' : 'Cấu hình chưa được lưu'}</span><div><Link className="btn-ara-secondary" to="/warehouse/finished-goods">Hủy</Link><button className="btn-ara-secondary" disabled={busy} type="button" onClick={() => saveNew('DRAFT')}>Lưu nháp</button><button className="btn-ara-gold" disabled={busy} type="button" onClick={() => saveNew('ACTIVE')}>Lưu và tiếp tục kiểm nhận →</button></div></div>
+      <div className="product-action-bar"><span>{busy ? 'Đang lưu cấu hình...' : 'Cấu hình chưa được lưu'}</span><div><Link className="btn-ara-secondary" to="/warehouse/finished-goods">Hủy</Link><button className="btn-ara-secondary" disabled={busy} type="button" onClick={() => createProductConfiguration('DRAFT')}>Lưu nháp</button><button className="btn-ara-gold" disabled={busy} type="button" onClick={() => createProductConfiguration('ACTIVE')}>Lưu và tiếp tục kiểm nhận →</button></div></div>
     </div> : !selected ? <section className="product-card product-search-card"><div className="product-card-head"><div><span className="product-section-number">01</span><h2>Tìm sản phẩm</h2></div><p>Chọn mẫu đã lưu để nhập thêm hàng.</p></div><input className="product-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm theo tên sản phẩm, mã sản phẩm hoặc mã SKU…" />
-      <div className="product-result-list">{candidates.length ? candidates.map((product) => <button type="button" className="product-result" key={product.id} disabled={busy} onClick={() => loadSelected(product.id)}><span className="product-result-image">{product.thumbnailUrl ? <img src={product.thumbnailUrl} alt="" /> : 'ARA'}</span><span><strong>{product.productName}</strong><small>{product.productCode} · {product.category} · {product.skus.length} SKU</small></span><span className={`product-badge ${product.isActive ? 'active' : ''}`}>{product.isActive ? 'Đang sử dụng' : 'Nháp'}</span><span className="product-result-action">Chọn sản phẩm →</span></button>) : <div className="product-empty"><strong>Không tìm thấy sản phẩm</strong><p>Thử từ khóa khác hoặc tạo mẫu mới.</p><button type="button" className="btn-ara-secondary" onClick={startNew}>Tạo sản phẩm mới</button></div>}</div>
+      <div className="product-result-list">{candidates.length ? candidates.map((product) => <button type="button" className="product-result" key={product.id} disabled={busy} onClick={() => loadProductConfiguration(product.id)}><span className="product-result-image">{product.thumbnailUrl ? <img src={product.thumbnailUrl} alt="" /> : 'ARA'}</span><span><strong>{product.productName}</strong><small>{product.productCode} · {product.category} · {product.skus.length} SKU</small></span><span className={`product-badge ${product.isActive ? 'active' : ''}`}>{product.isActive ? 'Đang sử dụng' : 'Nháp'}</span><span className="product-result-action">Chọn sản phẩm →</span></button>) : <div className="product-empty"><strong>Không tìm thấy sản phẩm</strong><p>Thử từ khóa khác hoặc tạo mẫu mới.</p><button type="button" className="btn-ara-secondary" onClick={startNewProduct}>Tạo sản phẩm mới</button></div>}</div>
     </section> : <div className="product-layout">
       <div className="product-main-column"><section className="product-card product-identity"><span className="product-result-image">{selected.product.thumbnailUrl ? <img src={selected.product.thumbnailUrl} alt="" /> : 'ARA'}</span><div><small>{selected.product.productCode} · {selected.product.category}</small><h2>{selected.product.productName}</h2><span className={`product-badge ${selected.product.isActive ? 'active' : ''}`}>{selected.product.isActive ? 'Đang sử dụng' : 'Nháp'}</span></div><button type="button" className="btn-ara-secondary" onClick={() => { setSelected(null); setSelectedSkuIds([]); }}>Chọn sản phẩm khác</button></section>
         <section className="product-card"><div className="product-card-head"><div><span className="product-section-number">02</span><h2>Chọn biến thể được xưởng giao</h2></div><button type="button" className="btn-ara-secondary" onClick={() => setShowVariantPanel(true)}>+ Thêm biến thể</button></div><p className="product-muted">Chỉ chọn SKU có trong đợt giao này. Số lượng được kiểm nhận ở bước tiếp theo.</p><input className="product-search" value={skuSearch} onChange={(event) => setSkuSearch(event.target.value)} placeholder="Tìm mã SKU, màu hoặc size…" />
           <div className="product-table-scroll"><table className="product-table product-sku-table"><thead><tr><th><input type="checkbox" aria-label="Chọn tất cả SKU đang lọc" disabled={!selectableSkuIds.length} checked={selectableSkuIds.length > 0 && selectableSkuIds.every((id) => selectedSkuIds.includes(id))} onChange={(event) => setSelectedSkuIds((current) => event.target.checked ? [...new Set([...current, ...selectableSkuIds])] : current.filter((id) => !selectableSkuIds.includes(id)))} /></th><th>Mã SKU</th><th>Màu</th><th>Size</th><th>Trạng thái</th></tr></thead><tbody>{filteredSkus.map((sku) => <tr key={sku.id || sku._id}><td><input type="checkbox" aria-label={`Chọn ${sku.skuCode}`} disabled={!sku.isActive || !selected.product.isActive} checked={selectedSkuIds.includes(sku.id || sku._id)} onChange={(event) => setSelectedSkuIds((current) => event.target.checked ? [...current, sku.id || sku._id] : current.filter((id) => id !== (sku.id || sku._id)))} /></td><td data-label="Mã SKU"><strong>{sku.skuCode}</strong></td><td data-label="Màu">{sku.color}</td><td data-label="Size">{sku.size}</td><td data-label="Trạng thái"><span className={`product-badge ${sku.isActive ? 'active' : ''}`}>{sku.isActive ? 'Đang sử dụng' : 'Ngừng sử dụng'}</span></td></tr>)}</tbody></table>{!filteredSkus.length && <p className="product-empty">Không có SKU phù hợp.</p>}</div><p className="product-count">Đã chọn {selectedSkuIds.length} biến thể</p>
         </section>
-        <section className="product-card"><div className="product-card-head"><h2>Chỉnh sửa sản phẩm</h2><button type="button" className="btn-ara-secondary" onClick={() => setEditingCatalog((current) => !current)}>{editingCatalog ? 'Đóng chỉnh sửa' : 'Chỉnh sửa thông tin'}</button></div>{editingCatalog && <div>{catalogFields}{mediaFields}<div className="product-inline-actions"><button type="button" className="btn-ara-secondary" disabled={busy} onClick={() => saveCatalog('DRAFT')}>Lưu nháp</button><button type="button" className="btn-ara-gold" disabled={busy} onClick={() => saveCatalog('ACTIVE')}>Lưu thay đổi</button></div><h3>Giá từng SKU</h3><div className="product-price-list">{selected.skus.map((sku) => <div key={sku.id || sku._id}><span>{sku.skuCode} · {sku.color} / {sku.size}</span><input aria-label={`Giá ${sku.skuCode}`} type="number" min="0" value={skuPrices[sku.id || sku._id] ?? ''} onChange={(event) => setSkuPrices((current) => ({ ...current, [sku.id || sku._id]: event.target.value }))} /><button className="btn-ara-secondary" type="button" disabled={busy || skuPrices[sku.id || sku._id] === ''} onClick={() => saveSkuPrice(sku)}>Lưu giá</button></div>)}</div></div>}</section>
+        <section className="product-card"><div className="product-card-head"><h2>Chỉnh sửa sản phẩm</h2><button type="button" className="btn-ara-secondary" onClick={() => setEditingCatalog((current) => !current)}>{editingCatalog ? 'Đóng chỉnh sửa' : 'Chỉnh sửa thông tin'}</button></div>{editingCatalog && <div>{catalogFields}{mediaFields}<div className="product-inline-actions"><button type="button" className="btn-ara-secondary" disabled={busy} onClick={() => updateProductCatalog('DRAFT')}>Lưu nháp</button><button type="button" className="btn-ara-gold" disabled={busy} onClick={() => updateProductCatalog('ACTIVE')}>Lưu thay đổi</button></div><h3>Giá từng SKU</h3><div className="product-price-list">{selected.skus.map((sku) => <div key={sku.id || sku._id}><span>{sku.skuCode} · {sku.color} / {sku.size}</span><input aria-label={`Giá ${sku.skuCode}`} type="number" min="0" value={skuPrices[sku.id || sku._id] ?? ''} onChange={(event) => setSkuPrices((current) => ({ ...current, [sku.id || sku._id]: event.target.value }))} /><button className="btn-ara-secondary" type="button" disabled={busy || skuPrices[sku.id || sku._id] === ''} onClick={() => updateSkuRetailPrice(sku)}>Lưu giá</button></div>)}</div></div>}</section>
       </div>
       <aside className="product-side-column"><section className="product-card product-summary"><h2>Đợt kiểm nhận này</h2><p><strong>{selected.product.productName}</strong></p>{selectedSkuIds.length ? <ul>{selected.skus.filter((sku) => selectedSkuIds.includes(sku.id || sku._id)).map((sku) => <li key={sku.id || sku._id}>{sku.color} / {sku.size}<small>{sku.skuCode}</small></li>)}</ul> : <p>Chưa chọn biến thể.</p>}<p>Nhập số lượng thực nhận, đạt và trả sửa ở bước tiếp theo.</p></section></aside>
       <div className="product-action-bar"><span>{selectedSkuIds.length} biến thể đã chọn</span><div><button className="btn-ara-secondary" type="button" onClick={() => setSelected(null)}>Quay lại</button><button className="btn-ara-gold" type="button" disabled={busy || !selected.product.isActive || selectedSkuIds.length === 0} onClick={() => navigate('/warehouse/finished-goods', { state: { receiveSkuIds: selectedSkuIds } })}>Sử dụng {selectedSkuIds.length} SKU và tiếp tục →</button></div></div>
     </div>}
-    {showVariantPanel && selected && <div className="product-drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowVariantPanel(false); }}><aside className="product-drawer" aria-label="Thêm biến thể"><div className="product-card-head"><h2>Thêm biến thể</h2><button type="button" className="product-close" onClick={() => setShowVariantPanel(false)} aria-label="Đóng">×</button></div><p className="product-muted">{selected.product.productCode} · {selected.product.productName}</p><label className="product-field">Màu sắc <b>*</b><input value={newVariant.color} onChange={(event) => setNewVariant({ ...newVariant, color: event.target.value })} placeholder="Ví dụ: Trắng" /></label><label className="product-field">Kích cỡ<select value={newVariant.size} onChange={(event) => setNewVariant({ ...newVariant, size: event.target.value })}>{sizes.map((size) => <option key={size}>{size}</option>)}</select></label><label className="product-field">Giá bán (₫)<input type="number" min="0" value={newVariant.retailPrice} onChange={(event) => setNewVariant({ ...newVariant, retailPrice: event.target.value })} placeholder={String(selected.product.basePrice)} /></label><div className="product-readonly"><span>Mã SKU</span><strong>Tự động tạo khi lưu</strong></div>{matchingVariant && <p className="ara-alert ara-alert-error">Tổ hợp đã tồn tại: {matchingVariant.skuCode}. Hãy chọn SKU này trong danh sách.</p>}<button className="btn-ara-gold" type="button" disabled={busy || !newVariant.color.trim() || Boolean(matchingVariant)} onClick={addVariant}>Thêm và chọn biến thể</button></aside></div>}
+    {showVariantPanel && selected && <div className="product-drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowVariantPanel(false); }}><aside className="product-drawer" aria-label="Thêm biến thể"><div className="product-card-head"><h2>Thêm biến thể</h2><button type="button" className="product-close" onClick={() => setShowVariantPanel(false)} aria-label="Đóng">×</button></div><p className="product-muted">{selected.product.productCode} · {selected.product.productName}</p><label className="product-field">Màu sắc <b>*</b><input value={newVariant.color} onChange={(event) => setNewVariant({ ...newVariant, color: event.target.value })} placeholder="Ví dụ: Trắng" /></label><label className="product-field">Kích cỡ<select value={newVariant.size} onChange={(event) => setNewVariant({ ...newVariant, size: event.target.value })}>{sizes.map((size) => <option key={size}>{size}</option>)}</select></label><label className="product-field">Giá bán (₫)<input type="number" min="0" value={newVariant.retailPrice} onChange={(event) => setNewVariant({ ...newVariant, retailPrice: event.target.value })} placeholder={String(selected.product.basePrice)} /></label><div className="product-readonly"><span>Mã SKU</span><strong>Tự động tạo khi lưu</strong></div>{matchingVariant && <p className="ara-alert ara-alert-error">Tổ hợp đã tồn tại: {matchingVariant.skuCode}. Hãy chọn SKU này trong danh sách.</p>}<button className="btn-ara-gold" type="button" disabled={busy || !newVariant.color.trim() || Boolean(matchingVariant)} onClick={addProductVariant}>Thêm và chọn biến thể</button></aside></div>}
   </main>;
 }

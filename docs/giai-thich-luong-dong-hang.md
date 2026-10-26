@@ -78,9 +78,8 @@ Các model liên quan:
 | [PackingScanEvent.js](../ARAWMS_BE/src/models/PackingScanEvent.js) | Mỗi request quét barcode cùng kết quả `ACCEPTED`/`REJECTED`; `clientEventId` giúp nhận request gửi lặp. |
 | [ProductUnitAllocation.js](../ARAWMS_BE/src/models/ProductUnitAllocation.js) | Barcode vật lý đã được gắn vào đơn/phiên nào, giúp chặn gắn sang đơn khác. |
 | [PackingVideo.js](../ARAWMS_BE/src/models/PackingVideo.js) | `recordingId`, định danh Cloudinary, URL, dung lượng, thời lượng và trạng thái đồng bộ. |
-| [OrderQrToken.js](../ARAWMS_BE/src/models/OrderQrToken.js) và [DemoOrderQrToken.js](../ARAWMS_BE/src/models/DemoOrderQrToken.js) | Ánh xạ token QR còn hiệu lực tới đơn thật hoặc đơn mẫu. |
+| [OrderQrToken.js](../ARAWMS_BE/src/models/OrderQrToken.js) | Ánh xạ token QR còn hiệu lực tới đơn hàng thực. |
 
-`packingVerification.validation.js` hiện chỉ là khung hàm validation và **chưa được gắn vào các route**; phần kiểm tra đầu vào thực tế nằm trong controller/service.
 
 ## 4. Thư viện và API trình duyệt hỗ trợ gì?
 
@@ -169,11 +168,3 @@ Nếu video đã được lưu trên backend, thao tác bỏ lần đóng bị t
 - Khi mất mạng lúc đang quay, camera và bản quay có thể tiếp tục trên thiết bị, nhưng quét barcode/QR mới cần backend nên sẽ không được xác nhận cho đến khi có mạng. Nếu dừng quay, video được lưu tạm trên thiết bị và đợi mạng để tải lên; thao tác nhả phiên trên backend có thể báo lỗi, và phiên có thể cần mở lại sau khi kết nối phục hồi.
 - Phiên tại bàn được gia hạn mỗi 60 giây, còn backend cấp thời hạn 120 giây. Lỗi gia hạn hiện khiến giao diện đóng phiên đang mở và dừng camera. Hệ thống chưa tự khôi phục toàn bộ phiên quét sau khi mất mạng; nhân viên cần mở lại đơn và đối chiếu trạng thái barcode.
 - Màn hình nhân viên chỉ hiển thị trạng thái video; không có nút tạm dừng queue, thử lại thủ công hoặc xóa video tạm. Lỗi tạm thời được tự thử lại khi website đang mở và có mạng. Nếu hiện “Cần hỗ trợ”, nhân viên báo quản lý và giữ dữ liệu website trên thiết bị.
-
-## 7. Nơi kiểm tra hành vi
-
-- [packingVerification.test.js](../ARAWMS_BE/src/modules/order-fulfillment/packing-verification/packingVerification.test.js): quyết định nhận/từ chối barcode và quyền đóng đơn.
-- [packingVideo.test.js](../ARAWMS_BE/src/modules/order-fulfillment/packing-verification/packingVideo.test.js): đồng bộ và liên kết video với đơn.
-- [packingQueuePolicy.test.js](../ARAWMS_FE/src/services/packingQueuePolicy.test.js): chọn tác vụ và lịch thử lại.
-
-Các test này kiểm tra một số quy tắc quan trọng, nhưng không thay cho việc thử toàn bộ luồng với camera, trình duyệt, MongoDB và Cloudinary thật.

@@ -1,11 +1,15 @@
+/*
+ * File: orderQrManagement.service.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Looks up real orders and manages their QR tokens.
+ */
 import { randomBytes } from 'node:crypto';
 import mongoose from 'mongoose';
 import SalesOrder from '../../../models/SalesOrder.model.js';
 import Sku from '../../../models/Sku.model.js';
+import Product from '../../../models/Product.model.js';
 import OrderQrToken from '../../../models/OrderQrToken.js';
-import DemoOrderQrToken from '../../../models/DemoOrderQrToken.js';
-import PackingSession from '../../../models/PackingSession.js';
-import { findDemoOrder, listDemoOrders } from '../../../common/services/demoOrderService.js';
 import { ensurePackingIndexes } from '../packing-verification/packingIndexes.js';
 import { canViewOrder, canIssueQr } from '../../../common/services/orderAccessService.js';
 
@@ -13,40 +17,18 @@ const QR_PREFIX = 'PACK:v1:';
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
 const blockedStatuses = new Set(['CANCELLED', 'RETURNED']);
 
-export const newQrValue = () => `${QR_PREFIX}${randomBytes(32).toString('hex')}`;
+/** Generates a QR value carrying only a random 256-bit token. */
+export const generateOrderQrValue = () => `${QR_PREFIX}${randomBytes(32).toString('hex')}`;
 
+/** Returns a valid token or null without accepting arbitrary QR text. */
 export const parseQrValue = (value) => {
   if (typeof value !== 'string' || !value.startsWith(QR_PREFIX)) return null;
   const token = value.slice(QR_PREFIX.length);
   return TOKEN_PATTERN.test(token) ? token : null;
 };
 
-export const publicOrderDetail = (order) => order.demoOnly ? ({
-  id: order.id,
-  orderCode: order.orderCode,
-  status: order.packingVideoUrl ? 'PACKED' : order.status,
-  channel: null,
-  externalOrderNo: null,
-  createdAt: null,
-  confirmedAt: null,
-  customer: null,
-  recipientName: null,
-  recipient: null,
-  paymentMethod: null,
-  paymentStatus: null,
-  shipping: null,
-  amounts: null,
-  items: order.items.map((item) => ({
-    skuId: null,
-    skuCode: item.sku,
-    name: [item.productName, item.color, item.size].filter(Boolean).join(' · '),
-    quantity: item.quantity,
-  })),
-  note: null,
-  packingStatus: order.packingVideoUrl ? 'VIDEO_SAVED' : 'DEMO_NOT_STARTED',
-  packagingVideoUrl: order.packingVideoUrl || null,
-  demoOnly: true,
-}) : ({
+/** Exposes order details needed for packing labels without cost fields. */
+export const publicOrderDetail = (order) => ({
   id: String(order._id),
   orderCode: order.orderCode,
   status: order.status,
@@ -84,8 +66,10 @@ export const publicOrderDetail = (order) => order.demoOnly ? ({
     skuId: String(item.skuId),
     skuCode: item.skuCode || null,
     name: item.name || order.variantDetails?.[String(item.skuId)]?.productName || null,
-    color: order.variantDetails?.[String(item.skuId)]?.color?.name || null,
-    size: order.variantDetails?.[String(item.skuId)]?.size?.name || null,
+    color: order.variantDetails?.[String(item.skuId)]?.color?.name ||
+      order.variantDetails?.[String(item.skuId)]?.color || null,
+    size: order.variantDetails?.[String(item.skuId)]?.size?.name ||
+      order.variantDetails?.[String(item.skuId)]?.size || null,
     quantity: item.quantity ?? item.orderedQty,
     unitPrice: item.unitPrice ?? item.unitSalePrice ?? null,
     discountAmount: item.discountAmount ?? null,
@@ -96,77 +80,61 @@ export const publicOrderDetail = (order) => order.demoOnly ? ({
   packingStatus: order.warehouseFulfillment?.packagingVideoUrl || order.packing?.videoPublicId
     ? 'VIDEO_SAVED' : order.packing?.isComplete ? 'LEGACY_COMPLETE' : 'NOT_STARTED',
   packagingVideoUrl: order.warehouseFulfillment?.packagingVideoUrl || null,
-  demoOnly: false,
 });
 
+/** Finds an active MongoDB order and enriches its SKU display details. */
 export const findOrder = async (idOrCode) => {
   if (typeof idOrCode !== 'string' || !idOrCode.trim()) return null;
   const value = idOrCode.trim();
-  const demoOrder = await findDemoOrder(value);
-  if (demoOrder) {
-    const packing = await PackingSession.findOne({ sourceType: 'DEMO', orderKey: demoOrder.id })
-      .select('video.url').lean();
-    return { ...demoOrder, packingVideoUrl: packing?.video?.url || null };
-  }
   const query = mongoose.isValidObjectId(value)
     ? { $or: [{ _id: value }, { orderCode: value }] }
     : { orderCode: value };
-  const order = await SalesOrder.findOne(query).lean();
+  const order = await SalesOrder.findOne({ ...query, isDeleted: { $ne: true } }).lean();
   if (!order) return null;
   const skus = await Sku.find({ _id: { $in: order.items.map((item) => item.skuId) } })
-    .select('productName color size').lean();
-  order.variantDetails = Object.fromEntries(skus.map((sku) => [String(sku._id), sku]));
+    .select('productId styleName color size').lean();
+  const products = await Product.find({ _id: { $in: skus.map((sku) => sku.productId) } })
+    .select('productName').lean();
+  const names = new Map(products.map((product) => [String(product._id), product.productName]));
+  order.variantDetails = Object.fromEntries(skus.map((sku) => [String(sku._id), {
+    productName: names.get(String(sku.productId)) || sku.styleName,
+    color: sku.color, size: sku.size,
+  }]));
   return order;
 };
 
+/** Lists only orders visible to the user and marks QR eligibility. */
 export const listOrdersForQr = async (user) => {
   const isAdmin = user.roles?.includes('ADMIN');
   const isSales = user.roles?.includes('SALES');
   const isWarehouse = user.roles?.includes('WAREHOUSE_STAFF') || user.roles?.includes('WAREHOUSE_MANAGER');
   const query = isAdmin || isWarehouse ? {} : isSales ? { sellerId: user._id } : null;
-  const realOrders = query === null ? [] : await SalesOrder.find(query)
-    .select('_id orderCode status shippingRecipient.name recipient.name items.quantity items.orderedQty items.reservation.warehouseId items.fifoPickList.locationId createdAt')
+  const realOrders = query === null ? [] : await SalesOrder.find({ ...query, isDeleted: { $ne: true } })
+    .select('_id orderCode status shippingRecipient.name recipient.name items.quantity items.orderedQty items.fifoPickList.batchId items.fifoPickList.locationId items.fifoPickList.allocatedQty createdAt')
     .sort({ createdAt: -1 }).lean();
   const visibleRealOrders = realOrders.filter((order) => canViewOrder(user, order));
   const tokens = realOrders.length ? await OrderQrToken.find({
     orderId: { $in: visibleRealOrders.map((order) => order._id) }, revokedAt: null,
   }).select('orderId').lean() : [];
-  const demoOrders = isAdmin || isSales || isWarehouse ? await listDemoOrders() : [];
-  const completedDemoSessions = demoOrders.length ? await PackingSession.find({
-    sourceType: 'DEMO', orderKey: { $in: demoOrders.map((order) => order.id) }, 'video.publicId': { $exists: true },
-  }).select('orderKey').lean() : [];
-  const packedDemoIds = new Set(completedDemoSessions.map((session) => session.orderKey));
-  const demoTokens = demoOrders.length ? await DemoOrderQrToken.find({
-    demoOrderId: { $in: demoOrders.map((order) => order.id) }, revokedAt: null,
-  }).select('demoOrderId').lean() : [];
   const issuedReal = new Set(tokens.map((token) => String(token.orderId)));
-  const issuedDemo = new Set(demoTokens.map((token) => token.demoOrderId));
-  return [
-    ...visibleRealOrders.map((order) => ({
+  return visibleRealOrders.map((order) => ({
       id: String(order._id), orderCode: order.orderCode, status: order.status,
       recipientName: order.recipient?.name || order.shippingRecipient?.name || null,
       itemCount: order.items.reduce((sum, item) => sum + (item.quantity ?? item.orderedQty ?? 0), 0),
-      createdAt: order.createdAt, demoOnly: false, hasQr: issuedReal.has(String(order._id)),
-      canIssueQr: canIssueQr(user, order) && ['CONFIRMED', 'CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(order.status),
-    })),
-    ...demoOrders.map((order) => ({
-      id: order.id, orderCode: order.orderCode, status: packedDemoIds.has(order.id) ? 'PACKED' : order.status,
-      recipientName: null,
-      itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
-      createdAt: null, demoOnly: true, hasQr: issuedDemo.has(order.id),
-      canIssueQr: canIssueQr(user, order) && !blockedStatuses.has(order.status),
-    })),
-  ];
+      createdAt: order.createdAt, hasQr: issuedReal.has(String(order._id)),
+      canIssueQr: canIssueQr(user, order) && ['CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(order.status),
+    }));
 };
 
+/** Returns or creates a QR token for a reserved or packed order. */
 export const issueQr = async (order, userId) => {
-  if (order.demoOnly ? blockedStatuses.has(order.status) : !['CONFIRMED', 'CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(order.status)) {
+  if (!['CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(order.status)) {
     return { error: 'ORDER_NOT_CONFIRMED' };
   }
-  const token = newQrValue().slice(QR_PREFIX.length);
+  const token = generateOrderQrValue().slice(QR_PREFIX.length);
   await ensurePackingIndexes();
-  const Model = order.demoOnly ? DemoOrderQrToken : OrderQrToken;
-  const key = order.demoOnly ? { demoOrderId: order.id } : { orderId: order._id };
+  const Model = OrderQrToken;
+  const key = { orderId: order._id };
   const insert = { ...key, token, issuedBy: userId };
   try {
     const record = await Model.findOneAndUpdate(
@@ -184,14 +152,15 @@ export const issueQr = async (order, userId) => {
   }
 };
 
+/** Replaces an order token so previously printed QR labels stop resolving. */
 export const replaceQr = async (order, userId) => {
-  if (order.demoOnly ? blockedStatuses.has(order.status) : !['CONFIRMED', 'CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(order.status)) {
+  if (!['CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(order.status)) {
     return { error: 'ORDER_NOT_CONFIRMED' };
   }
-  const token = newQrValue().slice(QR_PREFIX.length);
+  const token = generateOrderQrValue().slice(QR_PREFIX.length);
   await ensurePackingIndexes();
-  const Model = order.demoOnly ? DemoOrderQrToken : OrderQrToken;
-  const key = order.demoOnly ? { demoOrderId: order.id } : { orderId: order._id };
+  const Model = OrderQrToken;
+  const key = { orderId: order._id };
   const record = await Model.findOneAndUpdate(
     key,
     { $set: { token, revokedAt: null, issuedBy: userId } },
@@ -200,17 +169,13 @@ export const replaceQr = async (order, userId) => {
   return { qrValue: `${QR_PREFIX}${record.token}` };
 };
 
+/** Resolves a live token to its real order without exposing customer data in the QR. */
 export const resolveQr = async (value) => {
   const token = parseQrValue(value);
   if (!token) return { error: 'INVALID_QR' };
   const record = await OrderQrToken.findOne({ token, revokedAt: null }).select('orderId');
-  if (!record) {
-    const demoRecord = await DemoOrderQrToken.findOne({ token }).select('demoOrderId');
-    if (!demoRecord) return { error: 'QR_NOT_FOUND' };
-    const demoOrder = await findDemoOrder(demoRecord.demoOrderId);
-    return demoOrder ? { order: publicOrderDetail(demoOrder) } : { error: 'QR_NOT_FOUND' };
-  }
-  const order = await SalesOrder.findById(record.orderId).lean();
+  if (!record) return { error: 'QR_NOT_FOUND' };
+  const order = await SalesOrder.findOne({ _id: record.orderId, isDeleted: { $ne: true } }).lean();
   if (!order || blockedStatuses.has(order.status)) return { error: 'ORDER_NOT_PACKABLE' };
   return { order: publicOrderDetail(order) };
 };

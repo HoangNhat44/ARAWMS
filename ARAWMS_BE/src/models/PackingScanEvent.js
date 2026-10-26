@@ -1,3 +1,9 @@
+/*
+ * File: PackingScanEvent.js
+ * Author: Duy Anh
+ * Date: 2026-10-19
+ * Description: Records idempotent barcode scan outcomes.
+ */
 import mongoose from 'mongoose';
 
 const { Schema } = mongoose;

@@ -1,3 +1,9 @@
+/*
+ * File: product.routes.js
+ * Author: Duy Anh
+ * Date: 2026-10-22
+ * Description: Defines warehouse product, stock, location, and media endpoints.
+ */
 import express from 'express';
 import mongoose from 'mongoose';
 import { Transform } from 'node:stream';
@@ -9,18 +15,20 @@ import InventoryTransaction from '../../../models/InventoryTransaction.model.js'
 import { randomUUID } from 'node:crypto';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
-import { ARASTORE_CLOUDINARY_FOLDERS } from '../../../config/cloudinaryFolders.js';
+import { configureProductCloudinary, productMediaOptions } from '../../../common/services/productMediaStorage.js';
 import bulkStockRoutes from './bulkStock.routes.js';
 import productConfigurationRoutes from './productConfiguration.routes.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
+import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
 
 const router = express.Router();
 const media = {
-  image: { types: ['image/jpeg', 'image/png', 'image/webp'], limit: 10 * 1024 * 1024, resourceType: 'image', field: 'thumbnailUrl', publicIdField: 'imagePublicId' },
-  video: { types: ['video/mp4', 'video/webm'], limit: 100 * 1024 * 1024, resourceType: 'video', field: 'videoUrl', publicIdField: 'videoPublicId' },
-  'additional-image': { types: ['image/jpeg', 'image/png', 'image/webp'], limit: 10 * 1024 * 1024, resourceType: 'image', field: 'additionalImageUrls' },
+  image: { types: ['image/jpeg', 'image/png', 'image/webp'], limit: 10 * 1024 * 1024, field: 'thumbnailUrl', publicIdField: 'imagePublicId' },
+  video: { types: ['video/mp4', 'video/webm'], limit: 100 * 1024 * 1024, field: 'videoUrl', publicIdField: 'videoPublicId' },
+  'additional-image': { types: ['image/jpeg', 'image/png', 'image/webp'], limit: 10 * 1024 * 1024, field: 'additionalImageUrls' },
 };
 
+// Product configuration endpoints require warehouse manager access.
 router.use(authenticate);
 router.use((req, res, next) => req.user.roles?.includes('WAREHOUSE_MANAGER')
   ? next()
@@ -28,6 +36,7 @@ router.use((req, res, next) => req.user.roles?.includes('WAREHOUSE_MANAGER')
 router.use('/bulk', bulkStockRoutes);
 router.use('/configuration', productConfigurationRoutes);
 
+/** Lists usable finished goods locations and their current capacity. */
 router.get('/locations', async (req, res, next) => {
   try {
     const locations = await WarehouseLocation.find({ warehouseType: 'FINISHED_GOODS', isDeleted: { $ne: true } }).sort({ locationCode: 1 }).lean();
@@ -38,6 +47,7 @@ router.get('/locations', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+/** Creates a uniquely coded finished goods location for receiving stock. */
 router.post('/locations', async (req, res, next) => {
   const locationCode = String(req.body?.locationCode || '').trim().toUpperCase();
   const maxCapacity = Number(req.body?.maxCapacity);
@@ -56,6 +66,7 @@ router.post('/locations', async (req, res, next) => {
   }
 });
 
+/** Lists products with SKU stock totals for receiving and stock lookup. */
 router.get('/', async (req, res, next) => {
   try {
     const products = await Product.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean();
@@ -85,6 +96,7 @@ router.get('/', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+/** Applies a single SKU stock movement and records its inventory transaction. */
 router.post('/:id/stock', async (req, res, next) => {
   const { id } = req.params;
   const { direction, skuId, note } = req.body || {};
@@ -109,6 +121,10 @@ router.post('/:id/stock', async (req, res, next) => {
       }
       if (!sku) throw Object.assign(new Error('Không tìm thấy SKU của sản phẩm'), { status: 404, code: 'SKU_NOT_FOUND' });
       if (!sku.isActive) throw Object.assign(new Error('SKU đã ngừng sử dụng'), { status: 409, code: 'SKU_INACTIVE' });
+      const hasTrackedBatch = await FinishedGoodsBatch.exists({ skuId: sku._id,
+        currentOnHandQty: { $gt: 0 }, isDeleted: { $ne: true } }).session(session);
+      if (hasTrackedBatch) throw Object.assign(new Error('Hàng theo lô cần xuất bằng barcode từng chiếc'),
+        { status: 409, code: 'BARCODE_OUTBOUND_REQUIRED' });
       const before = sku.onHandQty || 0;
       const reserved = sku.reservedQty || 0;
       if (direction === 'OUT' && before - reserved < quantity) {
@@ -139,6 +155,7 @@ router.post('/:id/stock', async (req, res, next) => {
   } finally { if (session) await session.endSession(); }
 });
 
+/** Creates a basic product record from a warehouse manager request. */
 router.post('/', async (req, res, next) => {
   const productCode = String(req.body?.productCode || '').trim().toUpperCase();
   const productName = String(req.body?.productName || '').trim();
@@ -159,6 +176,7 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+/** Validates media type and size before streaming product assets to Cloudinary. */
 const uploadProductMedia = async (req, res, next) => {
   const config = media[req.params.kind];
   const mimeType = (req.headers['content-type'] || '').split(';')[0].toLowerCase();
@@ -169,11 +187,7 @@ const uploadProductMedia = async (req, res, next) => {
   try {
     const product = await Product.findById(req.params.id);
     if (!product) return sendError(res, 'Không tìm thấy sản phẩm', { code: 'PRODUCT_NOT_FOUND' }, 404);
-    const { CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } = process.env;
-    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
-      return sendError(res, 'Chưa cấu hình Cloudinary', { code: 'CLOUDINARY_NOT_CONFIGURED' }, 503);
-    }
-    cloudinary.config({ cloud_name: CLOUDINARY_CLOUD_NAME, api_key: CLOUDINARY_API_KEY, api_secret: CLOUDINARY_API_SECRET, secure: true });
+    configureProductCloudinary();
     let bytes = 0;
     const limiter = new Transform({
       transform(chunk, encoding, callback) {
@@ -185,12 +199,12 @@ const uploadProductMedia = async (req, res, next) => {
     const uploaded = new Promise((resolve, reject) => { settle = { resolve, reject }; });
     uploaded.catch(() => {});
     const options = {
-      resource_type: config.resourceType, type: 'upload',
-      asset_folder: ARASTORE_CLOUDINARY_FOLDERS.productImages,
-      public_id: req.params.kind === 'additional-image' ? `${product._id}_extra_${randomUUID()}` : `${product._id}_${req.params.kind}`,
-      overwrite: req.params.kind !== 'additional-image', unique_filename: false,
+      ...productMediaOptions(product.productCode, req.params.kind,
+        req.params.kind === 'additional-image' ? `extra_${randomUUID()}` : ''),
+      overwrite: req.params.kind !== 'additional-image',
       ...(req.params.kind === 'video' ? { chunk_size: 6 * 1024 * 1024 } : {}),
     };
+    // Chunked uploads emit intermediate callbacks; save metadata only after the final result.
     const onUploaded = (error, result) => {
       if (error) settle.reject(error);
       else if (result?.done !== false) settle.resolve(result);
@@ -211,6 +225,7 @@ const uploadProductMedia = async (req, res, next) => {
     return sendSuccess(res, 'Đã lưu tệp sản phẩm', { product });
   } catch (error) {
     if (error.status === 413) return sendError(res, 'Tệp vượt quá dung lượng cho phép', { code: 'FILE_TOO_LARGE' }, 413);
+    if (error.status === 503) return sendError(res, error.message, { code: error.code }, 503);
     next(error);
   }
 };

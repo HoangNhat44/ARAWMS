@@ -1,3 +1,9 @@
+/*
+ * File: PackingVideo.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Tracks packing recordings and synchronization status.
+ */
 import mongoose from 'mongoose';
 
 const packingVideoSchema = new mongoose.Schema({

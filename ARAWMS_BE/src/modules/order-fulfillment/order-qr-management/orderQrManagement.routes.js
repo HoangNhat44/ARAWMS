@@ -1,3 +1,9 @@
+/*
+ * File: orderQrManagement.routes.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Defines order lookup, confirmation, and QR endpoints.
+ */
 import express from 'express';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
 import {

@@ -1,3 +1,9 @@
+/*
+ * File: InventoryTransaction.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Models the inventory movement and reservation ledger.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 import { WAREHOUSE_TYPES } from '../common/constants/enums.js';
@@ -38,8 +44,11 @@ const inventoryTransactionSchema = new Schema(
     },
     referenceId: { type: Schema.Types.ObjectId, required: true, index: true },
     quantityChange: { type: Number, required: true },
+    reservedChange: { type: Number, default: 0 },
     onHandBefore: { type: Number, required: true },
     onHandAfter: { type: Number, required: true },
+    reservedBefore: Number,
+    reservedAfter: Number,
     unitCostSnapshot: { type: Number, default: 0 },
     performedByUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     note: { type: String, maxlength: 500 },

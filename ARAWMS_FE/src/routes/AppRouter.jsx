@@ -1,3 +1,9 @@
+/*
+ * File: AppRouter.jsx
+ * Author: Duy Anh
+ * Date: 2026-10-15
+ * Description: Routes users to warehouse and order screens.
+ */
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from '../pages/HomePage';
@@ -11,7 +17,7 @@ import FinishedGoodsPage from '../pages/FinishedGoodsPage';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
-// Route bảo vệ (yêu cầu phải đăng nhập mới truy cập được)
+// Restrict warehouse and order pages to authenticated users.
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
 
@@ -21,6 +27,7 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+/** Allows a page only when an authenticated user has one of its required roles. */
 const RoleRoute = ({ children, roles }) => {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner message="Đang xác thực thông tin đăng nhập..." />;
@@ -29,7 +36,7 @@ const RoleRoute = ({ children, roles }) => {
   return children;
 };
 
-// Route công khai (nếu đã đăng nhập rồi thì chuyển sang HomePage)
+// Redirect signed-in users away from the public login and registration pages.
 const PublicRoute = ({ children }) => {
   const { user, loading } = useAuth();
 

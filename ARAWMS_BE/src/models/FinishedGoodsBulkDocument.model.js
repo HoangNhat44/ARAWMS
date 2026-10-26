@@ -1,3 +1,9 @@
+/*
+ * File: FinishedGoodsBulkDocument.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-22
+ * Description: Models bulk finished goods stock documents.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

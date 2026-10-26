@@ -1,3 +1,9 @@
+/*
+ * File: OrderQrPage.jsx
+ * Author: Duy Anh
+ * Date: 2026-10-19
+ * Description: Lists real sales orders and prints their packing QR labels.
+ */
 import { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
 import { orderQrService } from '../services/orderQrService';
@@ -31,7 +37,7 @@ function OrderLabel({ card }) {
   return <article className="order-print-label">
     <header className="order-label-header">
       <div><h2>TEM ĐƠN HÀNG</h2><strong className="order-label-code">{order.orderCode}</strong>
-        {order.demoOnly && <span>ĐƠN MẪU</span>}</div>
+        </div>
       {card.image && <img src={card.image} alt={`QR đơn ${order.orderCode}`} />}
     </header>
     <div className="order-label-fields">
@@ -132,6 +138,7 @@ export default function OrderQrPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
+  /** Reloads visible orders after confirmation or QR changes. */
   const refreshOrders = async () => {
     const response = await orderQrService.listOrdersForQr();
     setOrders(response.data.orders);
@@ -162,8 +169,10 @@ export default function OrderQrPage() {
   const eligibleVisibleIds = filteredOrders.filter((order) => order.canIssueQr).map((order) => order.id);
   const allVisibleSelected = eligibleVisibleIds.length > 0 && eligibleVisibleIds.every((id) => selectedIds.includes(id));
   const cards = Object.values(qrCards);
+  const activeCanIssue = orders.some((item) => item.id === activeOrder?.id && item.canIssueQr);
 
-  const chooseOrder = async (id) => {
+  /** Loads the selected order while preserving access checks on the server. */
+  const selectOrderById = async (id) => {
     setBusy(true); setError(''); setMessage('');
     try {
       const response = await orderQrService.lookupOrderByCode(id);
@@ -172,23 +181,26 @@ export default function OrderQrPage() {
     finally { setBusy(false); }
   };
 
-  const addQrCard = async (order, qrValue) => ({
+  /** Builds a printable card from the order and its issued QR value. */
+  const createQrPrintCard = async (order, qrValue) => ({
     id: order.id, orderCode: order.orderCode, order, qrValue,
     image: await QRCode.toDataURL(qrValue, { errorCorrectionLevel: 'M', width: 320, margin: 3 }),
   });
 
-  const addPrintOrder = () => {
+  /** Queues the selected order details for printing without issuing a QR. */
+  const queueOrderForPrinting = () => {
     if (!activeOrder) return;
     const card = { id: activeOrder.id, orderCode: activeOrder.orderCode, order: activeOrder, image: null };
     setQrCards((current) => ({ ...current, [card.id]: current[card.id] || card }));
     setMessage(`Đã thêm ${activeOrder.orderCode} vào danh sách in.`);
   };
 
-  const issueOne = async () => {
+  /** Issues or retrieves the selected order's current QR value. */
+  const issueQrForActiveOrder = async () => {
     setBusy(true); setError(''); setMessage('');
     try {
       const response = await orderQrService.getOrderQr(activeOrder.id);
-      const card = await addQrCard(response.data.order, response.data.qrValue);
+      const card = await createQrPrintCard(response.data.order, response.data.qrValue);
       setQrCards((current) => ({ ...current, [card.id]: card }));
       setMessage(`Đã tạo / lấy QR cho ${activeOrder.orderCode}.`);
       await refreshOrders();
@@ -196,7 +208,8 @@ export default function OrderQrPage() {
     finally { setBusy(false); }
   };
 
-  const issueSelected = async () => {
+  /** Issues QR values in batches of 100 and preserves per-order failures. */
+  const issueQrForSelectedOrders = async () => {
     if (!selectedIds.length) return;
     setBusy(true); setError(''); setMessage('');
     try {
@@ -207,7 +220,7 @@ export default function OrderQrPage() {
       }
       const successful = results.filter((result) => result.qrValue);
       const generated = await Promise.all(successful.map((result) =>
-        addQrCard(result.order, result.qrValue)));
+        createQrPrintCard(result.order, result.qrValue)));
       setQrCards((current) => Object.assign({}, current,
         ...generated.map((card) => ({ [card.id]: card }))));
       setSelectedIds(results.filter((result) => result.error).map((result) => result.id));
@@ -219,13 +232,14 @@ export default function OrderQrPage() {
     finally { setBusy(false); }
   };
 
-  const confirm = async () => {
+  /** Confirms the active order after stock reservation, then prepares its QR card. */
+  const confirmActiveOrder = async () => {
     setBusy(true); setError(''); setMessage('');
     try {
       const response = await orderQrService.confirmOrder(activeOrder.id);
       setActiveOrder(response.data.order);
       if (response.data.qrValue) {
-        const card = await addQrCard(response.data.order, response.data.qrValue);
+        const card = await createQrPrintCard(response.data.order, response.data.qrValue);
         setQrCards((current) => ({ ...current, [card.id]: card }));
       }
       setMessage(`Đã chốt đơn ${activeOrder.orderCode} và cấp QR.`);
@@ -234,12 +248,13 @@ export default function OrderQrPage() {
     finally { setBusy(false); }
   };
 
-  const replace = async () => {
+  /** Revokes the active order's printed QR and prepares its replacement. */
+  const replaceActiveOrderQr = async () => {
     if (!window.confirm('QR cũ sẽ ngừng hoạt động. Cấp QR mới cho đơn này?')) return;
     setBusy(true); setError(''); setMessage('');
     try {
       const response = await orderQrService.replaceOrderQr(activeOrder.id);
-      const card = await addQrCard(response.data.order, response.data.qrValue);
+      const card = await createQrPrintCard(response.data.order, response.data.qrValue);
       setQrCards((current) => ({ ...current, [card.id]: card }));
       setMessage(`Đã thay QR của ${activeOrder.orderCode}.`);
       await refreshOrders();
@@ -272,7 +287,7 @@ export default function OrderQrPage() {
             try { await refreshOrders(); } catch (err) { setError(err.message); }
             finally { setBusy(false); }
           }}>Tải lại danh sách</button>
-          {canIssue && <button className="btn-ara-primary" type="button" disabled={busy || selectedIds.length === 0} onClick={issueSelected}>
+          {canIssue && <button className="btn-ara-primary" type="button" disabled={busy || selectedIds.length === 0} onClick={issueQrForSelectedOrders}>
             Tạo / lấy QR hàng loạt ({selectedIds.length})
           </button>}
         </div>
@@ -291,10 +306,10 @@ export default function OrderQrPage() {
                 checked={selectedIds.includes(order.id)} disabled={!order.canIssueQr || busy}
                 onChange={() => setSelectedIds((current) => current.includes(order.id)
                   ? current.filter((id) => id !== order.id) : [...current, order.id])} /></td>}
-              <td>{order.orderCode}{order.demoOnly ? ' (mẫu)' : ''}</td>
+              <td>{order.orderCode}</td>
               <td>{order.recipientName || '—'}</td><td>{order.itemCount}</td><td>{statusLabel(order.status)}</td>
               <td>{order.hasQr ? 'Đã cấp' : 'Chưa cấp'}</td>
-              <td><button className="btn-ara-secondary" type="button" disabled={busy} onClick={() => chooseOrder(order.id)}>Xem đơn</button></td>
+              <td><button className="btn-ara-secondary" type="button" disabled={busy} onClick={() => selectOrderById(order.id)}>Xem đơn</button></td>
             </tr>)}</tbody>
           </table>
           {!filteredOrders.length && <p style={{ padding: '1rem 0' }}>Không có đơn hàng phù hợp.</p>}
@@ -302,14 +317,13 @@ export default function OrderQrPage() {
         <small>Đơn chờ chốt cần được chốt trước khi cấp QR. Đơn đã đóng xong hiển thị “Sẵn sàng vận chuyển”.</small>
       </section>
       <OrderDetail order={activeOrder} />
-      {activeOrder?.demoOnly && <p style={{ color: 'var(--ara-gold-hover)' }}>Đây là dữ liệu mẫu từ file JSON; QR demo được lưu riêng và không tạo đơn bán hàng trong MongoDB.</p>}
       {activeOrder && <section style={panel}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem' }}>
-          <button className="btn-ara-secondary" type="button" disabled={busy} onClick={addPrintOrder}>Thêm đơn vào danh sách in</button>
-          {canConfirm && !activeOrder.demoOnly && activeOrder.status === 'PENDING' && <button className="btn-ara-primary" type="button" disabled={busy} onClick={confirm}>Chốt đơn và tạo QR</button>}
-          {canIssue && (activeOrder.demoOnly || ['CONFIRMED', 'CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(activeOrder.status)) && <>
-            <button className="btn-ara-primary" type="button" disabled={busy} onClick={issueOne}>Tạo / lấy QR đơn này</button>
-            <button className="btn-ara-secondary" type="button" disabled={busy} onClick={replace}>Thu hồi và cấp QR mới</button>
+          <button className="btn-ara-secondary" type="button" disabled={busy} onClick={queueOrderForPrinting}>Thêm đơn vào danh sách in</button>
+          {canConfirm && activeOrder.status === 'PENDING' && <button className="btn-ara-primary" type="button" disabled={busy} onClick={confirmActiveOrder}>Chốt đơn và tạo QR</button>}
+          {canIssue && activeCanIssue && <>
+            <button className="btn-ara-primary" type="button" disabled={busy} onClick={issueQrForActiveOrder}>Tạo / lấy QR đơn này</button>
+            <button className="btn-ara-secondary" type="button" disabled={busy} onClick={replaceActiveOrderQr}>Thu hồi và cấp QR mới</button>
           </>}
         </div>
       </section>}

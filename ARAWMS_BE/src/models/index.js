@@ -48,7 +48,6 @@ export { default as CarrierDispute } from './CarrierDispute.model.js';
 
 // Packing & Fulfillment (custom models)
 export { default as OrderQrToken } from './OrderQrToken.js';
-export { default as DemoOrderQrToken } from './DemoOrderQrToken.js';
 export { default as ProductUnit } from './ProductUnit.js';
 export { default as PackingSession } from './PackingSession.js';
 export { default as ProductUnitAllocation } from './ProductUnitAllocation.js';

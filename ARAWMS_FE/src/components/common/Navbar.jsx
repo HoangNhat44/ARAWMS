@@ -1,3 +1,9 @@
+/*
+ * File: Navbar.jsx
+ * Author: Duy Anh
+ * Date: 2026-10-15
+ * Description: Provides navigation to warehouse and order screens.
+ */
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';

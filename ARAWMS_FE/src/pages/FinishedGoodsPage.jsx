@@ -1,3 +1,9 @@
+/*
+ * File: FinishedGoodsPage.jsx
+ * Author: Duy Anh
+ * Date: 2026-10-22
+ * Description: Displays finished goods stock and receiving actions.
+ */
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { productService } from '../services/productService';
@@ -23,7 +29,8 @@ export default function FinishedGoodsPage() {
   const [initialProductId, setInitialProductId] = useState('');
   const [recentDocuments, setRecentDocuments] = useState([]);
 
-  const load = async () => {
+  /** Refreshes products and SKU stock totals after a movement. */
+  const loadProducts = async () => {
     try {
       const response = await productService.list();
       setProducts(response.data.products);
@@ -31,13 +38,15 @@ export default function FinishedGoodsPage() {
     } catch (requestError) { setError(requestError.message); }
     finally { setLoading(false); }
   };
-  const loadDocuments = async () => {
+  /** Loads recent receiving documents so their physical unit labels can be reprinted. */
+  const loadRecentStockDocuments = async () => {
     try { const response = await productService.recentDocuments(); setRecentDocuments(response.data.documents); }
     catch (requestError) { setError(requestError.message); }
   };
-  useEffect(() => { load(); loadDocuments(); }, []);
+  useEffect(() => { loadProducts(); loadRecentStockDocuments(); }, []);
 
-  const printDocument = async (document) => {
+  /** Opens a printable page for the individual barcodes issued by a receipt. */
+  const printDocumentBarcodes = async (document) => {
     try {
       const tab = window.open('', '_blank');
       if (!tab) throw new Error('Trình duyệt đang chặn cửa sổ in tem');
@@ -50,7 +59,8 @@ export default function FinishedGoodsPage() {
     `${item.productCode} ${item.productName} ${item.sampleCode} ${item.category}`.toLocaleLowerCase('vi-VN').includes(search.toLocaleLowerCase('vi-VN'))
   ), [products, search]);
 
-  const openMovement = (product, direction) => {
+  /** Opens an individual stock movement with SKU selection when needed. */
+  const openStockMovementForm = (product, direction) => {
     setMovement({ product, direction });
     setSkuId(product.skus.length === 1 ? product.skus[0].id : '');
     setQuantity('');
@@ -59,7 +69,8 @@ export default function FinishedGoodsPage() {
     setNotice('');
   };
 
-  const submitMovement = async (event) => {
+  /** Posts an individual stock movement and refreshes its product totals. */
+  const submitStockMovement = async (event) => {
     event.preventDefault();
     if (saving || !movement) return;
     if (movement.product.skus.length > 1 && !skuId) { setError('Vui lòng chọn SKU.'); return; }
@@ -71,7 +82,7 @@ export default function FinishedGoodsPage() {
       });
       setNotice(`Đã ${movement.direction === 'IN' ? 'nhập' : 'xuất'} ${quantity} sản phẩm ${movement.product.productCode}.`);
       setMovement(null);
-      await load();
+      await loadProducts();
     } catch (requestError) { setError(requestError.message); }
     finally { setSaving(false); }
   };
@@ -93,8 +104,8 @@ export default function FinishedGoodsPage() {
       setHandoffSkuIds([]);
       setNotice(`Đã lưu phiếu ${document.documentCode}: ${document.lineCount} dòng, tổng ${document.totalQuantity} sản phẩm.`);
       setRecentDocuments((current) => [{ ...document, createdAt: new Date().toISOString(), items: document.items || [] }, ...current]);
-      await load();
-      await loadDocuments();
+      await loadProducts();
+      await loadRecentStockDocuments();
     }} />}
 
     <section className="product-card">
@@ -118,7 +129,7 @@ export default function FinishedGoodsPage() {
             <td style={{ padding: '.75rem', borderBottom: '1px solid var(--ara-border)' }}>{product.reservedQty}</td>
             <td style={{ padding: '.75rem', borderBottom: '1px solid var(--ara-border)' }}><div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
               <Link className="btn-ara-secondary" to={`/warehouse/products/${product.id}/edit`}>Cấu hình / nhập</Link>
-              <button type="button" className="btn-ara-secondary" disabled={!product.isActive || product.onHandQty - product.reservedQty <= 0} onClick={() => { setBulkDirection(''); openMovement(product, 'OUT'); }}>Xuất kho</button>
+              <button type="button" className="btn-ara-secondary" disabled={!product.isActive || product.onHandQty - product.reservedQty <= 0} onClick={() => { setBulkDirection(''); openStockMovementForm(product, 'OUT'); }}>Xuất kho</button>
             </div></td>
           </tr>)}</tbody>
         </table></div>}
@@ -135,7 +146,7 @@ export default function FinishedGoodsPage() {
           <td style={{ textAlign: 'center' }}>{document.totalQuantity}</td>
           <td style={{ textAlign: 'center' }}>{document.direction === 'IN' ? document.items.reduce((sum, item) => sum + (item.repairQty || 0), 0) : '—'}</td>
           <td style={{ textAlign: 'center' }}>{new Date(document.createdAt).toLocaleString('vi-VN')}</td>
-          <td>{document.direction === 'IN' && document.totalQuantity > 0 && <button className="btn-ara-secondary" type="button" onClick={() => printDocument(document)}>In tem barcode</button>}</td>
+          <td>{document.direction === 'IN' && document.totalQuantity > 0 && <button className="btn-ara-secondary" type="button" onClick={() => printDocumentBarcodes(document)}>In tem barcode</button>}</td>
         </tr>)}</tbody>
       </table></div>
     </section>}
@@ -143,7 +154,7 @@ export default function FinishedGoodsPage() {
     {movement && <section style={{ ...panel, marginTop: '1rem', maxWidth: 560 }}>
       <h2>{movement.direction === 'IN' ? 'Nhập kho' : 'Xuất kho'} · {movement.product.productCode}</h2>
       <p style={{ margin: '.5rem 0 1rem', color: 'var(--ara-text-muted)' }}>{movement.product.productName}</p>
-      <form onSubmit={submitMovement} style={{ display: 'grid', gap: '1rem' }}>
+      <form onSubmit={submitStockMovement} style={{ display: 'grid', gap: '1rem' }}>
         {movement.product.skus.length > 0 ? <label>SKU
           <select style={input} required value={skuId} onChange={(event) => setSkuId(event.target.value)}>
             {movement.product.skus.length > 1 && <option value="">Chọn SKU</option>}

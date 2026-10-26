@@ -1,3 +1,9 @@
+/*
+ * File: PackingUploadRunner.jsx
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Runs the recording upload queue for signed-in users.
+ */
 import { useContext, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { packingVideoUploadManager } from '../services/packingVideoUploadManager';

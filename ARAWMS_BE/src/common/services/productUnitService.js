@@ -1,13 +1,12 @@
-import { readFile } from 'node:fs/promises';
+/*
+ * File: productUnitService.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Finds physical product units by barcode.
+ */
 import ProductUnit from '../../models/ProductUnit.js';
 
-const demoUnitsUrl = new URL('../../../../san-pham-mau-50-barcode.json', import.meta.url);
-
-export const findProductUnit = async (sourceType, barcode, dbSession) => {
-  if (sourceType === 'DEMO') {
-    const fixture = JSON.parse(await readFile(demoUnitsUrl, 'utf8'));
-    if (fixture.demoOnly !== true || fixture.barcodePolicy !== 'UNIQUE_PER_PHYSICAL_UNIT') return null;
-    return fixture.products.find((unit) => unit.barcode === barcode) || null;
-  }
+/** Looks up a persisted physical unit; returns null for an unknown barcode. */
+export const findProductUnit = async (barcode, dbSession) => {
   return ProductUnit.findOne({ barcode }).session(dbSession).lean();
 };

@@ -1,3 +1,9 @@
+/*
+ * File: bulkStock.routes.js
+ * Author: Duy Anh
+ * Date: 2026-10-22
+ * Description: Handles bulk finished goods stock documents.
+ */
 import express from 'express';
 import mongoose from 'mongoose';
 import { randomUUID } from 'node:crypto';
@@ -11,8 +17,9 @@ import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
 
 const router = express.Router();
-const requestError = (message, code, status = 400) => Object.assign(new Error(message), { code, status });
+const createBulkStockRequestError = (message, code, status = 400) => Object.assign(new Error(message), { code, status });
 
+/** Returns recent stock documents with receiving barcode details. */
 router.get('/documents', async (req, res, next) => {
   try {
     const documents = await FinishedGoodsBulkDocument.find({ isDeleted: { $ne: true } })
@@ -30,6 +37,7 @@ router.get('/documents', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+/** Validates a bulk movement and updates document, stock, batches, and units atomically. */
 router.post('/documents', async (req, res, next) => {
   const direction = req.body?.direction;
   const documentCode = String(req.body?.documentCode || '').trim().toUpperCase();
@@ -74,35 +82,39 @@ router.post('/documents', async (req, res, next) => {
       const location = direction === 'IN' ? await WarehouseLocation.findOne({
         _id: locationId, warehouseType: 'FINISHED_GOODS', status: 'ACTIVE', isDeleted: { $ne: true },
       }).session(session) : null;
-      if (direction === 'IN' && !location) throw requestError('Vị trí kho thành phẩm không hợp lệ', 'LOCATION_NOT_FOUND', 404);
+      if (direction === 'IN' && !location) throw createBulkStockRequestError('Vị trí kho thành phẩm không hợp lệ', 'LOCATION_NOT_FOUND', 404);
       for (const item of items) {
         const product = await Product.findOne({ _id: item.productId, isDeleted: { $ne: true } }).session(session);
-        if (!product) throw requestError('Không tìm thấy sản phẩm trong phiếu', 'PRODUCT_NOT_FOUND', 404);
-        if (!product.isActive) throw requestError(`Sản phẩm ${product.productCode} đang ở trạng thái nháp`, 'PRODUCT_INACTIVE', 409);
+        if (!product) throw createBulkStockRequestError('Không tìm thấy sản phẩm trong phiếu', 'PRODUCT_NOT_FOUND', 404);
+        if (!product.isActive) throw createBulkStockRequestError(`Sản phẩm ${product.productCode} đang ở trạng thái nháp`, 'PRODUCT_INACTIVE', 409);
         let sku;
         if (item.skuId) {
           sku = await Sku.findOne({ _id: item.skuId, productId: product._id, isDeleted: { $ne: true } }).session(session);
         } else {
           const existing = await Sku.find({ productId: product._id, isDeleted: { $ne: true } }).limit(2).session(session);
-          if (existing.length > 1) throw requestError(`Hãy chọn SKU cho ${product.productCode}`, 'SKU_REQUIRED');
+          if (existing.length > 1) throw createBulkStockRequestError(`Hãy chọn SKU cho ${product.productCode}`, 'SKU_REQUIRED');
           if (existing.length === 1) sku = existing[0];
         }
-        if (!sku) throw requestError(`Không tìm thấy SKU cho ${product.productCode}`, 'SKU_NOT_FOUND', 404);
-        if (!sku.isActive) throw requestError(`SKU ${sku.skuCode} đã ngừng sử dụng`, 'SKU_INACTIVE', 409);
+        if (!sku) throw createBulkStockRequestError(`Không tìm thấy SKU cho ${product.productCode}`, 'SKU_NOT_FOUND', 404);
+        if (!sku.isActive) throw createBulkStockRequestError(`SKU ${sku.skuCode} đã ngừng sử dụng`, 'SKU_INACTIVE', 409);
+        if (direction === 'OUT' && await FinishedGoodsBatch.exists({ skuId: sku._id,
+          currentOnHandQty: { $gt: 0 }, isDeleted: { $ne: true } }).session(session)) {
+          throw createBulkStockRequestError('Hàng theo lô cần xuất bằng barcode từng chiếc', 'BARCODE_OUTBOUND_REQUIRED', 409);
+        }
         const resolvedKey = String(sku._id);
-        if (resolvedSkus.has(resolvedKey)) throw requestError(`SKU ${sku.skuCode} bị lặp trong phiếu`, 'DUPLICATE_LINE');
+        if (resolvedSkus.has(resolvedKey)) throw createBulkStockRequestError(`SKU ${sku.skuCode} bị lặp trong phiếu`, 'DUPLICATE_LINE');
         resolvedSkus.add(resolvedKey);
         const quantity = Number(item.quantity);
         const before = sku.onHandQty || 0;
         if (direction === 'OUT' && before - (sku.reservedQty || 0) < quantity) {
-          throw requestError(`Tồn khả dụng của ${sku.skuCode} không đủ`, 'INSUFFICIENT_STOCK', 409);
+          throw createBulkStockRequestError(`Tồn khả dụng của ${sku.skuCode} không đủ`, 'INSUFFICIENT_STOCK', 409);
         }
         const delta = direction === 'IN' ? quantity : -quantity;
         const updated = delta === 0 ? sku : await Sku.findOneAndUpdate(
           { _id: sku._id, ...(direction === 'OUT' ? { $expr: { $gte: [{ $subtract: [{ $ifNull: ['$onHandQty', 0] }, { $ifNull: ['$reservedQty', 0] }] }, quantity] } } : {}) },
           { $inc: { onHandQty: delta } }, { new: true, session }
         );
-        if (!updated) throw requestError('Tồn kho đã thay đổi, hãy thử lại', 'STOCK_CHANGED', 409);
+        if (!updated) throw createBulkStockRequestError('Tồn kho đã thay đổi, hãy thử lại', 'STOCK_CHANGED', 409);
         if (delta !== 0) await InventoryTransaction.create([{
           transactionCode: `FGM-${randomUUID()}`, warehouseType: 'FINISHED_GOODS', itemType: 'FINISHED_SKU',
           skuId: sku._id, transactionType: direction === 'IN' ? 'MANUAL_INBOUND' : 'MANUAL_OUTBOUND',
@@ -114,15 +126,16 @@ router.post('/documents', async (req, res, next) => {
         let barcodes = [];
         if (direction === 'IN' && quantity > 0) {
           barcodes = Array.from({ length: quantity }, () => `ARA${randomUUID().replace(/-/g, '').slice(0, 20).toUpperCase()}`);
-          await ProductUnit.insertMany(barcodes.map((barcode) => ({
-            barcode, barcodeFormat: 'CODE_128', skuId: sku._id,
-            warehouseId: location._id, receivingDocumentId: documentId, inventoryStatus: 'AVAILABLE',
-          })), { session });
-          await FinishedGoodsBatch.create([{
+          const [batch] = await FinishedGoodsBatch.create([{
             batchCode: `FGB-${randomUUID()}`, skuId: sku._id, skuBarcode: sku.skuBarcode,
-            locationId: location._id, initialQty: quantity, currentOnHandQty: quantity,
+            locationId: location._id, initialQty: quantity, labeledQty: quantity, currentOnHandQty: quantity,
             fifoInboundTimestamp: new Date(),
           }], { session });
+          await ProductUnit.insertMany(barcodes.map((barcode) => ({
+            barcode, barcodeFormat: 'CODE_128', skuId: sku._id,
+            warehouseId: location._id, batchId: batch._id,
+            receivingDocumentId: documentId, inventoryStatus: 'AVAILABLE',
+          })), { session });
         }
         lines.push({ productId: product._id, skuId: sku._id, quantity,
           ...(direction === 'IN' ? { expectedQty: item.expectedQty === '' || item.expectedQty == null ? undefined : Number(item.expectedQty),
@@ -134,7 +147,7 @@ router.post('/documents', async (req, res, next) => {
         const updatedLocation = await WarehouseLocation.findOneAndUpdate({
           _id: location._id, $expr: { $gte: [{ $subtract: ['$maxCapacity', { $ifNull: ['$currentOccupancy', 0] }] }, totalAccepted] },
         }, { $inc: { currentOccupancy: totalAccepted } }, { session, new: true });
-        if (!updatedLocation) throw requestError('Vị trí kho không đủ sức chứa', 'LOCATION_FULL', 409);
+        if (!updatedLocation) throw createBulkStockRequestError('Vị trí kho không đủ sức chứa', 'LOCATION_FULL', 409);
       }
       [saved] = await FinishedGoodsBulkDocument.create([{
         _id: documentId, documentCode, direction, items: lines,

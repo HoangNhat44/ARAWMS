@@ -1,3 +1,9 @@
+/*
+ * File: orderQrService.js
+ * Author: Duy Anh
+ * Date: 2026-10-19
+ * Description: Calls order lookup, confirmation, and QR APIs.
+ */
 import api from "./api";
 
 export const orderQrService = {

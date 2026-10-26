@@ -1,3 +1,9 @@
+/*
+ * File: backfill-packing-video-urls.mjs
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Backfills packing video URLs on existing orders.
+ */
 import 'dotenv/config';
 import mongoose from 'mongoose';
 import PackingSession from '../src/models/PackingSession.js';
@@ -11,6 +17,7 @@ let alreadyLinked = 0;
 let skipped = 0;
 
 try {
+  // Process only real sessions with saved videos; demo sessions must not update sales orders.
   const sessions = PackingSession.find({
     sourceType: 'REAL', orderId: { $exists: true }, 'video.url': { $exists: true },
   }).select('orderId video.url').lean().cursor();
@@ -18,6 +25,7 @@ try {
   for await (const session of sessions) {
     const url = session.video?.url;
     if (!url) continue;
+    // Never overwrite a different URL already linked to the order.
     const result = await SalesOrder.updateOne(
       { _id: session.orderId, $or: [
         { 'warehouseFulfillment.packagingVideoUrl': { $exists: false } },

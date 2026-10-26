@@ -1,3 +1,9 @@
+/*
+ * File: organize-existing-packing-videos.mjs
+ * Author: Duy Anh
+ * Date: 2026-10-22
+ * Description: Organizes existing packing videos in Cloudinary.
+ */
 import 'dotenv/config';
 import mongoose from 'mongoose';
 import { v2 as cloudinary } from 'cloudinary';
@@ -19,6 +25,7 @@ try {
   let alreadyOrganized = 0;
   for (const video of videos) {
     const publicId = video.cloudinaryPublicId;
+    // Require the stored public ID and URL to match Cloudinary before moving an asset.
     const before = await cloudinary.api.resource(publicId, { resource_type: 'video', type: 'authenticated' });
     if (before.public_id !== publicId || before.secure_url !== video.cloudinaryUrl) {
       throw new Error(`Metadata video không khớp: ${publicId}`);
@@ -30,6 +37,7 @@ try {
     if (typeof before.asset_folder !== 'string') {
       throw new Error('Tài khoản không hỗ trợ chuyển asset_folder mà vẫn giữ nguyên URL');
     }
+    // Change only the asset folder; the stable public ID keeps existing playback links valid.
     await cloudinary.uploader.explicit(publicId, { resource_type: 'video', type: 'authenticated',
       asset_folder: ARASTORE_CLOUDINARY_FOLDERS.packingVideos });
     const after = await cloudinary.api.resource(publicId, { resource_type: 'video', type: 'authenticated' });
