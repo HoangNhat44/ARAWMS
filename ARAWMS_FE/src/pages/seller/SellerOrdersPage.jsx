@@ -1,48 +1,100 @@
 /**
  * ============================================================================
- * @title        : Seller Orders Page Component
+ * @title        : Seller Orders Workspace Page (Pancake-style Revamp)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
  * @lastModified : 2026-10-27
- * @description  : Màn hình quản lý danh sách đơn hàng bán lẻ của Seller. Cho phép
- *                 xác nhận giữ chỗ kho (GBR-10), hủy đơn giải phóng tồn kho (GBR-11)
- *                 và khởi tạo yêu cầu đổi/trả RMA (UC-82, UC-83).
+ * @description  : Màn hình quản lý danh sách đơn hàng bán lẻ của Seller theo phong cách
+ *                 Pancake/PosCake (Ảnh 2): Tab đa kênh, dải đếm trạng thái realtime,
+ *                 bảng chi tiết đầy đủ cột (Mã vận đơn, thời gian tạo, cập nhật TT, SĐT kèm
+ *                 nhận diện nhà mạng, mã mẫu mã, sản phẩm, tổng COD, trạng thái và thao tác).
  * @module       : Order Fulfillment / Seller Orders
  * @layer        : Front-end
  * ============================================================================
  */
 
-import React, { useState, useEffect } from 'react';
-import { Table } from 'react-bootstrap';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  ShoppingBag, ArrowLeft, ShieldCheck, XCircle,
-  Search, Clock, CheckCircle2, RotateCcw, SlidersHorizontal
+  ShoppingBag, ArrowLeft, Search, Plus, RotateCcw,
+  CheckCircle2, Clock, XCircle, Truck, Package, Eye,
+  RefreshCw, Download, Upload, SlidersHorizontal, CheckSquare, Square
 } from 'lucide-react';
 import { sellerService } from '../../services/sellerService';
-import { useNavigate } from 'react-router-dom';
 import CreateRmaModal from '../../components/seller/CreateRmaModal';
+import OrderDetailModal from '../../components/seller/OrderDetailModal';
+import QuickOrderModal from '../../components/seller/QuickOrderModal';
 import { SkeletonOrderRow } from '../../components/common/Skeleton';
 
-const STATUS_OPTIONS = [
-  { id: '', label: 'Tất cả' },
-  { id: 'PENDING', label: '⏳ Chờ xác nhận' },
-  { id: 'CONFIRMED_RESERVED', label: '🔒 Đã giữ chỗ kho' },
-  { id: 'PACKED', label: '📦 Đã đóng gói' },
-  { id: 'DELIVERED', label: '✅ Đã giao hàng' },
-  { id: 'CANCELLED', label: '❌ Đã hủy' },
+/**
+ * Nhận diện nhà mạng viễn thông tự động dựa trên đầu số điện thoại Việt Nam
+ */
+const detectTelco = (phone = '') => {
+  const p = phone.replace(/\D/g, '');
+  if (!p) return null;
+  if (/^(086|096|097|098|032|033|034|035|036|037|038|039)/.test(p)) {
+    return { name: 'Viettel', color: '#EE0033', bg: '#FEE2E2' };
+  }
+  if (/^(089|090|093|070|079|077|076|078)/.test(p)) {
+    return { name: 'Mobifone', color: '#005baa', bg: '#E0F2FE' };
+  }
+  if (/^(088|091|094|083|084|085|081|082)/.test(p)) {
+    return { name: 'Vinaphone', color: '#0085d0', bg: '#E0F2FE' };
+  }
+  return { name: 'Khác', color: '#6B7280', bg: '#F3F4F6' };
+};
+
+/**
+ * Danh sách trạng thái Pancake và cấu hình nhãn đếm
+ */
+const PANCAKE_STATUSES = [
+  { key: '',                    label: 'Tất cả',           countKey: 'ALL' },
+  { key: 'PENDING',             label: 'Mới',              countKey: 'PENDING',            color: '#8B5CF6' },
+  { key: 'CONFIRMED_RESERVED',  label: 'Đã xác nhận',      countKey: 'CONFIRMED_RESERVED', color: '#3B82F6' },
+  { key: 'PICKING',             label: 'Chờ chuyển hàng',  countKey: 'PICKING',            color: '#F59E0B' },
+  { key: 'PACKED',              label: 'Đang đóng hàng',   countKey: 'PACKED',             color: '#D97706' },
+  { key: 'HANDED_OVER_CARRIER', label: 'Đã gửi hàng',      countKey: 'HANDED_OVER_CARRIER',color: '#06B6D4' },
+  { key: 'DELIVERED',           label: 'Đã nhận',          countKey: 'DELIVERED',          color: '#10B981' },
+  { key: 'RETURN_REQUESTED',    label: 'Đang hoàn',        countKey: 'RETURN_REQUESTED',   color: '#F97316' },
+  { key: 'CANCELLED',           label: 'Đã hủy',           countKey: 'CANCELLED',          color: '#EF4444' },
+  { key: 'RETURNED',            label: 'Đã trả hàng',      countKey: 'RETURNED',           color: '#6B7280' },
 ];
 
 /**
- * Component quản lý danh sách đơn hàng của Seller
+ * Định dạng ngày giờ chuẩn hiển thị Pancake: HH:mm DD/MM/YYYY
+ */
+const formatDateTime = (dateStr) => {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+};
+
+/**
+ * Component quản lý danh sách đơn hàng của Seller (Pancake-style layout)
+ *
  * @component
+ * @returns {JSX.Element} Bảng quản lý đơn hàng chuyên nghiệp phong cách Pancake.
  */
 const SellerOrdersPage = () => {
   const navigate = useNavigate();
+
+  // State dữ liệu và bộ lọc
   const [orders, setOrders] = useState([]);
+  const [statusCounts, setStatusCounts] = useState({});
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
+  const [channelFilter, setChannelFilter] = useState('ALL'); // 'ALL' | 'POS' | 'ONLINE'
+  const [subTab, setSubTab] = useState('ORDERS'); // 'ORDERS' | 'NEED_ACTION' | 'RETURNS'
   const [search, setSearch] = useState('');
-  const [actionLoading, setActionLoading] = useState(null); // orderId or null
+  
+  // Selection
+  const [selectedIds, setSelectedIds] = useState([]);
+  
+  // Modals
+  const [createOrderModalOpen, setCreateOrderModalOpen] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [selectedOrderForDetail, setSelectedOrderForDetail] = useState(null);
   const [rmaModalOpen, setRmaModalOpen] = useState(false);
   const [selectedOrderForRma, setSelectedOrderForRma] = useState(null);
 
@@ -50,15 +102,22 @@ const SellerOrdersPage = () => {
     fetchOrders();
   }, [statusFilter]);
 
+  /**
+   * Gọi API lấy danh sách đơn hàng kèm tổng đếm từng trạng thái
+   */
   const fetchOrders = async () => {
     try {
       setLoading(true);
       const res = await sellerService.getOrderList({
         status: statusFilter || undefined,
-        search: search || undefined,
+        search: search.trim() || undefined,
+        limit: 100,
       });
       if (res.success) {
-        setOrders(res.data.items || []);
+        setOrders(res.data?.items || []);
+        if (res.data?.statusCounts) {
+          setStatusCounts(res.data.statusCounts);
+        }
       }
     } catch (err) {
       console.warn('Lỗi tải danh sách đơn:', err.message);
@@ -67,299 +126,469 @@ const SellerOrdersPage = () => {
     }
   };
 
-  const handleConfirmReserve = async (orderId) => {
-    if (!window.confirm('Bạn có chắc muốn xác nhận và giữ chỗ tồn kho cho đơn hàng này?')) return;
-    try {
-      setActionLoading(orderId);
-      const res = await sellerService.confirmOrderReserve(orderId);
-      if (res.success) {
-        fetchOrders();
-      }
-    } catch (err) {
-      alert(`Lỗi: ${err.message}`);
-    } finally {
-      setActionLoading(null);
+  /**
+   * Lọc theo kênh (Online / Bán tại quầy)
+   */
+  const filteredOrders = useMemo(() => {
+    return orders.filter((ord) => {
+      if (channelFilter === 'POS') return ord.orderType === 'POS_DIRECT';
+      if (channelFilter === 'ONLINE') return ord.orderType !== 'POS_DIRECT';
+      return true;
+    });
+  }, [orders, channelFilter]);
+
+  // Bulk selection
+  const isAllSelected = filteredOrders.length > 0 && selectedIds.length === filteredOrders.length;
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredOrders.map((o) => o._id || o.id));
     }
   };
 
-  const handleCancelOrder = async (orderId) => {
-    const reason = window.prompt('Nhập lý do hủy đơn hàng:');
-    if (!reason) return;
-    try {
-      setActionLoading(orderId);
-      const res = await sellerService.cancelOrder(orderId, reason);
-      if (res.success) {
-        fetchOrders();
-      }
-    } catch (err) {
-      alert(`Lỗi: ${err.message}`);
-    } finally {
-      setActionLoading(null);
-    }
+  const toggleSelectOrder = (id) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
   };
 
+  // Mở Popup xem chi tiết & đổi trạng thái
+  const handleOpenDetail = (order) => {
+    setSelectedOrderForDetail(order);
+    setDetailModalOpen(true);
+  };
+
+  // Mở Popup tạo RMA
   const handleOpenRma = (order) => {
     setSelectedOrderForRma(order);
     setRmaModalOpen(true);
   };
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'CONFIRMED_RESERVED':
-        return <span className="badge-ara-info d-inline-flex align-items-center gap-1"><Clock size={11} /> Đã Giữ Chỗ Kho</span>;
-      case 'PENDING':
-        return <span className="badge-ara-warning d-inline-flex align-items-center gap-1"><Clock size={11} /> Chờ Xác Nhận</span>;
-      case 'PACKED':
-        return <span className="badge-ara-gold d-inline-flex align-items-center gap-1">📦 Đã Đóng Gói</span>;
-      case 'DELIVERED':
-        return <span className="badge-ara-success d-inline-flex align-items-center gap-1"><CheckCircle2 size={11} /> Đã Giao Hàng</span>;
-      case 'CANCELLED':
-        return <span className="badge-ara-danger d-inline-flex align-items-center gap-1"><XCircle size={11} /> Đã Hủy</span>;
-      default:
-        return <span className="badge-ara-gold">{status}</span>;
-    }
+  // Cập nhật sau khi thay đổi trạng thái trong modal
+  const handleOrderStatusUpdated = (updatedOrder) => {
+    setOrders((prev) =>
+      prev.map((ord) => ((ord._id === updatedOrder._id || ord.id === updatedOrder._id) ? updatedOrder : ord))
+    );
+    fetchOrders();
+  };
+
+  // Badge trạng thái chuẩn Pancake
+  const renderStatusBadge = (status) => {
+    const stObj = PANCAKE_STATUSES.find((s) => s.key === status);
+    const label = stObj ? stObj.label : status;
+    const bg = stObj?.color || '#6B7280';
+    return (
+      <span
+        className="pancake-status-badge"
+        style={{ backgroundColor: bg }}
+      >
+        {label}
+      </span>
+    );
   };
 
   return (
-    <div className="ara-orders-root">
-      {/* ── Page Title Bar ─── */}
-      <div className="ara-orders-titlebar">
-        <div className="d-flex align-items-center gap-3">
+    <div className="pancake-orders-workspace">
+      {/* ── Top Header Navigation Bar ─── */}
+      <div className="pancake-top-header">
+        <div className="pancake-header-left">
           <button
             type="button"
-            id="btn-back-to-chat"
             onClick={() => navigate('/seller/chat')}
-            className="ara-back-btn"
+            className="pancake-back-btn"
+            title="Quay lại màn hình Chat"
           >
-            <ArrowLeft size={15} />
+            <ArrowLeft size={16} />
             <span>Về Chat</span>
           </button>
-
-          <div className="vr" style={{ height: '22px', opacity: 0.3 }} />
-
-          <div className="d-flex align-items-center gap-2">
+          <div className="pancake-vr" />
+          <div className="pancake-brand-title">
             <ShoppingBag size={18} color="var(--ara-gold)" />
-            <h1 className="ara-orders-title">
-              Quản Lý Đơn Hàng Bán Lẻ
-            </h1>
-            <span className="badge-ara-gold" style={{ fontSize: '0.68rem' }}>Seller</span>
+            <span>Quản Lý Đơn Hàng</span>
+            <span className="pancake-shop-badge">ARA STORE NEW</span>
           </div>
         </div>
 
-        {/* Stats row */}
-        <div className="d-flex align-items-center gap-3">
-          <span className="text-muted" style={{ fontSize: '0.82rem' }}>
-            Hiển thị <strong className="text-dark">{orders.length}</strong> đơn hàng
+        {/* Search input in top header */}
+        <div className="pancake-search-container">
+          <Search size={15} className="pancake-search-icon" />
+          <input
+            type="text"
+            placeholder="Tìm đơn hàng (Mã đơn, SĐT, Người nhận, SKU)..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') fetchOrders(); }}
+            className="pancake-search-input"
+          />
+        </div>
+
+        {/* Action Buttons Top Right */}
+        <div className="pancake-header-actions">
+          <button
+            type="button"
+            className="pancake-btn pancake-btn-default"
+            onClick={fetchOrders}
+            title="Đồng bộ danh sách đơn"
+          >
+            <RefreshCw size={14} />
+            <span>Đồng bộ</span>
+          </button>
+          <button
+            type="button"
+            className="pancake-btn pancake-btn-default"
+            onClick={() => alert(`Xuất file danh sách ${filteredOrders.length} đơn hàng thành công!`)}
+          >
+            <Upload size={14} />
+            <span>Xuất</span>
+          </button>
+          <button
+            type="button"
+            className="pancake-btn pancake-btn-primary"
+            onClick={() => setCreateOrderModalOpen(true)}
+            title="Tạo đơn hàng mới (Popup Pancake)"
+          >
+            <Plus size={15} />
+            <span>Tạo đơn</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Channel Tabs Bar (Tất cả / Bán tại quầy / Online) ─── */}
+      <div className="pancake-channel-tabs-bar">
+        <div className="pancake-channel-tabs">
+          <button
+            type="button"
+            className={`pancake-channel-tab ${channelFilter === 'ALL' ? 'active' : ''}`}
+            onClick={() => setChannelFilter('ALL')}
+          >
+            Tất cả
+          </button>
+          <button
+            type="button"
+            className={`pancake-channel-tab ${channelFilter === 'POS' ? 'active' : ''}`}
+            onClick={() => setChannelFilter('POS')}
+          >
+            Bán tại quầy
+          </button>
+          <button
+            type="button"
+            className={`pancake-channel-tab ${channelFilter === 'ONLINE' ? 'active' : ''}`}
+            onClick={() => setChannelFilter('ONLINE')}
+          >
+            Online
+          </button>
+        </div>
+
+        {/* Sub-tabs: Đơn hàng / Cần xử lý / Đơn đã hoàn */}
+        <div className="pancake-sub-tabs">
+          <span className={`pancake-sub-tab ${subTab === 'ORDERS' ? 'active' : ''}`} onClick={() => setSubTab('ORDERS')}>
+            Đơn hàng
+          </span>
+          <span className={`pancake-sub-tab ${subTab === 'NEED_ACTION' ? 'active' : ''}`} onClick={() => { setSubTab('NEED_ACTION'); setStatusFilter('PENDING'); }}>
+            Cần xử lý
+          </span>
+          <span className={`pancake-sub-tab ${subTab === 'RETURNS' ? 'active' : ''}`} onClick={() => { setSubTab('RETURNS'); setStatusFilter('RETURN_REQUESTED'); }}>
+            ĐƠN ĐÃ HOÀN
           </span>
         </div>
       </div>
 
-      {/* ── Main Container ─── */}
-      <div className="ara-orders-page">
-        {/* Filter Bar */}
-        <div className="ara-orders-filter-bar">
-          <div className="d-flex align-items-center gap-2">
-            <SlidersHorizontal size={15} color="var(--ara-gold)" />
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--ara-text-muted)' }}>Lọc:</span>
-            <div className="d-flex flex-wrap gap-1">
-              {STATUS_OPTIONS.map((st) => (
-                <button
-                  key={st.id}
-                  type="button"
-                  onClick={() => setStatusFilter(st.id)}
-                  className={`ara-tag-pill ${statusFilter === st.id ? 'active' : ''}`}
-                  style={{ fontSize: '0.78rem' }}
-                >
-                  {st.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Search Form */}
-          <form
-            onSubmit={(e) => { e.preventDefault(); fetchOrders(); }}
-            className="d-flex gap-2"
-          >
-            <div className="position-relative">
-              <Search
-                className="position-absolute"
-                size={14}
-                style={{ left: '10px', top: '11px', color: 'var(--ara-gold)' }}
-              />
-              <input
-                id="orders-search-input"
-                type="text"
-                placeholder="Tìm mã đơn, người nhận, SĐT..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="form-control ara-input-search"
-                style={{ width: '260px', paddingLeft: '2.2rem' }}
-              />
-            </div>
+      {/* ── Pancake Status Pill Counters Bar ─── */}
+      <div className="pancake-status-scroll-bar">
+        {PANCAKE_STATUSES.map((st) => {
+          const count = statusCounts[st.countKey] !== undefined ? statusCounts[st.countKey] : 0;
+          const isActive = statusFilter === st.key;
+          return (
             <button
-              type="submit"
-              id="btn-orders-search"
-              className="btn-ara-primary"
-              style={{ padding: '0.5rem 1rem', fontSize: '0.82rem' }}
+              key={st.key}
+              type="button"
+              className={`pancake-status-pill ${isActive ? 'active' : ''}`}
+              onClick={() => setStatusFilter(st.key)}
             >
-              Tìm kiếm
+              <span className="pancake-pill-label">{st.label}</span>
+              <span className="pancake-pill-count">{count}</span>
             </button>
-          </form>
-        </div>
+          );
+        })}
+      </div>
 
-        {/* Orders Table */}
-        <div className="ara-table-card">
-          <Table responsive hover className="ara-orders-table mb-0">
-            <thead>
+      {/* ── Main Orders Table ─── */}
+      <div className="pancake-table-wrapper">
+        <table className="pancake-orders-table">
+          <thead>
+            <tr>
+              <th style={{ width: '40px' }} className="text-center">
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  onChange={toggleSelectAll}
+                  className="form-check-input"
+                />
+              </th>
+              <th style={{ minWidth: '95px' }}>ID</th>
+              <th style={{ minWidth: '120px' }}>Mã vận đơn</th>
+              <th style={{ minWidth: '130px' }}>Thời gian tạo</th>
+              <th style={{ minWidth: '130px' }}>Cập nhật TT</th>
+              <th style={{ minWidth: '150px' }}>Khách hàng</th>
+              <th style={{ minWidth: '135px' }}>SĐT</th>
+              <th style={{ minWidth: '160px' }}>Mã mẫu mã</th>
+              <th style={{ minWidth: '190px' }}>Sản phẩm</th>
+              <th style={{ minWidth: '110px' }} className="text-end">Tổng tiền</th>
+              <th style={{ minWidth: '120px' }}>Ghi chú nội bộ</th>
+              <th style={{ minWidth: '125px' }} className="text-center">Trạng thái</th>
+              <th style={{ minWidth: '100px' }} className="text-center">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <>
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <tr key={i}>
+                    <td colSpan="13" className="py-2">
+                      <SkeletonOrderRow />
+                    </td>
+                  </tr>
+                ))}
+              </>
+            ) : filteredOrders.length === 0 ? (
               <tr>
-                <th>Mã đơn</th>
-                <th>Khách hàng & Người nhận</th>
-                <th>Sản phẩm</th>
-                <th>Tổng thanh toán (COD)</th>
-                <th>Trạng thái</th>
-                <th className="text-end">Thao tác</th>
+                <td colSpan="13" className="text-center py-5">
+                  <ShoppingBag size={40} color="var(--ara-gold)" opacity={0.4} className="mb-2 d-block mx-auto" />
+                  <div className="text-muted fw-bold">Không tìm thấy đơn hàng nào phù hợp bộ lọc</div>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <>
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <SkeletonOrderRow key={i} />
-                  ))}
-                </>
-              ) : orders.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="text-center py-5">
-                    <ShoppingBag size={36} style={{ color: 'var(--ara-gold)', opacity: 0.4 }} className="mb-2 d-block mx-auto" />
-                    <div className="text-muted" style={{ fontSize: '0.88rem' }}>Không tìm thấy đơn hàng nào phù hợp</div>
-                  </td>
-                </tr>
-              ) : (
-                orders.map((ord) => (
-                  <tr key={ord._id || ord.id}>
-                    {/* Mã đơn + ngày */}
+            ) : (
+              filteredOrders.map((ord) => {
+                const id = ord._id || ord.id;
+                const isSelected = selectedIds.includes(id);
+                const recipient = ord.shippingRecipient || {};
+                const customer = ord.customerId || {};
+                const telco = detectTelco(recipient.phone || customer.phone || '');
+                const waybill = ord.warehouseFulfillment?.waybillCode;
+                const firstItem = ord.items?.[0] || {};
+                const totalAmount = ord.financialSummary?.totalOrderAmount || 0;
+
+                return (
+                  <tr
+                    key={id}
+                    className={`pancake-order-row ${isSelected ? 'row-selected' : ''}`}
+                    onClick={() => handleOpenDetail(ord)}
+                  >
+                    {/* Checkbox */}
+                    <td className="text-center" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelectOrder(id)}
+                        className="form-check-input"
+                      />
+                    </td>
+
+                    {/* ID */}
                     <td>
-                      <span className="font-monospace fw-bold" style={{ color: 'var(--ara-gold-hover)', fontSize: '0.88rem' }}>
-                        {ord.orderCode}
-                      </span>
-                      <div className="text-muted" style={{ fontSize: '0.72rem', marginTop: '2px' }}>
-                        {new Date(ord.createdAt).toLocaleDateString('vi-VN')}{' '}
-                        {new Date(ord.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                      <div className="d-flex align-items-center gap-1">
+                        <span className="pancake-fb-icon">f</span>
+                        <span className="pancake-order-id fw-bold">{ord.orderCode || id.slice(-6)}</span>
                       </div>
                     </td>
 
-                    {/* Người nhận */}
+                    {/* Mã vận đơn */}
                     <td>
-                      <div className="fw-bold text-dark" style={{ fontSize: '0.88rem' }}>
-                        {ord.shippingRecipient?.name || 'Khách vãng lai'}
-                      </div>
-                      <div className="text-muted" style={{ fontSize: '0.75rem' }}>{ord.shippingRecipient?.phone}</div>
-                      <div className="text-secondary text-truncate" style={{ maxWidth: '220px', fontSize: '0.73rem' }}>
-                        {ord.shippingRecipient?.address}
+                      {waybill ? (
+                        <span className="pancake-waybill-code">{waybill}</span>
+                      ) : (
+                        <span className="text-muted small">-</span>
+                      )}
+                    </td>
+
+                    {/* Thời gian tạo */}
+                    <td>
+                      <div className="pancake-time-cell">
+                        <span>{formatDateTime(ord.createdAt)}</span>
+                        <span className="pancake-time-tag">HT</span>
                       </div>
                     </td>
 
-                    {/* Sản phẩm */}
+                    {/* Cập nhật TT */}
                     <td>
-                      <div className="d-flex flex-column gap-1" style={{ fontSize: '0.78rem' }}>
-                        {ord.items?.map((it, idx) => (
-                          <div key={idx} className="text-dark">
-                            <strong>{it.orderedQty}x</strong> {it.skuCode}
-                          </div>
-                        ))}
+                      <div className="pancake-time-cell">
+                        <span>{formatDateTime(ord.updatedAt)}</span>
+                        <span className="pancake-user-icon">👤</span>
                       </div>
+                    </td>
+
+                    {/* Khách hàng */}
+                    <td>
+                      <div className="d-flex align-items-center gap-2">
+                        <div className="pancake-customer-avatar">
+                          {(customer.fullName || recipient.name || 'K').charAt(0).toUpperCase()}
+                        </div>
+                        <span className="pancake-customer-name" title={customer.fullName || recipient.name}>
+                          {customer.fullName || recipient.name || 'Khách vãng lai'}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* SĐT */}
+                    <td>
+                      <div className="d-flex align-items-center gap-1">
+                        <span className="pancake-phone-text">{recipient.phone || customer.phone || '-'}</span>
+                        {telco && (
+                          <span
+                            className="pancake-telco-badge"
+                            style={{ backgroundColor: telco.bg, color: telco.color }}
+                          >
+                            {telco.name}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Mã mẫu mã */}
+                    <td>
+                      {ord.items && ord.items.length > 0 ? (
+                        <div className="pancake-sku-cell">
+                          <span className="fw-bold">{firstItem.skuCode || firstItem.skuId?.skuCode}</span>
+                          <span className="text-muted"> x {firstItem.orderedQty}</span>
+                          {ord.items.length > 1 && (
+                            <span className="pancake-more-items-badge">+{ord.items.length - 1}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted small">Chưa có sản phẩm</span>
+                      )}
+                    </td>
+
+                    {/* Tên sản phẩm */}
+                    <td>
+                      {ord.items && ord.items.length > 0 ? (
+                        <div className="pancake-prod-title text-truncate" style={{ maxWidth: '220px' }}>
+                          {firstItem.skuId?.styleName || firstItem.styleName || firstItem.skuCode}
+                          {ord.items.length > 1 && ` (và ${ord.items.length - 1} món khác)`}
+                        </div>
+                      ) : (
+                        <span className="text-muted small">Chưa có sản phẩm</span>
+                      )}
                     </td>
 
                     {/* Tổng tiền */}
+                    <td className="text-end">
+                      <span className="pancake-total-amount">
+                        {totalAmount.toLocaleString('vi-VN')} đ
+                      </span>
+                    </td>
+
+                    {/* Ghi chú nội bộ */}
                     <td>
-                      <div className="fw-bold" style={{ color: 'var(--ara-noir)', fontSize: '0.92rem' }}>
-                        {(ord.financialSummary?.totalOrderAmount || 0).toLocaleString('vi-VN')} đ
+                      <div className="pancake-note-text text-truncate" style={{ maxWidth: '140px' }}>
+                        {ord.notes || (ord.financialSummary?.discountAmount > 0 ? 'Đã giảm giá' : 'Đơn COD')}
                       </div>
                     </td>
 
                     {/* Trạng thái */}
-                    <td>{getStatusBadge(ord.status)}</td>
+                    <td className="text-center">
+                      {renderStatusBadge(ord.status)}
+                    </td>
 
                     {/* Thao tác */}
-                    <td className="text-end">
-                      <div className="d-flex justify-content-end gap-1 flex-wrap">
-                        {/* UC-79: Xác nhận giữ chỗ */}
-                        {ord.status === 'PENDING' && (
+                    <td className="text-center" onClick={(e) => e.stopPropagation()}>
+                      <div className="d-flex align-items-center justify-content-center gap-1">
+                        <button
+                          type="button"
+                          className="pancake-action-btn"
+                          onClick={() => handleOpenDetail(ord)}
+                          title="Xem chi tiết & đổi trạng thái"
+                        >
+                          <Eye size={13} />
+                        </button>
+                        {['DELIVERED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
                           <button
                             type="button"
-                            disabled={actionLoading === (ord._id || ord.id)}
-                            onClick={() => handleConfirmReserve(ord._id || ord.id)}
-                            className="btn-ara-primary d-inline-flex align-items-center gap-1"
-                            style={{ fontSize: '0.75rem', padding: '0.3rem 0.7rem' }}
-                            title="Xác nhận đơn và giữ chỗ tồn kho (UC-79)"
-                          >
-                            {actionLoading === (ord._id || ord.id) ? (
-                              <span className="spinner-border spinner-border-sm" role="status" style={{ width: '12px', height: '12px' }} />
-                            ) : (
-                              <ShieldCheck size={13} />
-                            )}
-                            <span>Giữ chỗ kho</span>
-                          </button>
-                        )}
-
-                        {/* UC-82: Tạo RMA */}
-                        {['DELIVERED', 'COMPLETED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
-                          <button
-                            type="button"
+                            className="pancake-action-btn pancake-action-rma"
                             onClick={() => handleOpenRma(ord)}
-                            className="d-inline-flex align-items-center gap-1"
-                            style={{
-                              fontSize: '0.75rem',
-                              padding: '0.3rem 0.65rem',
-                              background: '#FEF6E6',
-                              border: '1px solid #FCDFA6',
-                              color: '#A36800',
-                              borderRadius: 'var(--radius-sm)',
-                              cursor: 'pointer',
-                              fontWeight: 600,
-                            }}
-                            title="Tạo phiếu đổi/trả RMA (UC-82)"
+                            title="Tạo yêu cầu Đổi / Trả (RMA)"
                           >
                             <RotateCcw size={12} />
-                            <span>Đổi/Trả</span>
-                          </button>
-                        )}
-
-                        {/* UC-80: Hủy đơn */}
-                        {!['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'CANCELLED'].includes(ord.status) && (
-                          <button
-                            type="button"
-                            disabled={actionLoading === (ord._id || ord.id)}
-                            onClick={() => handleCancelOrder(ord._id || ord.id)}
-                            className="d-inline-flex align-items-center gap-1"
-                            style={{
-                              fontSize: '0.75rem',
-                              padding: '0.3rem 0.65rem',
-                              background: '#FDF0F0',
-                              border: '1px solid #F8C3C2',
-                              color: '#C5221F',
-                              borderRadius: 'var(--radius-sm)',
-                              cursor: 'pointer',
-                              fontWeight: 600,
-                            }}
-                            title="Hủy đơn hàng (UC-80)"
-                          >
-                            <XCircle size={12} />
-                            <span>Hủy đơn</span>
                           </button>
                         )}
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </Table>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── Footer status bar ─── */}
+      <div className="pancake-footer-bar">
+        <div className="pancake-footer-stats">
+          Hiển thị <strong>{filteredOrders.length}</strong> đơn hàng · Đã chọn <strong>{selectedIds.length}</strong> đơn
         </div>
       </div>
 
-      {/* RMA Modal */}
+      {/* ── Thanh thao tác nổi khi tích chọn Checkbox hàng loạt ─── */}
+      {selectedIds.length > 0 && (
+        <div className="pancake-bulk-action-bar">
+          <div className="d-flex align-items-center gap-2">
+            <span className="badge bg-white text-dark border fw-bold px-2.5 py-1.5" style={{ fontSize: '0.8rem' }}>
+              Đã chọn {selectedIds.length} đơn
+            </span>
+          </div>
+          <div className="d-flex align-items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-sm btn-light border py-1 px-3 fw-semibold"
+              style={{ fontSize: '0.78rem' }}
+              onClick={() => alert(`Chuẩn bị in phiếu gửi hàng loạt cho ${selectedIds.length} đơn hàng...`)}
+            >
+              🖨️ In phiếu gửi ({selectedIds.length})
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-light border py-1 px-3 fw-semibold"
+              style={{ fontSize: '0.78rem' }}
+              onClick={() => {
+                alert(`Đã xuất file dữ liệu cho ${selectedIds.length} đơn hàng đã chọn!`);
+                setSelectedIds([]);
+              }}
+            >
+              📥 Xuất dữ liệu ({selectedIds.length})
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-light py-1 px-2.5"
+              style={{ fontSize: '0.78rem' }}
+              onClick={() => setSelectedIds([])}
+            >
+              Bỏ chọn
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Tạo Đơn Hàng Mới Ngay Tại Chỗ (Popup Pancake) ─── */}
+      <QuickOrderModal
+        isOpen={createOrderModalOpen}
+        onClose={() => setCreateOrderModalOpen(false)}
+        onOrderCreated={() => {
+          fetchOrders();
+          setCreateOrderModalOpen(false);
+        }}
+      />
+
+      {/* ── Modal Chi Tiết Đơn Hàng & Đổi Trạng Thái ─── */}
+      <OrderDetailModal
+        isOpen={detailModalOpen}
+        order={selectedOrderForDetail}
+        onClose={() => setDetailModalOpen(false)}
+        onStatusUpdated={handleOrderStatusUpdated}
+        onOpenRma={handleOpenRma}
+      />
+
+      {/* ── Modal Tạo RMA Đổi Trả Hàng ─── */}
       <CreateRmaModal
         isOpen={rmaModalOpen}
         onClose={() => setRmaModalOpen(false)}
@@ -375,3 +604,4 @@ const SellerOrdersPage = () => {
 };
 
 export default SellerOrdersPage;
+

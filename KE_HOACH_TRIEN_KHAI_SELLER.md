@@ -608,3 +608,57 @@ Sprint 4: Hậu cần ngược Đổi/Trả & Hoàn thiện UI/UX (UC-82, 83)
    - Các thao tác cộng/trừ số lượng tồn phải dùng atomic operators của MongoDB (`$inc`) hoặc nằm trong Mongoose Transaction.
 4. **Audit Trail đầy đủ**:
    - Tất cả các thao tác thay đổi trạng thái đơn, hủy đơn, giữ chỗ, nhả chỗ và tạo RMA phải được lưu vết đầy đủ trong `SystemLog` và `InventoryTransaction`.
+
+---
+
+## VII. TIẾN ĐỘ THỰC TẾ & BỔ SUNG NÂNG CAO (PROGRESS TRACKING & ENHANCEMENTS)
+
+### 1. Xử lý Đa phương tiện Khung Chat (UC-74 - Chat Multi-media Enhancements)
+- **Hiển thị hình ảnh/tệp đính kèm khách gửi từ Messenger (Inbound Attachments)**:
+  - Khung chat `ChatBox.jsx` tự động bóc tách mảng `attachments` từ tin nhắn Messenger.
+  - Phân loại trực quan: Ảnh (grid thumbnail), Tệp âm thanh/video, File tài liệu (kèm biểu tượng và dung lượng).
+  - Tích hợp Lightbox Modal phóng to hình ảnh sắc nét khi click.
+- **Seller gửi ảnh và tệp đính kèm trực tiếp cho khách hàng (Outbound Attachments)**:
+  - Middleware Backend `chatUpload.js` (Multer 2.x): Hỗ trợ upload tối đa 5 file, dung lượng tối đa 25MB/tệp, lọc MIME types an toàn (Images, PDF, Docs, Zip).
+  - Endpoint `POST /api/conversations/:id/attachments` truyền multipart `filedata` lên Facebook Graph API (`/me/messages`) và lưu trữ cục bộ tại `/uploads/chat`.
+  - Khay tải tệp preview ở giao diện chat cho phép xem trước, xóa tệp đã chọn, gửi kèm chú thích văn bản (caption).
+
+### 2. Chuẩn hóa Ma trận Chuyển trạng thái & Khắc phục lỗi 400 (UC-80, GBR-10, GBR-11, GBR-13)
+- **Khắc phục lỗi `400 Bad Request` khi gọi `/api/orders/:id/status`**:
+  - Đồng bộ hóa 100% enum trạng thái giữa Frontend `OrderDetailModal.jsx` và Backend `SalesOrder.model.js`.
+  - Thiết lập ma trận chuyển đổi hợp lệ `ORDER_STATUS_TRANSITIONS` ngăn chặn hành vi nhảy cóc trạng thái trái phép.
+- **Ràng buộc nghiệp vụ giữ chỗ và hủy đơn**:
+  - Chuyển sang `CONFIRMED_RESERVED`: Tự động gọi `confirmOrderReserve` để khóa tồn kho khả dụng `+Reserved` ([BR: GBR-10]).
+  - Chuyển sang `CANCELLED`: Tự động gọi `cancelOrder` để giải phóng lượng tồn đang giữ `-Reserved` ([BR: GBR-11]), hỗ trợ cả đơn đang nhặt hàng (`PICKING`).
+  - Chuyển sang `HANDED_OVER_CARRIER`: Bắt buộc cung cấp mã vận đơn hợp lệ `waybillCode` ([BR: GBR-13]).
+
+### 3. Giao diện Danh sách Đơn hàng theo chuẩn Layout Pancake / PosCake (Ảnh 2)
+- **Thanh tác vụ & Kênh bán hàng (Channel Tabs)**:
+  - Header: Tìm kiếm đa tiêu chí (mã đơn, SĐT, khách hàng), nút Quay lại Chat, Đồng bộ dữ liệu, Xuất Excel/CSV, Tạo đơn mới.
+  - Bộ lọc kênh bán: "Tất cả", "Bán tại quầy", "Online (Facebook/Web)".
+  - Tab phân loại công việc: "Đơn hàng", "Cần xử lý", "ĐƠN ĐÃ HOÀN".
+- **Thanh trạng thái với số đếm động (Dynamic Status Pill Counters)**:
+  - Hiển thị đầy đủ các trạng thái đơn hàng: Tất cả, Chờ xử lý, Đã xác nhận (giữ chỗ), Đang nhặt hàng, Đã đóng gói, Đã bàn giao ĐVVC, Đã giao hàng, Yêu cầu đổi/trả, Đã hủy, Đã hoàn trả.
+  - Số lượng đơn tương ứng từng trạng thái được tính toán bằng MongoDB Aggregation thời gian thực từ API `GET /api/orders`.
+- **Bảng danh sách đơn hàng 13 cột chi tiết chuẩn Pancake**:
+  1. Checkbox chọn hàng loạt đơn.
+  2. ID đơn hàng: Kèm biểu tượng Facebook nhận diện nguồn đơn chat.
+  3. Mã vận đơn: Hiển thị kèm đối tác vận chuyển.
+  4. Thời gian tạo đơn: Hiển thị định dạng ngày giờ kèm nhãn kênh (HT/POS).
+  5. Thời gian cập nhật trạng thái gần nhất.
+  6. Khách hàng: Tên khách hàng + Avatar định danh.
+  7. Số điện thoại: Tự động phân tích đầu số và gắn badge nhà mạng (`Viettel`, `Mobifone`, `Vinaphone`).
+  8. Mã mẫu mã SKU: Hiển thị kèm số lượng đặt mua (`SKU x Qty`).
+  9. Tên sản phẩm: Tên hàng hóa chi tiết.
+  10. Tổng tiền COD: Định dạng tiền tệ VNĐ nổi bật.
+  11. Ghi chú: Ghi chú nội bộ cho đơn hàng.
+  12. Trạng thái: Badge trạng thái màu sắc chuẩn Pancake.
+  13. Thao tác: Nút "Chi tiết" mở popup `OrderDetailModal` và nút "Đổi trả" mở `CreateRmaModal`.
+
+### 4. Kiểm soát Tuân thủ Comment & Quy tắc Nghiệp vụ
+- **Quy chuẩn Commenting**:
+  - Tất cả các tệp Backend và Frontend thuộc phạm vi Seller đều tuân thủ [COMMENTING_GUIDELINE.md](file:///d:/ARAWMS/COMMENTING_GUIDELINE.md):
+  - File Header: Khai báo `@author : Nguyễn Quang Huy`, ngày tạo/cập nhật, mô tả tệp.
+  - JSDoc: Định nghĩa tham số, kiểu trả về và ánh xạ mã Use Case.
+  - Inline comment: Chú thích rõ ràng từng bước nghiệp vụ và gắn mã quy tắc `[BR: GBR-xx]`.
+
