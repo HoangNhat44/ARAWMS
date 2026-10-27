@@ -1,3 +1,10 @@
+/*
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: Hỗ trợ UC-01, UC-05 - Chuẩn bị mật khẩu và ràng buộc Google cho
+ * Owner.
+ */
+
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { ENV } from '../src/config/env.js';
@@ -19,6 +26,10 @@ try {
       throw new Error('Role Owner không hợp lệ. Cần kiểm tra trước khi cấp mật khẩu.');
     }
   }
+  /*
+   * Hỗ trợ UC-01, UC-05: Chỉ ghi DB khi chạy với --apply; mật khẩu đã có được
+   * giữ nguyên.
+   */
   if (apply) {
     const missing = owners.filter((owner) => !owner.passwordHash);
     const password = process.env.OWNER_INITIAL_PASSWORD;

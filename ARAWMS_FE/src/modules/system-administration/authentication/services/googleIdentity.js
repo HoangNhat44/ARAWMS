@@ -1,6 +1,14 @@
+/*
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-04, UC-05 - Tải thư viện Google Identity Services dùng
+ * chung.
+ */
+
 let scriptPromise;
 
 // Dùng một script Google Identity Services cho toàn bộ ứng dụng.
+// UC-04, UC-05: Tái sử dụng thư viện Google đã tải, tránh chèn nhiều script.
 export const loadGoogleIdentity = () => {
   if (window.google?.accounts?.id) return Promise.resolve(window.google.accounts.id);
   if (scriptPromise) return scriptPromise;

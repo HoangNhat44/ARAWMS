@@ -1,3 +1,9 @@
+/*
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-04 - Kiểm tra mật khẩu hiện tại và gửi yêu cầu đổi mật khẩu.
+ */
+
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Eye, EyeOff } from 'lucide-react';
@@ -12,6 +18,10 @@ export default function ChangePasswordForm() {
   const [error, setError] = useState('');
   const { clearSession } = useAuth();
   const navigate = useNavigate();
+  /*
+   * UC-04: Mật khẩu mới phải đúng định dạng, khớp xác nhận và khác mật khẩu
+   * hiện tại.
+   */
   const submit = async (event) => {
     event.preventDefault();
     if (busy) return;
@@ -23,6 +33,7 @@ export default function ChangePasswordForm() {
     setBusy(true); setError('');
     try {
       const response = await accountService.changePassword(form);
+      // UC-04: Xóa phiên FE sau khi BE đổi mật khẩu và thu hồi các phiên cũ.
       clearSession();
       navigate('/login', { replace: true, state: { message: response.message } });
     } catch (err) { setError(err.message); }

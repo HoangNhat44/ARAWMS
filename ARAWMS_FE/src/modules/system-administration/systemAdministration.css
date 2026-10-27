@@ -1,3 +1,10 @@
+/*
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-01 đến UC-05 - Kiểu hiển thị của các trang đăng nhập và tài
+ * khoản.
+ */
+
 .ara-login-page { min-height: calc(100vh - 160px); display: flex; align-items: center; justify-content: center; padding: 2rem 1.5rem; }
 .ara-login-card { max-width: 980px; width: 100%; background: #fff; border-radius: var(--radius-lg); border: 1px solid var(--ara-border); box-shadow: var(--ara-shadow-lg); overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .ara-login-form { padding: 3.5rem 3rem; display: flex; flex-direction: column; justify-content: center; background: #fff; }
@@ -35,6 +42,8 @@ button:disabled { opacity: .65; cursor: not-allowed; }
 .ara-google-linked { padding: 1rem; border-radius: var(--radius-md); background: var(--ara-success-bg); color: var(--ara-success); overflow-wrap: anywhere; }
 .ara-google-linked p { margin-top: .4rem; font-size: .9rem; }
 .ara-google-action { display: inline-flex; align-items: center; gap: .5rem; margin: 1rem 0; }
+.ara-recovery-action { margin-bottom: 1rem; width: 100%; }
+.ara-recovery-back { display: inline-block; margin-top: 1.5rem; text-align: center; }
 @media (max-width: 700px) {
   .ara-login-card, .ara-account-grid { grid-template-columns: minmax(0, 1fr); }
   .ara-login-form { padding: 2rem 1.5rem; }

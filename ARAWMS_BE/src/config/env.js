@@ -14,6 +14,14 @@ export const ENV = {
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
   CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:5173',
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
+  SMTP: {
+    HOST: process.env.SMTP_HOST || '',
+    PORT: Number(process.env.SMTP_PORT || 587),
+    SECURE: process.env.SMTP_SECURE === 'true',
+    USER: process.env.SMTP_USER || '',
+    PASS: process.env.SMTP_PASS || '',
+    FROM: process.env.SMTP_FROM || '',
+  },
 
   // GHN Configuration
   GHN: {

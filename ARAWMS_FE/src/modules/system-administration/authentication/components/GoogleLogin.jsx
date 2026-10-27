@@ -1,3 +1,10 @@
+/*
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-05 - Chuẩn bị nút Google và đăng nhập Owner sau khi xác
+ * minh.
+ */
+
 import { useEffect, useState } from 'react';
 import { authService } from '../services/authService';
 import GoogleIdentityButton from './GoogleIdentityButton';
@@ -7,6 +14,7 @@ export default function GoogleLogin({ rememberMe, disabled, onSuccess, onBusyCha
   const [challenge, setChallenge] = useState(null);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
+  // UC-05: Đọc cấu hình Google và xin mã xác thực từ BE trước khi hiển thị nút.
   useEffect(() => {
     let active = true;
     setError(''); setChallenge(null);
@@ -20,6 +28,7 @@ export default function GoogleLogin({ rememberMe, disabled, onSuccess, onBusyCha
     }).catch((err) => { if (active) setError(err.message); });
     return () => { active = false; };
   }, [attempt]);
+  // UC-05: Bỏ mã đang dùng khi xác thực lỗi để lần thử lại nhận mã mới.
   const failed = (err) => { setError(err.message); setChallenge(null); };
   return <section className="ara-google-login" aria-label="Đăng nhập Owner bằng Google">
     <div className="ara-auth-divider"><span>Hoặc đăng nhập Owner bằng Google</span></div>

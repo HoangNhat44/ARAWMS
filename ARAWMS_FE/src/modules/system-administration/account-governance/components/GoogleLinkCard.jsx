@@ -1,3 +1,10 @@
+/*
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-04, UC-05 - Liên kết, hủy liên kết và đổi tài khoản Google
+ * của Owner.
+ */
+
 import { useEffect, useState } from 'react';
 import { Link2, Unlink } from 'lucide-react';
 import { authService } from '../../authentication/services/authService';
@@ -20,6 +27,10 @@ export default function GoogleLinkCard({ user, onSaved }) {
       .catch((err) => { if (active) setError(err.message); });
     return () => { active = false; };
   }, [attempt]);
+  /*
+   * UC-04, UC-05: Xác nhận mật khẩu trước khi chuẩn bị liên kết hoặc hủy
+   * Google.
+   */
   const confirm = async (event) => {
     event.preventDefault();
     if (busy) return;
@@ -27,11 +38,13 @@ export default function GoogleLinkCard({ user, onSaved }) {
     if (invalidPassword) return setError(invalidPassword);
     setError(''); setMessage(''); setBusy(true);
     try {
+      // UC-04: Hủy Google hiện tại để người dùng có thể chọn Google khác.
       if (unlinking) {
         const response = await accountService.unlinkGoogle({ currentPassword: password });
         onSaved(response.data.user);
         setMessage(response.message); setUnlinking(false); setChallenge(null);
       } else {
+        // UC-04, UC-05: Xin mã liên kết sau khi BE kiểm tra mật khẩu hiện tại.
         const response = await accountService.googleChallenge({ currentPassword: password });
         setChallenge(response.data);
       }
@@ -39,6 +52,7 @@ export default function GoogleLinkCard({ user, onSaved }) {
     finally { setPassword(''); setBusy(false); }
   };
   const cancel = () => { setUnlinking(false); setPassword(''); setChallenge(null); setError(''); setMessage(''); };
+  // UC-04: Dùng chung form xác nhận mật khẩu cho liên kết và hủy liên kết.
   const passwordForm = <form onSubmit={confirm}>
     <div className="form-group"><label className="form-label" htmlFor="googleLinkPassword">Mật khẩu hiện tại</label>
       <input id="googleLinkPassword" type="password" className="form-input ara-plain-input" value={password}

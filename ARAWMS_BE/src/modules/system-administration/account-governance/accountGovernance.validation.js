@@ -1,8 +1,18 @@
+/*
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-04 - Kiểm tra thông tin hồ sơ và mật khẩu mới trước khi lưu.
+ */
+
 import { httpError } from '../../../common/utils/httpError.js';
 
 const onlyFields = (body, allowed) => body && typeof body === 'object' && !Array.isArray(body)
   && Object.keys(body).every((key) => allowed.includes(key));
 
+/*
+ * UC-04: Chỉ cho sửa họ tên và số điện thoại; không nhận email, role hoặc mã
+ * nhân viên gửi thêm.
+ */
 export const validateProfile = (req, res, next) => {
   const body = req.body;
   if (!onlyFields(body, ['fullName', 'phone']) || !Object.keys(body).length) {
@@ -25,6 +35,7 @@ export const validateProfile = (req, res, next) => {
   next();
 };
 
+// UC-04: Mật khẩu mới cần ít nhất 8 ký tự, tối đa 72 byte và khớp ô xác nhận.
 export const validatePassword = (req, res, next) => {
   const body = req.body;
   if (!onlyFields(body, ['currentPassword', 'newPassword', 'confirmPassword'])

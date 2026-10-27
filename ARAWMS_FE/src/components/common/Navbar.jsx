@@ -1,8 +1,19 @@
+/*
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-02, UC-03 - Mở hồ sơ tài khoản và đăng xuất từ thanh điều
+ * hướng.
+ */
+
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { LogOut, User as UserIcon, LogIn, Shield } from 'lucide-react';
 
+/*
+ * UC-02, UC-03: Hiển thị liên kết hồ sơ và nút đăng xuất theo trạng thái đăng
+ * nhập.
+ */
 const Navbar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();

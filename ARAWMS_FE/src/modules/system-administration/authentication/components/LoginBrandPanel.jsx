@@ -1,3 +1,9 @@
+/*
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-01 - Hiển thị phần giới thiệu bên cạnh biểu mẫu đăng nhập.
+ */
+
 
 export default function LoginBrandPanel() {
   return <>

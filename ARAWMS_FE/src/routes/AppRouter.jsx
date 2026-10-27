@@ -1,7 +1,16 @@
+/*
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-01 đến UC-05; GBR-02 - Điều hướng trang và kiểm tra trạng
+ * thái đăng nhập.
+ */
+
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import HomePage from '../pages/HomePage';
 import LoginPage from '../modules/system-administration/authentication/pages/LoginPage';
 import AccountPage from '../modules/system-administration/account-governance/pages/AccountPage';
+import ForgotPasswordPage from '../modules/system-administration/authentication/pages/ForgotPasswordPage';
+import ResetPasswordPage from '../modules/system-administration/authentication/pages/ResetPasswordPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -11,6 +20,10 @@ const SessionError = ({ message, retry }) => <div className="ara-account-page">
   <button className="btn-ara-secondary" onClick={retry}>Thử kết nối lại</button>
 </div>;
 
+/*
+ * UC-01, UC-03, UC-04: Chỉ mở trang được bảo vệ sau khi FE kiểm tra phiên với
+ * BE.
+ */
 const ProtectedRoute = ({ children }) => {
   const { user, loading, authError, refreshSession } = useAuth();
   const location = useLocation();
@@ -20,6 +33,7 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+// UC-01: Người đã đăng nhập được đưa về trang chủ khi mở lại trang đăng nhập.
 const PublicRoute = ({ children }) => {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner message="Đang tải..." />;
@@ -27,10 +41,16 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
+/*
+ * UC-01 đến UC-05, GBR-02: Khai báo trang đăng nhập, hồ sơ và khôi phục mật
+ * khẩu.
+ */
 export default function AppRouter() {
   return <Routes>
     <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
     <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+    <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
+    <Route path="/reset-password" element={<ResetPasswordPage />} />
     <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
     <Route path="/register" element={<Navigate to="/login" replace />} />
     <Route path="*" element={<NotFoundPage />} />

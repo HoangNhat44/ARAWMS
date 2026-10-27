@@ -1,9 +1,16 @@
+/*
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-05 - Kiểm tra dữ liệu xác thực Google trước khi xử lý.
+ */
+
 import { httpError } from '../../../common/utils/httpError.js';
 
 export const isObjectBody = (body) => body !== null && typeof body === 'object' && !Array.isArray(body);
 export const validCurrentPassword = (value) => typeof value === 'string' && value.length > 0
   && Buffer.byteLength(value, 'utf8') <= 72;
 
+// UC-05: Kiểm tra cấu trúc token, mã yêu cầu và các trường được phép gửi.
 export const validateGoogleCredential = (purpose) => (req, res, next) => {
   const body = req.body;
   const allowed = purpose === 'LOGIN' ? ['credential', 'challengeId', 'rememberMe'] : ['credential', 'challengeId'];

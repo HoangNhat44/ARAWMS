@@ -1,3 +1,10 @@
+/*
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-03, UC-04 - Hiển thị hồ sơ và gửi thay đổi họ tên, số điện
+ * thoại.
+ */
+
 import { useState } from 'react';
 import { Save } from 'lucide-react';
 import { accountService } from '../services/accountService';
@@ -6,6 +13,7 @@ export default function ProfileForm({ user, onSaved }) {
   const [form, setForm] = useState({ fullName: user.fullName, phone: user.phone || '' });
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  // UC-04: Kiểm tra họ tên, số điện thoại và chỉ gửi hai trường được phép sửa.
   const submit = async (event) => {
     event.preventDefault();
     if (busy) return;
@@ -18,6 +26,7 @@ export default function ProfileForm({ user, onSaved }) {
     } catch (error) { setNotice({ ok: false, text: error.message }); }
     finally { setBusy(false); }
   };
+  // UC-03, UC-04: Hiển thị hồ sơ; email, mã nhân viên và vai trò chỉ để xem.
   return <section className="ara-account-card">
     <h2>Thông tin cá nhân</h2><p className="ara-section-note">Cập nhật họ tên và thông tin liên hệ của bạn.</p>
     {notice && <div role={notice.ok ? 'status' : 'alert'} className={`ara-alert ara-alert-${notice.ok ? 'success' : 'error'}`}>{notice.text}</div>}
