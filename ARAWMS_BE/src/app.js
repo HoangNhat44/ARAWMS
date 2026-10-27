@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import cors from 'cors';
 import morgan from 'morgan';
 import apiRoutes from './routes/api.js';
@@ -24,6 +25,9 @@ app.use(
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
+
+// Phục vụ tĩnh tệp đính kèm chat do Seller tải lên (UC-74)
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads'), { maxAge: '7d' }));
 
 // Prefix tất cả API bằng /api
 app.use('/api', apiRoutes);

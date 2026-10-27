@@ -3,10 +3,15 @@ import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 
 const { Schema } = mongoose;
 
+// NOTE: Khai báo tường minh { type: { type: String } } để Mongoose không hiểu nhầm
+// trường "type" là từ khóa khai báo kiểu dữ liệu của cả sub-document.
 const chatAttachmentSchema = new Schema(
   {
-    type: String,
-    url: String,
+    type: { type: String, default: 'file' }, // image | video | audio | file | fallback | sticker ...
+    url: { type: String },
+    name: { type: String },
+    mimeType: { type: String },
+    size: { type: Number },
   },
   { _id: false }
 );

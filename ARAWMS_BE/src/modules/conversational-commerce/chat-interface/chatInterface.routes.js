@@ -17,12 +17,17 @@ import {
   getConversationById,
   getConversationMessages,
   sendCustomerMessage,
+  sendCustomerAttachments,
   addConversationTag,
   removeConversationTag,
+  getTagList,
+  createCustomTag,
+  deleteCustomTag,
 } from './chatInterface.controller.js';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
 import { validateSendMessage } from './chatInterface.validation.js';
+import { uploadChatFiles } from '../../../common/middlewares/chatUpload.js';
 
 const router = express.Router();
 
@@ -37,8 +42,16 @@ router.get('/:id/messages', getConversationMessages);
 // UC-74: Gửi tin nhắn cho khách hàng
 router.post('/:id/messages', validateSendMessage, sendCustomerMessage);
 
-// UC-73: Gắn / gỡ thẻ hội thoại
+// UC-74: Gửi ảnh / tệp đính kèm (multipart, tối đa 5 tệp x 25MB)
+router.post('/:id/attachments', uploadChatFiles, sendCustomerAttachments);
+
+// UC-73: Gắn / gỡ thẻ hội thoại khách hàng
 router.post('/:id/tags', addConversationTag);
 router.delete('/:id/tags/:tag', removeConversationTag);
+
+// UC-73 & [BR: GBR-23]: Quản lý thẻ tag tuỳ chỉnh của Seller (lưu trữ MongoDB)
+router.get('/tags/list', getTagList);
+router.post('/tags/create', createCustomTag);
+router.delete('/tags/:tagId', deleteCustomTag);
 
 export default router;

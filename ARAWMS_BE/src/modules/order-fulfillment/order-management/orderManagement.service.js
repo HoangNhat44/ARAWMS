@@ -20,6 +20,7 @@ import Customer from '../../../models/Customer.model.js';
 import InventoryTransaction from '../../../models/InventoryTransaction.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
+import { ORDER_STATUS } from '../../../common/constants/enums.js';
 
 /**
  * Ghi SystemLog kiểm toán
@@ -225,12 +226,63 @@ export const confirmOrderReserve = async (orderId, user, req) => {
 };
 
 /**
- * UC-80: Cập nhật thông tin nhận hàng hoặc trạng thái đơn hàng
+ * Ma trận chuyển trạng thái hợp lệ của đơn bán lẻ.
+ * Trạng thái CANCELLED / RETURNED là trạng thái kết thúc, không thể chuyển tiếp.
+ * @constant {Object<string, string[]>}
+ */
+export const ORDER_STATUS_TRANSITIONS = {
+  PENDING: ['CONFIRMED_RESERVED', 'CANCELLED'],
+  CONFIRMED_RESERVED: ['PICKING', 'CANCELLED'],
+  PICKING: ['PACKED', 'CANCELLED'],
+  PACKED: ['HANDED_OVER_CARRIER'],
+  HANDED_OVER_CARRIER: ['DELIVERED', 'RETURN_REQUESTED'],
+  DELIVERED: ['RETURN_REQUESTED'],
+  RETURN_REQUESTED: ['RETURNED'],
+  CANCELLED: [],
+  RETURNED: [],
+};
+
+/**
+ * Cập nhật thông tin người nhận và/hoặc trạng thái đơn hàng theo ma trận chuyển trạng thái.
+ *
+ * @async
+ * @function updateOrderStatus
+ * @param {string} orderId - ID đơn hàng.
+ * @param {Object} updateData - { status?, shippingRecipient?, waybillCode?, cancelReason? }.
+ * @param {Object} user - Người thực hiện (req.user).
+ * @param {Object} [req] - Express Request để ghi log.
+ * @returns {Promise<Object>} Đơn hàng sau cập nhật.
+ * @throws {Error} Trạng thái không hợp lệ hoặc không được phép chuyển.
+ * @businessRule GBR-10 Chuyển sang CONFIRMED_RESERVED phải đi qua luồng giữ chỗ tồn kho.
+ * @businessRule GBR-11 Chuyển sang CANCELLED phải đi qua luồng hủy để nhả tồn giữ chỗ.
+ * @businessRule GBR-13 Bàn giao vận chuyển bắt buộc có mã vận đơn.
+ * @businessRule GBR-23 Ghi SystemLog trước/sau khi cập nhật.
  */
 export const updateOrderStatus = async (orderId, updateData, user, req) => {
   const order = await SalesOrder.findById(orderId);
   if (!order) {
     throw new Error('Đơn hàng không tồn tại');
+  }
+
+  const nextStatus = updateData.status;
+  if (nextStatus && nextStatus !== order.status) {
+    // 1. Trạng thái phải thuộc danh mục hệ thống
+    if (!ORDER_STATUS.includes(nextStatus)) {
+      throw new Error(`Trạng thái "${nextStatus}" không hợp lệ`);
+    }
+    // 2. Kiểm tra ma trận chuyển trạng thái
+    const allowed = ORDER_STATUS_TRANSITIONS[order.status] || [];
+    if (!allowed.includes(nextStatus)) {
+      throw new Error(
+        `Không thể chuyển đơn từ ${order.status} sang ${nextStatus}` +
+        (allowed.length ? ` (cho phép: ${allowed.join(', ')})` : ' (đơn đã ở trạng thái kết thúc)')
+      );
+    }
+    // 3. [BR: GBR-10] / [BR: GBR-11] Uỷ quyền cho luồng chuyên biệt để xử lý tồn kho
+    if (nextStatus === 'CONFIRMED_RESERVED') return confirmOrderReserve(orderId, user, req);
+    if (nextStatus === 'CANCELLED') {
+      return cancelOrder(orderId, updateData.cancelReason || 'Seller cập nhật trạng thái Hủy', user, req);
+    }
   }
 
   const beforeSnapshot = order.toObject();
@@ -243,8 +295,19 @@ export const updateOrderStatus = async (orderId, updateData, user, req) => {
     };
   }
 
-  if (updateData.status && updateData.status !== order.status) {
-    order.status = updateData.status;
+  if (nextStatus && nextStatus !== order.status) {
+    // [BR: GBR-13] Bàn giao cho hãng vận chuyển bắt buộc có mã vận đơn
+    if (nextStatus === 'HANDED_OVER_CARRIER') {
+      const waybill = (updateData.waybillCode || order.warehouseFulfillment?.waybillCode || '').trim();
+      if (!waybill) throw new Error('[BR: GBR-13] Vui lòng nhập mã vận đơn trước khi bàn giao vận chuyển');
+      order.warehouseFulfillment.waybillCode = waybill;
+      order.warehouseFulfillment.handedOverAt = new Date();
+    }
+    if (nextStatus === 'PACKED') {
+      order.warehouseFulfillment.packedAt = new Date();
+      order.warehouseFulfillment.packedByStaffId = user._id;
+    }
+    order.status = nextStatus;
   }
 
   await order.save();
@@ -282,8 +345,8 @@ export const cancelOrder = async (orderId, cancelReason, user, req) => {
 
   const beforeSnapshot = order.toObject();
 
-  // Nếu đơn đã ở CONFIRMED_RESERVED: Nhả reservedQty của từng SKU
-  if (order.status === 'CONFIRMED_RESERVED') {
+  // [BR: GBR-11] Đơn đã giữ chỗ (CONFIRMED_RESERVED / PICKING): nhả reservedQty của từng SKU
+  if (['CONFIRMED_RESERVED', 'PICKING'].includes(order.status)) {
     for (const item of order.items) {
       const sku = await Sku.findByIdAndUpdate(
         item.skuId,
@@ -337,52 +400,93 @@ export const cancelOrder = async (orderId, cancelReason, user, req) => {
   return order;
 };
 
+/** Escape ký tự đặc biệt để chuỗi tìm kiếm không bị hiểu là biểu thức RegExp */
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Các trường cho phép sắp xếp trên bảng danh sách đơn */
+const SORTABLE_FIELDS = {
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  total: 'financialSummary.totalOrderAmount',
+  orderCode: 'orderCode',
+};
+
 /**
- * Tra cứu danh sách đơn hàng
+ * Tra cứu danh sách đơn hàng kèm số lượng theo từng trạng thái (phục vụ thanh tab lọc).
+ *
+ * @async
+ * @function getOrderList
+ * @param {Object} filters - { status, search, page, limit, customerId, fromDate, toDate, sortBy, sortDir, viewAll }.
+ * @param {Object} user - Người dùng đang đăng nhập (req.user).
+ * @returns {Promise<{items: Array, pagination: Object, statusCounts: Object}>}
  */
 export const getOrderList = async (filters, user) => {
   const { status, search, page = 1, limit = 20 } = filters;
-  const query = {};
+  const baseQuery = {};
 
+  // 1. Phạm vi dữ liệu: Seller mặc định chỉ thấy đơn của mình
   if (user.roleCode === 'SELLER') {
     if (filters.viewAll !== 'true') {
-      query.sellerId = user._id;
+      baseQuery.sellerId = user._id;
     }
   } else if (filters.sellerId) {
-    query.sellerId = filters.sellerId;
+    baseQuery.sellerId = new mongoose.Types.ObjectId(filters.sellerId);
   }
 
-  if (status) query.status = status;
-  if (filters.customerId) query.customerId = filters.customerId;
+  if (filters.customerId) baseQuery.customerId = new mongoose.Types.ObjectId(filters.customerId);
 
+  if (filters.fromDate || filters.toDate) {
+    baseQuery.createdAt = {};
+    if (filters.fromDate) baseQuery.createdAt.$gte = new Date(filters.fromDate);
+    if (filters.toDate) {
+      const end = new Date(filters.toDate);
+      end.setHours(23, 59, 59, 999);
+      baseQuery.createdAt.$lte = end;
+    }
+  }
+
+  // 2. Tìm kiếm theo mã đơn / tên / SĐT người nhận / mã SKU
   if (search && search.trim()) {
-    const s = search.trim();
-    query.$or = [
-      { orderCode: new RegExp(s, 'i') },
-      { 'shippingRecipient.name': new RegExp(s, 'i') },
-      { 'shippingRecipient.phone': new RegExp(s, 'i') },
+    const re = new RegExp(escapeRegex(search.trim()), 'i');
+    baseQuery.$or = [
+      { orderCode: re },
+      { 'shippingRecipient.name': re },
+      { 'shippingRecipient.phone': re },
+      { 'items.skuCode': re },
     ];
   }
 
-  const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
+  const query = status ? { ...baseQuery, status } : baseQuery;
+  const pageNum = Math.max(1, Number(page));
+  const limitNum = Math.min(200, Math.max(1, Number(limit)));
+  const sortField = SORTABLE_FIELDS[filters.sortBy] || 'createdAt';
+  const sortDir = filters.sortDir === 'asc' ? 1 : -1;
 
-  const orders = await SalesOrder.find(query)
-    .populate('customerId', 'customerCode fullName phone')
-    .populate('sellerId', 'employeeCode fullName email')
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(Number(limit))
-    .lean();
+  const [orders, total, countsAgg] = await Promise.all([
+    SalesOrder.find(query)
+      .populate('customerId', 'customerCode fullName phone facebookPsid')
+      .populate('sellerId', 'employeeCode fullName email')
+      .populate('items.skuId', 'skuCode styleName color size')
+      .sort({ [sortField]: sortDir, _id: sortDir })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean(),
+    SalesOrder.countDocuments(query),
+    // 3. Đếm theo trạng thái trên cùng phạm vi lọc (bỏ qua bộ lọc status)
+    SalesOrder.aggregate([{ $match: baseQuery }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+  ]);
 
-  const total = await SalesOrder.countDocuments(query);
+  const statusCounts = countsAgg.reduce((acc, c) => ({ ...acc, [c._id]: c.count }), {});
+  statusCounts.ALL = countsAgg.reduce((sum, c) => sum + c.count, 0);
 
   return {
     items: orders,
+    statusCounts,
     pagination: {
       total,
-      page: Number(page),
-      limit: Number(limit),
-      totalPages: Math.ceil(total / Number(limit)),
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
     },
   };
 };
