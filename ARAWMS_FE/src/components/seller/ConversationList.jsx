@@ -1,8 +1,35 @@
+/**
+ * ============================================================================
+ * @title        : Conversation List Component (Pancake-style)
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Danh sách cuộc hội thoại khách hàng Messenger của Seller (UC-72),
+ *                 tích hợp thanh lọc thẻ tag nhanh (Pancake Quick Tag Filter) và tìm kiếm khách hàng.
+ * @module       : Conversational Commerce / Chat Interface
+ * @layer        : Front-end
+ * ============================================================================
+ */
+
 import React, { useState } from 'react';
 import { Search, MessageSquare } from 'lucide-react';
 import { SkeletonConversationItem } from '../common/Skeleton';
 
-const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilter, activeFilterTag, loading }) => {
+/**
+ * Component hiển thị danh sách hội thoại khách hàng kèm bộ lọc nhãn màu.
+ *
+ * @component
+ * @param {Object} props - Thuộc tính truyền vào component.
+ * @param {Array<Object>} props.conversations - Danh sách các cuộc hội thoại.
+ * @param {string} props.selectedId - ID cuộc hội thoại đang được kích hoạt.
+ * @param {Function} props.onSelect - Callback khi chọn một cuộc hội thoại.
+ * @param {Function} props.onTagFilter - Callback kích hoạt lọc theo thẻ tag.
+ * @param {string} props.activeFilterTag - Tên thẻ tag đang được chọn lọc.
+ * @param {boolean} props.loading - Trạng thái đang tải dữ liệu.
+ * @param {Array<Object>} props.allTags - Danh sách thẻ phân loại từ DB.
+ * @returns {JSX.Element} Giao diện danh sách hội thoại.
+ */
+const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilter, activeFilterTag, loading, allTags = [] }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredConversations = conversations.filter((c) => {
@@ -34,7 +61,7 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
         </div>
       </div>
 
-      {/* Quick Tag Pills Bar */}
+      {/* Quick Tag Pills Bar - dùng allTags từ DB */}
       <div className="ara-tag-pills-bar">
         <button
           type="button"
@@ -43,14 +70,18 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
         >
           Tất cả ({conversations.length})
         </button>
-        {['VIP', 'Chờ chốt', 'Đã chốt đơn', 'Cần tư vấn size'].map((t) => (
+        {allTags.slice(0, 6).map((tag) => (
           <button
-            key={t}
+            key={tag._id || tag.name}
             type="button"
-            onClick={() => onTagFilter && onTagFilter(t === activeFilterTag ? '' : t)}
-            className={`ara-tag-pill ${activeFilterTag === t ? 'active' : ''}`}
+            onClick={() => onTagFilter && onTagFilter(tag.name === activeFilterTag ? '' : tag.name)}
+            className={`ara-tag-pill ${activeFilterTag === tag.name ? 'active' : ''}`}
+            style={activeFilterTag === tag.name
+              ? { background: tag.color, borderColor: tag.color, color: tag.textColor || '#fff' }
+              : { borderColor: tag.color, color: tag.color }
+            }
           >
-            {t}
+            {tag.name}
           </button>
         ))}
       </div>

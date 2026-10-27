@@ -1,44 +1,87 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Send, ShoppingBag, Tag, CheckCheck, Package, Sparkles, MessageSquare } from 'lucide-react';
-import { sellerService } from '../../services/sellerService';
-import { SkeletonMessage } from '../common/Skeleton';
+/**
+ * ============================================================================
+ * @title        : ChatBox Component (Pancake-style Quick Tag Bar)
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Khung chat nhắn tin trực tiếp với khách hàng Messenger (UC-72, UC-74),
+ *                 tích hợp thanh nhãn màu Pancake gán tag 1 chạm (UC-73) và nút mở nhanh tạo đơn.
+ * @module       : Conversational Commerce / Chat Interface
+ * @layer        : Front-end
+ * ============================================================================
+ */
 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Send, ShoppingBag, CheckCheck, Package, MessageSquare, MessageSquareText,
+  Plus, X, Settings2, Paperclip, Image as ImageIcon, FileText, Download,
+} from 'lucide-react';
+import { sellerService } from '../../services/sellerService';
+import { API_BASE_URL } from '../../utils/constants';
+
+/**
+ * Hàm lấy URL tuyệt đối của ảnh/tệp đính kèm.
+ * Nếu là URL ngoài (Facebook CDN) thì dùng trực tiếp; nếu là /uploads thì ghép origin Backend.
+ */
+const getMediaUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) {
+    return url;
+  }
+  const serverOrigin = (API_BASE_URL || '').replace(/\/api\/?$/, '');
+  return `${serverOrigin}${url}`;
+};
+
+/**
+ * Component khung chat chính với khách hàng kèm Quick Tag Bar.
+ *
+ * @component
+ * @param {Object} props - Thuộc tính truyền vào component.
+ * @param {Object} props.conversation - Dữ liệu cuộc hội thoại đang mở.
+ * @param {Function} [props.onTagAdded] - Callback thông báo khi gắn/hủy tag.
+ * @param {Array<Object>} props.allTags - Danh sách tất cả thẻ tag từ DB.
+ * @param {Function} [props.onTagsRefresh] - Callback làm mới danh sách thẻ tag.
+ * @param {Function} [props.onOpenQuickOrder] - Callback chuyển sang tab tạo đơn nhanh.
+ * @returns {JSX.Element} Khung chat hoàn chỉnh.
+ */
 const ChatBox = ({
   conversation,
-  attachedSku,
-  onClearAttachedSku,
-  onOpenQuickOrder,
   onTagAdded,
+  allTags = [],
+  onTagsRefresh,
+  onOpenQuickOrder,
 }) => {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
-  const [tagInput, setTagInput] = useState('');
-  const [showTagPopup, setShowTagPopup] = useState(false);
+  const [showNewTagForm, setShowNewTagForm] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagColor, setNewTagColor] = useState('#8B5CF6');
+  const [creatingTag, setCreatingTag] = useState(false);
+  
+  // Tệp đính kèm người bán chọn gửi
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [previewImage, setPreviewImage] = useState(null); // Modal phóng to ảnh
+  
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  const activeTags = conversation?.tags || [];
 
   useEffect(() => {
-    if (conversation?._id) {
-      fetchMessages(conversation._id);
-    }
+    if (conversation?._id) fetchMessages(conversation._id);
   }, [conversation?._id]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, [messages]);
 
   const fetchMessages = async (convId) => {
     try {
       setLoading(true);
       const res = await sellerService.getConversationMessages(convId, { limit: 50 });
-      if (res.success) {
-        setMessages(res.data.items || []);
-      }
+      if (res.success) setMessages(res.data.items || []);
     } catch (err) {
       console.warn('Lỗi tải tin nhắn:', err.message);
     } finally {
@@ -46,22 +89,56 @@ const ChatBox = ({
     }
   };
 
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if ((!text.trim() && !attachedSku) || sending || !conversation?._id) return;
+  /** Xử lý chọn tệp từ máy tính */
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    if (selectedFiles.length + files.length > 5) {
+      alert('Chỉ được chọn tối đa 5 tệp mỗi lần');
+      return;
+    }
+    // Giới hạn 25MB mỗi tệp
+    for (const f of files) {
+      if (f.size > 25 * 1024 * 1024) {
+        alert(`Tệp "${f.name}" vượt quá dung lượng 25MB cho phép`);
+        return;
+      }
+    }
+    setSelectedFiles((prev) => [...prev, ...files]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
+  const removeSelectedFile = (idx) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  /** Gửi tin nhắn văn bản hoặc tệp đính kèm */
+  const handleSendMessage = async (e) => {
+    if (e) e.preventDefault();
+    if ((!text.trim() && selectedFiles.length === 0) || sending || !conversation?._id) return;
+    
     try {
       setSending(true);
-      const payload = {
-        messageText: text.trim(),
-        referencedSkuId: attachedSku ? attachedSku.skuId || attachedSku._id : null,
-      };
 
-      const res = await sellerService.sendMessage(conversation._id, payload);
-      if (res.success) {
-        setMessages([...messages, res.data]);
-        setText('');
-        if (onClearAttachedSku) onClearAttachedSku();
+      // Nếu có chọn tệp -> Gửi qua API upload tệp đính kèm (UC-74)
+      if (selectedFiles.length > 0) {
+        const formData = new FormData();
+        selectedFiles.forEach((file) => formData.append('files', file));
+        if (text.trim()) formData.append('messageText', text.trim());
+
+        const res = await sellerService.sendAttachments(conversation._id, formData);
+        if (res.success) {
+          setMessages((prev) => [...prev, res.data]);
+          setText('');
+          setSelectedFiles([]);
+        }
+      } else {
+        // Chỉ gửi tin nhắn văn bản thuần túy
+        const res = await sellerService.sendMessage(conversation._id, { messageText: text.trim() });
+        if (res.success) {
+          setMessages((prev) => [...prev, res.data]);
+          setText('');
+        }
       }
     } catch (err) {
       alert(`Lỗi gửi tin nhắn: ${err.message}`);
@@ -70,37 +147,85 @@ const ChatBox = ({
     }
   };
 
-  const handleAddTag = async (e) => {
-    e.preventDefault();
-    if (!tagInput.trim() || !conversation?._id) return;
-
+  /** Toggle tag: gắn nếu chưa có, hủy nếu đã có */
+  const handleToggleTag = async (tagName) => {
+    if (!conversation?._id) return;
     try {
-      const res = await sellerService.addTag(conversation._id, tagInput.trim());
+      const isActive = activeTags.includes(tagName);
+      let res;
+      if (isActive) {
+        res = await sellerService.removeTag(conversation._id, tagName);
+      } else {
+        res = await sellerService.addTag(conversation._id, tagName);
+      }
+      if (res.success && onTagAdded) onTagAdded(res.data);
+    } catch (err) {
+      console.warn('Tag toggle error:', err.message);
+    }
+  };
+
+  /** Tạo tag tuỳ chỉnh mới */
+  const handleCreateTag = async (e) => {
+    e.preventDefault();
+    if (!newTagName.trim()) return;
+    try {
+      setCreatingTag(true);
+      const res = await sellerService.createCustomTag({ name: newTagName.trim(), color: newTagColor });
       if (res.success) {
-        if (onTagAdded) onTagAdded(res.data);
-        setTagInput('');
-        setShowTagPopup(false);
+        if (onTagsRefresh) await onTagsRefresh();
+        setNewTagName('');
+        setShowNewTagForm(false);
+        // Auto-gắn tag vừa tạo vào cuộc hội thoại
+        if (conversation?._id) {
+          const tagRes = await sellerService.addTag(conversation._id, newTagName.trim());
+          if (tagRes.success && onTagAdded) onTagAdded(tagRes.data);
+        }
       }
     } catch (err) {
       alert(err.message);
+    } finally {
+      setCreatingTag(false);
     }
   };
 
   if (!conversation) {
     return (
-      <div className="d-flex flex-column align-items-center justify-content-center h-100 p-5 text-center bg-light text-muted">
+      <div className="d-flex flex-column align-items-center justify-content-center h-100 p-5 text-center text-muted" style={{ background: '#FAF9F6' }}>
         <div
-          className="d-flex align-items-center justify-content-center rounded-circle mb-3"
-          style={{ width: '64px', height: '64px', background: 'var(--ara-bg-surface, #FAF7F2)', border: '1px solid var(--ara-gold, #9F8365)' }}
+          className="d-flex align-items-center justify-content-center mb-3"
+          style={{
+            width: '60px',
+            height: '60px',
+            background: '#FFFFFF',
+            border: '1px solid #E5E7EB',
+            borderRadius: '14px',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+          }}
         >
-          <Sparkles size={28} color="var(--ara-gold, #9F8365)" />
+          <MessageSquareText size={30} color="#4B5563" />
         </div>
-        <h4 className="fw-bold text-dark mb-1" style={{ fontFamily: 'var(--font-serif)' }}>
-          Không Gian Tư Vấn Khách Hàng (UC-72/74)
+        <h4 className="fw-bold text-dark mb-2" style={{ fontSize: '1.1rem', letterSpacing: '-0.01em' }}>
+          Hộp Thoại Tư Vấn Bán Hàng
         </h4>
-        <p className="text-secondary small mb-0" style={{ maxWidth: '320px' }}>
-          Vui lòng chọn một cuộc trò chuyện từ danh sách bên trái để tiếp nhận tư vấn và lên đơn hàng.
+        <p className="text-secondary small mb-4" style={{ maxWidth: '360px', lineHeight: 1.5 }}>
+          Vui lòng chọn một khách hàng từ danh sách bên trái để xem nội dung tin nhắn, kiểm tra tồn kho và hỗ trợ lên đơn.
         </p>
+
+        {/* Hướng dẫn tác vụ nhanh thực tế cho Seller */}
+        <div className="d-flex flex-column gap-2" style={{ maxWidth: '340px', width: '100%', textAlign: 'left' }}>
+          <div className="d-flex align-items-center gap-2 p-2 rounded" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', fontSize: '0.78rem', color: '#374151' }}>
+            <span style={{ fontSize: '1rem' }}>💬</span>
+            <span>Đồng bộ tin nhắn Facebook Messenger</span>
+          </div>
+          <div className="d-flex align-items-center gap-2 p-2 rounded" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', fontSize: '0.78rem', color: '#374151' }}>
+            <span style={{ fontSize: '1rem' }}>⚡</span>
+            <span>Tra cứu tồn kho khả dụng & Tạo đơn nhanh</span>
+          </div>
+          <div className="d-flex align-items-center gap-2 p-2 rounded" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', fontSize: '0.78rem', color: '#374151' }}>
+            <span style={{ fontSize: '1rem' }}>🏷️</span>
+            <span>Gắn thẻ phân loại khách hàng đa kênh</span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -109,7 +234,7 @@ const ChatBox = ({
 
   return (
     <div className="d-flex flex-column h-100 position-relative">
-      {/* Chat Top Header */}
+      {/* ===== Chat Top Header ===== */}
       <div className="ara-chat-header">
         <div className="d-flex align-items-center gap-3">
           <div className="ara-avatar">
@@ -129,69 +254,92 @@ const ChatBox = ({
           </div>
         </div>
 
-        <div className="d-flex align-items-center gap-2">
-          {/* Tag conversation */}
-          <div className="position-relative">
-            <button
-              type="button"
-              onClick={() => setShowTagPopup(!showTagPopup)}
-              className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
-              style={{ fontSize: '0.78rem', borderRadius: 'var(--radius-sm, 6px)' }}
-            >
-              <Tag size={13} />
-              <span>Gắn thẻ</span>
-            </button>
-
-            {showTagPopup && (
-              <form
-                onSubmit={handleAddTag}
-                className="position-absolute end-0 mt-1 p-2 bg-white rounded shadow-lg border"
-                style={{ width: '200px', zIndex: 100 }}
-              >
-                <input
-                  type="text"
-                  placeholder="Tên thẻ (VD: VIP, Chờ size)..."
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  className="form-control form-control-sm mb-2"
-                  autoFocus
-                />
-                <button
-                  type="submit"
-                  className="btn btn-sm btn-dark w-100"
-                  style={{ background: 'var(--ara-noir, #1C1A17)', fontSize: '0.75rem' }}
-                >
-                  Xác nhận thêm
-                </button>
-              </form>
-            )}
-          </div>
-
-          {/* Quick Order Button */}
-          {onOpenQuickOrder && (
-            <button
-              type="button"
-              onClick={onOpenQuickOrder}
-              className="btn-ara-primary d-flex align-items-center gap-1"
-              style={{ padding: '0.45rem 0.85rem', fontSize: '0.78rem' }}
-            >
-              <ShoppingBag size={14} />
-              <span>Tạo đơn nhanh (UC-78)</span>
-            </button>
-          )}
-        </div>
+        {/* Quick Order Button */}
+        {onOpenQuickOrder && (
+          <button
+            type="button"
+            onClick={onOpenQuickOrder}
+            className="btn-ara-primary d-flex align-items-center gap-1"
+            style={{ padding: '0.45rem 0.85rem', fontSize: '0.78rem' }}
+          >
+            <ShoppingBag size={14} />
+            <span>Tạo đơn nhanh</span>
+          </button>
+        )}
       </div>
 
-      {/* Messages Stream */}
+      {/* ===== Pancake-style Quick Tag Bar ===== */}
+      <div className="ara-quick-tag-bar">
+        <div className="ara-quick-tag-scroll">
+          {allTags.map((tag) => {
+            const isActive = activeTags.includes(tag.name);
+            return (
+              <button
+                key={tag._id}
+                type="button"
+                className={`ara-quick-tag-pill ${isActive ? 'active' : ''}`}
+                style={isActive
+                  ? { background: tag.color, color: tag.textColor || '#fff', borderColor: tag.color }
+                  : { borderColor: tag.color, color: tag.color }
+                }
+                onClick={() => handleToggleTag(tag.name)}
+                title={isActive ? `Bỏ thẻ "${tag.name}"` : `Gắn thẻ "${tag.name}"`}
+              >
+                {isActive && <span style={{ marginRight: 3 }}>✓</span>}
+                {tag.name}
+              </button>
+            );
+          })}
+
+          {/* Nút tạo tag mới */}
+          <button
+            type="button"
+            className="ara-quick-tag-add-btn"
+            onClick={() => setShowNewTagForm(!showNewTagForm)}
+            title="Tạo thẻ mới"
+          >
+            <Plus size={12} />
+          </button>
+        </div>
+
+        {/* Form tạo tag mới (inline dropdown) */}
+        {showNewTagForm && (
+          <form onSubmit={handleCreateTag} className="ara-new-tag-form">
+            <input
+              type="text"
+              placeholder="Tên thẻ mới..."
+              value={newTagName}
+              onChange={(e) => setNewTagName(e.target.value)}
+              className="ara-new-tag-input"
+              autoFocus
+              maxLength={30}
+            />
+            <input
+              type="color"
+              value={newTagColor}
+              onChange={(e) => setNewTagColor(e.target.value)}
+              className="ara-new-tag-color"
+              title="Chọn màu thẻ"
+            />
+            <button type="submit" disabled={creatingTag || !newTagName.trim()} className="ara-new-tag-submit">
+              {creatingTag ? '...' : 'Tạo'}
+            </button>
+            <button type="button" onClick={() => setShowNewTagForm(false)} className="ara-new-tag-cancel">
+              <X size={12} />
+            </button>
+          </form>
+        )}
+      </div>
+
+      {/* ===== Messages Stream ===== */}
       <div className="ara-chat-messages-container">
         {loading ? (
-          <>
-            <SkeletonMessage align="left" />
-            <SkeletonMessage align="right" />
-            <SkeletonMessage align="left" />
-            <SkeletonMessage align="right" />
-            <SkeletonMessage align="left" />
-          </>
+          <div className="d-flex flex-column align-items-center justify-content-center h-100 py-5 text-muted">
+            <div className="spinner-border text-secondary mb-2" role="status" style={{ width: '1.6rem', height: '1.6rem', borderWidth: '2px' }}>
+              <span className="visually-hidden">Đang tải...</span>
+            </div>
+            <span style={{ fontSize: '0.82rem', color: '#6B7280' }}>Đang tải nội dung tin nhắn...</span>
+          </div>
         ) : messages.length === 0 ? (
           <div className="text-center py-5 text-muted small">
             <MessageSquare size={32} className="mb-2" style={{ color: 'var(--ara-gold)', opacity: 0.5 }} />
@@ -200,20 +348,15 @@ const ChatBox = ({
         ) : (
           messages.map((m) => {
             const isSeller = m.senderType === 'SELLER';
-
             return (
-              <div
-                key={m._id}
-                className={`ara-msg-wrapper ${isSeller ? 'ara-msg-outbound' : 'ara-msg-inbound'}`}
-              >
+              <div key={m._id} className={`ara-msg-wrapper ${isSeller ? 'ara-msg-outbound' : 'ara-msg-inbound'}`}>
                 {!isSeller && (
                   <div className="ara-avatar" style={{ width: '32px', height: '32px', fontSize: '0.75rem' }}>
                     {customer?.fullName ? customer.fullName.charAt(0).toUpperCase() : 'K'}
                   </div>
                 )}
-
                 <div className="ara-msg-bubble">
-                  {/* Referenced SKU Card */}
+                  {/* Hiển thị sản phẩm đính kèm nếu có */}
                   {m.referencedSkuId && (
                     <div className="ara-msg-sku-card">
                       <Package size={22} color="var(--ara-gold)" className="flex-shrink-0" />
@@ -231,20 +374,63 @@ const ChatBox = ({
                     </div>
                   )}
 
-                  {/* Text content */}
-                  {m.messageText && (
-                    <div style={{ whiteSpace: 'pre-wrap' }}>{m.messageText}</div>
+                  {/* Hiển thị ảnh / video / tệp đính kèm của khách hàng hoặc người bán */}
+                  {m.attachments && m.attachments.length > 0 && (
+                    <div className="ara-msg-attachments">
+                      {m.attachments.map((att, idx) => {
+                        const fullUrl = getMediaUrl(att.url);
+                        if (att.type === 'image') {
+                          return (
+                            <div
+                              key={idx}
+                              className="ara-msg-img-box"
+                              onClick={() => setPreviewImage(fullUrl)}
+                              title="Bấm để xem ảnh phóng to"
+                            >
+                              <img
+                                src={fullUrl}
+                                alt={att.name || 'Ảnh đính kèm'}
+                                loading="lazy"
+                                onError={(e) => {
+                                  // Fallback nếu ảnh không tải được
+                                  e.target.style.display = 'none';
+                                }}
+                              />
+                            </div>
+                          );
+                        }
+                        if (att.type === 'video') {
+                          return <video key={idx} controls src={fullUrl} className="ara-msg-media" />;
+                        }
+                        if (att.type === 'audio') {
+                          return <audio key={idx} controls src={fullUrl} className="ara-msg-audio" />;
+                        }
+                        return (
+                          <a
+                            key={idx}
+                            href={fullUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="ara-msg-file-card"
+                            download={att.name || 'file'}
+                          >
+                            <FileText size={18} className="flex-shrink-0" />
+                            <div className="ara-msg-file-meta">
+                              <span className="ara-msg-file-name">{att.name || 'Tệp đính kèm'}</span>
+                              {att.size && <span className="ara-msg-file-size">{(att.size / 1024).toFixed(1)} KB</span>}
+                            </div>
+                            <Download size={14} className="flex-shrink-0" />
+                          </a>
+                        );
+                      })}
+                    </div>
                   )}
 
-                  {/* Timestamp */}
-                  <div
-                    className={`ara-msg-time d-flex align-items-center gap-1 ${
-                      isSeller ? 'justify-content-end text-light' : 'text-muted'
-                    }`}
-                  >
-                    <span>
-                      {new Date(m.sentAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+                  {/* Nội dung tin nhắn văn bản */}
+                  {m.messageText && <div style={{ whiteSpace: 'pre-wrap' }}>{m.messageText}</div>}
+                  
+                  <div className={`ara-msg-time d-flex align-items-center gap-1 ${isSeller ? 'justify-content-end text-light' : 'text-muted'}`}>
+                    <span>{new Date(m.sentAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
                     {isSeller && <CheckCheck size={13} color="var(--ara-gold-light)" />}
                   </div>
                 </div>
@@ -255,31 +441,56 @@ const ChatBox = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Dock */}
+      {/* ===== Input Dock with File Attachment Tray ===== */}
       <div className="ara-chat-input-bar">
-        {/* Attached SKU preview pill */}
-        {attachedSku && (
-          <div className="ara-attached-sku-banner">
-            <div className="d-flex align-items-center gap-2">
-              <Package size={15} color="var(--ara-gold-hover)" />
-              <span>
-                Đang đính kèm: <strong>{attachedSku.styleName}</strong> ({attachedSku.skuCode} - Size {attachedSku.size})
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={onClearAttachedSku}
-              className="btn btn-sm btn-link text-danger p-0 text-decoration-none fw-bold"
-            >
-              ✕ Hủy
-            </button>
+        {/* Khay preview tệp đính kèm người bán đã chọn */}
+        {selectedFiles.length > 0 && (
+          <div className="ara-chat-files-tray">
+            {selectedFiles.map((file, idx) => (
+              <div key={idx} className="ara-chat-file-chip">
+                {file.type.startsWith('image/') ? (
+                  <img src={URL.createObjectURL(file)} alt={file.name} className="ara-chat-chip-thumb" />
+                ) : (
+                  <FileText size={14} color="var(--ara-gold)" />
+                )}
+                <span className="ara-chat-chip-name">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeSelectedFile(idx)}
+                  className="ara-chat-chip-remove"
+                  title="Xóa tệp"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
         <form onSubmit={handleSendMessage} className="ara-chat-form">
           <div className="ara-chat-input-row">
+            {/* Input chọn file ẩn */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.zip"
+              style={{ display: 'none' }}
+              onChange={handleFileSelect}
+            />
+
+            {/* Nút đính kèm ảnh & file */}
+            <button
+              type="button"
+              className="ara-chat-attach-btn"
+              onClick={() => fileInputRef.current?.click()}
+              title="Gửi ảnh hoặc tệp cho khách (tối đa 5 tệp x 25MB)"
+            >
+              <Paperclip size={18} />
+            </button>
+
             <textarea
-              placeholder="Nhập nội dung tư vấn gửi cho khách hàng..."
+              placeholder={selectedFiles.length > 0 ? "Nhập chú thích gửi kèm tệp..." : "Nhập nội dung tư vấn gửi cho khách hàng..."}
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
@@ -288,11 +499,12 @@ const ChatBox = ({
                   handleSendMessage(e);
                 }
               }}
-              rows={3}
+              rows={2}
             />
+            
             <button
               type="submit"
-              disabled={(!text.trim() && !attachedSku) || sending}
+              disabled={(!text.trim() && selectedFiles.length === 0) || sending}
               className="ara-chat-send-btn"
               title="Gửi tin nhắn (Enter)"
             >
@@ -303,11 +515,24 @@ const ChatBox = ({
               )}
             </button>
           </div>
-          <div className="ara-send-hint">
-            Enter để gửi · Shift+Enter xuống dòng
-          </div>
+          <div className="ara-send-hint">Enter để gửi · Shift+Enter xuống dòng · Có thể gửi ảnh & tệp trực tiếp cho khách</div>
         </form>
       </div>
+
+      {/* ===== Lightbox phóng to ảnh ===== */}
+      {previewImage && (
+        <div className="ara-img-lightbox-overlay" onClick={() => setPreviewImage(null)}>
+          <div className="ara-img-lightbox-content" onClick={(e) => e.stopPropagation()}>
+            <img src={previewImage} alt="Ảnh phóng to" />
+            <button type="button" className="ara-lightbox-close" onClick={() => setPreviewImage(null)}>
+              <X size={20} />
+            </button>
+            <a href={previewImage} target="_blank" rel="noreferrer" className="ara-lightbox-download" download>
+              <Download size={14} /> Mở ảnh gốc
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

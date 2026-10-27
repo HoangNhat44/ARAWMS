@@ -19,8 +19,16 @@ export const sellerService = {
   getConversationById: (id) => api.get(`/conversations/${id}`),
   getConversationMessages: (id, params) => api.get(`/conversations/${id}/messages`, { params }),
   sendMessage: (id, data) => api.post(`/conversations/${id}/messages`, data),
+  sendAttachments: (id, formData) => api.post(`/conversations/${id}/attachments`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
   addTag: (id, tag) => api.post(`/conversations/${id}/tags`, { tag }),
   removeTag: (id, tag) => api.delete(`/conversations/${id}/tags/${encodeURIComponent(tag)}`),
+
+  // === TAG MANAGEMENT (UC-73 - Tags lưu DB) ===
+  getTagList: () => api.get('/conversations/tags/list'),
+  createCustomTag: (data) => api.post('/conversations/tags/create', data),
+  deleteCustomTag: (tagId) => api.delete(`/conversations/tags/${tagId}`),
 
   // === CRM CUSTOMER (UC-70, UC-71, UC-75, UC-76) ===
   createCustomer: (data) => api.post('/conversations/customers', data),

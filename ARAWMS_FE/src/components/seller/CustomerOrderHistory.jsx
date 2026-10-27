@@ -1,9 +1,32 @@
+/**
+ * ============================================================================
+ * @title        : Customer Order History Component
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Hiển thị danh sách lịch sử mua hàng của khách hàng (UC-76),
+ *                 hỗ trợ mở popup chi tiết đơn (UC-80) và kích hoạt yêu cầu đổi trả RMA (UC-82).
+ * @module       : Order Fulfillment / Direct Order Management
+ * @layer        : Front-end
+ * ============================================================================
+ */
+
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, RotateCcw, CheckCircle2, Clock, Truck, XCircle } from 'lucide-react';
+import { ShoppingBag, RotateCcw, CheckCircle2, Clock, Truck, XCircle, Eye } from 'lucide-react';
 import { sellerService } from '../../services/sellerService';
 import { SkeletonOrderHistoryCard } from '../common/Skeleton';
 
-const CustomerOrderHistory = ({ customerId, onRequestRma }) => {
+/**
+ * Component danh sách lịch sử đơn hàng của khách hàng trong phân hệ bán hàng Seller.
+ *
+ * @component
+ * @param {Object} props - Thuộc tính truyền vào component.
+ * @param {string} props.customerId - ID của khách hàng đang được chọn.
+ * @param {Function} [props.onRequestRma] - Callback mở modal tạo yêu cầu đổi/trả RMA.
+ * @param {Function} [props.onViewDetail] - Callback mở modal chi tiết đơn hàng (OrderDetailModal).
+ * @returns {JSX.Element} Danh sách thẻ lịch sử đơn hàng.
+ */
+const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -123,19 +146,32 @@ const CustomerOrderHistory = ({ customerId, onRequestRma }) => {
                   {(ord.financialSummary?.totalOrderAmount || 0).toLocaleString('vi-VN')} đ
                 </span>
               </div>
-
-              {/* RMA Button (UC-82) */}
-              {['DELIVERED', 'COMPLETED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
-                <button
-                  type="button"
-                  onClick={() => onRequestRma && onRequestRma(ord)}
-                  className="btn btn-sm btn-outline-warning text-dark d-flex align-items-center gap-1"
-                  style={{ fontSize: '0.72rem', padding: '0.25rem 0.55rem', borderColor: '#FCDFA6' }}
-                >
-                  <RotateCcw size={12} color="#A36800" />
-                  <span>Đổi/Trả (RMA)</span>
-                </button>
-              )}
+              <div className="d-flex gap-1">
+                {/* Xem chi tiết và đổi trạng thái */}
+                {onViewDetail && (
+                  <button
+                    type="button"
+                    onClick={() => onViewDetail(ord)}
+                    className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                    style={{ fontSize: '0.72rem', padding: '0.25rem 0.55rem' }}
+                  >
+                    <Eye size={11} />
+                    <span>Chi tiết</span>
+                  </button>
+                )}
+                {/* RMA Button (UC-82) */}
+                {['DELIVERED', 'COMPLETED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
+                  <button
+                    type="button"
+                    onClick={() => onRequestRma && onRequestRma(ord)}
+                    className="btn btn-sm btn-outline-warning text-dark d-flex align-items-center gap-1"
+                    style={{ fontSize: '0.72rem', padding: '0.25rem 0.55rem', borderColor: '#FCDFA6' }}
+                  >
+                    <RotateCcw size={12} color="#A36800" />
+                    <span>Đổi/Trả</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ))}
