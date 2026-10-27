@@ -1,5 +1,19 @@
 /**
- * Validation rules cho Chat Interface (UC-74)
+ * ============================================================================
+ * @title        : Chat Interface Validation
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Kiểm tra tính hợp lệ của dữ liệu đầu vào cho các thao tác
+ *                 gửi tin nhắn, gắn tag hội thoại trong khung chat của Seller.
+ * @module       : Conversational Commerce / Chat Interface
+ * @layer        : Validation
+ * ============================================================================
+ */
+
+/**
+ * Validation rules cho Gửi tin nhắn khách hàng (UC-74)
+ * @middleware
  */
 
 export const validateSendMessage = (req, res, next) => {

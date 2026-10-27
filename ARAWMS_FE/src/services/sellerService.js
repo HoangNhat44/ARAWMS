@@ -1,3 +1,16 @@
+/**
+ * ============================================================================
+ * @title        : Seller API Service Client
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Module kết nối và đóng gói toàn bộ các cuộc gọi API từ Front-end
+ *                 cho phân hệ Seller (UC-69 đến UC-83), tích hợp Axios client.
+ * @module       : Conversational Commerce / Seller Service
+ * @layer        : Front-end
+ * ============================================================================
+ */
+
 import api from './api';
 
 export const sellerService = {

@@ -1,3 +1,16 @@
+/**
+ * ============================================================================
+ * @title        : Chat Routing Service
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Thuật toán tự động phân bổ phiên chat từ khách hàng mới tới Seller
+ *                 đang trực tuyến và có tải công việc thấp nhất (UC-69, Chat Routing).
+ * @module       : Conversational Commerce / Chat Routing
+ * @layer        : Service
+ * ============================================================================
+ */
+
 import axios from 'axios';
 import Customer from '../../../models/Customer.model.js';
 import ChatConversation from '../../../models/ChatConversation.model.js';

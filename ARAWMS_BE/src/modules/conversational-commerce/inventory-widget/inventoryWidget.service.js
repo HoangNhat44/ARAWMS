@@ -1,9 +1,24 @@
+/**
+ * ============================================================================
+ * @title        : Real-time SKU Inventory Widget Service
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Cung cấp logic tra cứu tồn kho khả dụng theo thời gian thực (UC-77)
+ *                 giúp Seller tư vấn chính xác số lượng hàng còn bán được cho khách.
+ * @module       : Conversational Commerce / Inventory Widget
+ * @layer        : Service
+ * ============================================================================
+ */
+
 import Sku from '../../../models/Sku.model.js';
 import '../../../models/Product.model.js'; // Đảm bảo Product schema đã được đăng ký với Mongoose trước khi populate
 
 /**
- * UC-77: Tra cứu số lượng tồn kho khả dụng theo từng mã SKU ngay trong màn hình chat (Lookup Real-time Available Stock by SKU)
+ * UC-77: Tra cứu số lượng tồn kho khả dụng theo từng mã SKU ngay trong màn hình chat
  * Công thức: Available = onHandQty - reservedQty
+ * @businessRule GBR-10 Phản ánh tồn khả dụng sau khi trừ tồn giữ chỗ
+ * @businessRule GBR-08 Kiểm tra ngưỡng cảnh báo tồn kho tối thiểu
  */
 export const lookupRealtimeStock = async (searchQuery) => {
   const filter = { isActive: true };

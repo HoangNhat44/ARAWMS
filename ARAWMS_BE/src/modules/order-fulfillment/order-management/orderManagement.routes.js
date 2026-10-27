@@ -1,3 +1,16 @@
+/**
+ * ============================================================================
+ * @title        : Order Management Routes
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Định tuyến các endpoints cho Quản lý Đơn hàng của Seller,
+ *                 tích hợp xác thực JWT, phân quyền SELLER/OWNER và validation.
+ * @module       : Order Fulfillment / Order Management
+ * @layer        : Route
+ * ============================================================================
+ */
+
 import express from 'express';
 import {
   createDirectOrder,
@@ -20,7 +33,12 @@ router.use(authenticate);
 router.get('/', authorizeRole('SELLER', 'OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ACCOUNTANT'), getOrderList);
 router.get('/:id', authorizeRole('SELLER', 'OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'ACCOUNTANT'), getOrderById);
 
-// UC-78: Tạo đơn hàng trực tiếp
+/**
+ * @route   POST /api/orders
+ * @desc    UC-78: Tạo đơn hàng trực tiếp
+ * @access  SELLER, OWNER
+ * @see     BR: GBR-10
+ */
 router.post('/', authorizeRole('SELLER', 'OWNER'), validateCreateOrder, createDirectOrder);
 
 // UC-79: Xác nhận đơn hàng & Kích hoạt giữ chỗ tồn kho

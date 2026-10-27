@@ -92,7 +92,7 @@ const CustomerOrderHistory = ({ customerId, onRequestRma }) => {
       {!loading &&
         orders.map((ord) => (
           <div
-            key={ord._id}
+            key={ord._id || ord.id}
             className="p-3 bg-white rounded border shadow-sm"
             style={{ borderColor: 'var(--ara-border, #E3D9CD)' }}
           >

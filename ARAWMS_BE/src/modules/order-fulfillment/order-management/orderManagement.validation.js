@@ -1,7 +1,21 @@
 /**
- * Validation rules cho Quản lý Đơn hàng (Order Management)
+ * ============================================================================
+ * @title        : Order Management Validation
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Xác thực tính hợp lệ của dữ liệu đầu vào cho quy trình tạo đơn,
+ *                 xác nhận và hủy đơn hàng của phân hệ Seller.
+ * @module       : Order Fulfillment / Order Management
+ * @layer        : Validation
+ * ============================================================================
  */
 
+/**
+ * Validation rules cho Tạo đơn hàng (UC-78)
+ * @middleware
+ * @businessRule GBR-10 Đơn hàng phải chứa ít nhất 1 sản phẩm hợp lệ để giữ chỗ tồn kho
+ */
 export const validateCreateOrder = (req, res, next) => {
   const { customerId, items } = req.body;
 
@@ -12,6 +26,7 @@ export const validateCreateOrder = (req, res, next) => {
     });
   }
 
+  // [BR: GBR-10] Đơn hàng bán lẻ phải có ít nhất một sản phẩm
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({
       success: false,

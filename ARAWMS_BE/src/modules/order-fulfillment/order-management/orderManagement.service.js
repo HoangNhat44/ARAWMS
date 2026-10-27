@@ -1,3 +1,18 @@
+/**
+ * ============================================================================
+ * @title        : Order Management Service
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Xử lý toàn bộ logic nghiệp vụ cốt lõi cho phân hệ Seller Order:
+ *                 tạo đơn hàng (UC-78), xác nhận giữ chỗ tồn kho (UC-79, GBR-10),
+ *                 cập nhật trạng thái (UC-80), hủy đơn và giải phóng tồn kho (UC-81, GBR-11),
+ *                 ghi nhận SystemLog kiểm toán (GBR-23).
+ * @module       : Order Fulfillment / Order Management
+ * @layer        : Service
+ * ============================================================================
+ */
+
 import mongoose from 'mongoose';
 import SalesOrder from '../../../models/SalesOrder.model.js';
 import Sku from '../../../models/Sku.model.js';
@@ -8,6 +23,7 @@ import SystemLog from '../../../models/SystemLog.model.js';
 
 /**
  * Ghi SystemLog kiểm toán
+ * @businessRule GBR-23 Ghi log kiểm toán cho dữ liệu trọng yếu
  */
 const recordSystemLog = async ({ actor, majorFeature, subFeature, action, targetCollection, targetId, targetCode, beforeSnapshot, afterSnapshot, req }) => {
   try {

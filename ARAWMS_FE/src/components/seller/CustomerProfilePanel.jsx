@@ -28,7 +28,8 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
         tagInput: '',
       });
       setTags(customer.tags || []);
-      fetchInteractionHistory(customer._id);
+      const custId = customer._id || customer.id;
+      if (custId) fetchInteractionHistory(custId);
     }
   }, [customer]);
 
@@ -84,7 +85,8 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
           : [],
       };
 
-      const res = await sellerService.updateCustomer(customer._id, updatePayload);
+      const custId = customer?._id || customer?.id;
+      const res = await sellerService.updateCustomer(custId, updatePayload);
       if (res.success) {
         setMessage('Cập nhật hồ sơ khách hàng thành công!');
         setIsEditing(false);

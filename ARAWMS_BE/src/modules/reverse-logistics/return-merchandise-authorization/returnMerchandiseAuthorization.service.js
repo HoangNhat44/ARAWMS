@@ -1,3 +1,17 @@
+/**
+ * ============================================================================
+ * @title        : Return Merchandise Authorization (RMA) Service
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Xử lý quy trình tiếp nhận yêu cầu đổi/trả hàng từ khách hàng (UC-82)
+ *                 của Seller. Tính toán phụ phí hoàn trả theo quy định (GBR-14, GBR-15)
+ *                 và ghi vết kiểm toán (GBR-23).
+ * @module       : Reverse Logistics / Return Merchandise Authorization
+ * @layer        : Service
+ * ============================================================================
+ */
+
 import ReturnRequest from '../../../models/ReturnRequest.model.js';
 import SalesOrder from '../../../models/SalesOrder.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
@@ -5,6 +19,7 @@ import SystemLog from '../../../models/SystemLog.model.js';
 
 /**
  * Ghi SystemLog kiểm toán
+ * @businessRule GBR-23 Ghi log kiểm toán cho dữ liệu trọng yếu
  */
 const recordSystemLog = async ({ actor, majorFeature, subFeature, action, targetCollection, targetId, targetCode, beforeSnapshot, afterSnapshot, req }) => {
   try {

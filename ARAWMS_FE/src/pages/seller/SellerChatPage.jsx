@@ -1,3 +1,17 @@
+/**
+ * ============================================================================
+ * @title        : Seller Chat Page Component
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Màn hình trung tâm điều khiển bán hàng qua chat (Conversational Commerce)
+ *                 của Seller. Tích hợp danh sách hội thoại Messenger, khung chat,
+ *                 hồ sơ CRM, widget tra cứu tồn khả dụng (GBR-10) và tạo đơn nhanh.
+ * @module       : Conversational Commerce / Seller Chat
+ * @layer        : Front-end
+ * ============================================================================
+ */
+
 import React, { useState, useEffect } from 'react';
 import { User, PackageCheck, ShoppingBag } from 'lucide-react';
 import ConversationList from '../../components/seller/ConversationList';
@@ -9,6 +23,10 @@ import QuickOrderModal from '../../components/seller/QuickOrderModal';
 import CreateRmaModal from '../../components/seller/CreateRmaModal';
 import { sellerService } from '../../services/sellerService';
 
+/**
+ * Component màn hình Chat đa kênh của Seller
+ * @component
+ */
 const SellerChatPage = () => {
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);

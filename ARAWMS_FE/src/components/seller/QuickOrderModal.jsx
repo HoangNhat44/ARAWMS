@@ -72,8 +72,13 @@ const QuickOrderModal = ({ isOpen, onClose, customer, conversationId, initialIte
       setLoading(true);
       setError('');
 
+      const customerId = customer?._id || customer?.id;
+      if (!customerId) {
+        throw new Error('Vui lòng chọn khách hàng hợp lệ trước khi tạo đơn');
+      }
+
       const orderPayload = {
-        customerId: customer._id,
+        customerId,
         conversationId,
         shippingRecipient: recipient,
         items: items.map((it) => ({
@@ -93,9 +98,12 @@ const QuickOrderModal = ({ isOpen, onClose, customer, conversationId, initialIte
 
         // UC-79: Nếu chọn Xác nhận & Giữ chỗ luôn
         if (confirmReserve) {
-          const confirmRes = await sellerService.confirmOrderReserve(createdOrder._id);
-          if (confirmRes.success) {
-            createdOrder = confirmRes.data;
+          const orderId = createdOrder?._id || createdOrder?.id;
+          if (orderId) {
+            const confirmRes = await sellerService.confirmOrderReserve(orderId);
+            if (confirmRes.success) {
+              createdOrder = confirmRes.data;
+            }
           }
         }
 

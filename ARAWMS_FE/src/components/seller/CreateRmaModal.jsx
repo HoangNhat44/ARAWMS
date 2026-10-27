@@ -48,7 +48,7 @@ const CreateRmaModal = ({ isOpen, onClose, order, onRmaCreated }) => {
       setError('');
 
       const res = await sellerService.createReturnRequest({
-        originalOrderId: order._id,
+        originalOrderId: order?._id || order?.id,
         returnType,
         returnWaybillCode,
         reasonDescription,

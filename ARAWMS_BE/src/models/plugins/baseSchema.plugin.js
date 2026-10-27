@@ -14,8 +14,8 @@ export const baseSchemaPlugin = (schema) => {
 
   const cleanTransform = (doc, ret) => {
     if (ret._id) {
-      ret.id = ret._id.toString();
-      delete ret._id;
+      ret._id = ret._id.toString();
+      ret.id = ret._id;
     }
     delete ret.__v;
     delete ret.passwordHash;

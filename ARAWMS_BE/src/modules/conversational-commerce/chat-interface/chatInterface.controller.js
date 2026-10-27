@@ -1,10 +1,18 @@
+/**
+ * ============================================================================
+ * @title        : Chat Interface Controller
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Tiếp nhận các yêu cầu tương tác chat đa kênh của Seller:
+ *                 xem hội thoại (UC-72), gắn tag phân loại (UC-73) và gửi tin nhắn (UC-74).
+ * @module       : Conversational Commerce / Chat Interface
+ * @layer        : Controller
+ * ============================================================================
+ */
+
 import chatInterfaceService from './chatInterface.service.js';
 import { successResponse, errorResponse } from '../../../common/utils/apiResponse.js';
-
-/**
- * CHAT INTERFACE CONTROLLER
- * Xử lý UC-72, UC-73, UC-74
- */
 
 /**
  * UC-72: Lấy danh sách hội thoại

@@ -1,3 +1,16 @@
+/**
+ * ============================================================================
+ * @title        : Customer Exchange Processing Service
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Xử lý quy trình tạo đơn hàng đổi mới cho khách hàng (UC-83) của Seller,
+ *                 liên kết phiếu RMA, tính chênh lệch giá và kích hoạt giữ chỗ kho (GBR-10).
+ * @module       : Reverse Logistics / Customer Exchange Processing
+ * @layer        : Service
+ * ============================================================================
+ */
+
 import ReturnRequest from '../../../models/ReturnRequest.model.js';
 import SalesOrder from '../../../models/SalesOrder.model.js';
 import Sku from '../../../models/Sku.model.js';
@@ -6,6 +19,7 @@ import SystemLog from '../../../models/SystemLog.model.js';
 
 /**
  * Ghi SystemLog kiểm toán
+ * @businessRule GBR-23 Ghi log kiểm toán cho dữ liệu trọng yếu
  */
 const recordSystemLog = async ({ actor, majorFeature, subFeature, action, targetCollection, targetId, targetCode, beforeSnapshot, afterSnapshot, req }) => {
   try {

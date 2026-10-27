@@ -1,3 +1,17 @@
+/**
+ * ============================================================================
+ * @title        : Chat Interface Service
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Xử lý logic nghiệp vụ cho khung chat Messenger của Seller:
+ *                 truy vấn hội thoại (UC-72), gắn/gỡ thẻ tag khách hàng (UC-73),
+ *                 gửi tin nhắn qua Meta Graph API (UC-74), và ghi log kiểm toán (GBR-23).
+ * @module       : Conversational Commerce / Chat Interface
+ * @layer        : Service
+ * ============================================================================
+ */
+
 import axios from 'axios';
 import ChatConversation from '../../../models/ChatConversation.model.js';
 import ChatMessage from '../../../models/ChatMessage.model.js';
@@ -6,6 +20,7 @@ import { ENV } from '../../../config/env.js';
 
 /**
  * Ghi SystemLog kiểm toán
+ * @businessRule GBR-23 Ghi log kiểm toán cho dữ liệu quan trọng
  */
 const recordSystemLog = async ({ actor, majorFeature, subFeature, action, targetCollection, targetId, beforeSnapshot, afterSnapshot, req }) => {
   try {

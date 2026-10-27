@@ -1,3 +1,16 @@
+/**
+ * ============================================================================
+ * @title        : CRM Profile Service
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Xử lý quản lý hồ sơ khách hàng CRM cho Seller: chỉnh sửa thông tin (UC-70),
+ *                 tạo hồ sơ mới (UC-71), xem lịch sử tương tác (UC-75), xem lịch sử mua hàng (UC-76).
+ * @module       : Conversational Commerce / CRM Profile
+ * @layer        : Service
+ * ============================================================================
+ */
+
 import Customer from '../../../models/Customer.model.js';
 import ChatConversation from '../../../models/ChatConversation.model.js';
 import SalesOrder from '../../../models/SalesOrder.model.js';
@@ -6,6 +19,7 @@ import SystemLog from '../../../models/SystemLog.model.js';
 
 /**
  * Ghi SystemLog kiểm toán
+ * @businessRule GBR-23 Ghi log kiểm toán cho dữ liệu khách hàng
  */
 const recordSystemLog = async ({ actor, majorFeature, subFeature, action, targetCollection, targetId, targetCode, beforeSnapshot, afterSnapshot, req }) => {
   try {

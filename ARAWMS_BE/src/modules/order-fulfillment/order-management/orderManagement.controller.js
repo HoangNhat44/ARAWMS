@@ -1,14 +1,24 @@
+/**
+ * ============================================================================
+ * @title        : Order Management Controller
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Tiếp nhận và xử lý HTTP Request cho phân hệ Quản lý Đơn hàng
+ *                 của Seller (UC-78, UC-79, UC-80, UC-81). Điều phối gọi Service
+ *                 và định dạng phản hồi chuẩn API Response.
+ * @module       : Order Fulfillment / Order Management
+ * @layer        : Controller
+ * ============================================================================
+ */
+
 import orderManagementService from './orderManagement.service.js';
 import { successResponse, errorResponse } from '../../../common/utils/apiResponse.js';
 
 /**
- * ORDER MANAGEMENT CONTROLLER
- * Xử lý UC-78, UC-79, UC-80, UC-81
- */
-
-/**
- * UC-78: Tạo đơn hàng trực tiếp
+ * UC-78: Tạo đơn hàng trực tiếp từ khung chat Seller
  * POST /api/orders
+ * @businessRule GBR-10 Kích hoạt giữ chỗ tồn kho khi tạo/xác nhận đơn hàng
  */
 export const createDirectOrder = async (req, res) => {
   try {

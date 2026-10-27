@@ -56,7 +56,11 @@ const LoginPage = () => {
 
       if (res.success && res.data) {
         login(res.data.user, res.data.token);
-        navigate('/');
+        if (res.data.user?.roleCode === 'SELLER') {
+          navigate('/seller/chat');
+        } else {
+          navigate('/');
+        }
       } else {
         setError(res.message || 'Đăng nhập không thành công');
       }

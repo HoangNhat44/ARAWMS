@@ -1,3 +1,17 @@
+/**
+ * ============================================================================
+ * @title        : Seller Orders Page Component
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Màn hình quản lý danh sách đơn hàng bán lẻ của Seller. Cho phép
+ *                 xác nhận giữ chỗ kho (GBR-10), hủy đơn giải phóng tồn kho (GBR-11)
+ *                 và khởi tạo yêu cầu đổi/trả RMA (UC-82, UC-83).
+ * @module       : Order Fulfillment / Seller Orders
+ * @layer        : Front-end
+ * ============================================================================
+ */
+
 import React, { useState, useEffect } from 'react';
 import { Table } from 'react-bootstrap';
 import {
@@ -18,6 +32,10 @@ const STATUS_OPTIONS = [
   { id: 'CANCELLED', label: '❌ Đã hủy' },
 ];
 
+/**
+ * Component quản lý danh sách đơn hàng của Seller
+ * @component
+ */
 const SellerOrdersPage = () => {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
@@ -219,7 +237,7 @@ const SellerOrdersPage = () => {
                 </tr>
               ) : (
                 orders.map((ord) => (
-                  <tr key={ord._id}>
+                  <tr key={ord._id || ord.id}>
                     {/* Mã đơn + ngày */}
                     <td>
                       <span className="font-monospace fw-bold" style={{ color: 'var(--ara-gold-hover)', fontSize: '0.88rem' }}>
@@ -270,13 +288,13 @@ const SellerOrdersPage = () => {
                         {ord.status === 'PENDING' && (
                           <button
                             type="button"
-                            disabled={actionLoading === ord._id}
-                            onClick={() => handleConfirmReserve(ord._id)}
+                            disabled={actionLoading === (ord._id || ord.id)}
+                            onClick={() => handleConfirmReserve(ord._id || ord.id)}
                             className="btn-ara-primary d-inline-flex align-items-center gap-1"
                             style={{ fontSize: '0.75rem', padding: '0.3rem 0.7rem' }}
                             title="Xác nhận đơn và giữ chỗ tồn kho (UC-79)"
                           >
-                            {actionLoading === ord._id ? (
+                            {actionLoading === (ord._id || ord.id) ? (
                               <span className="spinner-border spinner-border-sm" role="status" style={{ width: '12px', height: '12px' }} />
                             ) : (
                               <ShieldCheck size={13} />
@@ -312,8 +330,8 @@ const SellerOrdersPage = () => {
                         {!['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'CANCELLED'].includes(ord.status) && (
                           <button
                             type="button"
-                            disabled={actionLoading === ord._id}
-                            onClick={() => handleCancelOrder(ord._id)}
+                            disabled={actionLoading === (ord._id || ord.id)}
+                            onClick={() => handleCancelOrder(ord._id || ord.id)}
                             className="d-inline-flex align-items-center gap-1"
                             style={{
                               fontSize: '0.75rem',

@@ -1,3 +1,16 @@
+/**
+ * ============================================================================
+ * @title        : Chat Interface Routes
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-27
+ * @description  : Định tuyến các endpoints giao tiếp khung chat Messenger của Seller
+ *                 (UC-72, UC-73, UC-74), kiểm soát xác thực JWT và quyền SELLER.
+ * @module       : Conversational Commerce / Chat Interface
+ * @layer        : Route
+ * ============================================================================
+ */
+
 import express from 'express';
 import {
   getConversations,
