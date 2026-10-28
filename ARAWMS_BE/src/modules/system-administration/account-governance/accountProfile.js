@@ -19,6 +19,7 @@ export const accountProfile = (user) => ({
   phone: user.phone || '',
   avatarUrl: user.avatarUrl || '',
   roleCode: user.roleCode,
+  roles: [user.roleCode],
   roleName: user.roleId?.roleName || ROLE_LABELS[user.roleCode] || user.roleCode,
   status: user.status,
   googleLinked: Boolean(user.googleId),

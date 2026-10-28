@@ -27,9 +27,13 @@ const router = express.Router();
 router.use(authenticate);
 
 router.post('/product-units/register', registerProductUnit);
-router.use((req, res, next) => req.user.roles?.includes('WAREHOUSE_STAFF')
-  ? next()
-  : sendError(res, 'Chỉ nhân viên kho được đóng hàng', { code: 'FORBIDDEN' }, 403));
+router.use((req, res, next) => {
+  const allowed = ['WAREHOUSE_STAFF', 'OWNER'];
+  const userRoles = req.user?.roles || (req.user?.roleCode ? [req.user.roleCode] : []);
+  return allowed.some((r) => userRoles.includes(r))
+    ? next()
+    : sendError(res, 'Chỉ nhân viên kho được đóng hàng', { code: 'FORBIDDEN' }, 403);
+});
 
 router.post('/prepare', openPackingSessionRequest);
 router.get('/sessions/:id', getPackingSession);

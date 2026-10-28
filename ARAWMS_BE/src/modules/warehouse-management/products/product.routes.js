@@ -29,21 +29,13 @@ const media = {
 };
 
 // Product configuration endpoints require warehouse manager access.
-// router.use(authenticate);
-// Mock user for testing without authentication
+router.use(authenticate);
 router.use((req, res, next) => {
-  req.user = {
-    _id: '507f1f77bcf86cd799439011',
-    username: 'test',
-    fullName: 'Test User',
-    roles: ['WAREHOUSE_MANAGER', 'OWNER'],
-    warehouseIds: []
-  };
-  next();
+  const allowed = ['WAREHOUSE_MANAGER', 'OWNER'];
+  const hasAccess = allowed.includes(req.user?.roleCode) || req.user?.roles?.some((r) => allowed.includes(r));
+  return hasAccess ? next() : sendError(res, 'Chỉ quản lý kho hoặc chủ cửa hàng được thao tác sản phẩm', { code: 'FORBIDDEN' }, 403);
 });
-// router.use((req, res, next) => req.user.roles?.includes('WAREHOUSE_MANAGER')
-//   ? next()
-//   : sendError(res, 'Chỉ quản lý kho được tạo sản phẩm', { code: 'FORBIDDEN' }, 403));
+
 router.use('/bulk', bulkStockRoutes);
 router.use('/configuration', productConfigurationRoutes);
 

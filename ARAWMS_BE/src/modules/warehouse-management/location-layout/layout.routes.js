@@ -24,19 +24,11 @@ import { allocationOptions, listAllocations, createAllocation, updateAllocation,
 
 const router = express.Router();
 router.use((req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
-// router.use(authenticate);
-// Mock user for testing without authentication
+router.use(authenticate);
 router.use((req, res, next) => {
-  req.user = {
-    _id: '507f1f77bcf86cd799439011',
-    username: 'test',
-    fullName: 'Test User',
-    roleId: '507f1f77bcf86cd799439022',
-    roleCode: 'WAREHOUSE_MANAGER',
-    roles: ['WAREHOUSE_MANAGER', 'OWNER'],
-    warehouseIds: []
-  };
-  next();
+  const allowed = ['WAREHOUSE_MANAGER', 'OWNER'];
+  const hasAccess = allowed.includes(req.user?.roleCode) || req.user?.roles?.some((r) => allowed.includes(r));
+  return hasAccess ? next() : sendError(res, 'Chỉ quản lý kho hoặc chủ cửa hàng được cấu hình sơ đồ kho', { code: 'FORBIDDEN' }, 403);
 });
 
 /** Maps the proposed permissions to Role entries, with warehouse-manager defaults. */

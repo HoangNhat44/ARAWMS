@@ -9,7 +9,7 @@ import path from 'path';
 import cors from 'cors';
 import morgan from 'morgan';
 import apiRoutes from './routes/api.js';
-import { notFoundHandler, globalErrorHandler,errorHandler } from './common/middlewares/errorHandler.js';
+import { notFoundHandler, globalErrorHandler } from './common/middlewares/errorHandler.js';
 // Import toàn bộ models để đảm bảo tất cả Mongoose schemas đã đăng ký trước khi bất kỳ populate() nào được gọi
 import './models/index.js';
 
@@ -44,15 +44,9 @@ app.get('/', (req, res) => {
 });
 
 // 404 Handler
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found',
-    error: { code: 'NOT_FOUND' }
-  });
-});
+app.use(notFoundHandler);
 
 // Global Error Handler
-app.use(errorHandler);
+app.use(globalErrorHandler);
 
 export default app;

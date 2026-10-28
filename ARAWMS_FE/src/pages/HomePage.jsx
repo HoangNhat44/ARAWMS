@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { authService } from '../services/authService';
 import { useAuth } from '../hooks/useAuth';
-import { CheckCircle2, ArrowRight } from 'lucide-react';
+import { CheckCircle2, ArrowRight, Layers, Database, Server, PackageCheck, QrCode, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 /** Shows the application entry points and a live backend availability indicator.
@@ -10,12 +10,15 @@ const HomePage = () => {
   const { user } = useAuth();
   const [backendStatus, setBackendStatus] = useState({ loading: true, online: false, message: '' });
 
+  const userRoles = user?.roles || (user?.roleCode ? [user.roleCode] : []);
+  const hasRole = (...roles) => roles.some((r) => userRoles.includes(r));
+
   useEffect(() => {
     /** Converts the health endpoint result into a concise connection status. */
     const checkApi = async () => {
       try {
         const res = await authService.checkHealth();
-        setBackendStatus({ loading: false, online: true, message: res.message || 'Kết nối máy chủ thành công' });
+        setBackendStatus({ loading: false, online: true, message: res?.message || 'Kết nối máy chủ thành công' });
       } catch (err) {
         setBackendStatus({ loading: false, online: false, message: 'Chưa kết nối được tới Backend API' });
       }
@@ -95,13 +98,54 @@ const HomePage = () => {
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-              <Link to="/seller/chat" className="btn-ara-primary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}>
-                <span>Vào Seller Chat Workspace (UC-69 - UC-83)</span>
-                <ArrowRight size={18} />
-              </Link>
-              <Link to="/seller/orders" className="btn-ara-secondary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}>
-                <span>Quản Lý Đơn Hàng</span>
-              </Link>
+              {/* Phím tắt Seller */}
+              {hasRole('SELLER', 'OWNER') && (
+                <>
+                  <Link to="/seller/chat" className="btn-ara-primary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}>
+                    <span>Vào Seller Chat Workspace</span>
+                    <ArrowRight size={18} />
+                  </Link>
+                  <Link to="/seller/orders" className="btn-ara-secondary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}>
+                    <span>Quản Lý Đơn Hàng</span>
+                  </Link>
+                </>
+              )}
+
+              {/* Phím tắt WAREHOUSE_MANAGER */}
+              {hasRole('WAREHOUSE_MANAGER', 'OWNER') && (
+                <>
+                  <Link to="/warehouse/finished-goods" className="btn-ara-primary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}>
+                    <span>Kho Thành Phẩm</span>
+                    <ArrowRight size={18} />
+                  </Link>
+                  <Link to="/warehouse/layout" className="btn-ara-secondary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}>
+                    <span>Sơ Đồ & Sự Cố Kho</span>
+                  </Link>
+                  <Link to="/warehouse/raw-materials/inbound" className="btn-ara-secondary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}>
+                    <span>Nhập Nguyên Phụ Liệu</span>
+                  </Link>
+                </>
+              )}
+
+              {/* Phím tắt WAREHOUSE_STAFF */}
+              {hasRole('WAREHOUSE_STAFF', 'OWNER') && (
+                <>
+                  <Link to="/warehouse/putaway" className="btn-ara-primary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}>
+                    <span>Xếp Hàng Vào Kệ</span>
+                    <ArrowRight size={18} />
+                  </Link>
+                  <Link to="/packing/qr" className="btn-ara-secondary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}>
+                    <span>Đóng Gói Đơn Hàng</span>
+                  </Link>
+                </>
+              )}
+
+              {/* Phím tắt QR đơn hàng */}
+              {hasRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SELLER', 'OWNER') && (
+                <Link to="/orders/qr" className="btn-ara-secondary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}>
+                  <span>QR Đơn Hàng</span>
+                </Link>
+              )}
             </div>
           </div>
         ) : (
@@ -114,43 +158,64 @@ const HomePage = () => {
         )}
       </div>
 
-      {/* Grid 3 Trụ cột chức năng */}
+      {/* Grid Chức năng theo Role */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
-        {user?.roles?.includes('WAREHOUSE_MANAGER') && <Link to="/warehouse/finished-goods" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
-          <Layers size={28} color="var(--ara-gold)" />
-          <h3 style={{ margin: '1rem 0 .5rem' }}>Quản lý kho thành phẩm</h3>
-          <p style={{ color: 'var(--ara-text-muted)' }}>Xem sản phẩm trong kho, tạo sản phẩm mới, nhập kho và xuất kho.</p>
-          <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Mở kho thành phẩm →</span>
-        </Link>}
-        {(user?.roles?.includes('WAREHOUSE_MANAGER') || user?.roles?.includes('OWNER')) && <Link to="/warehouse/raw-materials/inbound" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
-          <Layers size={28} color="var(--ara-gold)" />
-          <h3 style={{ margin: '1rem 0 .5rem' }}>Nhập kho nguyên phụ liệu</h3>
-          <p style={{ color: 'var(--ara-text-muted)' }}>Nhận hàng theo kế hoạch nhà cung cấp, kiểm nhận, khai báo cây/lô và cất vào kệ.</p>
-          <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Tạo phiếu nhập →</span>
-        </Link>}
-        <div style={{
-          background: '#FFFFFF',
-          padding: '2rem',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--ara-border)',
-          boxShadow: 'var(--ara-shadow-sm)',
-        }}>
-          <div style={{
-            display: 'inline-flex',
-            padding: '0.75rem',
-            background: 'var(--ara-bg-surface)',
-            borderRadius: '12px',
-            color: 'var(--ara-gold)',
-            marginBottom: '1rem',
-          }}>
-            <Layers size={24} />
-          </div>
-          <h3 style={{ fontSize: '1.35rem', marginBottom: '0.65rem' }}>Quản lý Kho Vải & Phụ liệu</h3>
-          <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.92rem', lineHeight: 1.55 }}>
-            Theo dõi từng cây vải theo lô, số mét, độ co dãn, định mức tiêu hao và vị trí kệ chứa trong kho atelier.
-          </p>
-        </div>
+        {/* Module WAREHOUSE_MANAGER */}
+        {hasRole('WAREHOUSE_MANAGER', 'OWNER') && (
+          <>
+            <Link to="/warehouse/finished-goods" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
+              <Layers size={28} color="var(--ara-gold)" />
+              <h3 style={{ margin: '1rem 0 .5rem' }}>Quản lý kho thành phẩm & Nhập hàng loạt</h3>
+              <p style={{ color: 'var(--ara-text-muted)' }}>Xem tồn kho SKU, quản lý sản phẩm, nhập kho hàng loạt theo lô / vị trí.</p>
+              <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Mở kho thành phẩm →</span>
+            </Link>
 
+            <Link to="/warehouse/layout" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
+              <MapPin size={28} color="var(--ara-gold)" />
+              <h3 style={{ margin: '1rem 0 .5rem' }}>Cấu hình sơ đồ kho & Xử lý sự cố</h3>
+              <p style={{ color: 'var(--ara-text-muted)' }}>Quy hoạch kệ/ô, phân bổ vị trí putaway, xem báo thiếu và phê duyệt sự cố xếp hàng.</p>
+              <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Mở cấu hình sơ đồ kho →</span>
+            </Link>
+
+            <Link to="/warehouse/raw-materials/inbound" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
+              <PackageCheck size={28} color="var(--ara-gold)" />
+              <h3 style={{ margin: '1rem 0 .5rem' }}>Nhập kho nguyên phụ liệu</h3>
+              <p style={{ color: 'var(--ara-text-muted)' }}>Tiếp nhận hàng theo kế hoạch nhà cung cấp, kiểm nhận cây vải, khai báo lô và in mã tem.</p>
+              <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Tạo phiếu nhập →</span>
+            </Link>
+          </>
+        )}
+
+        {/* Module WAREHOUSE_STAFF */}
+        {hasRole('WAREHOUSE_STAFF', 'OWNER') && (
+          <>
+            <Link to="/warehouse/putaway" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
+              <Layers size={28} color="var(--ara-gold)" />
+              <h3 style={{ margin: '1rem 0 .5rem' }}>Xếp hàng vào kệ (Putaway Tasks)</h3>
+              <p style={{ color: 'var(--ara-text-muted)' }}>Quét mã vạch vị trí, quét barcode sản phẩm để xác nhận xếp hàng vào ô kệ chỉ định.</p>
+              <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Bắt đầu xếp hàng →</span>
+            </Link>
+
+            <Link to="/packing/qr" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
+              <PackageCheck size={28} color="var(--ara-gold)" />
+              <h3 style={{ margin: '1rem 0 .5rem' }}>Đóng gói đơn hàng & Quay video</h3>
+              <p style={{ color: 'var(--ara-text-muted)' }}>Quét kiểm tra sản phẩm đơn hàng, quay video đóng gói và đồng bộ bằng chứng kiểm hàng.</p>
+              <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Mở trạm đóng gói →</span>
+            </Link>
+          </>
+        )}
+
+        {/* Module dùng chung QR đơn hàng */}
+        {hasRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SELLER', 'OWNER') && (
+          <Link to="/orders/qr" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
+            <QrCode size={28} color="var(--ara-gold)" />
+            <h3 style={{ margin: '1rem 0 .5rem' }}>Quản lý & In QR Đơn Hàng</h3>
+            <p style={{ color: 'var(--ara-text-muted)' }}>Tra cứu đơn, cấp phát mã QR đơn hàng hàng loạt, in phiếu và xác thực đơn xuất kho.</p>
+            <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Tra cứu QR đơn hàng →</span>
+          </Link>
+        )}
+
+        {/* Card MongoDB Atlas Cloud */}
         <div style={{
           background: '#FFFFFF',
           padding: '2rem',
@@ -174,6 +239,7 @@ const HomePage = () => {
           </p>
         </div>
 
+        {/* Card Server Status */}
         <div style={{
           background: '#FFFFFF',
           padding: '2rem',

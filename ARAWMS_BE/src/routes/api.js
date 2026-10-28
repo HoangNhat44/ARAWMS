@@ -11,16 +11,24 @@ import inventoryWidgetRoutes from '../modules/conversational-commerce/inventory-
 
 // 2. Major Feature: Order Fulfillment
 import orderManagementRoutes from '../modules/order-fulfillment/order-management/orderManagement.routes.js';
+import packingRoutes from '../modules/order-fulfillment/packing-verification/packingVerification.routes.js';
+import orderQrRoutes from '../modules/order-fulfillment/order-qr-management/orderQrManagement.routes.js';
 
 // 3. Major Feature: Reverse Logistics
 import returnMerchandiseAuthorizationRoutes from '../modules/reverse-logistics/return-merchandise-authorization/returnMerchandiseAuthorization.routes.js';
 import customerExchangeProcessingRoutes from '../modules/reverse-logistics/customer-exchange-processing/customerExchangeProcessing.routes.js';
 
+// 4. Major Feature: Warehouse Management (Manager & Staff)
+import productRoutes from '../modules/warehouse-management/products/product.routes.js';
+import layoutRoutes from '../modules/warehouse-management/location-layout/layout.routes.js';
+import putawayRoutes from '../modules/warehouse-management/location-layout/putaway.routes.js';
+import materialInboundRoutes from '../modules/raw-material-warehousing/inbound-execution/inboundExecution.routes.js';
 
 const router = express.Router();
+
+// System Administration
 router.use('/auth', authRoutes);
 router.use('/accounts', accountRoutes);
-
 
 // Health check endpoint
 router.get('/health', (req, res) => {
@@ -53,10 +61,16 @@ router.use('/conversations/chat-interface', chatInterfaceRoutes);
 router.use('/conversations', chatInterfaceRoutes); // Base chat routes
 
 // ====================================================================
-// MAJOR FEATURE 2: ORDER FULFILLMENT
+// MAJOR FEATURE 2: ORDER FULFILLMENT & QR
 // ====================================================================
 // Sub Feature: Order Management (UC-78, UC-79, UC-80, UC-81)
 router.use('/orders', orderManagementRoutes);
+
+// Sub Feature: Đóng gói đơn hàng (WAREHOUSE_STAFF)
+router.use('/packing', packingRoutes);
+
+// Sub Feature: QR đơn hàng (WAREHOUSE_STAFF & WAREHOUSE_MANAGER)
+router.use('/order-qr', orderQrRoutes);
 
 // ====================================================================
 // MAJOR FEATURE 3: REVERSE LOGISTICS
@@ -68,5 +82,20 @@ router.use('/returns/return-merchandise-authorization', returnMerchandiseAuthori
 // Sub Feature: Customer Exchange Processing (UC-83)
 router.use('/returns/customer-exchange', customerExchangeProcessingRoutes);
 router.use('/returns/rma', customerExchangeProcessingRoutes); // Alias tiện lợi cho /api/returns/rma/:id/create-exchange-order
+
+// ====================================================================
+// MAJOR FEATURE 4: WAREHOUSE MANAGEMENT
+// ====================================================================
+// WAREHOUSE_MANAGER: Quản lý sản phẩm thành phẩm, nhập kho hàng loạt, cấu hình sản phẩm (/api/products/*)
+router.use('/products', productRoutes);
+
+// WAREHOUSE_MANAGER: Cấu hình sơ đồ kho (/api/warehouse-layout/*)
+router.use('/warehouse-layout', layoutRoutes);
+
+// WAREHOUSE_MANAGER: Nhập kho nguyên liệu (/api/raw-material-inbound/*)
+router.use('/raw-material-inbound', materialInboundRoutes);
+
+// WAREHOUSE_STAFF (/tasks/*) & WAREHOUSE_MANAGER (/issues, /incidents): Xếp hàng và xử lý sự cố putaway (/api/warehouse-putaway/*)
+router.use('/warehouse-putaway', putawayRoutes);
 
 export default router;

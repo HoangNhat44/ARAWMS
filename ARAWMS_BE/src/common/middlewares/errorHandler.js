@@ -17,7 +17,10 @@ export const globalErrorHandler = (err, req, res, next) => {
   });
 };
 
+export const errorHandler = globalErrorHandler;
+
 export default {
   notFoundHandler,
   globalErrorHandler,
+  errorHandler,
 };

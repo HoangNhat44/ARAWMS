@@ -42,7 +42,9 @@ export const authenticate = asyncHandler(async (req, res, next) => {
   if (!isActiveAccount(user)) {
     throw httpError(401, 'Phiên làm việc đã kết thúc hoặc tài khoản không còn quyền truy cập.');
   }
+  user.roles = [user.roleCode];
   req.user = user;
+  req.user.roles = [user.roleCode];
   req.auth = { sessionId: payload.sid };
   next();
 });
