@@ -7,9 +7,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Archive, CirclePlus, ClipboardList, Download, Filter, MoreVertical, PackageCheck, Search, Tag } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
-import { materialInboundService as api } from '../services/materialInboundService';
+// import { useAuth } from '../hooks/useAuth';
+import { materialInboundService as api } from '../services/materialInbound Service';
 import '../styles/materialInbound.css';
+
+// Mock user for testing without authentication
+const mockUser = {
+  _id: '507f1f77bcf86cd799439011',
+  username: 'test',
+  fullName: 'Test User',
+  roles: ['OWNER', 'WAREHOUSE_MANAGER'],
+};
 
 const field = { width: '100%', padding: '.65rem .75rem', border: '1px solid var(--ara-border)', borderRadius: 8,
   background: '#fff', color: 'var(--ara-noir)', font: 'inherit' };
@@ -68,7 +76,8 @@ function LocationPicker({ locations, quality, unit, value, onChange }) {
 
 /** One screen keeps supplier receipt input, validation, and confirmation together. */
 export default function SupplierInboundPage() {
-  const { user } = useAuth();
+  // const { user } = useAuth();
+  const user = mockUser; // Use mock user for testing
   const [options, setOptions] = useState({ suppliers: [], materials: [], locations: [] });
   const [receipts, setReceipts] = useState([]);
   const [filters, setFilters] = useState({ code: '', supplierId: '', from: '', to: '', status: '', locationId: '' });

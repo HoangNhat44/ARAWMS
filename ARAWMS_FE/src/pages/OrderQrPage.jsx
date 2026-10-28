@@ -6,7 +6,10 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { orderQrService } from '../services/orderQrService';
-import { useAuth } from '../hooks/useAuth';
+// import { useAuth } from '../hooks/useAuth';
+
+// Mock user for testing
+const mockUser = { _id: '1', username: 'test', fullName: 'Test User', roles: ['OWNER', 'WAREHOUSE_STAFF'] };
 
 const panel = {
   background: '#fff', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-md)',
@@ -128,7 +131,8 @@ function OrderDetail({ order }) {
 /** Lists accessible orders and manages their packing QR labels.
  * Keeps search, selection, printing, and QR issuance in one page workflow. */
 export default function OrderQrPage() {
-  const { user } = useAuth();
+  // const { user } = useAuth();
+  const user = mockUser;
   const canIssue = user?.roles?.some((role) => ['OWNER', 'SELLER', 'WAREHOUSE_STAFF'].includes(role));
   const canConfirm = user?.roles?.some((role) => role === 'OWNER' || role === 'SELLER');
   const [orders, setOrders] = useState([]);

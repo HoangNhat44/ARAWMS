@@ -6,14 +6,18 @@
  */
 import React, { useState, useEffect } from 'react';
 import { authService } from '../services/authService';
-import { useAuth } from '../hooks/useAuth';
+// import { useAuth } from '../hooks/useAuth';
 import { CheckCircle2, Server, Database, Layers, ArrowRight, Shield, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
+// Mock user for testing
+const mockUser = { _id: '1', username: 'test', fullName: 'Test User', roles: ['OWNER', 'WAREHOUSE_MANAGER'] };
 
 /** Shows the application entry points and a live backend availability indicator.
  * Reads the current user when available so the overview reflects the session. */
 const HomePage = () => {
-  const { user } = useAuth();
+  // const { user } = useAuth();
+  const user = mockUser;
   const [backendStatus, setBackendStatus] = useState({ loading: true, online: false, message: '' });
 
   useEffect(() => {

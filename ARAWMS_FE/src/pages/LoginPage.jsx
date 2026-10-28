@@ -7,7 +7,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../services/authService';
-import { useAuth } from '../hooks/useAuth';
+// import { useAuth } from '../hooks/useAuth';
 import { 
   User, 
   Lock, 
@@ -31,7 +31,8 @@ const LoginPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
-  const { login } = useAuth();
+  // const { login } = useAuth();
+  const login = () => {}; // Mock login function
   const navigate = useNavigate();
 
   const handleChange = (e) => {

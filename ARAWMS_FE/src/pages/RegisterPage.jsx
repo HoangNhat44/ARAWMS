@@ -7,7 +7,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../services/authService';
-import { useAuth } from '../hooks/useAuth';
+// import { useAuth } from '../hooks/useAuth';
 import { UserPlus, User, Mail, Lock } from 'lucide-react';
 
 /** Collects a new account's name, email, and password.
@@ -17,7 +17,8 @@ const RegisterPage = () => {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const { login } = useAuth();
+  // const { login } = useAuth();
+  const login = () => {}; // Mock login function
   const navigate = useNavigate();
 
   const handleChange = (e) => {
