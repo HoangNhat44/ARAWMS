@@ -2,7 +2,60 @@
  * File: bulkStock.routes.js
  * Author: Duy Anh
  * Date: 2026-10-22
- * Description: Handles bulk finished goods stock documents.
+ * Description: Quản lý nhập/xuất kho hàng loạt thành phẩm (Bulk Finished Goods Stock Management)
+ * 
+ * CHỨC NĂNG CHÍNH:
+ * ================
+ * 1. Nhập kho hàng loạt từ xưởng sản xuất
+ *    - Xử lý số lượng: xưởng bàn giao → thực nhận → đạt nhập kho → trả xưởng sửa
+ *    - Tự động tạo barcode cho từng sản phẩm
+ *    - Tạo batch và product units
+ *    - Cập nhật tồn kho SKU
+ * 
+ * 2. Xuất kho hàng loạt
+ *    - Giảm tồn kho
+ *    - Ghi nhận transaction
+ * 
+ * 3. Quản lý barcode
+ *    - Tạo ảnh barcode tự động
+ *    - Upload lên Cloudinary
+ *    - Sync lại ảnh bị thiếu
+ * 
+ * 4. Phân bổ vị trí kệ (Putaway Allocation)
+ *    - Chỉ định ô kệ cho hàng mới nhập
+ *    - Theo dõi tiến độ xếp hàng
+ * 
+ * API ENDPOINTS:
+ * ==============
+ * GET    /bin-options                      - Lấy danh sách ô kệ còn chỗ
+ * GET    /documents                        - Danh sách phiếu nhập/xuất gần nhất
+ * GET    /documents/pending-allocation     - Hàng chờ phân bổ vị trí
+ * GET    /documents/:id                    - Chi tiết phiếu + tiến độ
+ * GET    /documents/:id/barcodes           - Danh sách tem barcode
+ * POST   /documents/:id/barcodes/sync      - Tạo lại ảnh barcode
+ * POST   /documents/:id/allocations        - Xác nhận phân bổ vị trí
+ * POST   /documents                        - Tạo phiếu nhập/xuất
+ * 
+ * LUỒNG NHẬP KHO:
+ * ===============
+ * 1. Xưởng bàn giao (expectedQty: 100)
+ * 2. Nhận hàng thực tế (receivedQty: 95) - mất 5 cái
+ * 3. Kiểm tra chất lượng:
+ *    - Đạt chuẩn (quantity: 90)
+ *    - Lỗi cần sửa (repairQty: 5)
+ * 4. Tạo barcode cho 90 sản phẩm đạt
+ * 5. Cập nhật tồn kho SKU +90
+ * 6. Tạo batch và product units
+ * 7. Upload ảnh barcode lên Cloudinary
+ * 8. Phân bổ vào ô kệ (nếu có)
+ * 
+ * VALIDATION:
+ * ===========
+ * - expectedQty >= receivedQty >= quantity
+ * - repairQty = receivedQty - quantity
+ * - Kiểm tra sức chứa vị trí kho
+ * - Kiểm tra SKU tồn tại và active
+ * - Ngăn tạo trùng phiếu (idempotency key)
  */
 import express from 'express';
 import mongoose from 'mongoose';
@@ -20,8 +73,32 @@ import PutawayAllocation from '../../../models/PutawayAllocation.model.js';
 import { confirmReceiptAllocation, fingerprint, parseLines, remainingQuantity } from '../location-layout/allocation.service.js';
 
 const router = express.Router();
+
+/**
+ * Tạo custom error object với status code
+ * @param {string} message - Thông báo lỗi
+ * @param {string} code - Mã lỗi (VD: INVALID_QUANTITY)
+ * @param {number} status - HTTP status code (default: 400)
+ * @returns {Error} Error object với code và status
+ */
 const createBulkStockRequestError = (message, code, status = 400) => Object.assign(new Error(message), { code, status });
-/** Factory handoff bounds received units; inspection divides received into accepted and repair. */
+
+/**
+ * Kiểm tra số lượng nhập kho có hợp lệ không
+ * 
+ * LOGIC KIỂM TRA:
+ * - Số xưởng bàn giao (expectedQty): 1-500 sản phẩm
+ * - Số thực nhận (receivedQty): <= expectedQty
+ * - Số đạt nhập kho (quantity): 0 đến receivedQty
+ * - Số trả xưởng (repairQty): = receivedQty - quantity
+ * 
+ * VÍ DỤ HỢP LỆ:
+ * expectedQty: 100, receivedQty: 95, quantity: 90, repairQty: 5
+ * => Xưởng giao 100 → nhận được 95 → đạt 90 → sửa 5
+ * 
+ * @param {Object} item - Dòng sản phẩm trong phiếu
+ * @returns {string|null} Thông báo lỗi hoặc null nếu hợp lệ
+ */
 export const receivingQuantityError = (item) => {
   const expected = Number(item?.expectedQty);
   const received = Number(item?.receivedQty);
@@ -40,18 +117,53 @@ export const receivingQuantityError = (item) => {
     return 'Số trả xưởng phải bằng thực nhận trừ đạt nhập kho.';
   return null;
 };
+
+/**
+ * Format response cho phiếu nhập kho
+ * Chỉ trả về thông tin cần thiết, che giấu dữ liệu nội bộ
+ * 
+ * @param {Object} document - Document từ MongoDB
+ * @returns {Object} Response object đã format
+ */
 const receiptResponse = (document) => ({ id: String(document._id), documentCode: document.documentCode,
   direction: document.direction, lineCount: document.items.length, totalQuantity: document.totalQuantity,
   items: document.direction === 'IN' ? document.items.map((item) => ({ skuId: String(item.skuId),
     barcodes: item.barcodes, expectedQty: item.expectedQty, receivedQty: item.receivedQty,
     acceptedQty: item.quantity, repairQty: item.repairQty, repairStatus: item.repairStatus })) : undefined });
+
+/**
+ * Tạo hash SHA256 của nội dung phiếu nhập
+ * Dùng để ngăn tạo trùng phiếu khi retry request
+ * 
+ * IDEMPOTENCY:
+ * Nếu cùng confirmationKey + cùng hash => trả về phiếu cũ
+ * Nếu cùng confirmationKey + khác hash => báo lỗi CONFIRMATION_REUSED
+ * 
+ * @param {Object} body - Request body
+ * @returns {string} SHA256 hash (64 ký tự hex)
+ */
 const inboundHash = (body) => createHash('sha256').update(JSON.stringify({
   direction: body.direction, documentCode: String(body.documentCode || '').trim().toUpperCase(),
   note: String(body.note || '').trim(),
   items: body.items, allocations: body.allocations || [],
 })).digest('hex');
 
-/** Gives unplaced units a private source marker for barcode scans without asking managers to choose a holding area. */
+/**
+ * Tạo hoặc lấy vị trí ảo "FG-UNPLACED" để chứa hàng chưa xếp kệ
+ * 
+ * MỤC ĐÍCH:
+ * - Khi nhập kho không chỉ định vị trí cụ thể
+ * - Hàng được lưu vào vị trí ảo này
+ * - Sau đó nhân viên kho sẽ xếp vào ô kệ thực
+ * 
+ * ĐẶC ĐIỂM:
+ * - locationCode: "FG-UNPLACED"
+ * - isSystemUnplaced: true (đánh dấu là vị trí hệ thống)
+ * - maxCapacity: 1 tỷ (không giới hạn)
+ * - layoutBin: false (không hiện trên sơ đồ kho)
+ * 
+ * @returns {Promise<Object>} WarehouseLocation document
+ */
 async function ensureUnplacedLocation() {
   const code = 'FG-UNPLACED';
   try {
@@ -66,7 +178,23 @@ async function ensureUnplacedLocation() {
   }
 }
 
-/** Supplies active finished-goods bins with free capacity; SKU is chosen during receiving. */
+/**
+ * GET /bin-options
+ * 
+ * Lấy danh sách ô kệ thành phẩm còn chỗ trống
+ * 
+ * QUERY PARAMS:
+ * - skuIds: danh sách SKU ID cách nhau bởi dấu phẩy (tối đa 100)
+ * 
+ * RESPONSE:
+ * - racks: tổng hợp theo từng kệ (capacity, actual, reserved, available)
+ * - bins: chi tiết từng ô (locationCode, available space)
+ * 
+ * SỬ DỤNG:
+ * - Hiển thị dropdown chọn vị trí khi nhập kho
+ * - Hiển thị biểu đồ sức chứa kho
+ * - Gợi ý vị trí xếp hàng
+ */
 router.get('/bin-options', async (req, res, next) => {
   try {
     const skuIds = String(req.query.skuIds || '').split(',').filter(Boolean);
@@ -100,7 +228,25 @@ router.get('/bin-options', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-/** Returns recent stock documents with receiving barcode details. */
+/**
+ * GET /documents
+ * 
+ * Lấy danh sách 20 phiếu nhập/xuất gần nhất
+ * 
+ * THÔNG TIN TRẢ VỀ:
+ * - documentCode, direction (IN/OUT)
+ * - totalQuantity: tổng số sản phẩm
+ * - barcodeImagesReady: số tem đã có ảnh
+ * - unallocated: số sản phẩm chưa phân bổ vị trí
+ * - pending: số sản phẩm đang chờ xếp
+ * - placed: số sản phẩm đã xếp xong
+ * 
+ * TIẾN ĐỘ XẾP HÀNG:
+ * Total = unallocated + pending + placed
+ * 
+ * TỰ ĐỘNG:
+ * - Nếu phiếu nhập chưa có đủ ảnh barcode → schedule background job tạo ảnh
+ */
 router.get('/documents', async (req, res, next) => {
   try {
     const documents = await FinishedGoodsBulkDocument.find({ isDeleted: { $ne: true } })
@@ -140,7 +286,24 @@ router.get('/documents', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-/** Reports persisted unit labels and their Cloudinary image progress for one receipt. */
+/**
+ * GET /documents/:id/barcodes
+ * 
+ * Lấy danh sách tem barcode của 1 phiếu nhập
+ * 
+ * RESPONSE:
+ * - total: tổng số tem
+ * - ready: số tem đã có ảnh
+ * - labels: mảng các tem {barcode, imageUrl, skuId, batchId}
+ * 
+ * SỬ DỤNG:
+ * - Hiển thị danh sách tem để in
+ * - Download tất cả tem dạng ZIP
+ * - Kiểm tra tem nào chưa có ảnh
+ * 
+ * TỰ ĐỘNG:
+ * - Nếu có tem chưa có ảnh → schedule background job
+ */
 router.get('/documents/:id/barcodes', async (req, res, next) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return sendError(res, 'Mã phiếu không hợp lệ', { code: 'INVALID_DOCUMENT' }, 400);
@@ -157,7 +320,23 @@ router.get('/documents/:id/barcodes', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-/** Retries only missing Cloudinary images; stock and unit barcodes are unchanged. */
+/**
+ * POST /documents/:id/barcodes/sync
+ * 
+ * Tạo lại ảnh barcode bị thiếu
+ * 
+ * KHI NÀO DÙNG:
+ * - Upload Cloudinary bị lỗi lần đầu
+ * - Ảnh barcode bị xóa nhầm
+ * - Cần regenerate ảnh với quality cao hơn
+ * 
+ * CƠ CHẾ:
+ * - Schedule background job (async)
+ * - Chỉ tạo lại ảnh chưa có (barcodeImageUrl === null)
+ * - Barcode text không đổi
+ * 
+ * RESPONSE: 202 Accepted (background job đang chạy)
+ */
 router.post('/documents/:id/barcodes/sync', async (req, res, next) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return sendError(res, 'Mã phiếu không hợp lệ', { code: 'INVALID_DOCUMENT' }, 400);
@@ -168,11 +347,23 @@ router.post('/documents/:id/barcodes/sync', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-/** Validates a bulk receipt or issue before changing stock atomically.
- * Checks document fields, line counts and quantities, received = accepted + repair,
- * unique SKUs, active catalog records, available stock, and receiving capacity.
+/**
+ * GET /documents/pending-allocation
+ * 
+ * Lấy danh sách hàng chưa phân bổ vị trí kệ
+ * 
+ * CÔNG THỨC:
+ * unallocated = (số sản phẩm ở staging) - (đã phân bổ nhưng chưa xếp)
+ * 
+ * staging: vị trí tạm (chưa có trên sơ đồ kho)
+ * allocated: đã chỉ định ô kệ đích
+ * placed: đã xếp xong vào ô
+ * 
+ * SỬ DỤNG:
+ * - Hiển thị badge "X đơn chờ phân bổ"
+ * - Dropdown chọn phiếu khi tạo putaway plan
+ * - Dashboard quản lý kho
  */
-/** Lists accepted receipt quantities that still need a destination, including older receipts. */
 router.get('/documents/pending-allocation', async (req, res, next) => {
   try {
     const receipts = await FinishedGoodsBulkDocument.find({ direction: 'IN', isDeleted: { $ne: true } })
@@ -199,7 +390,25 @@ router.get('/documents/pending-allocation', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-/** Rebuilds receipt progress from accepted units and confirmed putaway lines. */
+/**
+ * GET /documents/:id
+ * 
+ * Lấy chi tiết phiếu + tiến độ xếp hàng
+ * 
+ * RESPONSE:
+ * - document: thông tin phiếu (code, items, quantities)
+ * - progress: tiến độ từng SKU
+ *   + accepted: số đạt nhập kho
+ *   + unallocated: chưa phân bổ
+ *   + pending: đã phân bổ, chưa xếp
+ *   + placed: đã xếp xong
+ *   + rows: chi tiết từng allocation (allocationCode, location, quantities)
+ * 
+ * SỬ DỤNG:
+ * - Màn hình chi tiết phiếu nhập
+ * - Theo dõi tiến độ xếp hàng real-time
+ * - Kiểm tra hàng đã vào kệ chưa
+ */
 router.get('/documents/:id', async (req, res, next) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return sendError(res, 'Mã phiếu không hợp lệ', { code: 'INVALID_DOCUMENT' }, 400);
@@ -221,7 +430,37 @@ router.get('/documents/:id', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-/** Confirms a later plan using the same reservation transaction as inline receiving. */
+/**
+ * POST /documents/:id/allocations
+ * 
+ * Xác nhận phân bổ vị trí kệ cho hàng mới nhập
+ * 
+ * REQUEST BODY:
+ * {
+ *   "idempotencyKey": "unique-key-123",
+ *   "lines": [
+ *     {
+ *       "skuId": "674abc...",
+ *       "targetLocationId": "674def...",
+ *       "allocatedQuantity": 50
+ *     }
+ *   ]
+ * }
+ * 
+ * VALIDATION:
+ * - Tổng allocatedQuantity <= số sản phẩm đạt nhập kho
+ * - Location phải còn chỗ trống
+ * - idempotencyKey để ngăn duplicate allocation
+ * 
+ * CƠ CHẾ:
+ * - Tạo PutawayAllocation record
+ * - Giữ chỗ trên ô kệ (plannedReservedQty)
+ * - Nhân viên kho sau đó scan barcode để xếp hàng
+ * 
+ * TRANSACTION SAFETY:
+ * - Dùng MongoDB session để đảm bảo tính toàn vẹn
+ * - Nếu duplicate key → check hash để trả về allocation cũ
+ */
 router.post('/documents/:id/allocations', async (req, res, next) => {
   const key = String(req.body?.idempotencyKey || '').trim();
   if (!mongoose.isValidObjectId(req.params.id) || key.length < 8 || key.length > 100)
@@ -256,6 +495,98 @@ router.post('/documents/:id/allocations', async (req, res, next) => {
   } finally { if (session) await session.endSession(); }
 });
 
+/**
+ * POST /documents
+ * 
+ * TẠO PHIẾU NHẬP/XUẤT KHO HÀNG LOẠT
+ * ==================================
+ * 
+ * Đây là endpoint QUAN TRỌNG NHẤT của module!
+ * 
+ * DIRECTION: 'IN' (Nhập kho) hoặc 'OUT' (Xuất kho)
+ * 
+ * --- NHẬP KHO (IN) ---
+ * REQUEST BODY:
+ * {
+ *   "direction": "IN",
+ *   "documentCode": "NH-2026-001",
+ *   "confirmationKey": "unique-key-abc",  // Ngăn tạo trùng
+ *   "locationId": "674...",               // Vị trí chứa hàng (optional)
+ *   "note": "Nhập từ xưởng may",
+ *   "items": [
+ *     {
+ *       "productId": "674...",
+ *       "skuId": "674...",
+ *       "expectedQty": 100,    // Xưởng bàn giao
+ *       "receivedQty": 95,     // Thực nhận
+ *       "quantity": 90,        // Đạt nhập kho
+ *       "repairQty": 5         // Trả xưởng sửa (auto = receivedQty - quantity)
+ *     }
+ *   ],
+ *   "allocations": [           // Optional: phân bổ luôn khi nhập
+ *     {
+ *       "skuId": "674...",
+ *       "targetLocationId": "674...",
+ *       "allocatedQuantity": 90
+ *     }
+ *   ]
+ * }
+ * 
+ * LUỒNG XỬ LÝ NHẬP KHO:
+ * 1. Validate số lượng (expectedQty >= receivedQty >= quantity)
+ * 2. Kiểm tra SKU tồn tại và active
+ * 3. Kiểm tra vị trí kho còn chỗ
+ * 4. Tạo barcode cho từng sản phẩm (ARAxxxxxxxxxxxxxxxxxxxx)
+ * 5. Tạo FinishedGoodsBatch
+ * 6. Tạo ProductUnit cho từng barcode
+ * 7. Cập nhật SKU.onHandQty (+quantity)
+ * 8. Cập nhật Location.currentOccupancy
+ * 9. Ghi InventoryTransaction
+ * 10. Schedule background job tạo ảnh barcode
+ * 11. Xử lý allocations nếu có (phân bổ vị trí ngay)
+ * 
+ * --- XUẤT KHO (OUT) ---
+ * REQUEST BODY:
+ * {
+ *   "direction": "OUT",
+ *   "documentCode": "XK-2026-001",
+ *   "note": "Xuất hủy lỗi",
+ *   "items": [
+ *     {
+ *       "productId": "674...",
+ *       "skuId": "674...",
+ *       "quantity": 10
+ *     }
+ *   ]
+ * }
+ * 
+ * LUỒNG XỬ LÝ XUẤT KHO:
+ * 1. Kiểm tra tồn kho khả dụng (onHandQty - reservedQty >= quantity)
+ * 2. Giảm SKU.onHandQty (-quantity)
+ * 3. Ghi InventoryTransaction
+ * 
+ * VALIDATION:
+ * - documentCode: 2-80 ký tự, chỉ A-Z 0-9 . _ / -
+ * - items: 1-100 dòng
+ * - quantity mỗi dòng: IN (0-500), OUT (1-100,000)
+ * - Tổng quantity: IN max 500, OUT không giới hạn
+ * - Mỗi SKU chỉ xuất hiện 1 lần
+ * - Không cho xuất hàng theo lô (phải dùng barcode)
+ * 
+ * IDEMPOTENCY:
+ * - confirmationKey + confirmationHash ngăn tạo trùng phiếu
+ * - Nếu retry với cùng key + hash → trả về phiếu cũ
+ * - Nếu retry với cùng key + khác hash → lỗi CONFIRMATION_REUSED
+ * 
+ * TRANSACTION SAFETY:
+ * - Tất cả thao tác trong 1 MongoDB session
+ * - Nếu 1 bước fail → rollback toàn bộ
+ * - Nếu conflict (version mismatch) → lỗi 409 STOCK_CHANGED
+ * 
+ * RESPONSE:
+ * - document: {id, documentCode, direction, lineCount, totalQuantity}
+ * - items: [{skuId, barcodes[], expectedQty, receivedQty, acceptedQty, repairQty}]
+ */
 router.post('/documents', async (req, res, next) => {
   const direction = req.body?.direction;
   const documentCode = String(req.body?.documentCode || '').trim().toUpperCase();
