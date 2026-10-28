@@ -24,6 +24,7 @@ export const accountProfile = (user) => ({
   googleLinked: Boolean(user.googleId),
   googleEmail: user.googleEmail || '',
   googleLinkedAt: user.googleLinkedAt || null,
+  emailVerified: Boolean(user.emailVerifiedAt || (user.googleId && user.googleEmail === user.email)),
   lastLoginAt: user.lastLoginAt || null,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,

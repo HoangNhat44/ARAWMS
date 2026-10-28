@@ -6,7 +6,7 @@
  */
 
 import { createContext, useState, useEffect, useCallback, useRef } from 'react';
-import { authService } from '../modules/system-administration/authentication/services/authService';
+import { authService } from '../services/authService';
 import { AUTH_EXPIRED_EVENT, clearAuth, getToken, saveAuth, saveProfile } from '../utils/authStorage';
 import { STORAGE_KEYS } from '../utils/constants';
 

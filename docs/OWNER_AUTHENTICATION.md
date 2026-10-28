@@ -1,9 +1,11 @@
-# Đăng nhập Owner và liên kết Google
+# Đăng nhập tài khoản và liên kết Google
+
+Áp dụng cho cả sáu vai trò: Owner, Warehouse Manager, Garment Technician, Warehouse Staff, Seller và Accountant.
 
 ## Dùng ngay bằng tài khoản
 
-- Email: `owner@arawms.com` hoặc mã `EMP001`.
-- Mật khẩu được cấp cho Owner chưa có mật khẩu: `12345678`.
+- Owner: mã `EMP001` hoặc email hiện tại trong DB. Sau khi liên kết Google, dùng email vừa liên kết thay email cũ.
+- Mật khẩu dữ liệu kiểm thử hiện tại cho các vai trò: `12345678`, được lưu dưới dạng bcrypt hash.
 - Vào **Tài khoản của tôi** để đổi mật khẩu. Đổi mật khẩu sẽ kết thúc các phiên đăng nhập trên thiết bị.
 - Các role nhân viên tiếp tục dùng luồng đăng nhập hiện tại.
 
@@ -46,23 +48,24 @@ Nguồn: [Thiết lập Google Identity Services](https://developers.google.com/
 
 ## Liên kết lần đầu
 
-1. Đăng nhập Owner bằng email/mã nhân viên và mật khẩu.
+1. Đăng nhập bằng email/mã nhân viên và mật khẩu.
 2. Bấm tên tài khoản trên thanh điều hướng, mở **Tài khoản của tôi**.
-3. Trong **Liên kết Google**, nhập mật khẩu hiện tại và bấm **Xác nhận và chọn Google**.
+3. Trong **Liên kết Google**, bấm **Liên kết Google**, nhập mật khẩu hiện tại và bấm **Chọn tài khoản Google**.
 4. Bấm nút Google, chọn tài khoản Google muốn liên kết và xác nhận.
 5. Trang hiển thị **Đã liên kết Google** và email Google.
-6. Đăng xuất. Trở lại trang đăng nhập, chọn Google vừa liên kết để đăng nhập vào chính tài khoản Owner cũ.
+6. Đăng xuất. Trở lại trang đăng nhập, chọn Google vừa liên kết để đăng nhập vào chính tài khoản cũ, giữ nguyên vai trò.
 
-Email Google có thể khác email nội bộ `owner@arawms.com`. Email đăng nhập nội bộ, mã nhân viên và role không thay đổi. Chỉ Google đã liên kết mới đăng nhập được; chọn một Google bất kỳ sẽ không tự tạo Owner.
+Email Google có thể khác email cũ. Sau khi liên kết, email đăng nhập và email nhận thư khôi phục/OTP chuyển sang email Google vừa xác minh. Mã nhân viên, mật khẩu và vai trò được giữ nguyên. Email đã thuộc tài khoản khác sẽ bị từ chối. Các phiên trên thiết bị khác và liên kết đặt lại mật khẩu cũ bị thu hồi. Chỉ Google đã liên kết mới đăng nhập được, không tự tạo tài khoản mới.
 
 Một Google chỉ liên kết được với một tài khoản. Đăng nhập mật khẩu vẫn dùng được sau khi liên kết. Khi Google chưa cấu hình hoặc không tải được, giao diện hiển thị thông báo và cho phép dùng tài khoản.
 
 ## Hủy liên kết và đổi tài khoản Google
 
 1. Vào **Tài khoản của tôi → Liên kết Google**, bấm **Hủy liên kết**.
-2. Nhập mật khẩu tài khoản AraWMS và bấm **Xác nhận hủy liên kết**. Bấm **Giữ liên kết** nếu đổi ý.
-3. Sau khi hủy, Google cũ không đăng nhập được nữa. Phiên hiện tại được giữ lại, các phiên trên thiết bị khác bị thu hồi.
-4. Nhập lại mật khẩu và chọn Google mới để liên kết.
+2. Nhập mật khẩu tài khoản AraWMS và bấm **Xác nhận hủy liên kết**. Bấm **Quay lại** nếu đổi ý.
+3. Sau khi hủy, Google cũ không đăng nhập được nữa. Email đăng nhập vẫn được giữ lại, dùng được với mật khẩu. Phiên hiện tại được giữ lại, các phiên trên thiết bị khác bị thu hồi.
+4. Chọn Google mới ngay, không nhập lại mật khẩu. Nếu email trùng tài khoản khác, bấm **Chọn tài khoản Google khác** để chọn lại. Xác nhận mật khẩu có hạn 5 phút và chỉ được dùng trong phiên hiện tại.
+5. **Quay lại** có ở mọi bước của liên kết/hủy. Bấm **Quay lại trang chủ** ở đầu trang để về trang chủ.
 
 Hủy liên kết vẫn thực hiện được khi cấu hình Google đang tắt. Mỗi lần liên kết/hủy làm tăng phiên bản liên kết trong User; yêu cầu liên kết cũ không thể tự khôi phục Google đã hủy, kể cả khi gửi đồng thời.
 
@@ -71,23 +74,26 @@ Hủy liên kết vẫn thực hiện được khi cấu hình Google đang tắ
 BE: `src/modules/system-administration/`
 
 - `authentication/auth.*`: đăng nhập tài khoản, tạo phiên, đăng xuất.
-- `authentication/googleAuth.controller.js`, `googleAuth.service.js`: đăng nhập Owner bằng Google.
+- `authentication/googleAuth.controller.js`, `googleAuth.service.js`: đăng nhập bằng Google cho mọi vai trò.
 - `authentication/googleIdentity.service.js`: cấp và xác minh thử thách, kiểm tra Google ID token.
 - `authentication/googleRateLimit.js`: giới hạn yêu cầu Google.
 - `account-governance/googleLink.controller.js`, `googleLink.service.js`: xác nhận mật khẩu và liên kết Google.
-- `account-governance/googleLink.validation.js`: kiểm tra mật khẩu xác nhận liên kết/hủy.
+- `account-governance/googleLink.validation.js`: kiểm tra mật khẩu hoặc quyền xác nhận liên kết/hủy.
+- `account-governance/googleLinkAuthorization.js`: tạo và kiểm tra quyền quản lý Google trong 5 phút, gắn với tài khoản, phiên, mật khẩu và phiên bản liên kết. Quyền này không dùng để đăng nhập.
 - `authentication/googleAuth.validation.js`: kiểm tra payload xác thực Google.
 - `account-governance/accountGovernance.*`: xem/cập nhật hồ sơ, đổi mật khẩu cho cả Owner.
 - `src/models/User.model.js`: lưu Google ID, email, ngày liên kết.
 - `src/models/GoogleAuthChallenge.model.js`: thử thách dùng một lần, hết hạn sau 5 phút, có TTL index.
 
-FE: `src/modules/system-administration/`
+FE: `src/pages/` chỉ chứa file JSX và không có thư mục con. `LoginPage.jsx` gộp form đăng nhập, đăng nhập Google và phần giới thiệu; `ForgotPasswordPage.jsx` gộp form quên mật khẩu; `ResetPasswordPage.jsx` gộp form đặt lại mật khẩu.
 
-- `authentication/components/GoogleLogin.jsx`: khối đăng nhập Google.
-- `authentication/components/GoogleIdentityButton.jsx`: nút Google dùng chung.
-- `authentication/services/googleIdentity.js`: tải Google Identity Services.
-- `account-governance/components/GoogleLinkCard.jsx`: liên kết và trạng thái Google.
-- `systemAdministration.css`: bổ sung giao diện theo màu sắc, bố cục hiện tại.
+- `LoginPage.jsx`: trang đăng nhập, gồm cả khối Google.
+- `GoogleIdentityButton.jsx`: nút Google dùng chung.
+- `src/services/googleIdentity.js`: tải Google Identity Services.
+- `GoogleLinkCard.jsx`: liên kết và trạng thái Google.
+- `src/styles/accountAuth.css`: giao diện đăng nhập và tài khoản theo màu sắc hiện tại.
+- `src/services/authService.js`, `accountService.js`: gọi API xác thực và tài khoản.
+- `src/utils/authValidation.js`, `accountValidation.js`: kiểm tra dữ liệu trước khi gửi API.
 
 ## API
 

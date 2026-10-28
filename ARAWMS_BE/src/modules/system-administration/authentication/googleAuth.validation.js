@@ -7,7 +7,7 @@
 import { httpError } from '../../../common/utils/httpError.js';
 
 export const isObjectBody = (body) => body !== null && typeof body === 'object' && !Array.isArray(body);
-export const validCurrentPassword = (value) => typeof value === 'string' && value.length > 0
+export const validCurrentPassword = (value) => typeof value === 'string' && value.trim().length > 0
   && Buffer.byteLength(value, 'utf8') <= 72;
 
 // UC-05: Kiểm tra cấu trúc token, mã yêu cầu và các trường được phép gửi.

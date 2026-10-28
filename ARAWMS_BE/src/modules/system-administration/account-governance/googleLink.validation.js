@@ -13,9 +13,13 @@ import { isObjectBody, validCurrentPassword } from '../authentication/googleAuth
  * byte.
  */
 export const validateGooglePassword = (req, res, next) => {
-  if (!isObjectBody(req.body) || Object.keys(req.body).some((key) => key !== 'currentPassword')
-    || !validCurrentPassword(req.body.currentPassword)) {
-    return next(httpError(400, 'Nhập mật khẩu hiện tại, tối đa 72 byte.'));
+  if (!isObjectBody(req.body) || Object.keys(req.body).length !== 1
+    || Object.keys(req.body).some((key) => !['currentPassword', 'managementToken'].includes(key))
+    || (req.body.managementToken !== undefined
+      ? typeof req.body.managementToken !== 'string' || req.body.managementToken.length > 2048
+        || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(req.body.managementToken)
+      : !validCurrentPassword(req.body.currentPassword))) {
+    return next(httpError(400, 'Nhập mật khẩu hiện tại hoặc dùng xác nhận liên kết còn hiệu lực.'));
   }
   next();
 };

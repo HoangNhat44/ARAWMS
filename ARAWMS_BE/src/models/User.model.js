@@ -30,6 +30,7 @@ const userSchema = new Schema(
     googleId: { type: String, sparse: true, index: true },
     googleEmail: { type: String, lowercase: true, trim: true },
     googleLinkedAt: { type: Date },
+    emailVerifiedAt: { type: Date },
     googleLinkVersion: { type: Number, default: 0, select: false },
     roleId: { type: Schema.Types.ObjectId, ref: 'Role', required: true, index: true },
     roleCode: { type: String, enum: ROLES, required: true, index: true },

@@ -7,9 +7,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Eye, EyeOff } from 'lucide-react';
-import { useAuth } from '../../../../hooks/useAuth';
+import { useAuth } from '../hooks/useAuth';
 import { accountService } from '../services/accountService';
-import { passwordError } from '../../authentication/validation/authValidation';
+import { passwordError } from '../utils/authValidation';
 
 export default function ChangePasswordForm() {
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });

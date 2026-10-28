@@ -27,7 +27,7 @@ export const recoveryMailConfig = () => {
  * GBR-02: Tạo kết nối gửi thư; mật khẩu ứng dụng Gmail được bỏ khoảng trắng
  * chia nhóm.
  */
-const createRecoveryTransport = () => {
+export const createRecoveryTransport = () => {
   const { smtp } = recoveryMailConfig();
   // Google hiển thị mật khẩu ứng dụng theo nhóm 4 ký tự khi sao chép.
   const password = smtp.HOST.toLowerCase() === 'smtp.gmail.com' && smtp.PASS.replace(/\s/g, '').length === 16

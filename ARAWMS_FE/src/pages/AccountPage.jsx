@@ -6,17 +6,18 @@
  */
 
 import { useEffect, useState } from 'react';
-import { User } from 'lucide-react';
-import { useAuth } from '../../../../hooks/useAuth';
-import LoadingSpinner from '../../../../components/common/LoadingSpinner';
+import { User, ArrowLeft } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 import { accountService } from '../services/accountService';
-import ProfileForm from '../components/ProfileForm';
-import ChangePasswordForm from '../components/ChangePasswordForm';
-import GoogleLinkCard from '../components/GoogleLinkCard';
-import '../../systemAdministration.css';
+import ProfileForm from './ProfileForm';
+import ChangePasswordForm from './ChangePasswordForm';
+import GoogleLinkCard from './GoogleLinkCard';
+import '../styles/accountAuth.css';
 
 export default function AccountPage() {
-  const { user, updateUser } = useAuth();
+  const { updateUser } = useAuth();
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
@@ -33,12 +34,13 @@ export default function AccountPage() {
     <button className="btn-ara-secondary" onClick={() => setAttempt(attempt + 1)}>Thử lại</button></div>;
   if (!profile) return <LoadingSpinner message="Đang tải thông tin tài khoản..." />;
   return <div className="ara-account-page">
+    <Link to="/" className="ara-text-button ara-google-action"><ArrowLeft size={16} /> Quay lại trang chủ</Link>
     <header className="ara-account-heading"><span className="ara-eyebrow">Tài khoản của tôi</span>
       <h1><User size={30} />{profile.fullName}</h1><p>Quản lý thông tin cá nhân và bảo mật tài khoản.</p>
     </header>
     <div className="ara-account-grid"><ProfileForm user={profile} onSaved={saved} />
       <ChangePasswordForm />
-      {user.roleCode === 'OWNER' && <GoogleLinkCard user={profile} onSaved={saved} />}
+      <GoogleLinkCard user={profile} onSaved={saved} />
     </div>
   </div>;
 }

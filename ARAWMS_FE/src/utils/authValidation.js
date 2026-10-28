@@ -5,9 +5,19 @@
  * trên giao diện.
  */
 
+export const identifierError = (value) => {
+  if (typeof value !== 'string') return 'Nhập email hoặc mã nhân viên hợp lệ.';
+  const identifier = value.trim();
+  const email = identifier.length <= 254
+    && /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/i.test(identifier)
+    && !identifier.startsWith('.') && !identifier.includes('..') && !identifier.includes('.@');
+  return (identifier.includes('@') ? email : /^[A-Z0-9_-]{1,50}$/i.test(identifier))
+    ? '' : 'Nhập email hợp lệ hoặc mã nhân viên chỉ gồm chữ, số, gạch nối và gạch dưới.';
+};
+
 // UC-01, UC-04: Chặn mật khẩu trống hoặc vượt quá giới hạn bcrypt.
 export const passwordError = (value, label = 'Mật khẩu') => {
-  if (typeof value !== 'string' || !value) return label + ' không được để trống.';
+  if (typeof value !== 'string' || !value.trim()) return label + ' không được để trống.';
   if (new TextEncoder().encode(value).length > 72) return label + ' không được vượt quá 72 byte.';
   return '';
 };

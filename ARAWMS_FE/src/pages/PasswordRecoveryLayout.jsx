@@ -6,8 +6,8 @@
  */
 
 import { Link } from 'react-router-dom';
-import LoginBrandPanel from './LoginBrandPanel';
-import '../../systemAdministration.css';
+import { LoginBrandPanel } from './LoginPage';
+import '../styles/accountAuth.css';
 
 export default function PasswordRecoveryLayout({ title, description, children }) {
   return <div className="ara-login-page"><div className="ara-login-card">

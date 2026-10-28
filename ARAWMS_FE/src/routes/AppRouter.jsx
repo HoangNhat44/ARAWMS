@@ -7,10 +7,10 @@
 
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import HomePage from '../pages/HomePage';
-import LoginPage from '../modules/system-administration/authentication/pages/LoginPage';
-import AccountPage from '../modules/system-administration/account-governance/pages/AccountPage';
-import ForgotPasswordPage from '../modules/system-administration/authentication/pages/ForgotPasswordPage';
-import ResetPasswordPage from '../modules/system-administration/authentication/pages/ResetPasswordPage';
+import LoginPage from '../pages/LoginPage';
+import AccountPage from '../pages/AccountPage';
+import ForgotPasswordPage from '../pages/ForgotPasswordPage';
+import ResetPasswordPage from '../pages/ResetPasswordPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';

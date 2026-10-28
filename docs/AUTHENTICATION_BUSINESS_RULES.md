@@ -7,7 +7,7 @@
 | GBR-01 | A deactivated user account must not access the system through password login, Google login, or an existing session. Password recovery must not reactivate a deactivated account. | Chỉ tài khoản ACTIVE, chưa xóa mềm và role đang hoạt động mới được truy cập. INACTIVE và LOCKED là trạng thái quản trị, không tự mở bằng Quên mật khẩu. |
 | GBR-02 | After five consecutive incorrect password attempts, password sign-in requires a password reset through Forgot Password. The user verifies ownership through the registered email and sets a new password, without a 30-minute lock or contacting the Owner. | Lần sai thứ 5 trả mã PASSWORD_RESET_REQUIRED và hiện nút đặt lại mật khẩu. Không đổi status sang LOCKED và không tạo bộ đếm khóa 30 phút. |
 
-Đăng nhập đúng trước lần sai thứ 5 đặt số lần sai về 0. Sau lần sai thứ 5, người dùng đặt lại mật khẩu qua email để tiếp tục đăng nhập bằng mật khẩu. Owner vẫn có thể xác thực bằng Google đã liên kết nếu tài khoản đang hoạt động; đăng nhập Google không xóa yêu cầu đặt lại mật khẩu.
+Đăng nhập đúng trước lần sai thứ 5 đặt số lần sai về 0. Sau lần sai thứ 5, người dùng đặt lại mật khẩu qua email để tiếp tục đăng nhập bằng mật khẩu. Mọi vai trò vẫn có thể xác thực bằng Google đã liên kết nếu tài khoản đang hoạt động; đăng nhập Google không xóa yêu cầu đặt lại mật khẩu.
 
 ## Luồng Quên mật khẩu
 
@@ -59,7 +59,7 @@ BE trong `src/modules/system-administration/authentication/`:
 - `passwordRecovery.controller.js`, `passwordRecovery.service.js`, `passwordRecovery.validation.js`: API và validation khôi phục.
 - `passwordRecovery.mailer.js`, `passwordRecovery.rateLimit.js`: gửi mail và giới hạn tần suất.
 
-FE trong `src/modules/system-administration/authentication/`: tách pages, components, services và validation như phần đăng nhập hiện tại. Đổi mật khẩu trong `account-governance` cũng xóa token khôi phục cũ.
+FE: `src/pages/` chỉ chứa JSX, không có thư mục con. Form đăng nhập và Google gộp vào `LoginPage.jsx`; Quên mật khẩu gộp vào `ForgotPasswordPage.jsx`; đặt lại mật khẩu gộp vào `ResetPasswordPage.jsx`. API nằm trong `src/services/`, kiểm tra dữ liệu trong `src/utils/`, CSS trong `src/styles/`. Đổi mật khẩu trên BE trong `account-governance` cũng xóa token khôi phục cũ.
 
 Không cần cập nhật thủ công DB để bỏ khóa thời gian cũ: logic mới không còn dùng `loginLockedUntil` để chờ 30 phút. Tài khoản cũ có ít nhất 5 lần sai được chuyển sang luồng Quên mật khẩu; trạng thái LOCKED/INACTIVE do quản trị không bị tự mở.
 

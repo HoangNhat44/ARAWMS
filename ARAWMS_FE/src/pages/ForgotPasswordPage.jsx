@@ -1,15 +1,16 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 22-10-2026
- * Chức năng: Hỗ trợ UC-01, GBR-02 - Gửi yêu cầu đặt lại mật khẩu tới email
- * đã đăng ký.
+ * Chức năng: Hỗ trợ UC-01, GBR-02 - Trang gửi yêu cầu Quên mật khẩu.
  */
 
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { authService } from '../services/authService';
+import { identifierError } from '../utils/authValidation';
+import PasswordRecoveryLayout from './PasswordRecoveryLayout';
 
-export default function ForgotPasswordForm() {
+function ForgotPasswordForm() {
   const location = useLocation();
   const [identifier, setIdentifier] = useState(typeof location.state?.usernameOrEmail === 'string' ? location.state.usernameOrEmail : '');
   const [busy, setBusy] = useState(false);
@@ -26,7 +27,8 @@ export default function ForgotPasswordForm() {
   const submit = async (event) => {
     event.preventDefault();
     if (busy || cooldown) return;
-    if (!identifier.trim() || identifier.trim().length > 254) return setError('Nhập email hoặc mã nhân viên hợp lệ.');
+    const invalidIdentifier = identifierError(identifier);
+    if (invalidIdentifier) return setError(invalidIdentifier);
     setBusy(true); setError(''); setNotice('');
     try {
       const response = await authService.forgotPassword({ usernameOrEmail: identifier.trim() });
@@ -47,4 +49,10 @@ export default function ForgotPasswordForm() {
       </button>
     </form>
   </>;
+}
+
+export default function ForgotPasswordPage() {
+  return <PasswordRecoveryLayout title="Quên mật khẩu" description="Nhập email hoặc mã nhân viên. Chúng tôi sẽ gửi liên kết đặt lại mật khẩu tới email đã đăng ký.">
+    <ForgotPasswordForm />
+  </PasswordRecoveryLayout>;
 }

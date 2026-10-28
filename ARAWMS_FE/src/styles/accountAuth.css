@@ -44,6 +44,8 @@ button:disabled { opacity: .65; cursor: not-allowed; }
 .ara-google-action { display: inline-flex; align-items: center; gap: .5rem; margin: 1rem 0; }
 .ara-recovery-action { margin-bottom: 1rem; width: 100%; }
 .ara-recovery-back { display: inline-block; margin-top: 1.5rem; text-align: center; }
+.ara-phone-otp { margin-top: 1.5rem; }
+.ara-otp-actions { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
 @media (max-width: 700px) {
   .ara-login-card, .ara-account-grid { grid-template-columns: minmax(0, 1fr); }
   .ara-login-form { padding: 2rem 1.5rem; }

@@ -7,12 +7,13 @@
 
 import { httpError } from '../../../common/utils/httpError.js';
 import { isObjectBody } from './googleAuth.validation.js';
+import { validIdentifier } from '../account-governance/accountInput.js';
 
 // GBR-02: Chỉ nhận email hoặc mã nhân viên hợp lệ khi gửi yêu cầu khôi phục.
 export const validateForgotPassword = (req, res, next) => {
   const body = req.body;
   if (!isObjectBody(body) || Object.keys(body).some((key) => key !== 'usernameOrEmail')
-    || typeof body.usernameOrEmail !== 'string' || !body.usernameOrEmail.trim() || body.usernameOrEmail.trim().length > 254) {
+    || !validIdentifier(body.usernameOrEmail) || body.usernameOrEmail.trim().length > 254) {
     return next(httpError(400, 'Nhập email hoặc mã nhân viên hợp lệ.'));
   }
   req.recoveryIdentifier = body.usernameOrEmail.trim();

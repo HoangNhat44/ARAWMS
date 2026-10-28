@@ -14,6 +14,8 @@ import * as googleLinkController from './googleLink.controller.js';
 import { googleRateLimit } from '../authentication/googleRateLimit.js';
 import { validateGooglePassword } from './googleLink.validation.js';
 import { validateGoogleCredential } from '../authentication/googleAuth.validation.js';
+import * as phoneController from './phoneChange.controller.js';
+import { validatePhoneRequest, validatePhoneConfirmation } from './phoneChange.validation.js';
 
 const router = Router();
 /*
@@ -26,6 +28,9 @@ router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); }
 router.get('/me', controller.getOwnAccount);
 router.patch('/me', validateProfile, asyncHandler(controller.updateOwnAccount));
 router.patch('/me/password', validatePassword, asyncHandler(controller.changeOwnPassword));
+// UC-04: Gửi mã về email đã liên kết, sau đó mới xác nhận số điện thoại mới.
+router.post('/me/phone/otp', validatePhoneRequest, asyncHandler(phoneController.requestOtp));
+router.post('/me/phone/confirm', validatePhoneConfirmation, asyncHandler(phoneController.confirmOtp));
 // UC-04, UC-05: Xác nhận mật khẩu trước khi liên kết hoặc hủy Google.
 router.post('/me/google/challenge', googleRateLimit, validateGooglePassword, asyncHandler(googleLinkController.challenge));
 router.post('/me/google', googleRateLimit, validateGoogleCredential('LINK'), asyncHandler(googleLinkController.link));

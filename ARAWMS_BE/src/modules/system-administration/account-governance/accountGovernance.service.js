@@ -13,10 +13,16 @@ import { recordAccountActivity } from '../systemAudit.js';
 
 // UC-04, GBR-01: Chỉ lưu hồ sơ khi tài khoản và phiên hiện tại vẫn hợp lệ.
 export const updateProfile = async (req) => {
+  // UC-04: Không cho bỏ qua bước xác nhận OTP bằng cách gọi API hồ sơ trực tiếp.
+  if (req.profileInput.phone !== undefined && req.profileInput.phone !== (req.user.phone || '')) {
+    throw httpError(400, 'Đổi số điện thoại cần xác nhận OTP gửi tới email đã liên kết.');
+  }
+  const profileInput = { ...req.profileInput };
+  delete profileInput.phone;
   const user = await User.findOneAndUpdate({
     _id: req.user._id, status: 'ACTIVE', isDeleted: { $ne: true },
     sessions: { $elemMatch: { sessionId: req.auth.sessionId, expiresAt: { $gt: new Date() } } },
-  }, { $set: req.profileInput }, { new: true, runValidators: true })
+  }, { $set: profileInput }, { new: true, runValidators: true })
     .populate('roleId', 'roleName roleCode isActive isDeleted');
   if (!user) throw httpError(401, 'Phiên làm việc đã kết thúc. Vui lòng đăng nhập lại.');
   // UC-04, GBR-23: Lưu họ tên và số điện thoại trước và sau khi sửa.

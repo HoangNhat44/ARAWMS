@@ -5,6 +5,7 @@
  */
 
 import { httpError } from '../../../common/utils/httpError.js';
+import { normalizeFullName, validFullName, normalizePhone } from './accountInput.js';
 
 const onlyFields = (body, allowed) => body && typeof body === 'object' && !Array.isArray(body)
   && Object.keys(body).every((key) => allowed.includes(key));
@@ -15,22 +16,16 @@ const onlyFields = (body, allowed) => body && typeof body === 'object' && !Array
  */
 export const validateProfile = (req, res, next) => {
   const body = req.body;
-  if (!onlyFields(body, ['fullName', 'phone']) || !Object.keys(body).length) {
+  if (!onlyFields(body, ['fullName', 'phone'])) {
     return next(httpError(400, 'Chỉ được cập nhật họ tên và số điện thoại của chính bạn.'));
   }
-  const data = {};
-  if (body.fullName !== undefined) {
-    if (typeof body.fullName !== 'string' || !body.fullName.trim() || body.fullName.trim().length > 100) {
-      return next(httpError(400, 'Họ tên phải có từ 1 đến 100 ký tự.'));
-    }
-    data.fullName = body.fullName.trim();
+  if (typeof body.fullName !== 'string' || body.fullName.length > 100 || !validFullName(normalizeFullName(body.fullName))) {
+    return next(httpError(400, 'Họ tên là bắt buộc, cần từ 2 đến 100 ký tự, chỉ gồm chữ và dấu câu thông dụng.'));
   }
-  if (body.phone !== undefined) {
-    if (typeof body.phone !== 'string' || (body.phone.trim() && !/^\+?[0-9][0-9 ()-]{7,19}$/.test(body.phone.trim()))) {
-      return next(httpError(400, 'Số điện thoại không hợp lệ.'));
-    }
-    data.phone = body.phone.trim();
+  if (!normalizePhone(body.phone)) {
+    return next(httpError(400, 'Số điện thoại là bắt buộc, phải gồm đúng 10 chữ số và bắt đầu bằng số 0.'));
   }
+  const data = { fullName: normalizeFullName(body.fullName), phone: normalizePhone(body.phone) };
   req.profileInput = data;
   next();
 };
@@ -39,7 +34,7 @@ export const validateProfile = (req, res, next) => {
 export const validatePassword = (req, res, next) => {
   const body = req.body;
   if (!onlyFields(body, ['currentPassword', 'newPassword', 'confirmPassword'])
-    || typeof body.currentPassword !== 'string' || !body.currentPassword
+    || typeof body.currentPassword !== 'string' || !body.currentPassword.trim()
     || Buffer.byteLength(body.currentPassword, 'utf8') > 72
     || typeof body.newPassword !== 'string' || !body.newPassword.trim() || body.newPassword.length < 8
     || Buffer.byteLength(body.newPassword, 'utf8') > 72) {
