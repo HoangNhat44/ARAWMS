@@ -1,3 +1,9 @@
+/*
+ * File: DocumentTemplate.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines reusable document and label templates. Stores template type, dimensions, markup, and default status.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

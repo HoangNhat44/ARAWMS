@@ -1,6 +1,13 @@
+/*
+ * File: LoadingSpinner.jsx
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Renders the shared loading indicator. Provides consistent progress feedback across application views.
+ */
 import React from 'react';
 import { Loader2 } from 'lucide-react';
 
+/** Renders a centered spinner with an optional task-specific progress message. */
 const LoadingSpinner = ({ message = 'Đang tải dữ liệu...' }) => {
   return (
     <div style={{

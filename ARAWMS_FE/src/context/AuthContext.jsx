@@ -12,6 +12,8 @@ import { STORAGE_KEYS } from '../utils/constants';
 
 export const AuthContext = createContext(null);
 
+/** Restores the current user from a stored token and shares auth actions.
+ * Descendant pages receive loading, login, and logout state from one provider. */
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);

@@ -1,3 +1,9 @@
+/*
+ * File: Sku.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Models product variants, prices, and stock balances.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 
@@ -10,6 +16,7 @@ const skuSchema = new Schema(
     productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true, index: true },
     styleName: { type: String, required: true },
     color: { type: String, required: true },
+    variantKey: { type: String, unique: true, sparse: true },
     size: { type: String, enum: ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'FREESIZE'], required: true },
     retailPrice: { type: Number, required: true, min: 0 },
     unitCogs: { type: Number, required: true, default: 0, min: 0 },

@@ -1,3 +1,9 @@
+/*
+ * File: SystemSetting.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines persisted system configuration entries. Records setting values and the operational metadata needed to manage them.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

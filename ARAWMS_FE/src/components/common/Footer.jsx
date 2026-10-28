@@ -1,5 +1,12 @@
+/*
+ * File: Footer.jsx
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Renders the shared application footer. Keeps footer content consistent across routes.
+ */
 import React from 'react';
 
+/** Shows the shared product identity, current year, and application version. */
 const Footer = () => {
   return (
     <footer className="ara-footer">

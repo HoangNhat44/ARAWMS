@@ -1,3 +1,9 @@
+/*
+ * File: MaterialInboundPlan.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines scheduled raw-material receipts. Records verification results and decisions about delivery differences.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 import { PLAN_STATUS } from '../common/constants/enums.js';

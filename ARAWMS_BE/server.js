@@ -4,7 +4,7 @@ import connectDB from './src/config/db.js';
 
 const PORT = process.env.PORT || 5000;
 
-// Khởi chạy server và kết nối DB
+// Start accepting requests only after MongoDB connects successfully.
 const startServer = async () => {
   await connectDB();
 

@@ -1,3 +1,9 @@
+/*
+ * File: InventoryTransaction.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Models the inventory movement and reservation ledger.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 import { WAREHOUSE_TYPES } from '../common/constants/enums.js';
@@ -16,6 +22,7 @@ const inventoryTransactionSchema = new Schema(
     transactionType: {
       type: String,
       enum: [
+        'INBOUND_RECEIPT',
         'INBOUND_PUTAWAY',
         'OUTBOUND_ISSUE_CUTTING',
         'REMNANT_RETURN_PUTAWAY',
@@ -25,21 +32,28 @@ const inventoryTransactionSchema = new Schema(
         'RETURN_RESTOCK',
         'DEFECT_QUARANTINE',
         'DEFECT_DISPOSAL',
+        'SUPPLIER_RETURN_OUTBOUND',
         'STOCKTAKE_ADJUSTMENT',
+        'MANUAL_INBOUND',
+        'MANUAL_OUTBOUND',
       ],
       required: true,
       index: true,
     },
     referenceModel: {
       type: String,
-      enum: ['MaterialTicket', 'FinishedGoodsTicket', 'SalesOrder', 'ReturnRequest', 'StocktakeSession'],
+      enum: ['MaterialTicket', 'FinishedGoodsTicket', 'SalesOrder', 'ReturnRequest', 'StocktakeSession', 'Sku', 'FinishedGoodsBulkDocument'],
     },
     referenceId: { type: Schema.Types.ObjectId, required: true, index: true },
     quantityChange: { type: Number, required: true },
+    reservedChange: { type: Number, default: 0 },
     onHandBefore: { type: Number, required: true },
     onHandAfter: { type: Number, required: true },
+    reservedBefore: Number,
+    reservedAfter: Number,
     unitCostSnapshot: { type: Number, default: 0 },
     performedByUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    note: { type: String, maxlength: 500 },
   },
   { collection: 'inventory_transactions' }
 );

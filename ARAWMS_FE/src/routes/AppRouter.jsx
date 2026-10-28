@@ -17,6 +17,13 @@ import SellerChatPage from '../pages/seller/SellerChatPage';
 import SellerOrdersPage from '../pages/seller/SellerOrdersPage';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import OrderQrPage from '../pages/OrderQrPage';
+import WarehousePackingPage from '../pages/WarehousePackingPage';
+import ProductConfigurationPage from '../pages/ProductConfigurationPage';
+import FinishedGoodsPage from '../pages/FinishedGoodsPage';
+import SupplierInboundPage from '../pages/SupplierInboundPage';
+import WarehouseLayoutPage from '../pages/WarehouseLayoutPage';
+import WarehousePutawayPage from '../pages/WarehousePutawayPage';
 
 const SessionError = ({ message, retry }) => <div className="ara-account-page">
   <div className="ara-alert ara-alert-error" role="alert">{message}</div>
@@ -61,8 +68,20 @@ export default function AppRouter() {
       {/* Phân hệ Seller Workspace (UC-69 -> UC-83) — yêu cầu đăng nhập */}
       <Route path="/seller/chat" element={<ProtectedRoute><SellerChatPage /></ProtectedRoute>} />
       <Route path="/seller/orders" element={<ProtectedRoute><SellerOrdersPage /></ProtectedRoute>} />
-
+ <Route path="/" element={<HomePage />} />
+      <Route path="/orders/qr" element={<OrderQrPage />} />
+      <Route path="/packing/qr" element={<WarehousePackingPage />} />
+      <Route path="/warehouse/products/new" element={<ProductConfigurationPage />} />
+      <Route path="/warehouse/products/:id/edit" element={<ProductConfigurationPage />} />
+      <Route path="/warehouse/finished-goods" element={<FinishedGoodsPage />} />
+      <Route path="/warehouse/raw-materials/inbound" element={<SupplierInboundPage />} />
+      <Route path="/warehouse/layout" element={<WarehouseLayoutPage />} />
+      <Route path="/warehouse/putaway" element={<WarehousePutawayPage />} />
+      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="/register" element={<Navigate to="/" replace />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 }
+
+

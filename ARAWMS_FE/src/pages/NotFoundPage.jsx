@@ -1,7 +1,14 @@
+/*
+ * File: NotFoundPage.jsx
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Renders the fallback view for unknown application routes. Gives users a path back into the application.
+ */
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Home } from 'lucide-react';
 
+/** Explains an unmatched route and links back to the application home page. */
 const NotFoundPage = () => {
   return (
     <div style={{ textAlign: 'center', padding: '5rem 1rem' }}>

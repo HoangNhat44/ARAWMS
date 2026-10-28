@@ -1,3 +1,9 @@
+/*
+ * File: ReturnRequest.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines customer return and exchange requests. Tracks requested items, review decisions, and fulfillment progress.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

@@ -1,3 +1,9 @@
+/*
+ * File: FinishedGoodsBatch.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Models finished goods stock and reservations by FIFO batch.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 
@@ -11,6 +17,7 @@ const finishedGoodsBatchSchema = new Schema(
     inboundTicketId: { type: Schema.Types.ObjectId, ref: 'FinishedGoodsTicket' },
     locationId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation', required: true, index: true },
     initialQty: { type: Number, required: true, min: 1 },
+    labeledQty: { type: Number, default: 0, min: 0 },
     currentOnHandQty: { type: Number, required: true, min: 0, index: true },
     reservedPickQty: { type: Number, default: 0, min: 0 },
     fifoInboundTimestamp: { type: Date, required: true, index: true },

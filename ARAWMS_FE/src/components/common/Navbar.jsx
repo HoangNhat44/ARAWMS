@@ -63,6 +63,12 @@ const Navbar = () => {
                   📦 Đơn hàng
                 </Link>
               </li>
+              {(user.roles?.includes('OWNER') || user.roles?.includes('SELLER') || user.roles?.includes('WAREHOUSE_STAFF')) && <li><Link to="/orders/qr">{user.roles?.includes('WAREHOUSE_STAFF') ? 'Xem / in đơn & QR' : 'Chốt đơn / QR'}</Link></li>}
+              {user.roles?.includes('WAREHOUSE_STAFF') && <li><Link to="/packing/qr">Đóng hàng</Link></li>}
+              {user.roles?.includes('WAREHOUSE_STAFF') && <li><Link to="/warehouse/putaway">Xếp hàng vào kệ</Link></li>}
+              {user.roles?.includes('WAREHOUSE_MANAGER') && <li><Link to="/warehouse/finished-goods">Kho thành phẩm</Link></li>}
+              {(user.roles?.includes('WAREHOUSE_MANAGER') || user.roles?.includes('OWNER')) && <li><Link to="/warehouse/layout">Vị trí kho</Link></li>}
+              {(user.roles?.includes('WAREHOUSE_MANAGER') || user.roles?.includes('OWNER')) && <li><Link to="/warehouse/raw-materials/inbound">Nhập nguyên phụ liệu</Link></li>}
             </>
           )}
           {user ? (

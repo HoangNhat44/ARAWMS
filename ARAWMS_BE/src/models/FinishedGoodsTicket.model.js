@@ -1,3 +1,9 @@
+/*
+ * File: FinishedGoodsTicket.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-21
+ * Description: Models finished goods warehouse documents.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 import { TICKET_STATUS } from '../common/constants/enums.js';

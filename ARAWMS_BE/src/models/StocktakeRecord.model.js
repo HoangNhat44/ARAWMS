@@ -1,3 +1,9 @@
+/*
+ * File: StocktakeRecord.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines counted inventory lines within a stocktake. Stores expected and observed quantities for reconciliation.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

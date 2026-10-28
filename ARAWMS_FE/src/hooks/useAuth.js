@@ -8,6 +8,7 @@
 import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 
+/** Returns the active auth context or reports an invalid provider setup. */
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
