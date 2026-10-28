@@ -3,17 +3,19 @@
  * @title        : Conversation List Component (Pancake-style)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-10-28
  * @description  : Danh sách cuộc hội thoại khách hàng Messenger của Seller (UC-72),
  *                 tích hợp thanh lọc thẻ tag nhanh (Pancake Quick Tag Filter) và tìm kiếm khách hàng.
+ *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
  * @module       : Conversational Commerce / Chat Interface
  * @layer        : Front-end
  * ============================================================================
  */
 
 import React, { useState } from 'react';
-import { Search, MessageSquare } from 'lucide-react';
+import { Form, InputGroup, ListGroup, Badge, Button } from 'react-bootstrap';
 import { SkeletonConversationItem } from '../common/Skeleton';
+import { Icon, Avatar, EmptyState } from './SellerUi';
 
 /**
  * Component hiển thị danh sách hội thoại khách hàng kèm bộ lọc nhãn màu.
@@ -48,120 +50,111 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
   return (
     <div className="d-flex flex-column h-100 bg-white">
       {/* Search Header */}
-      <div className="ara-conv-search-box">
-        <div className="position-relative">
-          <Search className="position-absolute" size={15} style={{ left: '10px', top: '10px', color: '#9F8365' }} />
-          <input
-            type="text"
+      <div className="p-2 border-bottom">
+        <InputGroup size="sm">
+          <InputGroup.Text className="bg-white"><Icon name="search" className="text-warning-emphasis" /></InputGroup.Text>
+          <Form.Control
             placeholder="Tìm theo tên, SĐT, mã khách..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="form-control ara-input-search w-100"
           />
-        </div>
+        </InputGroup>
       </div>
 
       {/* Quick Tag Pills Bar - dùng allTags từ DB */}
-      <div className="ara-tag-pills-bar">
-        <button
-          type="button"
+      <div className="d-flex flex-wrap gap-1 p-2 border-bottom">
+        <Button
+          size="sm"
+          className="rounded-pill py-0 px-2"
+          variant={!activeFilterTag ? 'dark' : 'outline-secondary'}
           onClick={() => onTagFilter && onTagFilter('')}
-          className={`ara-tag-pill ${!activeFilterTag ? 'active' : ''}`}
         >
           Tất cả ({conversations.length})
-        </button>
-        {allTags.slice(0, 6).map((tag) => (
-          <button
-            key={tag._id || tag.name}
-            type="button"
-            onClick={() => onTagFilter && onTagFilter(tag.name === activeFilterTag ? '' : tag.name)}
-            className={`ara-tag-pill ${activeFilterTag === tag.name ? 'active' : ''}`}
-            style={activeFilterTag === tag.name
-              ? { background: tag.color, borderColor: tag.color, color: tag.textColor || '#fff' }
-              : { borderColor: tag.color, color: tag.color }
-            }
-          >
-            {tag.name}
-          </button>
-        ))}
+        </Button>
+        {allTags.slice(0, 6).map((tag) => {
+          const isActive = activeFilterTag === tag.name;
+          return (
+            <Button
+              key={tag._id || tag.name}
+              size="sm"
+              variant="light"
+              className="rounded-pill py-0 px-2 border"
+              // Màu thẻ do người dùng cấu hình trong DB nên bắt buộc truyền qua style
+              style={isActive
+                ? { background: tag.color, borderColor: tag.color, color: tag.textColor || '#fff' }
+                : { borderColor: tag.color, color: tag.color, background: 'transparent' }}
+              onClick={() => onTagFilter && onTagFilter(isActive ? '' : tag.name)}
+            >
+              {tag.name}
+            </Button>
+          );
+        })}
       </div>
 
       {/* Conversation Stream List */}
       <div className="flex-grow-1 overflow-auto">
         {loading ? (
-          <div>
-            {[1, 2, 3, 4, 5].map((i) => <SkeletonConversationItem key={i} />)}
-          </div>
+          [1, 2, 3, 4, 5].map((i) => <SkeletonConversationItem key={i} />)
         ) : filteredConversations.length === 0 ? (
-          <div className="text-center py-5 px-3 text-muted" style={{ fontSize: '0.85rem' }}>
-            <MessageSquare size={32} className="mb-2" style={{ color: 'var(--ara-gold, #9F8365)', opacity: 0.5 }} />
-            <div className="fw-semibold text-dark">Chưa có hội thoại nào</div>
-            <div className="small text-secondary">Tin nhắn Messenger của khách sẽ hiển thị tại đây</div>
-          </div>
+          <EmptyState icon="chat-square" title="Chưa có hội thoại nào">
+            Tin nhắn Messenger của khách sẽ hiển thị tại đây
+          </EmptyState>
         ) : (
-          filteredConversations.map((conv) => {
-            const customer = conv.customerId;
-            const isSelected = selectedId === conv._id;
+          <ListGroup variant="flush">
+            {filteredConversations.map((conv) => {
+              const customer = conv.customerId;
+              const isSelected = selectedId === conv._id;
 
-            return (
-              <div
-                key={conv._id}
-                onClick={() => onSelect(conv)}
-                className={`ara-conv-item ${isSelected ? 'active' : ''}`}
-              >
-                {/* Avatar Icon */}
-                <div className="position-relative">
-                  <div className="ara-avatar">
-                    {customer?.fullName ? customer.fullName.charAt(0).toUpperCase() : 'K'}
-                  </div>
-                  {conv.unreadCount > 0 && (
-                    <span
-                      className="position-absolute badge rounded-pill bg-danger border border-white"
-                      style={{ top: '-4px', right: '-4px', fontSize: '0.65rem' }}
-                    >
-                      {conv.unreadCount}
-                    </span>
-                  )}
-                </div>
-
-                {/* Conversation Details */}
-                <div className="flex-grow-1 min-w-0" style={{ overflow: 'hidden' }}>
-                  <div className="d-flex align-items-center justify-content-between mb-1">
-                    <span className="fw-bold text-dark text-truncate" style={{ fontSize: '0.88rem', maxWidth: '160px' }}>
-                      {customer?.fullName || 'Khách chưa đặt tên'}
-                    </span>
-                    <span className="text-muted" style={{ fontSize: '0.7rem' }}>
-                      {conv.lastMessageAt
-                        ? new Date(conv.lastMessageAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-                        : ''}
-                    </span>
+              return (
+                <ListGroup.Item
+                  key={conv._id}
+                  action
+                  active={isSelected}
+                  onClick={() => onSelect(conv)}
+                  className={`d-flex gap-2 py-3 ${isSelected ? 'bg-body-secondary text-body border-start border-4 border-dark' : ''}`}
+                >
+                  {/* Avatar Icon */}
+                  <div className="position-relative">
+                    <Avatar name={customer?.fullName} size={42} />
+                    {conv.unreadCount > 0 && (
+                      <Badge pill bg="danger" className="position-absolute top-0 start-100 translate-middle border border-white">
+                        {conv.unreadCount}
+                      </Badge>
+                    )}
                   </div>
 
-                  {/* Last Message Preview */}
-                  <p
-                    className="text-secondary mb-1 text-truncate"
-                    style={{ fontSize: '0.78rem', lineHeight: '1.3' }}
-                  >
-                    {conv.lastMessagePreview || 'Bắt đầu cuộc trò chuyện...'}
-                  </p>
-
-                  {/* Tags */}
-                  {conv.tags && conv.tags.length > 0 && (
-                    <div className="d-flex flex-wrap gap-1 mt-1">
-                      {conv.tags.slice(0, 2).map((tg, idx) => (
-                        <span key={idx} className="badge-ara-gold">
-                          {tg}
-                        </span>
-                      ))}
-                      {conv.tags.length > 2 && (
-                        <span className="badge-ara-gold">+{conv.tags.length - 2}</span>
-                      )}
+                  {/* Conversation Details */}
+                  <div className="flex-grow-1 overflow-hidden">
+                    <div className="d-flex align-items-center justify-content-between mb-1">
+                      <span className="fw-bold text-truncate small">{customer?.fullName || 'Khách chưa đặt tên'}</span>
+                      <span className="text-secondary small flex-shrink-0 ms-2">
+                        {conv.lastMessageAt
+                          ? new Date(conv.lastMessageAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                          : ''}
+                      </span>
                     </div>
-                  )}
-                </div>
-              </div>
-            );
-          })
+
+                    {/* Last Message Preview */}
+                    <p className="text-secondary small mb-1 text-truncate">
+                      {conv.lastMessagePreview || 'Bắt đầu cuộc trò chuyện...'}
+                    </p>
+
+                    {/* Tags */}
+                    {conv.tags && conv.tags.length > 0 && (
+                      <div className="d-flex flex-wrap gap-1">
+                        {conv.tags.slice(0, 2).map((tg, idx) => (
+                          <Badge key={idx} bg="warning-subtle" text="warning-emphasis">{tg}</Badge>
+                        ))}
+                        {conv.tags.length > 2 && (
+                          <Badge bg="warning-subtle" text="warning-emphasis">+{conv.tags.length - 2}</Badge>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </ListGroup.Item>
+              );
+            })}
+          </ListGroup>
         )}
       </div>
     </div>

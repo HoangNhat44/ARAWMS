@@ -3,9 +3,10 @@
  * @title        : ChatBox Component (Pancake-style Quick Tag Bar)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-10-28
  * @description  : Khung chat nhắn tin trực tiếp với khách hàng Messenger (UC-72, UC-74),
  *                 tích hợp thanh nhãn màu Pancake gán tag 1 chạm (UC-73) và nút mở nhanh tạo đơn.
+ *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
  * @module       : Conversational Commerce / Chat Interface
  * @layer        : Front-end
  * ============================================================================
@@ -13,11 +14,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Send, ShoppingBag, CheckCheck, Package, MessageSquare, MessageSquareText,
-  Plus, X, Settings2, Paperclip, Image as ImageIcon, FileText, Download,
-} from 'lucide-react';
+  Button, Badge, Form, InputGroup, Spinner, Stack, Image, Modal, Popover, OverlayTrigger,
+  CloseButton, ListGroup, Card,
+} from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
 import { API_BASE_URL } from '../../utils/constants';
+import { useToast } from '../../context/ToastContext';
+import { Icon, Avatar, EmptyState, formatVnd } from './SellerUi';
 
 /**
  * Hàm lấy URL tuyệt đối của ảnh/tệp đính kèm.
@@ -51,6 +54,7 @@ const ChatBox = ({
   onTagsRefresh,
   onOpenQuickOrder,
 }) => {
+  const { showWarning, showError, showSuccess } = useToast();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -59,11 +63,11 @@ const ChatBox = ({
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState('#8B5CF6');
   const [creatingTag, setCreatingTag] = useState(false);
-  
+
   // Tệp đính kèm người bán chọn gửi
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [previewImage, setPreviewImage] = useState(null); // Modal phóng to ảnh
-  
+
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -94,13 +98,13 @@ const ChatBox = ({
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     if (selectedFiles.length + files.length > 5) {
-      alert('Chỉ được chọn tối đa 5 tệp mỗi lần');
+      showWarning('Chỉ được chọn tối đa 5 tệp mỗi lần', 'Giới hạn tệp');
       return;
     }
     // Giới hạn 25MB mỗi tệp
     for (const f of files) {
       if (f.size > 25 * 1024 * 1024) {
-        alert(`Tệp "${f.name}" vượt quá dung lượng 25MB cho phép`);
+        showWarning(`Tệp "${f.name}" vượt quá dung lượng 25MB cho phép`, 'Dung lượng tệp');
         return;
       }
     }
@@ -116,7 +120,7 @@ const ChatBox = ({
   const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
     if ((!text.trim() && selectedFiles.length === 0) || sending || !conversation?._id) return;
-    
+
     try {
       setSending(true);
 
@@ -141,7 +145,7 @@ const ChatBox = ({
         }
       }
     } catch (err) {
-      alert(`Lỗi gửi tin nhắn: ${err.message}`);
+      showError(`Lỗi gửi tin nhắn: ${err.message}`, 'Lỗi gửi tin');
     } finally {
       setSending(false);
     }
@@ -175,6 +179,7 @@ const ChatBox = ({
         if (onTagsRefresh) await onTagsRefresh();
         setNewTagName('');
         setShowNewTagForm(false);
+        showSuccess(`Đã tạo thẻ "${newTagName.trim()}"`, 'Tạo thẻ');
         // Auto-gắn tag vừa tạo vào cuộc hội thoại
         if (conversation?._id) {
           const tagRes = await sellerService.addTag(conversation._id, newTagName.trim());
@@ -182,7 +187,7 @@ const ChatBox = ({
         }
       }
     } catch (err) {
-      alert(err.message);
+      showError(err.message, 'Lỗi tạo thẻ');
     } finally {
       setCreatingTag(false);
     }
@@ -190,220 +195,184 @@ const ChatBox = ({
 
   if (!conversation) {
     return (
-      <div className="d-flex flex-column align-items-center justify-content-center h-100 p-5 text-center text-muted" style={{ background: '#FAF9F6' }}>
-        <div
-          className="d-flex align-items-center justify-content-center mb-3"
-          style={{
-            width: '60px',
-            height: '60px',
-            background: '#FFFFFF',
-            border: '1px solid #E5E7EB',
-            borderRadius: '14px',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
-          }}
-        >
-          <MessageSquareText size={30} color="#4B5563" />
-        </div>
-        <h4 className="fw-bold text-dark mb-2" style={{ fontSize: '1.1rem', letterSpacing: '-0.01em' }}>
-          Hộp Thoại Tư Vấn Bán Hàng
-        </h4>
-        <p className="text-secondary small mb-4" style={{ maxWidth: '360px', lineHeight: 1.5 }}>
+      <div className="d-flex flex-column align-items-center justify-content-center h-100 p-5 text-center bg-body-tertiary">
+        <Icon name="chat-square-text" className="display-6 text-secondary mb-3" />
+        <h4 className="fw-bold fs-5 mb-2">Hộp Thoại Tư Vấn Bán Hàng</h4>
+        <p className="text-secondary small mb-4" style={{ maxWidth: 360 }}>
           Vui lòng chọn một khách hàng từ danh sách bên trái để xem nội dung tin nhắn, kiểm tra tồn kho và hỗ trợ lên đơn.
         </p>
 
         {/* Hướng dẫn tác vụ nhanh thực tế cho Seller */}
-        <div className="d-flex flex-column gap-2" style={{ maxWidth: '340px', width: '100%', textAlign: 'left' }}>
-          <div className="d-flex align-items-center gap-2 p-2 rounded" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', fontSize: '0.78rem', color: '#374151' }}>
-            <span style={{ fontSize: '1rem' }}>💬</span>
-            <span>Đồng bộ tin nhắn Facebook Messenger</span>
-          </div>
-          <div className="d-flex align-items-center gap-2 p-2 rounded" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', fontSize: '0.78rem', color: '#374151' }}>
-            <span style={{ fontSize: '1rem' }}>⚡</span>
-            <span>Tra cứu tồn kho khả dụng & Tạo đơn nhanh</span>
-          </div>
-          <div className="d-flex align-items-center gap-2 p-2 rounded" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', fontSize: '0.78rem', color: '#374151' }}>
-            <span style={{ fontSize: '1rem' }}>🏷️</span>
-            <span>Gắn thẻ phân loại khách hàng đa kênh</span>
-          </div>
-        </div>
+        <ListGroup className="w-100 text-start small" style={{ maxWidth: 340 }}>
+          <ListGroup.Item><Icon name="messenger" className="me-2 text-primary" />Đồng bộ tin nhắn Facebook Messenger</ListGroup.Item>
+          <ListGroup.Item><Icon name="lightning-charge" className="me-2 text-warning" />Tra cứu tồn kho khả dụng &amp; Tạo đơn nhanh</ListGroup.Item>
+          <ListGroup.Item><Icon name="tags" className="me-2 text-success" />Gắn thẻ phân loại khách hàng đa kênh</ListGroup.Item>
+        </ListGroup>
       </div>
     );
   }
 
   const customer = conversation.customerId;
 
+  /** Popover tạo tag mới (thay cho form inline tự định vị). */
+  const newTagPopover = (
+    <Popover id="chat-new-tag-popover">
+      <Popover.Header as="div" className="small fw-bold">Tạo thẻ mới</Popover.Header>
+      <Popover.Body>
+        <Form onSubmit={handleCreateTag}>
+          <InputGroup size="sm">
+            <Form.Control
+              placeholder="Tên thẻ mới..."
+              value={newTagName}
+              onChange={(e) => setNewTagName(e.target.value)}
+              autoFocus
+              maxLength={30}
+            />
+            <Form.Control
+              type="color"
+              value={newTagColor}
+              onChange={(e) => setNewTagColor(e.target.value)}
+              title="Chọn màu thẻ"
+              className="form-control-color flex-grow-0"
+            />
+            <Button type="submit" variant="dark" disabled={creatingTag || !newTagName.trim()}>
+              {creatingTag ? <Spinner animation="border" size="sm" /> : 'Tạo'}
+            </Button>
+          </InputGroup>
+        </Form>
+      </Popover.Body>
+    </Popover>
+  );
+
   return (
     <div className="d-flex flex-column h-100 position-relative">
       {/* ===== Chat Top Header ===== */}
-      <div className="ara-chat-header">
-        <div className="d-flex align-items-center gap-3">
-          <div className="ara-avatar">
-            {customer?.fullName ? customer.fullName.charAt(0).toUpperCase() : 'K'}
-          </div>
+      <div className="d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-bottom bg-white">
+        <Stack direction="horizontal" gap={3}>
+          <Avatar name={customer?.fullName} size={40} />
           <div>
-            <div className="d-flex align-items-center gap-2">
-              <h5 className="fw-bold mb-0 text-dark" style={{ fontSize: '0.95rem' }}>
-                {customer?.fullName || 'Khách hàng'}
-              </h5>
-              <span className="badge-ara-info">Facebook Messenger</span>
-            </div>
-            <div className="d-flex align-items-center gap-2 text-muted" style={{ fontSize: '0.75rem', marginTop: '2px' }}>
-              <span>Mã: <strong className="text-dark">{customer?.customerCode || 'N/A'}</strong></span>
-              {customer?.phone && <span>• SĐT: <strong className="text-dark">{customer.phone}</strong></span>}
+            <Stack direction="horizontal" gap={2}>
+              <h5 className="fw-bold mb-0 fs-6">{customer?.fullName || 'Khách hàng'}</h5>
+              <Badge bg="primary-subtle" text="primary-emphasis">Facebook Messenger</Badge>
+            </Stack>
+            <div className="text-secondary small">
+              Mã: <strong className="text-body">{customer?.customerCode || 'N/A'}</strong>
+              {customer?.phone && <> • SĐT: <strong className="text-body">{customer.phone}</strong></>}
             </div>
           </div>
-        </div>
+        </Stack>
 
         {/* Quick Order Button */}
         {onOpenQuickOrder && (
-          <button
-            type="button"
-            onClick={onOpenQuickOrder}
-            className="btn-ara-primary d-flex align-items-center gap-1"
-            style={{ padding: '0.45rem 0.85rem', fontSize: '0.78rem' }}
-          >
-            <ShoppingBag size={14} />
-            <span>Tạo đơn nhanh</span>
-          </button>
+          <Button size="sm" variant="dark" onClick={onOpenQuickOrder} className="d-flex align-items-center gap-1 text-nowrap">
+            <Icon name="bag-plus" /> Tạo đơn nhanh
+          </Button>
         )}
       </div>
 
       {/* ===== Pancake-style Quick Tag Bar ===== */}
-      <div className="ara-quick-tag-bar">
-        <div className="ara-quick-tag-scroll">
-          {allTags.map((tag) => {
-            const isActive = activeTags.includes(tag.name);
-            return (
-              <button
-                key={tag._id}
-                type="button"
-                className={`ara-quick-tag-pill ${isActive ? 'active' : ''}`}
-                style={isActive
-                  ? { background: tag.color, color: tag.textColor || '#fff', borderColor: tag.color }
-                  : { borderColor: tag.color, color: tag.color }
-                }
-                onClick={() => handleToggleTag(tag.name)}
-                title={isActive ? `Bỏ thẻ "${tag.name}"` : `Gắn thẻ "${tag.name}"`}
-              >
-                {isActive && <span style={{ marginRight: 3 }}>✓</span>}
-                {tag.name}
-              </button>
-            );
-          })}
+      <div className="d-flex align-items-center gap-1 px-3 py-2 border-bottom bg-white overflow-x-auto">
+        {allTags.map((tag) => {
+          const isActive = activeTags.includes(tag.name);
+          return (
+            <Button
+              key={tag._id}
+              size="sm"
+              variant="light"
+              className="rounded-pill py-0 px-2 text-nowrap small border"
+              // Màu thẻ do người dùng cấu hình trong DB nên bắt buộc truyền qua style
+              style={isActive
+                ? { background: tag.color, color: tag.textColor || '#fff', borderColor: tag.color }
+                : { borderColor: tag.color, color: tag.color, background: 'transparent' }}
+              onClick={() => handleToggleTag(tag.name)}
+              title={isActive ? `Bỏ thẻ "${tag.name}"` : `Gắn thẻ "${tag.name}"`}
+            >
+              {isActive && <Icon name="check2" className="me-1" />}
+              {tag.name}
+            </Button>
+          );
+        })}
 
-          {/* Nút tạo tag mới */}
-          <button
-            type="button"
-            className="ara-quick-tag-add-btn"
-            onClick={() => setShowNewTagForm(!showNewTagForm)}
-            title="Tạo thẻ mới"
-          >
-            <Plus size={12} />
-          </button>
-        </div>
-
-        {/* Form tạo tag mới (inline dropdown) */}
-        {showNewTagForm && (
-          <form onSubmit={handleCreateTag} className="ara-new-tag-form">
-            <input
-              type="text"
-              placeholder="Tên thẻ mới..."
-              value={newTagName}
-              onChange={(e) => setNewTagName(e.target.value)}
-              className="ara-new-tag-input"
-              autoFocus
-              maxLength={30}
-            />
-            <input
-              type="color"
-              value={newTagColor}
-              onChange={(e) => setNewTagColor(e.target.value)}
-              className="ara-new-tag-color"
-              title="Chọn màu thẻ"
-            />
-            <button type="submit" disabled={creatingTag || !newTagName.trim()} className="ara-new-tag-submit">
-              {creatingTag ? '...' : 'Tạo'}
-            </button>
-            <button type="button" onClick={() => setShowNewTagForm(false)} className="ara-new-tag-cancel">
-              <X size={12} />
-            </button>
-          </form>
-        )}
+        {/* Nút tạo tag mới */}
+        <OverlayTrigger
+          trigger="click"
+          placement="bottom-end"
+          rootClose
+          show={showNewTagForm}
+          onToggle={setShowNewTagForm}
+          overlay={newTagPopover}
+        >
+          <Button size="sm" variant="outline-secondary" className="rounded-pill py-0 px-2" title="Tạo thẻ mới">
+            <Icon name="plus-lg" />
+          </Button>
+        </OverlayTrigger>
       </div>
 
       {/* ===== Messages Stream ===== */}
-      <div className="ara-chat-messages-container">
+      <div className="flex-grow-1 overflow-auto p-3 bg-body-tertiary">
         {loading ? (
-          <div className="d-flex flex-column align-items-center justify-content-center h-100 py-5 text-muted">
-            <div className="spinner-border text-secondary mb-2" role="status" style={{ width: '1.6rem', height: '1.6rem', borderWidth: '2px' }}>
-              <span className="visually-hidden">Đang tải...</span>
-            </div>
-            <span style={{ fontSize: '0.82rem', color: '#6B7280' }}>Đang tải nội dung tin nhắn...</span>
+          <div className="d-flex flex-column align-items-center justify-content-center h-100 py-5 text-secondary">
+            <Spinner animation="border" variant="secondary" className="mb-2" />
+            <span className="small">Đang tải nội dung tin nhắn...</span>
           </div>
         ) : messages.length === 0 ? (
-          <div className="text-center py-5 text-muted small">
-            <MessageSquare size={32} className="mb-2" style={{ color: 'var(--ara-gold)', opacity: 0.5 }} />
-            <div>Chưa có tin nhắn trong hội thoại này</div>
-          </div>
+          <EmptyState icon="chat-square" title="Chưa có tin nhắn trong hội thoại này" />
         ) : (
           messages.map((m) => {
             const isSeller = m.senderType === 'SELLER';
             return (
-              <div key={m._id} className={`ara-msg-wrapper ${isSeller ? 'ara-msg-outbound' : 'ara-msg-inbound'}`}>
-                {!isSeller && (
-                  <div className="ara-avatar" style={{ width: '32px', height: '32px', fontSize: '0.75rem' }}>
-                    {customer?.fullName ? customer.fullName.charAt(0).toUpperCase() : 'K'}
-                  </div>
-                )}
-                <div className="ara-msg-bubble">
+              <div key={m._id} className={`d-flex align-items-end gap-2 mb-3 ${isSeller ? 'justify-content-end' : ''}`}>
+                {!isSeller && <Avatar name={customer?.fullName} size={32} />}
+                <div
+                  className={`px-3 py-2 rounded-4 shadow-sm small ${isSeller ? 'bg-dark text-white' : 'bg-white border'}`}
+                  style={{ maxWidth: '75%' }}
+                >
                   {/* Hiển thị sản phẩm đính kèm nếu có */}
                   {m.referencedSkuId && (
-                    <div className="ara-msg-sku-card">
-                      <Package size={22} color="var(--ara-gold)" className="flex-shrink-0" />
-                      <div>
-                        <div className="fw-bold" style={{ fontSize: '0.82rem' }}>
-                          {m.referencedSkuId.styleName || m.referencedSkuId.skuCode}
+                    <Card body className="mb-2 text-body">
+                      <Stack direction="horizontal" gap={2}>
+                        <Icon name="box-seam" className="fs-4 text-warning-emphasis" />
+                        <div>
+                          <div className="fw-bold">{m.referencedSkuId.styleName || m.referencedSkuId.skuCode}</div>
+                          <div className="text-secondary small">
+                            Màu: {m.referencedSkuId.color} | Size: <strong>{m.referencedSkuId.size}</strong> |{' '}
+                            <span className="fw-bold text-warning-emphasis">{formatVnd(m.referencedSkuId.retailPrice)}</span>
+                          </div>
                         </div>
-                        <div className="text-secondary small">
-                          Màu: {m.referencedSkuId.color} | Size: <strong>{m.referencedSkuId.size}</strong> |{' '}
-                          <span style={{ color: 'var(--ara-gold-hover)', fontWeight: 700 }}>
-                            {m.referencedSkuId.retailPrice?.toLocaleString('vi-VN')} đ
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                      </Stack>
+                    </Card>
                   )}
 
                   {/* Hiển thị ảnh / video / tệp đính kèm của khách hàng hoặc người bán */}
                   {m.attachments && m.attachments.length > 0 && (
-                    <div className="ara-msg-attachments">
+                    <div className="d-flex flex-wrap gap-2 mb-1">
                       {m.attachments.map((att, idx) => {
                         const fullUrl = getMediaUrl(att.url);
                         if (att.type === 'image') {
                           return (
-                            <div
+                            <Image
                               key={idx}
-                              className="ara-msg-img-box"
-                              onClick={() => setPreviewImage(fullUrl)}
+                              src={fullUrl}
+                              alt={att.name || 'Ảnh đính kèm'}
+                              loading="lazy"
+                              thumbnail
+                              role="button"
                               title="Bấm để xem ảnh phóng to"
-                            >
-                              <img
-                                src={fullUrl}
-                                alt={att.name || 'Ảnh đính kèm'}
-                                loading="lazy"
-                                onError={(e) => {
-                                  // Fallback nếu ảnh không tải được
-                                  e.target.style.display = 'none';
-                                }}
-                              />
-                            </div>
+                              className="object-fit-cover"
+                              style={{ maxWidth: 220, maxHeight: 220 }}
+                              onClick={() => setPreviewImage(fullUrl)}
+                              onError={(e) => {
+                                // Fallback nếu ảnh không tải được
+                                e.target.style.display = 'none';
+                              }}
+                            />
                           );
                         }
                         if (att.type === 'video') {
-                          return <video key={idx} controls src={fullUrl} className="ara-msg-media" />;
+                          return <video key={idx} controls src={fullUrl} className="rounded w-100" style={{ maxWidth: 280 }} />;
                         }
                         if (att.type === 'audio') {
-                          return <audio key={idx} controls src={fullUrl} className="ara-msg-audio" />;
+                          return <audio key={idx} controls src={fullUrl} className="w-100" />;
                         }
                         return (
                           <a
@@ -411,15 +380,15 @@ const ChatBox = ({
                             href={fullUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="ara-msg-file-card"
                             download={att.name || 'file'}
+                            className="d-flex align-items-center gap-2 p-2 rounded border bg-body text-body text-decoration-none"
                           >
-                            <FileText size={18} className="flex-shrink-0" />
-                            <div className="ara-msg-file-meta">
-                              <span className="ara-msg-file-name">{att.name || 'Tệp đính kèm'}</span>
-                              {att.size && <span className="ara-msg-file-size">{(att.size / 1024).toFixed(1)} KB</span>}
+                            <Icon name="file-earmark-text" className="fs-5" />
+                            <div className="text-truncate" style={{ maxWidth: 180 }}>
+                              <div className="text-truncate fw-semibold">{att.name || 'Tệp đính kèm'}</div>
+                              {att.size && <div className="text-secondary small">{(att.size / 1024).toFixed(1)} KB</div>}
                             </div>
-                            <Download size={14} className="flex-shrink-0" />
+                            <Icon name="download" />
                           </a>
                         );
                       })}
@@ -428,10 +397,10 @@ const ChatBox = ({
 
                   {/* Nội dung tin nhắn văn bản */}
                   {m.messageText && <div style={{ whiteSpace: 'pre-wrap' }}>{m.messageText}</div>}
-                  
-                  <div className={`ara-msg-time d-flex align-items-center gap-1 ${isSeller ? 'justify-content-end text-light' : 'text-muted'}`}>
+
+                  <div className={`d-flex align-items-center gap-1 mt-1 small ${isSeller ? 'justify-content-end text-white-50' : 'text-secondary'}`}>
                     <span>{new Date(m.sentAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
-                    {isSeller && <CheckCheck size={13} color="var(--ara-gold-light)" />}
+                    {isSeller && <Icon name="check2-all" className="text-warning" />}
                   </div>
                 </div>
               </div>
@@ -442,55 +411,51 @@ const ChatBox = ({
       </div>
 
       {/* ===== Input Dock with File Attachment Tray ===== */}
-      <div className="ara-chat-input-bar">
+      <div className="border-top bg-white p-2">
         {/* Khay preview tệp đính kèm người bán đã chọn */}
         {selectedFiles.length > 0 && (
-          <div className="ara-chat-files-tray">
+          <div className="d-flex flex-wrap gap-2 mb-2">
             {selectedFiles.map((file, idx) => (
-              <div key={idx} className="ara-chat-file-chip">
+              <div key={idx} className="d-flex align-items-center gap-1 border rounded-pill ps-1 pe-2 py-1 bg-body-tertiary small">
                 {file.type.startsWith('image/') ? (
-                  <img src={URL.createObjectURL(file)} alt={file.name} className="ara-chat-chip-thumb" />
+                  <Image src={URL.createObjectURL(file)} alt={file.name} roundedCircle className="object-fit-cover" style={{ width: 22, height: 22 }} />
                 ) : (
-                  <FileText size={14} color="var(--ara-gold)" />
+                  <Icon name="file-earmark-text" className="text-warning-emphasis" />
                 )}
-                <span className="ara-chat-chip-name">{file.name}</span>
-                <button
-                  type="button"
-                  onClick={() => removeSelectedFile(idx)}
-                  className="ara-chat-chip-remove"
-                  title="Xóa tệp"
-                >
-                  <X size={12} />
-                </button>
+                <span className="text-truncate" style={{ maxWidth: 140 }}>{file.name}</span>
+                <CloseButton style={{ fontSize: '0.6rem' }} onClick={() => removeSelectedFile(idx)} title="Xóa tệp" />
               </div>
             ))}
           </div>
         )}
 
-        <form onSubmit={handleSendMessage} className="ara-chat-form">
-          <div className="ara-chat-input-row">
-            {/* Input chọn file ẩn */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.zip"
-              style={{ display: 'none' }}
-              onChange={handleFileSelect}
-            />
+        <Form onSubmit={handleSendMessage}>
+          {/* Input chọn file ẩn */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.zip"
+            className="d-none"
+            onChange={handleFileSelect}
+          />
 
+          <InputGroup>
             {/* Nút đính kèm ảnh & file */}
-            <button
-              type="button"
-              className="ara-chat-attach-btn"
+            <Button
+              variant="outline-secondary"
               onClick={() => fileInputRef.current?.click()}
               title="Gửi ảnh hoặc tệp cho khách (tối đa 5 tệp x 25MB)"
             >
-              <Paperclip size={18} />
-            </button>
+              <Icon name="paperclip" />
+            </Button>
 
-            <textarea
-              placeholder={selectedFiles.length > 0 ? "Nhập chú thích gửi kèm tệp..." : "Nhập nội dung tư vấn gửi cho khách hàng..."}
+            <Form.Control
+              as="textarea"
+              rows={2}
+              className="shadow-none"
+              style={{ resize: 'none' }}
+              placeholder={selectedFiles.length > 0 ? 'Nhập chú thích gửi kèm tệp...' : 'Nhập nội dung tư vấn gửi cho khách hàng...'}
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
@@ -499,40 +464,35 @@ const ChatBox = ({
                   handleSendMessage(e);
                 }
               }}
-              rows={2}
             />
-            
-            <button
+
+            <Button
               type="submit"
+              variant="dark"
               disabled={(!text.trim() && selectedFiles.length === 0) || sending}
-              className="ara-chat-send-btn"
               title="Gửi tin nhắn (Enter)"
             >
-              {sending ? (
-                <span className="spinner-border spinner-border-sm" role="status" style={{ width: '16px', height: '16px' }} />
-              ) : (
-                <Send size={18} />
-              )}
-            </button>
-          </div>
-          <div className="ara-send-hint">Enter để gửi · Shift+Enter xuống dòng · Có thể gửi ảnh & tệp trực tiếp cho khách</div>
-        </form>
+              {sending ? <Spinner animation="border" size="sm" /> : <Icon name="send-fill" />}
+            </Button>
+          </InputGroup>
+          <Form.Text className="d-block mt-1">
+            Enter để gửi · Shift+Enter xuống dòng · Có thể gửi ảnh &amp; tệp trực tiếp cho khách
+          </Form.Text>
+        </Form>
       </div>
 
       {/* ===== Lightbox phóng to ảnh ===== */}
-      {previewImage && (
-        <div className="ara-img-lightbox-overlay" onClick={() => setPreviewImage(null)}>
-          <div className="ara-img-lightbox-content" onClick={(e) => e.stopPropagation()}>
-            <img src={previewImage} alt="Ảnh phóng to" />
-            <button type="button" className="ara-lightbox-close" onClick={() => setPreviewImage(null)}>
-              <X size={20} />
-            </button>
-            <a href={previewImage} target="_blank" rel="noreferrer" className="ara-lightbox-download" download>
-              <Download size={14} /> Mở ảnh gốc
-            </a>
+      <Modal show={!!previewImage} onHide={() => setPreviewImage(null)} size="xl" centered contentClassName="bg-transparent border-0">
+        <Modal.Body className="text-center p-0 position-relative">
+          <Image src={previewImage || ''} alt="Ảnh phóng to" fluid rounded style={{ maxHeight: '85vh' }} />
+          <CloseButton variant="white" className="position-absolute top-0 end-0 m-2" onClick={() => setPreviewImage(null)} />
+          <div className="mt-2">
+            <Button as="a" href={previewImage || ''} target="_blank" rel="noreferrer" download size="sm" variant="light">
+              <Icon name="download" className="me-1" /> Mở ảnh gốc
+            </Button>
           </div>
-        </div>
-      )}
+        </Modal.Body>
+      </Modal>
     </div>
   );
 };

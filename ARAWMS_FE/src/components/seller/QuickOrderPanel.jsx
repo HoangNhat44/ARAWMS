@@ -3,21 +3,29 @@
  * @title        : Quick Order Inline Panel (Pancake-style)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-10-28
  * @description  : Panel tạo đơn hàng bán lẻ nhanh tích hợp tại Pane tác nghiệp phải theo phong cách Pancake.
  *                 Hỗ trợ tìm kiếm tồn kho khả dụng thời gian thực (UC-77), điền thông tin người nhận,
  *                 tính toán tổng tiền và tạo/xác nhận giữ chỗ đơn hàng (UC-78, UC-79).
+ *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
  * @module       : Order Fulfillment / Direct Order Management
  * @layer        : Front-end
  * ============================================================================
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  Search, Plus, Minus, Trash2, ShoppingBag, ShieldCheck,
-  CheckCircle2, Package, ChevronDown, User, Phone, MapPin, X
-} from 'lucide-react';
+import { Card, Alert, Button, Badge, Spinner, ButtonGroup, ToggleButton, Stack } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
+import { Icon } from './SellerUi';
+import {
+  RecipientFields, SkuSearchBox, SelectedItemsList, AvailableSkuList, PaymentSummary,
+  getAvailQty, getSkuId,
+} from './OrderFormParts';
+
+const PAYMENT_METHODS = [
+  { value: 'COD', label: 'COD', icon: 'cash' },
+  { value: 'BANK_TRANSFER', label: 'Chuyển khoản', icon: 'bank' },
+];
 
 /**
  * Component Panel tạo đơn nhanh cho Seller, tích hợp kiểm tra tồn kho realtime và giữ chỗ kho.
@@ -44,7 +52,6 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successOrder, setSuccessOrder] = useState(null);
-  const searchRef = useRef(null);
   const debounceRef = useRef(null);
 
   // 1. Tự động đồng bộ thông tin người nhận từ hồ sơ khách hàng
@@ -79,16 +86,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
     }
   };
 
-  // 3. Đóng dropdown khi click bên ngoài
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (searchRef.current && !searchRef.current.contains(e.target)) {
-        setShowDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  // 3. Đóng dropdown khi click bên ngoài: xử lý bên trong <SkuSearchBox />
 
   /**
    * Tra cứu tồn kho khả dụng thời gian thực dựa trên từ khóa tìm kiếm (Tên/Mã SKU).
@@ -125,21 +123,20 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
    * [BR: GBR-03] Định danh SKU chính xác theo ID và mã SKU.
    */
   const addItem = (sku) => {
-    const existing = items.find((it) => it.skuId === (sku.skuId || sku._id));
-    const avail = sku.availableQty ?? sku.availableStock ?? 0;
+    const existing = items.find((it) => it.skuId === getSkuId(sku));
     if (existing) {
       setItems(items.map((it) =>
         it.skuId === existing.skuId ? { ...it, orderedQty: it.orderedQty + 1 } : it
       ));
     } else {
       setItems([...items, {
-        skuId: sku.skuId || sku._id,
+        skuId: getSkuId(sku),
         skuCode: sku.skuCode,
         styleName: sku.productName || sku.styleName,
         size: sku.size,
         color: sku.color,
         thumbnailUrl: sku.thumbnailUrl || '',
-        availableStock: avail,
+        availableStock: getAvailQty(sku),
         orderedQty: 1,
         unitSalePrice: sku.retailPrice || 0,
       }]);
@@ -225,334 +222,141 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
 
   if (successOrder) {
     return (
-      <div className="qop-success">
-        <CheckCircle2 size={44} className="qop-success-icon" />
-        <div className="qop-success-title">Tạo đơn thành công!</div>
-        <div className="qop-success-code">{successOrder.orderCode}</div>
-        <span className={`qop-status-badge qop-status-${(successOrder.status || '').toLowerCase()}`}>
-          {successOrder.status}
-        </span>
-        <button className="qop-btn qop-btn-primary qop-success-close" onClick={resetForm}>
-          Tạo đơn mới
-        </button>
+      <div className="text-center py-5">
+        <Icon name="check-circle-fill" className="text-success display-5 d-block mb-2" />
+        <div className="fw-bold fs-5">Tạo đơn thành công!</div>
+        <div className="font-monospace text-secondary mb-2">{successOrder.orderCode}</div>
+        <Badge bg="success" className="mb-3">{successOrder.status}</Badge>
+        <div>
+          <Button variant="dark" size="sm" onClick={resetForm}>Tạo đơn mới</Button>
+        </div>
       </div>
     );
   }
 
+  const dropdownList = searchQuery.trim() ? searchResults : defaultSkus;
+
   return (
-    <div className="d-flex flex-column gap-2.5 w-100" style={{ overflowX: 'hidden' }}>
+    <Stack gap={3} className="w-100 overflow-x-hidden">
       {/* Thông tin người nhận */}
-      <div className="card border rounded-3 p-3 bg-white shadow-sm">
-        <div className="fw-bold text-dark text-uppercase small mb-2 d-flex align-items-center gap-1.5" style={{ fontSize: '0.76rem', letterSpacing: '0.04em' }}>
-          <User size={13} color="var(--ara-gold, #9F8365)" /> Người nhận
-        </div>
-        <div className="row g-2 mb-2">
-          <div className="col-12 col-sm-6">
-            <input
-              className="form-control form-control-sm"
-              placeholder="Họ và tên"
-              value={recipient.name}
-              onChange={(e) => setRecipient({ ...recipient, name: e.target.value })}
-            />
-          </div>
-          <div className="col-12 col-sm-6">
-            <input
-              className="form-control form-control-sm"
-              placeholder="Số điện thoại *"
-              value={recipient.phone}
-              onChange={(e) => setRecipient({ ...recipient, phone: e.target.value })}
-            />
-          </div>
-        </div>
-        <input
-          className="form-control form-control-sm"
-          placeholder="Địa chỉ giao hàng (Số nhà, đường, phường, quận...)"
-          value={recipient.address}
-          onChange={(e) => setRecipient({ ...recipient, address: e.target.value })}
-        />
-      </div>
+      <Card className="shadow-sm">
+        <Card.Body>
+          <Card.Title as="div" className="small fw-bold text-uppercase d-flex align-items-center gap-2">
+            <Icon name="person" className="text-warning-emphasis" /> Người nhận
+          </Card.Title>
+          <RecipientFields recipient={recipient} onChange={setRecipient} />
+        </Card.Body>
+      </Card>
 
       {/* Tìm kiếm sản phẩm */}
-      <div className="card border rounded-3 p-3 bg-white shadow-sm position-relative" ref={searchRef}>
-        <div className="fw-bold text-dark text-uppercase small mb-2 d-flex align-items-center justify-content-between" style={{ fontSize: '0.76rem', letterSpacing: '0.04em' }}>
-          <span className="d-flex align-items-center gap-1.5">
-            <Package size={13} color="var(--ara-gold, #9F8365)" /> Sản phẩm ({items.length})
-          </span>
-          <span className="badge bg-light text-secondary border fw-normal" style={{ fontSize: '0.68rem' }}>
-            {defaultSkus.length} mẫu có sẵn
-          </span>
-        </div>
-
-        {/* Ô tìm kiếm */}
-        <div className="position-relative mb-2">
-          <Search size={14} className="position-absolute" style={{ left: 10, top: 9, color: '#9CA3AF' }} />
-          <input
-            className="form-control form-control-sm ps-4"
-            placeholder="Tìm SP theo tên, mã SKU... (bấm để xem danh sách)"
-            value={searchQuery}
-            onFocus={() => setShowDropdown(true)}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-          {searching && (
-            <div className="position-absolute" style={{ right: 10, top: 7 }}>
-              <div className="spinner-border spinner-border-sm text-secondary" role="status" />
-            </div>
-          )}
-        </div>
-
-        {/* Dropdown kết quả (hiển thị khi gõ tìm kiếm hoặc khi focus) */}
-        {showDropdown && (searchQuery.trim() ? searchResults : defaultSkus).length > 0 && (
-          <div
-            className="position-absolute bg-white border rounded shadow-lg"
-            style={{ top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 1050, maxHeight: '220px', overflowY: 'auto', overflowX: 'hidden' }}
-          >
-            <div className="p-1 px-2 text-muted fw-bold small bg-light border-bottom" style={{ fontSize: '0.7rem' }}>
-              {searchQuery.trim() ? `KẾT QUẢ TÌM KIẾM (${searchResults.length})` : `SẢN PHẨM CÓ SẴN (${defaultSkus.length})`}
-            </div>
-            {(searchQuery.trim() ? searchResults : defaultSkus).map((sku) => {
-              const avail = sku.availableQty ?? sku.availableStock ?? 0;
-              const inStock = avail > 0;
-              return (
-                <div
-                  key={sku.skuId || sku._id}
-                  className="p-2 border-bottom d-flex align-items-center justify-content-between gap-2"
-                  style={{ cursor: 'pointer', transition: 'background 0.15s' }}
-                  onClick={() => addItem(sku)}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#FAF7F2')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#FFFFFF')}
-                >
-                  <div className="d-flex align-items-center gap-2 min-w-0 flex-grow-1">
-                    {sku.thumbnailUrl ? (
-                      <img
-                        src={sku.thumbnailUrl}
-                        alt={sku.productName || sku.styleName}
-                        className="rounded border flex-shrink-0"
-                        style={{ width: '32px', height: '32px', objectFit: 'cover' }}
-                      />
-                    ) : (
-                      <div
-                        className="rounded border flex-shrink-0 d-flex align-items-center justify-content-center text-muted"
-                        style={{ width: '32px', height: '32px', background: '#F3F4F6' }}
-                      >
-                        <Package size={14} />
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-grow-1">
-                      <div className="fw-bold text-dark text-truncate" style={{ fontSize: '0.78rem', lineHeight: 1.35 }}>
-                        {sku.productName || sku.styleName || sku.skuCode}
-                      </div>
-                      <div className="text-muted text-truncate" style={{ fontSize: '0.7rem', lineHeight: 1.3 }}>
-                        {sku.skuCode} · {sku.color} · Size <strong>{sku.size}</strong>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-end flex-shrink-0">
-                    <div className="fw-bold text-dark" style={{ fontSize: '0.76rem' }}>
-                      {Number(sku.retailPrice || 0).toLocaleString('vi-VN')}đ
-                    </div>
-                    <span className={`badge ${inStock ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-muted'}`} style={{ fontSize: '0.62rem', padding: '2px 5px' }}>
-                      {inStock ? `Còn ${avail}` : 'Hết hàng'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Danh sách sản phẩm đã thêm vào đơn */}
-        {items.length > 0 && (
-          <div className="d-flex flex-column gap-1.5 mt-2 mb-3">
-            <div className="text-muted fw-bold mb-1" style={{ fontSize: '0.72rem', textTransform: 'uppercase' }}>
-              Đã chọn vào đơn ({items.length} món)
-            </div>
-            {items.map((it) => (
-              <div key={it.skuId} className="p-2 bg-light rounded border d-flex align-items-center justify-content-between gap-2">
-                <div className="flex-grow-1 min-w-0">
-                  <div className="fw-bold text-dark text-truncate" style={{ fontSize: '0.78rem', lineHeight: 1.35 }}>
-                    {it.styleName || it.skuCode}
-                  </div>
-                  <div className="text-muted text-truncate" style={{ fontSize: '0.7rem', lineHeight: 1.3 }}>
-                    {it.skuCode} · {it.color} · Size <strong>{it.size}</strong>
-                  </div>
-                  <div className="fw-bold" style={{ color: 'var(--ara-gold-hover, #846B50)', fontSize: '0.76rem' }}>
-                    {Number(it.unitSalePrice).toLocaleString('vi-VN')}đ
-                  </div>
-                </div>
-                <div className="d-flex align-items-center gap-1.5 flex-shrink-0">
-                  <button type="button" className="btn btn-sm btn-outline-secondary px-1.5 py-0 fw-bold" onClick={() => updateQty(it.skuId, -1)}><Minus size={11} /></button>
-                  <span className="px-1 fw-bold" style={{ fontSize: '0.78rem' }}>{it.orderedQty}</span>
-                  <button type="button" className="btn btn-sm btn-outline-secondary px-1.5 py-0 fw-bold" onClick={() => updateQty(it.skuId, 1)}><Plus size={11} /></button>
-                  <button type="button" className="btn btn-sm btn-link text-danger p-0 ms-1" onClick={() => removeItem(it.skuId)}><Trash2 size={13} /></button>
-                </div>
-                <div className="fw-bold text-end flex-shrink-0" style={{ fontSize: '0.78rem', minWidth: '65px' }}>
-                  {(it.orderedQty * it.unitSalePrice).toLocaleString('vi-VN')}đ
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Khối gợi ý sản phẩm có sẵn trong kho */}
-        <div className="mt-2">
+      <Card className="shadow-sm">
+        <Card.Body>
           <div className="d-flex align-items-center justify-content-between mb-2">
-            <span className="text-muted fw-bold" style={{ fontSize: '0.72rem', textTransform: 'uppercase' }}>
-              📦 Sản phẩm có sẵn trong kho ({defaultSkus.length})
-            </span>
+            <Card.Title as="div" className="small fw-bold text-uppercase d-flex align-items-center gap-2 mb-0">
+              <Icon name="box-seam" className="text-warning-emphasis" /> Sản phẩm ({items.length})
+            </Card.Title>
+            <Badge bg="light" text="secondary" className="border fw-normal">{defaultSkus.length} mẫu có sẵn</Badge>
           </div>
 
-          {loadingDefaultSkus ? (
-            <div className="text-center py-3 text-muted small">
-              <div className="spinner-border spinner-border-sm me-1" role="status" />
-              Đang tải danh sách tồn kho...
-            </div>
-          ) : defaultSkus.length === 0 ? (
-            <div className="text-center py-3 text-muted small border rounded bg-light">
-              Chưa có sản phẩm nào trong kho dữ liệu
-            </div>
-          ) : (
-            <div className="d-flex flex-column gap-1.5" style={{ maxHeight: '240px', overflowY: 'auto', overflowX: 'hidden' }}>
-              {defaultSkus.slice(0, 10).map((sku) => {
-                const isSelected = items.some((it) => it.skuId === (sku.skuId || sku._id));
-                const avail = sku.availableQty ?? sku.availableStock ?? 0;
-                const inStock = avail > 0;
-                return (
-                  <div
-                    key={sku.skuId || sku._id}
-                    className="p-2 bg-white rounded-2 border d-flex align-items-center justify-content-between gap-2"
-                    style={{
-                      fontSize: '0.76rem',
-                      borderColor: isSelected ? 'var(--ara-gold, #9F8365)' : '#E5E7EB',
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    <div className="d-flex align-items-center gap-2 flex-grow-1 min-w-0 pe-1">
-                      {sku.thumbnailUrl ? (
-                        <img
-                          src={sku.thumbnailUrl}
-                          alt={sku.productName || sku.styleName}
-                          className="rounded border flex-shrink-0"
-                          style={{ width: '34px', height: '34px', objectFit: 'cover' }}
-                        />
-                      ) : (
-                        <div
-                          className="rounded border flex-shrink-0 d-flex align-items-center justify-content-center text-muted"
-                          style={{ width: '34px', height: '34px', background: '#EAE3D8' }}
-                        >
-                          <Package size={14} />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-grow-1">
-                        <div className="fw-bold text-dark text-truncate" title={sku.productName || sku.styleName} style={{ fontSize: '0.8rem', lineHeight: 1.35, marginBottom: '1px' }}>
-                          {sku.productName || sku.styleName || sku.skuCode}
-                        </div>
-                        <div className="text-muted text-truncate" style={{ fontSize: '0.7rem', lineHeight: 1.3, marginBottom: '2px' }}>
-                          {sku.skuCode} · {sku.color} · Size <strong>{sku.size}</strong>
-                        </div>
-                        <div className="d-flex align-items-center gap-1.5 flex-wrap">
-                          <span className="fw-bold" style={{ color: 'var(--ara-gold-hover, #7A5C3A)', fontSize: '0.76rem' }}>
-                            {Number(sku.retailPrice || 0).toLocaleString('vi-VN')}đ
-                          </span>
-                          <span className={`badge ${inStock ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-muted'}`} style={{ fontSize: '0.62rem', padding: '2px 5px' }}>
-                            {inStock ? `Còn ${avail}` : 'Hết hàng'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => addItem(sku)}
-                      className={`btn btn-sm ${isSelected ? 'btn-outline-secondary' : 'btn-dark'} py-1 px-2.5 flex-shrink-0`}
-                      style={{ fontSize: '0.72rem', whiteSpace: 'nowrap' }}
-                    >
-                      + Thêm
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+          <SkuSearchBox
+            query={searchQuery}
+            onQueryChange={handleSearch}
+            searching={searching}
+            show={showDropdown}
+            onShowChange={setShowDropdown}
+            list={dropdownList}
+            header={searchQuery.trim()
+              ? `KẾT QUẢ TÌM KIẾM (${searchResults.length})`
+              : `SẢN PHẨM CÓ SẴN (${defaultSkus.length})`}
+            onPick={addItem}
+          />
+
+          {/* Danh sách sản phẩm đã thêm vào đơn */}
+          {items.length > 0 && (
+            <>
+              <div className="text-secondary fw-bold small text-uppercase mt-2 mb-1">
+                Đã chọn vào đơn ({items.length} món)
+              </div>
+              <SelectedItemsList items={items} onQty={updateQty} onRemove={removeItem} maxHeight="none" />
+            </>
           )}
-        </div>
-      </div>
+
+          {/* Khối gợi ý sản phẩm có sẵn trong kho */}
+          <div className="text-secondary fw-bold small text-uppercase mt-2 mb-2">
+            Sản phẩm có sẵn trong kho ({defaultSkus.length})
+          </div>
+          <AvailableSkuList
+            skus={defaultSkus}
+            loading={loadingDefaultSkus}
+            limit={10}
+            selectedItems={items}
+            onAdd={addItem}
+            maxHeight={240}
+          />
+        </Card.Body>
+      </Card>
 
       {/* Thanh toán */}
-      <div className="card border rounded-3 p-3 bg-white shadow-sm">
-        <div className="fw-bold text-dark text-uppercase small mb-2 d-flex align-items-center gap-1.5" style={{ fontSize: '0.78rem' }}>
-          <ShoppingBag size={14} /> Thanh toán
-        </div>
-        <div className="d-flex gap-2 mb-2.5">
-          {['COD', 'BANK_TRANSFER'].map((m) => (
-            <button
-              key={m}
-              type="button"
-              className={`btn btn-sm flex-fill py-1.5 ${paymentMethod === m ? 'btn-dark' : 'btn-outline-secondary'}`}
-              style={{ fontSize: '0.78rem', fontWeight: 600 }}
-              onClick={() => setPaymentMethod(m)}
-            >
-              {m === 'COD' ? '💵 COD' : '🏦 Chuyển khoản'}
-            </button>
-          ))}
-        </div>
-        <div className="d-flex justify-content-between align-items-center text-muted mb-1.5" style={{ fontSize: '0.8rem' }}>
-          <span>Tiền hàng</span>
-          <span className="fw-semibold text-dark">{subtotal.toLocaleString('vi-VN')}đ</span>
-        </div>
-        <div className="d-flex justify-content-between align-items-center text-muted mb-1.5" style={{ fontSize: '0.8rem' }}>
-          <span>Phí vận chuyển</span>
-          <input
-            type="number"
-            className="form-control form-control-sm text-end"
-            style={{ width: '110px' }}
-            value={shippingFee}
-            onChange={(e) => setShippingFee(e.target.value)}
+      <Card className="shadow-sm">
+        <Card.Body>
+          <Card.Title as="div" className="small fw-bold text-uppercase d-flex align-items-center gap-2">
+            <Icon name="wallet2" /> Thanh toán
+          </Card.Title>
+          <ButtonGroup className="w-100 mb-3">
+            {PAYMENT_METHODS.map((m) => (
+              <ToggleButton
+                key={m.value}
+                id={`qop-pay-${m.value}`}
+                type="radio"
+                size="sm"
+                name="qop-payment-method"
+                value={m.value}
+                variant={paymentMethod === m.value ? 'dark' : 'outline-secondary'}
+                checked={paymentMethod === m.value}
+                onChange={(e) => setPaymentMethod(e.currentTarget.value)}
+              >
+                <Icon name={m.icon} className="me-1" />{m.label}
+              </ToggleButton>
+            ))}
+          </ButtonGroup>
+          <PaymentSummary
+            subtotal={subtotal}
+            shippingFee={shippingFee}
+            onShippingFeeChange={setShippingFee}
+            discountAmount={discountAmount}
+            onDiscountChange={setDiscountAmount}
+            total={total}
+            totalLabel="Tổng COD"
           />
-        </div>
-        <div className="d-flex justify-content-between align-items-center text-muted mb-2" style={{ fontSize: '0.8rem' }}>
-          <span>Giảm giá</span>
-          <input
-            type="number"
-            className="form-control form-control-sm text-end"
-            style={{ width: '110px' }}
-            value={discountAmount}
-            onChange={(e) => setDiscountAmount(e.target.value)}
-          />
-        </div>
-        <div className="d-flex justify-content-between align-items-center pt-2 mt-2 border-top fw-bold text-dark" style={{ fontSize: '0.9rem' }}>
-          <span>Tổng COD</span>
-          <span style={{ color: 'var(--ara-gold-hover, #846B50)', fontSize: '1rem' }}>{total.toLocaleString('vi-VN')}đ</span>
-        </div>
-      </div>
+        </Card.Body>
+      </Card>
 
       {/* Lỗi */}
-      {error && <div className="alert alert-danger py-2 px-3 small mb-2">{error}</div>}
+      {error && <Alert variant="danger" className="py-2 small mb-0">{error}</Alert>}
 
       {/* Actions */}
-      <div className="d-flex gap-2 mt-1">
-        <button
-          type="button"
+      <Stack direction="horizontal" gap={2}>
+        <Button
+          size="sm"
+          variant="outline-secondary"
+          className="w-50 py-2 fw-semibold"
           disabled={loading || items.length === 0}
           onClick={() => handleCreate(false)}
-          className="btn btn-sm btn-outline-secondary w-50 py-2 fw-semibold"
-          style={{ fontSize: '0.8rem' }}
         >
           Lưu Đơn
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          size="sm"
+          variant="dark"
+          className="w-50 py-2 fw-semibold d-flex align-items-center justify-content-center gap-2"
           disabled={loading || items.length === 0}
           onClick={() => handleCreate(true)}
-          className="btn btn-sm btn-dark w-50 py-2 d-flex align-items-center justify-content-center gap-1.5 fw-semibold"
-          style={{ fontSize: '0.8rem', background: 'var(--ara-noir, #1C1A17)', borderColor: 'var(--ara-noir, #1C1A17)' }}
         >
-          {loading ? (
-            <div className="spinner-border spinner-border-sm text-white" role="status" />
-          ) : (
-            <ShieldCheck size={14} />
-          )}
-          <span>Xác Nhận & Giữ Chỗ</span>
-        </button>
-      </div>
-    </div>
+          {loading ? <Spinner animation="border" size="sm" /> : <Icon name="shield-check" />}
+          Xác Nhận & Giữ Chỗ
+        </Button>
+      </Stack>
+    </Stack>
   );
 };
 

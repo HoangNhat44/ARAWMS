@@ -1,7 +1,25 @@
+/**
+ * ============================================================================
+ * @title        : Create RMA Modal (UC-82)
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-28
+ * @description  : Modal tạo yêu cầu đổi / trả hàng bán lẻ (RMA) từ một đơn hàng gốc.
+ *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
+ * @module       : Order Fulfillment / Returns
+ * @layer        : Front-end
+ * ============================================================================
+ */
+
 import React, { useState } from 'react';
-import { Modal } from 'react-bootstrap';
-import { RotateCcw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Modal, Form, Card, Alert, Button, ButtonGroup, ToggleButton, ListGroup, Spinner } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
+import { Icon, formatVnd } from './SellerUi';
+
+const RETURN_TYPES = [
+  { value: 'RETURN_FOR_REFUND', label: 'Trả Hàng Hoàn Tiền' },
+  { value: 'EXCHANGE_PRODUCT', label: 'Đổi Sản Phẩm Khác' },
+];
 
 const CreateRmaModal = ({ isOpen, onClose, order, onRmaCreated }) => {
   const [returnType, setReturnType] = useState('RETURN_FOR_REFUND');
@@ -67,167 +85,134 @@ const CreateRmaModal = ({ isOpen, onClose, order, onRmaCreated }) => {
   };
 
   return (
-    <Modal
-      show={isOpen}
-      onHide={onClose}
-      centered
-      size="lg"
-      contentClassName="ara-modal"
-    >
-      <Modal.Header closeButton className="ara-modal-header-rma">
-        <Modal.Title className="d-flex align-items-center gap-2" style={{ fontFamily: 'var(--font-serif)', fontSize: '1.25rem' }}>
-          <RotateCcw size={22} color="#FCDFA6" />
-          <span>Tạo Yêu Cầu Đổi / Trả Hàng (UC-82 RMA)</span>
+    <Modal show={isOpen} onHide={onClose} centered size="lg" scrollable>
+      <Modal.Header closeButton className="bg-warning-subtle">
+        <Modal.Title as="h5" className="d-flex align-items-center gap-2">
+          <Icon name="arrow-counterclockwise" className="text-warning-emphasis" />
+          Tạo Yêu Cầu Đổi / Trả Hàng (UC-82 RMA)
         </Modal.Title>
       </Modal.Header>
 
-      <Modal.Body className="p-4" style={{ backgroundColor: '#FAF7F2' }}>
-        {error && <div className="alert alert-danger py-2 px-3 small mb-3">{error}</div>}
+      <Modal.Body className="bg-body-tertiary">
+        {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
 
         {successRma ? (
           <div className="text-center py-4">
-            <CheckCircle2 size={54} color="var(--ara-success, #2E7D59)" className="mb-3" />
-            <h4 className="fw-bold text-dark" style={{ fontFamily: 'var(--font-serif)' }}>
-              Đã Tạo Phiếu RMA Thành Công!
-            </h4>
+            <Icon name="check-circle-fill" className="text-success display-4 d-block mb-3" />
+            <h4 className="fw-bold">Đã Tạo Phiếu RMA Thành Công!</h4>
             <p className="text-secondary small">
-              Mã RMA: <strong className="font-monospace text-dark fs-6">{successRma.rmaCode}</strong>
+              Mã RMA: <strong className="font-monospace text-body fs-6">{successRma.rmaCode}</strong>
             </p>
-            <div className="p-3 bg-light border rounded text-start mb-4 small">
-              <div className="fw-bold text-dark d-flex align-items-center gap-1 mb-1">
-                <AlertCircle size={15} color="var(--ara-gold)" />
-                Lưu ý quy trình hoàn trả:
-              </div>
-              <div className="text-muted">
-                Phiếu RMA đang ở trạng thái <strong>REQUESTED</strong>. Nhân viên kho sẽ quét mã vận đơn hoàn và kiểm đếm trước khi tái nhập kho hoàn tất.
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn-ara-primary px-4 py-2"
-            >
-              <span>Đóng cửa sổ</span>
-            </button>
+            <Alert variant="light" className="text-start small border">
+              <Alert.Heading as="div" className="fw-bold fs-6 d-flex align-items-center gap-1">
+                <Icon name="info-circle" className="text-warning-emphasis" /> Lưu ý quy trình hoàn trả:
+              </Alert.Heading>
+              Phiếu RMA đang ở trạng thái <strong>REQUESTED</strong>. Nhân viên kho sẽ quét mã vận đơn hoàn và kiểm đếm trước khi tái nhập kho hoàn tất.
+            </Alert>
+            <Button variant="dark" onClick={onClose}>Đóng cửa sổ</Button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="d-flex flex-column gap-3" style={{ fontSize: '0.82rem' }}>
+          <Form id="rma-form" onSubmit={handleSubmit} className="d-flex flex-column gap-3 small">
             {/* Original Order Info */}
-            <div className="p-3 bg-white rounded border" style={{ borderColor: 'var(--ara-border)' }}>
-              <div className="d-flex justify-content-between align-items-center mb-1">
-                <span className="text-muted small">Đơn hàng gốc:</span>
-                <span className="font-monospace fw-bold text-dark">{order.orderCode}</span>
+            <Card body>
+              <div className="d-flex justify-content-between mb-1">
+                <span className="text-secondary">Đơn hàng gốc:</span>
+                <span className="font-monospace fw-bold">{order.orderCode}</span>
               </div>
-              <div className="d-flex justify-content-between align-items-center">
-                <span className="text-muted small">Người nhận:</span>
-                <span className="fw-semibold text-dark">{order.shippingRecipient?.name} ({order.shippingRecipient?.phone})</span>
+              <div className="d-flex justify-content-between">
+                <span className="text-secondary">Người nhận:</span>
+                <span className="fw-semibold">{order.shippingRecipient?.name} ({order.shippingRecipient?.phone})</span>
               </div>
-            </div>
+            </Card>
 
             {/* Return Type Selection */}
-            <div className="p-3 bg-white rounded border" style={{ borderColor: 'var(--ara-border)' }}>
-              <label className="fw-bold text-dark d-block mb-2">Loại yêu cầu</label>
-              <div className="d-flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setReturnType('RETURN_FOR_REFUND')}
-                  className={`btn btn-sm flex-fill py-2 ${
-                    returnType === 'RETURN_FOR_REFUND' ? 'btn-dark' : 'btn-outline-secondary'
-                  }`}
-                  style={{ borderRadius: 'var(--radius-sm, 6px)' }}
-                >
-                  Trả Hàng Hoàn Tiền
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setReturnType('EXCHANGE_PRODUCT')}
-                  className={`btn btn-sm flex-fill py-2 ${
-                    returnType === 'EXCHANGE_PRODUCT' ? 'btn-dark' : 'btn-outline-secondary'
-                  }`}
-                  style={{ borderRadius: 'var(--radius-sm, 6px)' }}
-                >
-                  Đổi Sản Phẩm Khác
-                </button>
-              </div>
-            </div>
+            <Card body>
+              <Form.Label className="fw-bold">Loại yêu cầu</Form.Label>
+              <ButtonGroup className="w-100">
+                {RETURN_TYPES.map((t) => (
+                  <ToggleButton
+                    key={t.value}
+                    id={`rma-type-${t.value}`}
+                    type="radio"
+                    size="sm"
+                    name="rma-return-type"
+                    value={t.value}
+                    variant={returnType === t.value ? 'dark' : 'outline-secondary'}
+                    checked={returnType === t.value}
+                    onChange={(e) => setReturnType(e.currentTarget.value)}
+                  >
+                    {t.label}
+                  </ToggleButton>
+                ))}
+              </ButtonGroup>
+            </Card>
 
             {/* Select Return Items */}
-            <div className="p-3 bg-white rounded border" style={{ borderColor: 'var(--ara-border)' }}>
-              <div className="fw-bold text-dark mb-2">Chọn sản phẩm cần đổi/trả</div>
-              <div className="d-flex flex-column gap-2" style={{ maxHeight: '160px', overflowY: 'auto' }}>
+            <Card>
+              <Card.Header className="bg-white fw-bold">Chọn sản phẩm cần đổi/trả</Card.Header>
+              <ListGroup variant="flush" className="overflow-auto" style={{ maxHeight: 180 }}>
                 {order.items?.map((it, idx) => (
-                  <div
-                    key={idx}
-                    className="p-2.5 bg-light rounded border d-flex align-items-center justify-content-between gap-2"
-                  >
+                  <ListGroup.Item key={idx} className="d-flex align-items-center justify-content-between gap-2">
                     <div>
-                      <div className="fw-bold text-dark">{it.skuCode}</div>
-                      <div className="text-muted small">
-                        Đã mua: <strong>{it.orderedQty}</strong> cái | Đơn giá: {(it.unitSalePrice || 0).toLocaleString('vi-VN')} đ
+                      <div className="fw-bold">{it.skuCode}</div>
+                      <div className="text-secondary">
+                        Đã mua: <strong>{it.orderedQty}</strong> cái | Đơn giá: {formatVnd(it.unitSalePrice)}
                       </div>
                     </div>
                     <div className="d-flex align-items-center gap-2">
-                      <span className="text-muted small">Số lượng hoàn:</span>
-                      <input
+                      <span className="text-secondary">Số lượng hoàn:</span>
+                      <Form.Control
                         type="number"
+                        size="sm"
                         min="0"
                         max={it.orderedQty}
                         value={selectedItems[it.skuId] || 0}
                         onChange={(e) => handleQtyChange(it.skuId, e.target.value)}
-                        className="form-control form-control-sm text-center"
-                        style={{ width: '64px' }}
+                        className="text-center"
+                        style={{ width: 64 }}
                       />
                     </div>
-                  </div>
+                  </ListGroup.Item>
                 ))}
-              </div>
-            </div>
+              </ListGroup>
+            </Card>
 
             {/* Reason & Waybill */}
-            <div className="p-3 bg-white rounded border" style={{ borderColor: 'var(--ara-border)' }}>
-              <div className="mb-2">
-                <label className="fw-bold text-dark small mb-1">Mã vận đơn chiều gửi về (Return Waybill Code)</label>
-                <input
-                  type="text"
+            <Card body>
+              <Form.Group className="mb-2" controlId="rma-waybill">
+                <Form.Label className="fw-bold">Mã vận đơn chiều gửi về (Return Waybill Code)</Form.Label>
+                <Form.Control
+                  size="sm"
                   placeholder="VD: GHN-RETURN-102938..."
                   value={returnWaybillCode}
                   onChange={(e) => setReturnWaybillCode(e.target.value)}
-                  className="form-control form-control-sm"
                 />
-              </div>
-
-              <div>
-                <label className="fw-bold text-dark small mb-1">Lý do đổi trả của khách hàng</label>
-                <textarea
+              </Form.Group>
+              <Form.Group controlId="rma-reason">
+                <Form.Label className="fw-bold">Lý do đổi trả của khách hàng</Form.Label>
+                <Form.Control
+                  as="textarea"
                   rows={2}
+                  size="sm"
                   placeholder="VD: Khách mặc không vừa size L, muốn đổi sang size XL hoặc áo bị sút chỉ..."
                   value={reasonDescription}
                   onChange={(e) => setReasonDescription(e.target.value)}
-                  className="form-control form-control-sm"
                   required
                 />
-              </div>
-            </div>
-
-            <div className="d-flex justify-content-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="btn btn-sm btn-outline-secondary px-3"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn-ara-primary px-4 py-2"
-              >
-                <span>{loading ? 'Đang tạo...' : 'Tạo Phiếu RMA'}</span>
-              </button>
-            </div>
-          </form>
+              </Form.Group>
+            </Card>
+          </Form>
         )}
       </Modal.Body>
+
+      {!successRma && (
+        <Modal.Footer>
+          <Button size="sm" variant="outline-secondary" onClick={onClose}>Hủy bỏ</Button>
+          <Button size="sm" variant="dark" type="submit" form="rma-form" disabled={loading}>
+            {loading ? <><Spinner animation="border" size="sm" className="me-1" />Đang tạo...</> : 'Tạo Phiếu RMA'}
+          </Button>
+        </Modal.Footer>
+      )}
     </Modal>
   );
 };

@@ -1,13 +1,13 @@
 /**
  * ============================================================================
- * @title        : Seller Orders Workspace Page (Pancake-style Revamp)
+ * @title        : Seller Orders Workspace Page (Bootstrap / React-Bootstrap)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-10-28
  * @description  : Màn hình quản lý danh sách đơn hàng bán lẻ của Seller theo phong cách
- *                 Pancake/PosCake (Ảnh 2): Tab đa kênh, dải đếm trạng thái realtime,
- *                 bảng chi tiết đầy đủ cột (Mã vận đơn, thời gian tạo, cập nhật TT, SĐT kèm
- *                 nhận diện nhà mạng, mã mẫu mã, sản phẩm, tổng COD, trạng thái và thao tác).
+ *                 Pancake/PosCake: Tab đa kênh, dải đếm trạng thái realtime,
+ *                 bảng chi tiết đầy đủ cột với React-Bootstrap Table, Form và Icons.
+ *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
  * @module       : Order Fulfillment / Seller Orders
  * @layer        : Front-end
  * ============================================================================
@@ -16,15 +16,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ShoppingBag, ArrowLeft, Search, Plus, RotateCcw,
-  CheckCircle2, Clock, XCircle, Truck, Package, Eye,
-  RefreshCw, Download, Upload, SlidersHorizontal, CheckSquare, Square
-} from 'lucide-react';
+  Container, Row, Col, Table, Badge, Button, ButtonGroup, Form,
+  InputGroup, Stack, Card, Alert, Spinner,
+} from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
+import { useToast } from '../../context/ToastContext';
 import CreateRmaModal from '../../components/seller/CreateRmaModal';
 import OrderDetailModal from '../../components/seller/OrderDetailModal';
 import QuickOrderModal from '../../components/seller/QuickOrderModal';
 import { SkeletonOrderRow } from '../../components/common/Skeleton';
+import { Icon, Avatar, formatVnd, ORDER_STATUS_VARIANT, EmptyState } from '../../components/seller/SellerUi';
 
 /**
  * Nhận diện nhà mạng viễn thông tự động dựa trên đầu số điện thoại Việt Nam
@@ -49,15 +50,15 @@ const detectTelco = (phone = '') => {
  */
 const PANCAKE_STATUSES = [
   { key: '',                    label: 'Tất cả',           countKey: 'ALL' },
-  { key: 'PENDING',             label: 'Mới',              countKey: 'PENDING',            color: '#8B5CF6' },
-  { key: 'CONFIRMED_RESERVED',  label: 'Đã xác nhận',      countKey: 'CONFIRMED_RESERVED', color: '#3B82F6' },
-  { key: 'PICKING',             label: 'Chờ chuyển hàng',  countKey: 'PICKING',            color: '#F59E0B' },
-  { key: 'PACKED',              label: 'Đang đóng hàng',   countKey: 'PACKED',             color: '#D97706' },
-  { key: 'HANDED_OVER_CARRIER', label: 'Đã gửi hàng',      countKey: 'HANDED_OVER_CARRIER',color: '#06B6D4' },
-  { key: 'DELIVERED',           label: 'Đã nhận',          countKey: 'DELIVERED',          color: '#10B981' },
-  { key: 'RETURN_REQUESTED',    label: 'Đang hoàn',        countKey: 'RETURN_REQUESTED',   color: '#F97316' },
-  { key: 'CANCELLED',           label: 'Đã hủy',           countKey: 'CANCELLED',          color: '#EF4444' },
-  { key: 'RETURNED',            label: 'Đã trả hàng',      countKey: 'RETURNED',           color: '#6B7280' },
+  { key: 'PENDING',             label: 'Mới',              countKey: 'PENDING' },
+  { key: 'CONFIRMED_RESERVED',  label: 'Đã xác nhận',      countKey: 'CONFIRMED_RESERVED' },
+  { key: 'PICKING',             label: 'Chờ chuyển hàng',  countKey: 'PICKING' },
+  { key: 'PACKED',              label: 'Đang đóng hàng',   countKey: 'PACKED' },
+  { key: 'HANDED_OVER_CARRIER', label: 'Đã gửi hàng',      countKey: 'HANDED_OVER_CARRIER' },
+  { key: 'DELIVERED',           label: 'Đã nhận',          countKey: 'DELIVERED' },
+  { key: 'RETURN_REQUESTED',    label: 'Đang hoàn',        countKey: 'RETURN_REQUESTED' },
+  { key: 'CANCELLED',           label: 'Đã hủy',           countKey: 'CANCELLED' },
+  { key: 'RETURNED',            label: 'Đã trả hàng',      countKey: 'RETURNED' },
 ];
 
 /**
@@ -78,6 +79,7 @@ const formatDateTime = (dateStr) => {
  */
 const SellerOrdersPage = () => {
   const navigate = useNavigate();
+  const { showSuccess, showInfo } = useToast();
 
   // State dữ liệu và bộ lọc
   const [orders, setOrders] = useState([]);
@@ -87,10 +89,10 @@ const SellerOrdersPage = () => {
   const [channelFilter, setChannelFilter] = useState('ALL'); // 'ALL' | 'POS' | 'ONLINE'
   const [subTab, setSubTab] = useState('ORDERS'); // 'ORDERS' | 'NEED_ACTION' | 'RETURNS'
   const [search, setSearch] = useState('');
-  
+
   // Selection
   const [selectedIds, setSelectedIds] = useState([]);
-  
+
   // Modals
   const [createOrderModalOpen, setCreateOrderModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -173,189 +175,184 @@ const SellerOrdersPage = () => {
     fetchOrders();
   };
 
-  // Badge trạng thái chuẩn Pancake
   const renderStatusBadge = (status) => {
     const stObj = PANCAKE_STATUSES.find((s) => s.key === status);
     const label = stObj ? stObj.label : status;
-    const bg = stObj?.color || '#6B7280';
+    const variant = ORDER_STATUS_VARIANT[status] || 'secondary';
     return (
-      <span
-        className="pancake-status-badge"
-        style={{ backgroundColor: bg }}
-      >
+      <Badge bg={`${variant}-subtle`} text={`${variant}-emphasis`} className="px-2 py-1">
         {label}
-      </span>
+      </Badge>
     );
   };
 
   return (
-    <div className="pancake-orders-workspace">
+    <div className="d-flex flex-column h-100 bg-body-tertiary">
       {/* ── Top Header Navigation Bar ─── */}
-      <div className="pancake-top-header">
-        <div className="pancake-header-left">
-          <button
-            type="button"
+      <div className="bg-dark text-white px-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2 shadow-sm">
+        <Stack direction="horizontal" gap={3} className="align-items-center">
+          <Button
+            size="sm"
+            variant="outline-light"
             onClick={() => navigate('/seller/chat')}
-            className="pancake-back-btn"
-            title="Quay lại màn hình Chat"
+            className="d-flex align-items-center gap-1"
           >
-            <ArrowLeft size={16} />
-            <span>Về Chat</span>
-          </button>
-          <div className="pancake-vr" />
-          <div className="pancake-brand-title">
-            <ShoppingBag size={18} color="var(--ara-gold)" />
-            <span>Quản Lý Đơn Hàng</span>
-            <span className="pancake-shop-badge">ARA STORE NEW</span>
+            <Icon name="arrow-left" /> Về Chat
+          </Button>
+          <div className="vr bg-secondary opacity-50 d-none d-sm-block" style={{ height: 24 }} />
+          <div className="d-flex align-items-center gap-2">
+            <Icon name="bag" className="text-warning fs-5" />
+            <span className="fw-bold fs-6">Quản Lý Đơn Hàng</span>
+            <Badge bg="warning" text="dark" className="d-none d-md-inline-block">ARA STORE NEW</Badge>
           </div>
-        </div>
+        </Stack>
 
         {/* Search input in top header */}
-        <div className="pancake-search-container">
-          <Search size={15} className="pancake-search-icon" />
-          <input
-            type="text"
-            placeholder="Tìm đơn hàng (Mã đơn, SĐT, Người nhận, SKU)..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') fetchOrders(); }}
-            className="pancake-search-input"
-          />
+        <div className="flex-grow-1 mx-2" style={{ maxWidth: 420 }}>
+          <InputGroup size="sm">
+            <InputGroup.Text className="bg-white"><Icon name="search" /></InputGroup.Text>
+            <Form.Control
+              placeholder="Tìm đơn hàng (Mã đơn, SĐT, Người nhận, SKU)..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') fetchOrders(); }}
+            />
+          </InputGroup>
         </div>
 
         {/* Action Buttons Top Right */}
-        <div className="pancake-header-actions">
-          <button
-            type="button"
-            className="pancake-btn pancake-btn-default"
-            onClick={fetchOrders}
-            title="Đồng bộ danh sách đơn"
+        <Stack direction="horizontal" gap={2}>
+          <Button size="sm" variant="outline-light" onClick={fetchOrders} title="Đồng bộ danh sách đơn">
+            <Icon name="arrow-clockwise" className="me-1" /> Đồng bộ
+          </Button>
+          <Button
+            size="sm"
+            variant="outline-light"
+            onClick={() => showSuccess(`Xuất file danh sách ${filteredOrders.length} đơn hàng thành công!`, 'Xuất file')}
           >
-            <RefreshCw size={14} />
-            <span>Đồng bộ</span>
-          </button>
-          <button
-            type="button"
-            className="pancake-btn pancake-btn-default"
-            onClick={() => alert(`Xuất file danh sách ${filteredOrders.length} đơn hàng thành công!`)}
-          >
-            <Upload size={14} />
-            <span>Xuất</span>
-          </button>
-          <button
-            type="button"
-            className="pancake-btn pancake-btn-primary"
+            <Icon name="download" className="me-1" /> Xuất
+          </Button>
+          <Button
+            size="sm"
+            variant="warning"
+            className="fw-bold text-dark d-flex align-items-center gap-1"
             onClick={() => setCreateOrderModalOpen(true)}
             title="Tạo đơn hàng mới (Popup Pancake)"
           >
-            <Plus size={15} />
-            <span>Tạo đơn</span>
-          </button>
-        </div>
+            <Icon name="plus-lg" /> Tạo đơn
+          </Button>
+        </Stack>
       </div>
 
-      {/* ── Channel Tabs Bar (Tất cả / Bán tại quầy / Online) ─── */}
-      <div className="pancake-channel-tabs-bar">
-        <div className="pancake-channel-tabs">
-          <button
-            type="button"
-            className={`pancake-channel-tab ${channelFilter === 'ALL' ? 'active' : ''}`}
+      {/* ── Channel Tabs Bar (Tất cả / Bán tại quầy / Online) & Sub Tabs ─── */}
+      <div className="bg-white px-3 py-2 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <ButtonGroup size="sm">
+          <Button
+            variant={channelFilter === 'ALL' ? 'dark' : 'outline-secondary'}
             onClick={() => setChannelFilter('ALL')}
           >
             Tất cả
-          </button>
-          <button
-            type="button"
-            className={`pancake-channel-tab ${channelFilter === 'POS' ? 'active' : ''}`}
+          </Button>
+          <Button
+            variant={channelFilter === 'POS' ? 'dark' : 'outline-secondary'}
             onClick={() => setChannelFilter('POS')}
           >
             Bán tại quầy
-          </button>
-          <button
-            type="button"
-            className={`pancake-channel-tab ${channelFilter === 'ONLINE' ? 'active' : ''}`}
+          </Button>
+          <Button
+            variant={channelFilter === 'ONLINE' ? 'dark' : 'outline-secondary'}
             onClick={() => setChannelFilter('ONLINE')}
           >
             Online
-          </button>
-        </div>
+          </Button>
+        </ButtonGroup>
 
         {/* Sub-tabs: Đơn hàng / Cần xử lý / Đơn đã hoàn */}
-        <div className="pancake-sub-tabs">
-          <span className={`pancake-sub-tab ${subTab === 'ORDERS' ? 'active' : ''}`} onClick={() => setSubTab('ORDERS')}>
+        <ButtonGroup size="sm">
+          <Button
+            variant={subTab === 'ORDERS' ? 'primary' : 'outline-secondary'}
+            onClick={() => setSubTab('ORDERS')}
+          >
             Đơn hàng
-          </span>
-          <span className={`pancake-sub-tab ${subTab === 'NEED_ACTION' ? 'active' : ''}`} onClick={() => { setSubTab('NEED_ACTION'); setStatusFilter('PENDING'); }}>
+          </Button>
+          <Button
+            variant={subTab === 'NEED_ACTION' ? 'primary' : 'outline-secondary'}
+            onClick={() => { setSubTab('NEED_ACTION'); setStatusFilter('PENDING'); }}
+          >
             Cần xử lý
-          </span>
-          <span className={`pancake-sub-tab ${subTab === 'RETURNS' ? 'active' : ''}`} onClick={() => { setSubTab('RETURNS'); setStatusFilter('RETURN_REQUESTED'); }}>
-            ĐƠN ĐÃ HOÀN
-          </span>
-        </div>
+          </Button>
+          <Button
+            variant={subTab === 'RETURNS' ? 'primary' : 'outline-secondary'}
+            onClick={() => { setSubTab('RETURNS'); setStatusFilter('RETURN_REQUESTED'); }}
+          >
+            Đơn đã hoàn
+          </Button>
+        </ButtonGroup>
       </div>
 
       {/* ── Pancake Status Pill Counters Bar ─── */}
-      <div className="pancake-status-scroll-bar">
+      <div className="bg-white px-3 py-2 border-bottom d-flex align-items-center gap-1 overflow-x-auto">
         {PANCAKE_STATUSES.map((st) => {
           const count = statusCounts[st.countKey] !== undefined ? statusCounts[st.countKey] : 0;
           const isActive = statusFilter === st.key;
           return (
-            <button
+            <Button
               key={st.key}
-              type="button"
-              className={`pancake-status-pill ${isActive ? 'active' : ''}`}
+              size="sm"
+              variant={isActive ? 'dark' : 'outline-secondary'}
+              className="rounded-pill py-0 px-2 text-nowrap d-flex align-items-center gap-1"
+              style={{ fontSize: '0.78rem' }}
               onClick={() => setStatusFilter(st.key)}
             >
-              <span className="pancake-pill-label">{st.label}</span>
-              <span className="pancake-pill-count">{count}</span>
-            </button>
+              <span>{st.label}</span>
+              <Badge pill bg={isActive ? 'light' : 'secondary'} text={isActive ? 'dark' : undefined} className="ms-1">
+                {count}
+              </Badge>
+            </Button>
           );
         })}
       </div>
 
       {/* ── Main Orders Table ─── */}
-      <div className="pancake-table-wrapper">
-        <table className="pancake-orders-table">
-          <thead>
+      <div className="flex-grow-1 overflow-auto bg-white">
+        <Table responsive hover bordered className="align-middle mb-0 small text-nowrap">
+          <thead className="table-light text-secondary sticky-top">
             <tr>
-              <th style={{ width: '40px' }} className="text-center">
-                <input
+              <th style={{ width: 40 }} className="text-center">
+                <Form.Check
                   type="checkbox"
                   checked={isAllSelected}
                   onChange={toggleSelectAll}
-                  className="form-check-input"
+                  aria-label="Chọn tất cả đơn"
                 />
               </th>
-              <th style={{ minWidth: '95px' }}>ID</th>
-              <th style={{ minWidth: '120px' }}>Mã vận đơn</th>
-              <th style={{ minWidth: '130px' }}>Thời gian tạo</th>
-              <th style={{ minWidth: '130px' }}>Cập nhật TT</th>
-              <th style={{ minWidth: '150px' }}>Khách hàng</th>
-              <th style={{ minWidth: '135px' }}>SĐT</th>
-              <th style={{ minWidth: '160px' }}>Mã mẫu mã</th>
-              <th style={{ minWidth: '190px' }}>Sản phẩm</th>
-              <th style={{ minWidth: '110px' }} className="text-end">Tổng tiền</th>
-              <th style={{ minWidth: '120px' }}>Ghi chú nội bộ</th>
-              <th style={{ minWidth: '125px' }} className="text-center">Trạng thái</th>
-              <th style={{ minWidth: '100px' }} className="text-center">Thao tác</th>
+              <th style={{ minWidth: 95 }}>ID</th>
+              <th style={{ minWidth: 120 }}>Mã vận đơn</th>
+              <th style={{ minWidth: 130 }}>Thời gian tạo</th>
+              <th style={{ minWidth: 130 }}>Cập nhật TT</th>
+              <th style={{ minWidth: 150 }}>Khách hàng</th>
+              <th style={{ minWidth: 135 }}>SĐT</th>
+              <th style={{ minWidth: 160 }}>Mã mẫu mã</th>
+              <th style={{ minWidth: 190 }}>Sản phẩm</th>
+              <th style={{ minWidth: 110 }} className="text-end">Tổng tiền</th>
+              <th style={{ minWidth: 120 }}>Ghi chú nội bộ</th>
+              <th style={{ minWidth: 125 }} className="text-center">Trạng thái</th>
+              <th style={{ minWidth: 100 }} className="text-center">Thao tác</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <>
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <tr key={i}>
-                    <td colSpan="13" className="py-2">
-                      <SkeletonOrderRow />
-                    </td>
-                  </tr>
-                ))}
-              </>
+              [1, 2, 3, 4, 5, 6].map((i) => (
+                <tr key={i}>
+                  <td colSpan="13" className="py-2">
+                    <SkeletonOrderRow />
+                  </td>
+                </tr>
+              ))
             ) : filteredOrders.length === 0 ? (
               <tr>
                 <td colSpan="13" className="text-center py-5">
-                  <ShoppingBag size={40} color="var(--ara-gold)" opacity={0.4} className="mb-2 d-block mx-auto" />
-                  <div className="text-muted fw-bold">Không tìm thấy đơn hàng nào phù hợp bộ lọc</div>
+                  <EmptyState icon="bag" title="Không tìm thấy đơn hàng nào phù hợp bộ lọc" />
                 </td>
               </tr>
             ) : (
@@ -372,59 +369,58 @@ const SellerOrdersPage = () => {
                 return (
                   <tr
                     key={id}
-                    className={`pancake-order-row ${isSelected ? 'row-selected' : ''}`}
+                    className={isSelected ? 'table-active' : ''}
+                    style={{ cursor: 'pointer' }}
                     onClick={() => handleOpenDetail(ord)}
                   >
                     {/* Checkbox */}
                     <td className="text-center" onClick={(e) => e.stopPropagation()}>
-                      <input
+                      <Form.Check
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleSelectOrder(id)}
-                        className="form-check-input"
+                        aria-label={`Chọn đơn ${ord.orderCode || id}`}
                       />
                     </td>
 
                     {/* ID */}
                     <td>
-                      <div className="d-flex align-items-center gap-1">
-                        <span className="pancake-fb-icon">f</span>
-                        <span className="pancake-order-id fw-bold">{ord.orderCode || id.slice(-6)}</span>
-                      </div>
+                      <Stack direction="horizontal" gap={1}>
+                        <Icon name="facebook" className="text-primary" />
+                        <span className="font-monospace fw-bold">{ord.orderCode || id.slice(-6)}</span>
+                      </Stack>
                     </td>
 
                     {/* Mã vận đơn */}
                     <td>
                       {waybill ? (
-                        <span className="pancake-waybill-code">{waybill}</span>
+                        <span className="font-monospace text-primary">{waybill}</span>
                       ) : (
-                        <span className="text-muted small">-</span>
+                        <span className="text-secondary">-</span>
                       )}
                     </td>
 
                     {/* Thời gian tạo */}
                     <td>
-                      <div className="pancake-time-cell">
+                      <div className="d-flex align-items-center gap-1">
                         <span>{formatDateTime(ord.createdAt)}</span>
-                        <span className="pancake-time-tag">HT</span>
+                        <Badge bg="secondary-subtle" text="secondary-emphasis" style={{ fontSize: '0.65rem' }}>HT</Badge>
                       </div>
                     </td>
 
                     {/* Cập nhật TT */}
                     <td>
-                      <div className="pancake-time-cell">
+                      <div className="d-flex align-items-center gap-1 text-secondary">
                         <span>{formatDateTime(ord.updatedAt)}</span>
-                        <span className="pancake-user-icon">👤</span>
+                        <Icon name="person" />
                       </div>
                     </td>
 
                     {/* Khách hàng */}
                     <td>
                       <div className="d-flex align-items-center gap-2">
-                        <div className="pancake-customer-avatar">
-                          {(customer.fullName || recipient.name || 'K').charAt(0).toUpperCase()}
-                        </div>
-                        <span className="pancake-customer-name" title={customer.fullName || recipient.name}>
+                        <Avatar name={customer.fullName || recipient.name} size={28} />
+                        <span className="fw-semibold text-truncate" style={{ maxWidth: 140 }} title={customer.fullName || recipient.name}>
                           {customer.fullName || recipient.name || 'Khách vãng lai'}
                         </span>
                       </div>
@@ -433,11 +429,11 @@ const SellerOrdersPage = () => {
                     {/* SĐT */}
                     <td>
                       <div className="d-flex align-items-center gap-1">
-                        <span className="pancake-phone-text">{recipient.phone || customer.phone || '-'}</span>
+                        <span>{recipient.phone || customer.phone || '-'}</span>
                         {telco && (
                           <span
-                            className="pancake-telco-badge"
-                            style={{ backgroundColor: telco.bg, color: telco.color }}
+                            className="badge"
+                            style={{ backgroundColor: telco.bg, color: telco.color, fontSize: '0.65rem' }}
                           >
                             {telco.name}
                           </span>
@@ -448,40 +444,38 @@ const SellerOrdersPage = () => {
                     {/* Mã mẫu mã */}
                     <td>
                       {ord.items && ord.items.length > 0 ? (
-                        <div className="pancake-sku-cell">
+                        <div className="d-flex align-items-center gap-1">
                           <span className="fw-bold">{firstItem.skuCode || firstItem.skuId?.skuCode}</span>
-                          <span className="text-muted"> x {firstItem.orderedQty}</span>
+                          <span className="text-secondary"> x {firstItem.orderedQty}</span>
                           {ord.items.length > 1 && (
-                            <span className="pancake-more-items-badge">+{ord.items.length - 1}</span>
+                            <Badge bg="secondary" pill style={{ fontSize: '0.65rem' }}>+{ord.items.length - 1}</Badge>
                           )}
                         </div>
                       ) : (
-                        <span className="text-muted small">Chưa có sản phẩm</span>
+                        <span className="text-secondary">Chưa có SP</span>
                       )}
                     </td>
 
                     {/* Tên sản phẩm */}
                     <td>
                       {ord.items && ord.items.length > 0 ? (
-                        <div className="pancake-prod-title text-truncate" style={{ maxWidth: '220px' }}>
+                        <div className="text-truncate" style={{ maxWidth: 220 }}>
                           {firstItem.skuId?.styleName || firstItem.styleName || firstItem.skuCode}
                           {ord.items.length > 1 && ` (và ${ord.items.length - 1} món khác)`}
                         </div>
                       ) : (
-                        <span className="text-muted small">Chưa có sản phẩm</span>
+                        <span className="text-secondary">Chưa có SP</span>
                       )}
                     </td>
 
                     {/* Tổng tiền */}
-                    <td className="text-end">
-                      <span className="pancake-total-amount">
-                        {totalAmount.toLocaleString('vi-VN')} đ
-                      </span>
+                    <td className="text-end fw-bold text-warning-emphasis">
+                      {formatVnd(totalAmount)}
                     </td>
 
                     {/* Ghi chú nội bộ */}
                     <td>
-                      <div className="pancake-note-text text-truncate" style={{ maxWidth: '140px' }}>
+                      <div className="text-truncate text-secondary" style={{ maxWidth: 140 }}>
                         {ord.notes || (ord.financialSummary?.discountAmount > 0 ? 'Đã giảm giá' : 'Đơn COD')}
                       </div>
                     </td>
@@ -493,79 +487,80 @@ const SellerOrdersPage = () => {
 
                     {/* Thao tác */}
                     <td className="text-center" onClick={(e) => e.stopPropagation()}>
-                      <div className="d-flex align-items-center justify-content-center gap-1">
-                        <button
-                          type="button"
-                          className="pancake-action-btn"
+                      <Stack direction="horizontal" gap={1} className="justify-content-center">
+                        <Button
+                          size="sm"
+                          variant="outline-secondary"
+                          className="py-0 px-2"
                           onClick={() => handleOpenDetail(ord)}
                           title="Xem chi tiết & đổi trạng thái"
                         >
-                          <Eye size={13} />
-                        </button>
+                          <Icon name="eye" />
+                        </Button>
                         {['DELIVERED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
-                          <button
-                            type="button"
-                            className="pancake-action-btn pancake-action-rma"
+                          <Button
+                            size="sm"
+                            variant="outline-warning"
+                            className="py-0 px-2"
                             onClick={() => handleOpenRma(ord)}
                             title="Tạo yêu cầu Đổi / Trả (RMA)"
                           >
-                            <RotateCcw size={12} />
-                          </button>
+                            <Icon name="arrow-counterclockwise" />
+                          </Button>
                         )}
-                      </div>
+                      </Stack>
                     </td>
                   </tr>
                 );
               })
             )}
           </tbody>
-        </table>
+        </Table>
       </div>
 
       {/* ── Footer status bar ─── */}
-      <div className="pancake-footer-bar">
-        <div className="pancake-footer-stats">
+      <div className="bg-white border-top px-3 py-2 small text-secondary d-flex align-items-center justify-content-between">
+        <div>
           Hiển thị <strong>{filteredOrders.length}</strong> đơn hàng · Đã chọn <strong>{selectedIds.length}</strong> đơn
         </div>
       </div>
 
       {/* ── Thanh thao tác nổi khi tích chọn Checkbox hàng loạt ─── */}
       {selectedIds.length > 0 && (
-        <div className="pancake-bulk-action-bar">
-          <div className="d-flex align-items-center gap-2">
-            <span className="badge bg-white text-dark border fw-bold px-2.5 py-1.5" style={{ fontSize: '0.8rem' }}>
-              Đã chọn {selectedIds.length} đơn
-            </span>
-          </div>
-          <div className="d-flex align-items-center gap-2">
-            <button
-              type="button"
-              className="btn btn-sm btn-light border py-1 px-3 fw-semibold"
-              style={{ fontSize: '0.78rem' }}
-              onClick={() => alert(`Chuẩn bị in phiếu gửi hàng loạt cho ${selectedIds.length} đơn hàng...`)}
-            >
-              🖨️ In phiếu gửi ({selectedIds.length})
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm btn-light border py-1 px-3 fw-semibold"
-              style={{ fontSize: '0.78rem' }}
-              onClick={() => {
-                alert(`Đã xuất file dữ liệu cho ${selectedIds.length} đơn hàng đã chọn!`);
-                setSelectedIds([]);
-              }}
-            >
-              📥 Xuất dữ liệu ({selectedIds.length})
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-light py-1 px-2.5"
-              style={{ fontSize: '0.78rem' }}
-              onClick={() => setSelectedIds([])}
-            >
-              Bỏ chọn
-            </button>
-          </div>
+        <div
+          className="position-fixed bottom-0 start-50 translate-middle-x mb-3 bg-dark text-white px-3 py-2 rounded-pill shadow-lg d-flex align-items-center gap-3"
+          style={{ zIndex: 1050 }}
+        >
+          <Badge bg="light" text="dark" className="fw-bold px-2 py-1">
+            Đã chọn {selectedIds.length} đơn
+          </Badge>
+          <Button
+            size="sm"
+            variant="light"
+            className="rounded-pill py-1 px-3 fw-semibold"
+            onClick={() => showInfo(`Chuẩn bị in phiếu gửi hàng loạt cho ${selectedIds.length} đơn hàng...`, 'In phiếu gửi')}
+          >
+            <Icon name="printer" className="me-1" /> In phiếu ({selectedIds.length})
+          </Button>
+          <Button
+            size="sm"
+            variant="light"
+            className="rounded-pill py-1 px-3 fw-semibold"
+            onClick={() => {
+              showSuccess(`Đã xuất file dữ liệu cho ${selectedIds.length} đơn hàng đã chọn!`, 'Xuất dữ liệu');
+              setSelectedIds([]);
+            }}
+          >
+            <Icon name="download" className="me-1" /> Xuất dữ liệu ({selectedIds.length})
+          </Button>
+          <Button
+            size="sm"
+            variant="outline-light"
+            className="rounded-pill py-1 px-2"
+            onClick={() => setSelectedIds([])}
+          >
+            Bỏ chọn
+          </Button>
         </div>
       )}
 
@@ -594,7 +589,7 @@ const SellerOrdersPage = () => {
         onClose={() => setRmaModalOpen(false)}
         order={selectedOrderForRma}
         onRmaCreated={() => {
-          alert('Phiếu RMA đã được tạo thành công!');
+          showSuccess('Phiếu RMA đã được tạo thành công!', 'Tạo RMA');
           setRmaModalOpen(false);
           fetchOrders();
         }}
@@ -604,4 +599,3 @@ const SellerOrdersPage = () => {
 };
 
 export default SellerOrdersPage;
-

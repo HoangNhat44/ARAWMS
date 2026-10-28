@@ -3,18 +3,32 @@
  * @title        : Customer Order History Component
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-10-28
  * @description  : Hiển thị danh sách lịch sử mua hàng của khách hàng (UC-76),
  *                 hỗ trợ mở popup chi tiết đơn (UC-80) và kích hoạt yêu cầu đổi trả RMA (UC-82).
+ *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
  * @module       : Order Fulfillment / Direct Order Management
  * @layer        : Front-end
  * ============================================================================
  */
 
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, RotateCcw, CheckCircle2, Clock, Truck, XCircle, Eye } from 'lucide-react';
+import { Card, Badge, Button, Alert, Stack } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
 import { SkeletonOrderHistoryCard } from '../common/Skeleton';
+import { Icon, EmptyState, formatVnd, ORDER_STATUS_VARIANT } from './SellerUi';
+
+/**
+ * Nhãn + icon hiển thị cho từng trạng thái đơn trong lịch sử mua hàng.
+ * @constant {Object<string,{label:string, icon:string}>}
+ */
+const HISTORY_STATUS_META = {
+  DELIVERED: { label: 'Đã giao thành công', icon: 'check-circle' },
+  CONFIRMED_RESERVED: { label: 'Đã giữ chỗ kho', icon: 'clock' },
+  PENDING: { label: 'Chờ xác nhận', icon: 'clock' },
+  HANDED_OVER_CARRIER: { label: 'Đang giao hàng', icon: 'truck' },
+  CANCELLED: { label: 'Đã hủy', icon: 'x-circle' },
+};
 
 /**
  * Component danh sách lịch sử đơn hàng của khách hàng trong phân hệ bán hàng Seller.
@@ -53,129 +67,75 @@ const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail }) => {
   };
 
   const getOrderStatusBadge = (status) => {
-    switch (status) {
-      case 'DELIVERED':
-        return (
-          <span className="badge-ara-success d-inline-flex align-items-center gap-1">
-            <CheckCircle2 size={11} /> Đã giao thành công
-          </span>
-        );
-      case 'CONFIRMED_RESERVED':
-        return (
-          <span className="badge-ara-info d-inline-flex align-items-center gap-1">
-            <Clock size={11} /> Đã giữ chỗ kho
-          </span>
-        );
-      case 'PENDING':
-        return (
-          <span className="badge-ara-warning d-inline-flex align-items-center gap-1">
-            <Clock size={11} /> Chờ xác nhận
-          </span>
-        );
-      case 'HANDED_OVER_CARRIER':
-        return (
-          <span className="badge-ara-info d-inline-flex align-items-center gap-1">
-            <Truck size={11} /> Đang giao hàng
-          </span>
-        );
-      case 'CANCELLED':
-        return (
-          <span className="badge-ara-danger d-inline-flex align-items-center gap-1">
-            <XCircle size={11} /> Đã hủy
-          </span>
-        );
-      default:
-        return (
-          <span className="badge-ara-gold">
-            {status}
-          </span>
-        );
-    }
+    const meta = HISTORY_STATUS_META[status];
+    const variant = ORDER_STATUS_VARIANT[status] || 'secondary';
+    return (
+      <Badge bg={`${variant}-subtle`} text={`${variant}-emphasis`} className="d-inline-flex align-items-center gap-1">
+        {meta && <Icon name={meta.icon} />} {meta ? meta.label : status}
+      </Badge>
+    );
   };
 
   return (
-    <div className="d-flex flex-column h-100 overflow-auto d-flex flex-column gap-2.5">
+    <Stack gap={2} className="h-100 overflow-auto small">
       {loading && (
-        <div className="d-flex flex-column gap-2">
+        <Stack gap={2}>
           <SkeletonOrderHistoryCard />
           <SkeletonOrderHistoryCard />
           <SkeletonOrderHistoryCard />
-        </div>
+        </Stack>
       )}
 
-      {error && <div className="alert alert-danger py-2 px-3 small">{error}</div>}
+      {error && <Alert variant="danger" className="py-2">{error}</Alert>}
 
       {!loading && orders.length === 0 && (
-        <div className="text-center py-5 text-muted small">
-          <ShoppingBag size={32} className="mb-2" style={{ color: 'var(--ara-gold)', opacity: 0.5 }} />
-          <div>Khách hàng chưa có đơn hàng nào</div>
-        </div>
+        <EmptyState icon="bag" title="Khách hàng chưa có đơn hàng nào" />
       )}
 
       {!loading &&
         orders.map((ord) => (
-          <div
-            key={ord._id || ord.id}
-            className="p-3 bg-white rounded border shadow-sm"
-            style={{ borderColor: 'var(--ara-border, #E3D9CD)' }}
-          >
-            <div className="d-flex align-items-center justify-content-between mb-2">
-              <span className="font-monospace fw-bold" style={{ color: 'var(--ara-noir)', fontSize: '0.85rem' }}>
-                {ord.orderCode}
-              </span>
-              {getOrderStatusBadge(ord.status)}
-            </div>
+          <Card key={ord._id || ord.id} className="shadow-sm">
+            <Card.Body className="pb-2">
+              <div className="d-flex align-items-center justify-content-between mb-2">
+                <span className="font-monospace fw-bold">{ord.orderCode}</span>
+                {getOrderStatusBadge(ord.status)}
+              </div>
 
-            {/* Items summary */}
-            <div className="mb-2 text-secondary" style={{ fontSize: '0.78rem' }}>
-              {ord.items?.map((it, idx) => (
-                <div key={idx} className="d-flex justify-content-between py-0.5">
-                  <span>
-                    <strong>{it.orderedQty}x</strong> {it.skuCode}
-                  </span>
-                  <span>{(it.subtotalAmount || 0).toLocaleString('vi-VN')} đ</span>
-                </div>
-              ))}
-            </div>
+              {/* Items summary */}
+              <div className="text-secondary">
+                {ord.items?.map((it, idx) => (
+                  <div key={idx} className="d-flex justify-content-between">
+                    <span><strong>{it.orderedQty}x</strong> {it.skuCode}</span>
+                    <span>{formatVnd(it.subtotalAmount)}</span>
+                  </div>
+                ))}
+              </div>
+            </Card.Body>
 
             {/* Total and Action */}
-            <div className="d-flex align-items-center justify-content-between pt-2 border-top" style={{ fontSize: '0.78rem' }}>
+            <Card.Footer className="bg-white d-flex align-items-center justify-content-between">
               <div>
-                <span className="text-muted small">Tổng: </span>
-                <span className="fw-bold" style={{ color: 'var(--ara-gold-hover)', fontSize: '0.88rem' }}>
-                  {(ord.financialSummary?.totalOrderAmount || 0).toLocaleString('vi-VN')} đ
-                </span>
+                <span className="text-secondary">Tổng: </span>
+                <span className="fw-bold text-warning-emphasis">{formatVnd(ord.financialSummary?.totalOrderAmount)}</span>
               </div>
-              <div className="d-flex gap-1">
+              <Stack direction="horizontal" gap={1}>
                 {/* Xem chi tiết và đổi trạng thái */}
                 {onViewDetail && (
-                  <button
-                    type="button"
-                    onClick={() => onViewDetail(ord)}
-                    className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
-                    style={{ fontSize: '0.72rem', padding: '0.25rem 0.55rem' }}
-                  >
-                    <Eye size={11} />
-                    <span>Chi tiết</span>
-                  </button>
+                  <Button size="sm" variant="outline-secondary" onClick={() => onViewDetail(ord)}>
+                    <Icon name="eye" className="me-1" />Chi tiết
+                  </Button>
                 )}
                 {/* RMA Button (UC-82) */}
                 {['DELIVERED', 'COMPLETED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
-                  <button
-                    type="button"
-                    onClick={() => onRequestRma && onRequestRma(ord)}
-                    className="btn btn-sm btn-outline-warning text-dark d-flex align-items-center gap-1"
-                    style={{ fontSize: '0.72rem', padding: '0.25rem 0.55rem', borderColor: '#FCDFA6' }}
-                  >
-                    <RotateCcw size={12} color="#A36800" />
-                    <span>Đổi/Trả</span>
-                  </button>
+                  <Button size="sm" variant="outline-warning" onClick={() => onRequestRma && onRequestRma(ord)}>
+                    <Icon name="arrow-counterclockwise" className="me-1" />Đổi/Trả
+                  </Button>
                 )}
-              </div>
-            </div>
-          </div>
+              </Stack>
+            </Card.Footer>
+          </Card>
         ))}
-    </div>
+    </Stack>
   );
 };
 

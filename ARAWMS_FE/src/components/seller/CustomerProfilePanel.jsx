@@ -1,7 +1,32 @@
+/**
+ * ============================================================================
+ * @title        : Customer Profile Panel (CRM, UC-75)
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-28
+ * @description  : Xem / chỉnh sửa hồ sơ khách hàng, thẻ phân loại và lịch sử tương tác.
+ *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
+ * @module       : Conversational Commerce / CRM
+ * @layer        : Front-end
+ * ============================================================================
+ */
+
 import React, { useState, useEffect } from 'react';
-import { User, Phone, Mail, MapPin, Tag, Clock, Edit2, Save, X, Plus } from 'lucide-react';
+import { Card, Form, InputGroup, Button, Badge, Alert, Row, Col, ListGroup, CloseButton, Stack } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
-import { SkeletonCrmPanel, SkeletonBlock } from '../common/Skeleton';
+import { SkeletonBlock } from '../common/Skeleton';
+import { Icon, Avatar, EmptyState, formatVnd } from './SellerUi';
+
+/** Một dòng thông tin dạng icon + nhãn + giá trị (chế độ xem). */
+const InfoRow = ({ icon, label, children }) => (
+  <div className="d-flex align-items-start gap-2">
+    <Icon name={icon} className="text-warning-emphasis mt-1" />
+    <div className="flex-grow-1">
+      <div className="text-secondary small">{label}</div>
+      <div className="fw-semibold">{children}</div>
+    </div>
+  </div>
+);
 
 const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -100,241 +125,158 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
   };
 
   if (!customer) {
-    return (
-      <div className="d-flex flex-column align-items-center justify-content-center h-100 p-4 text-muted text-center" style={{ fontSize: '0.85rem' }}>
-        <User size={36} className="mb-2" style={{ color: 'var(--ara-gold)', opacity: 0.5 }} />
-        <div>Chưa có thông tin khách hàng được chọn</div>
-      </div>
-    );
+    return <EmptyState icon="person" title="Chưa có thông tin khách hàng được chọn" />;
   }
 
+  const setField = (key) => (e) => setFormData({ ...formData, [key]: e.target.value });
+
   return (
-    <div className="d-flex flex-column h-100">
+    <div className="d-flex flex-column h-100 small">
       {/* Customer Header Card */}
-      <div
-        className="p-3 mb-3 rounded"
-        style={{
-          background: 'linear-gradient(135deg, #FAF7F2 0%, #F4EFEB 100%)',
-          border: '1px solid var(--ara-border, #E3D9CD)',
-        }}
-      >
-        <div className="d-flex align-items-center justify-content-between">
-          <div className="d-flex align-items-center gap-2">
-            <div className="ara-avatar" style={{ width: '40px', height: '40px', fontSize: '0.9rem' }}>
-              {customer.fullName ? customer.fullName.charAt(0).toUpperCase() : 'K'}
-            </div>
-            <div>
-              <div className="fw-bold text-dark" style={{ fontSize: '0.92rem' }}>
-                {customer.fullName}
+      <Card className="mb-3 bg-body-tertiary">
+        <Card.Body>
+          <div className="d-flex align-items-center justify-content-between">
+            <Stack direction="horizontal" gap={2}>
+              <Avatar name={customer.fullName} size={40} />
+              <div>
+                <div className="fw-bold">{customer.fullName}</div>
+                <Stack direction="horizontal" gap={1}>
+                  <Badge bg="warning-subtle" text="warning-emphasis">{customer.customerCode || 'CHƯA_CÓ_MÃ'}</Badge>
+                  {customer.facebookPsid && <Badge bg="primary-subtle" text="primary-emphasis">Facebook Linked</Badge>}
+                </Stack>
               </div>
-              <div className="d-flex align-items-center gap-1">
-                <span className="badge-ara-gold">{customer.customerCode || 'CHƯA_CÓ_MÃ'}</span>
-                {customer.facebookPsid && (
-                  <span className="badge-ara-info">Facebook Linked</span>
-                )}
-              </div>
-            </div>
+            </Stack>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setIsEditing(!isEditing)}
+              title={isEditing ? 'Hủy sửa' : 'Chỉnh sửa hồ sơ'}
+            >
+              <Icon name={isEditing ? 'x-lg' : 'pencil'} />
+            </Button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsEditing(!isEditing)}
-            className="btn btn-sm btn-outline-secondary p-1"
-            title={isEditing ? 'Hủy sửa' : 'Chỉnh sửa hồ sơ'}
-          >
-            {isEditing ? <X size={15} /> : <Edit2 size={15} />}
-          </button>
-        </div>
-
-        {/* Quick Customer Metrics */}
-        <div className="row g-2 mt-2 text-center" style={{ fontSize: '0.78rem' }}>
-          <div className="col-6">
-            <div className="p-2 bg-white rounded border">
-              <div className="text-muted" style={{ fontSize: '0.7rem' }}>Tổng đơn hàng</div>
-              <div className="fw-bold text-dark">{customer.totalOrders || 0} đơn</div>
-            </div>
-          </div>
-          <div className="col-6">
-            <div className="p-2 bg-white rounded border">
-              <div className="text-muted" style={{ fontSize: '0.7rem' }}>Tổng chi tiêu</div>
-              <div className="fw-bold" style={{ color: 'var(--ara-gold-hover, #846B50)' }}>
-                {(customer.totalSpent || 0).toLocaleString('vi-VN')} đ
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+          {/* Quick Customer Metrics */}
+          <Row className="g-2 mt-2 text-center">
+            <Col xs={6}>
+              <Card body className="py-0">
+                <div className="text-secondary">Tổng đơn hàng</div>
+                <div className="fw-bold">{customer.totalOrders || 0} đơn</div>
+              </Card>
+            </Col>
+            <Col xs={6}>
+              <Card body className="py-0">
+                <div className="text-secondary">Tổng chi tiêu</div>
+                <div className="fw-bold text-warning-emphasis">{formatVnd(customer.totalSpent)}</div>
+              </Card>
+            </Col>
+          </Row>
+        </Card.Body>
+      </Card>
 
       {message && (
-        <div className={`alert ${message.startsWith('Lỗi') ? 'alert-danger' : 'alert-success'} py-2 px-3 small text-center mb-3`}>
+        <Alert variant={message.startsWith('Lỗi') ? 'danger' : 'success'} className="py-2 text-center">
           {message}
-        </div>
+        </Alert>
       )}
 
       {/* Profile Form / View */}
       <div className="flex-grow-1 overflow-auto">
         {isEditing ? (
-          <form onSubmit={handleSave} className="d-flex flex-column gap-2" style={{ fontSize: '0.82rem' }}>
-            <div>
-              <label className="form-label text-muted small fw-semibold mb-1">Họ và tên</label>
-              <input
-                type="text"
-                value={formData.fullName}
-                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                className="form-control form-control-sm"
-                required
-              />
-            </div>
+          <Form onSubmit={handleSave} className="d-flex flex-column gap-2">
+            <Form.Group controlId="crm-fullName">
+              <Form.Label className="small text-secondary mb-1">Họ và tên</Form.Label>
+              <Form.Control size="sm" value={formData.fullName} onChange={setField('fullName')} required />
+            </Form.Group>
 
-            <div>
-              <label className="form-label text-muted small fw-semibold mb-1">Số điện thoại</label>
-              <input
-                type="text"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className="form-control form-control-sm"
-              />
-            </div>
+            <Form.Group controlId="crm-phone">
+              <Form.Label className="small text-secondary mb-1">Số điện thoại</Form.Label>
+              <Form.Control size="sm" value={formData.phone} onChange={setField('phone')} />
+            </Form.Group>
 
-            <div>
-              <label className="form-label text-muted small fw-semibold mb-1">Email</label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="form-control form-control-sm"
-              />
-            </div>
+            <Form.Group controlId="crm-email">
+              <Form.Label className="small text-secondary mb-1">Email</Form.Label>
+              <Form.Control size="sm" type="email" value={formData.email} onChange={setField('email')} />
+            </Form.Group>
 
-            <div>
-              <label className="form-label text-muted small fw-semibold mb-1">Địa chỉ nhận hàng</label>
-              <textarea
-                rows={2}
-                value={formData.fullAddress}
-                onChange={(e) => setFormData({ ...formData, fullAddress: e.target.value })}
-                className="form-control form-control-sm"
-              />
-            </div>
+            <Form.Group controlId="crm-address">
+              <Form.Label className="small text-secondary mb-1">Địa chỉ nhận hàng</Form.Label>
+              <Form.Control size="sm" as="textarea" rows={2} value={formData.fullAddress} onChange={setField('fullAddress')} />
+            </Form.Group>
 
-            <div>
-              <label className="form-label text-muted small fw-semibold mb-1">Thẻ phân loại (Tags)</label>
-              <div className="input-group input-group-sm mb-2">
-                <input
-                  type="text"
-                  placeholder="Thêm tag..."
-                  value={formData.tagInput}
-                  onChange={(e) => setFormData({ ...formData, tagInput: e.target.value })}
-                  className="form-control"
-                />
-                <button type="button" onClick={handleAddTag} className="btn btn-outline-secondary">
-                  <Plus size={14} />
-                </button>
-              </div>
+            <Form.Group controlId="crm-tag">
+              <Form.Label className="small text-secondary mb-1">Thẻ phân loại (Tags)</Form.Label>
+              <InputGroup size="sm" className="mb-2">
+                <Form.Control placeholder="Thêm tag..." value={formData.tagInput} onChange={setField('tagInput')} />
+                <Button variant="outline-secondary" onClick={handleAddTag}><Icon name="plus-lg" /></Button>
+              </InputGroup>
               <div className="d-flex flex-wrap gap-1">
                 {tags.map((t) => (
-                  <span key={t} className="badge-ara-gold d-inline-flex align-items-center gap-1">
+                  <Badge key={t} bg="warning-subtle" text="warning-emphasis" className="d-inline-flex align-items-center gap-1">
                     {t}
-                    <button type="button" onClick={() => handleRemoveTag(t)} className="btn-close btn-close-white p-0" style={{ width: '8px', height: '8px' }} />
-                  </span>
+                    <CloseButton style={{ fontSize: '0.5rem' }} onClick={() => handleRemoveTag(t)} aria-label={`Xóa thẻ ${t}`} />
+                  </Badge>
                 ))}
               </div>
-            </div>
+            </Form.Group>
 
             <div className="d-flex justify-content-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsEditing(false)}
-                className="btn btn-sm btn-outline-secondary"
-              >
-                Hủy
-              </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="btn-ara-primary"
-                style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem' }}
-              >
-                <Save size={13} /> {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
-              </button>
+              <Button size="sm" variant="outline-secondary" onClick={() => setIsEditing(false)}>Hủy</Button>
+              <Button size="sm" variant="dark" type="submit" disabled={saving}>
+                <Icon name="save" className="me-1" />{saving ? 'Đang lưu...' : 'Lưu thay đổi'}
+              </Button>
             </div>
-          </form>
+          </Form>
         ) : (
-          <div className="d-flex flex-column gap-3" style={{ fontSize: '0.82rem' }}>
-            <div className="d-flex align-items-start gap-2">
-              <Phone size={15} color="var(--ara-gold)" className="flex-shrink-0 mt-1" />
-              <div>
-                <span className="text-muted d-block small" style={{ fontSize: '0.72rem' }}>Số điện thoại</span>
-                <span className="fw-semibold text-dark">{customer.phone || 'Chưa cập nhật'}</span>
+          <Stack gap={3}>
+            <InfoRow icon="telephone" label="Số điện thoại">{customer.phone || 'Chưa cập nhật'}</InfoRow>
+            <InfoRow icon="envelope" label="Email">{customer.email || 'Chưa cập nhật'}</InfoRow>
+            <InfoRow icon="geo-alt" label="Địa chỉ giao hàng">
+              {customer.addresses?.[0]?.fullAddress || 'Chưa cập nhật'}
+            </InfoRow>
+            <InfoRow icon="tag" label="Thẻ phân loại">
+              <div className="d-flex flex-wrap gap-1 mt-1">
+                {customer.tags && customer.tags.length > 0 ? (
+                  customer.tags.map((t) => (
+                    <Badge key={t} bg="warning-subtle" text="warning-emphasis">{t}</Badge>
+                  ))
+                ) : (
+                  <span className="text-secondary fst-italic fw-normal">Chưa gắn thẻ</span>
+                )}
               </div>
-            </div>
-
-            <div className="d-flex align-items-start gap-2">
-              <Mail size={15} color="var(--ara-gold)" className="flex-shrink-0 mt-1" />
-              <div>
-                <span className="text-muted d-block small" style={{ fontSize: '0.72rem' }}>Email</span>
-                <span className="fw-semibold text-dark">{customer.email || 'Chưa cập nhật'}</span>
-              </div>
-            </div>
-
-            <div className="d-flex align-items-start gap-2">
-              <MapPin size={15} color="var(--ara-gold)" className="flex-shrink-0 mt-1" />
-              <div>
-                <span className="text-muted d-block small" style={{ fontSize: '0.72rem' }}>Địa chỉ giao hàng</span>
-                <span className="fw-semibold text-dark">
-                  {customer.addresses?.[0]?.fullAddress || 'Chưa cập nhật'}
-                </span>
-              </div>
-            </div>
-
-            <div className="d-flex align-items-start gap-2">
-              <Tag size={15} color="var(--ara-gold)" className="flex-shrink-0 mt-1" />
-              <div className="flex-grow-1">
-                <span className="text-muted d-block small" style={{ fontSize: '0.72rem' }}>Thẻ phân loại</span>
-                <div className="d-flex flex-wrap gap-1 mt-1">
-                  {customer.tags && customer.tags.length > 0 ? (
-                    customer.tags.map((t) => (
-                      <span key={t} className="badge-ara-gold">
-                        {t}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-muted fst-italic small">Chưa gắn thẻ</span>
-                  )}
-                </div>
-              </div>
-            </div>
+            </InfoRow>
 
             {/* UC-75: Lịch sử tương tác */}
-            <div className="pt-3 border-top mt-2">
-              <div className="d-flex align-items-center gap-1 fw-bold text-dark mb-2" style={{ fontSize: '0.82rem' }}>
-                <Clock size={14} color="var(--ara-gold)" />
-                <span>Lịch sử tương tác (UC-75)</span>
+            <div className="pt-3 border-top">
+              <div className="d-flex align-items-center gap-1 fw-bold mb-2">
+                <Icon name="clock-history" className="text-warning-emphasis" />
+                Lịch sử tương tác (UC-75)
               </div>
 
               {loadingHistory ? (
-                <div className="d-flex flex-column gap-2">
+                <Stack gap={2}>
                   <SkeletonBlock height="52px" borderRadius="8px" />
                   <SkeletonBlock height="52px" borderRadius="8px" />
-                </div>
+                </Stack>
               ) : interactionHistory.length === 0 ? (
-                <div className="text-muted fst-italic small">Chưa có phiên chat trước đây</div>
+                <div className="text-secondary fst-italic">Chưa có phiên chat trước đây</div>
               ) : (
-                <div className="d-flex flex-column gap-2" style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                <ListGroup className="overflow-auto" style={{ maxHeight: 180 }}>
                   {interactionHistory.map((h) => (
-                    <div key={h.conversationId} className="p-2 bg-light rounded border" style={{ fontSize: '0.75rem' }}>
-                      <div className="d-flex justify-content-between text-muted" style={{ fontSize: '0.68rem' }}>
+                    <ListGroup.Item key={h.conversationId} className="bg-body-tertiary">
+                      <div className="d-flex justify-content-between text-secondary small">
                         <span>Trực bởi: <strong>{h.assignedSeller?.fullName || 'Hệ thống'}</strong></span>
                         <span>{new Date(h.lastMessageAt || h.createdAt).toLocaleDateString('vi-VN')}</span>
                       </div>
-                      <div className="text-dark mt-1 fst-italic text-truncate">
+                      <div className="mt-1 fst-italic text-truncate">
                         "{h.lastMessagePreview || 'Không có tin nhắn'}"
                       </div>
-                    </div>
+                    </ListGroup.Item>
                   ))}
-                </div>
+                </ListGroup>
               )}
             </div>
-          </div>
+          </Stack>
         )}
       </div>
     </div>

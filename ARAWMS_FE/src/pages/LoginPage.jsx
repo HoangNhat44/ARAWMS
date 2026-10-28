@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../services/authService';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../context/ToastContext';
 import { 
   User, 
   Lock, 
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 
 const LoginPage = () => {
+  const { showInfo } = useToast();
   const [formData, setFormData] = useState({
     usernameOrEmail: 'admin',
     password: '',
@@ -242,7 +244,7 @@ const LoginPage = () => {
                 </label>
                 <a 
                   href="#forgot" 
-                  onClick={(e) => { e.preventDefault(); alert('Vui lòng liên hệ Quản trị viên để khôi phục mật khẩu tài khoản.'); }}
+                  onClick={(e) => { e.preventDefault(); showInfo('Vui lòng liên hệ Quản trị viên để khôi phục mật khẩu tài khoản.', 'Quên mật khẩu'); }}
                   style={{ fontSize: '0.82rem', color: 'var(--ara-gold)', textDecoration: 'none', fontWeight: 500 }}
                 >
                   Quên mật khẩu?

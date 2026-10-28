@@ -3,39 +3,45 @@
  * @title        : Order Detail Modal (Pancake-style)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-10-28
  * @description  : Modal xem chi tiết đơn hàng, cập nhật trạng thái đơn (UC-80, UC-81)
  *                 và kích hoạt quy trình đổi trả hàng bán lẻ RMA (UC-82).
+ *                 (Không dùng window.prompt / alert của trình duyệt; dùng Modal & Toast của web.)
  * @module       : Order Fulfillment / Direct Order Management
  * @layer        : Front-end
  * ============================================================================
  */
 
 import React, { useState } from 'react';
-import { Modal, Badge } from 'react-bootstrap';
-import {
-  X, Package, User, Phone, MapPin, ShoppingBag, RotateCcw,
-  CheckCircle2, Clock, Calendar, Truck, ArrowRight
-} from 'lucide-react';
+import { Modal, Badge, Row, Col, Card, Alert, Button, ListGroup, Spinner, Stack, Form } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
+import { useToast } from '../../context/ToastContext';
+import { Icon, formatVnd, ORDER_STATUS_VARIANT } from './SellerUi';
 
 /**
  * Danh sách trạng thái đơn hàng bán lẻ chuẩn Database (khớp SalesOrder.model & enums.js)
  * @constant {Array<Object>}
  */
 const ORDER_STATUSES = [
-  { value: 'PENDING',             label: 'Chờ xác nhận',     color: '#8B5CF6', bg: '#F3E8FF' },
-  { value: 'CONFIRMED_RESERVED',  label: 'Đã giữ chỗ kho',   color: '#2563EB', bg: '#EFF6FF' },
-  { value: 'PACKED',              label: 'Đã đóng gói',      color: '#D97706', bg: '#FEF3C7' },
-  { value: 'HANDED_OVER_CARRIER', label: 'Đang giao hàng',   color: '#0891B2', bg: '#ECFEFF' },
-  { value: 'DELIVERED',           label: 'Đã giao hàng',     color: '#059669', bg: '#ECFDF5' },
-  { value: 'CANCELLED',           label: 'Đã hủy đơn',       color: '#DC2626', bg: '#FEF2F2' },
-  { value: 'RETURNED',            label: 'Đã trả hàng',      color: '#4B5563', bg: '#F3F4F6' },
+  { value: 'PENDING',             label: 'Chờ xác nhận' },
+  { value: 'CONFIRMED_RESERVED',  label: 'Đã giữ chỗ kho' },
+  { value: 'PACKED',              label: 'Đã đóng gói' },
+  { value: 'HANDED_OVER_CARRIER', label: 'Đang giao hàng' },
+  { value: 'DELIVERED',           label: 'Đã giao hàng' },
+  { value: 'CANCELLED',           label: 'Đã hủy đơn' },
+  { value: 'RETURNED',            label: 'Đã trả hàng' },
 ];
+
+/** Tiêu đề nhỏ cho từng khối thông tin trong modal. */
+const SectionTitle = ({ icon, children, right }) => (
+  <Card.Header className="bg-white d-flex align-items-center justify-content-between small fw-bold text-uppercase text-warning-emphasis">
+    <span className="d-flex align-items-center gap-2"><Icon name={icon} /> {children}</span>
+    {right}
+  </Card.Header>
+);
 
 /**
  * Modal hiển thị toàn diện thông tin đơn hàng, thay đổi trạng thái và tạo yêu cầu RMA.
- * Giao diện phong cách Atelier Pancake sang trọng, rộng rãi và tối ưu trải nghiệm.
  *
  * @component
  * @param {Object} props - Thuộc tính truyền vào component.
@@ -47,17 +53,49 @@ const ORDER_STATUSES = [
  * @returns {JSX.Element|null} Modal chi tiết đơn hàng.
  */
 const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }) => {
+  const { showSuccess, showError } = useToast();
   const [status, setStatus] = useState(order?.status || 'PENDING');
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState('');
 
+  // Dialog nhập thông tin trong web (thay thế window.prompt)
+  const [promptDialog, setPromptDialog] = useState({
+    isOpen: false,
+    title: '',
+    label: '',
+    value: '',
+    targetStatus: null,
+    field: '',
+  });
+
   if (!isOpen || !order) return null;
 
-  const currentStatusObj = ORDER_STATUSES.find((s) => s.value === status) || {
-    value: status,
-    label: status,
-    color: '#6B7280',
-    bg: '#F3F4F6',
+  const currentStatusObj = ORDER_STATUSES.find((s) => s.value === status) || { value: status, label: status };
+
+  /**
+   * Thực hiện gọi API cập nhật trạng thái
+   */
+  const executeStatusUpdate = async (newStatus, extraPayload = {}) => {
+    try {
+      setUpdating(true);
+      setError('');
+      const payload = { status: newStatus, ...extraPayload };
+
+      const res = await sellerService.updateOrderStatus(order._id || order.id, payload);
+      if (res.success) {
+        setStatus(newStatus);
+        const updated = res.data || { ...order, status: newStatus, ...extraPayload };
+        if (onStatusUpdated) onStatusUpdated(updated);
+        const targetObj = ORDER_STATUSES.find((s) => s.value === newStatus);
+        showSuccess(`Đã chuyển trạng thái đơn hàng sang "${targetObj?.label || newStatus}"`, 'Cập nhật đơn hàng');
+      }
+    } catch (err) {
+      const msg = err.message || 'Lỗi cập nhật trạng thái';
+      setError(msg);
+      showError(msg, 'Lỗi cập nhật');
+    } finally {
+      setUpdating(false);
+    }
   };
 
   /**
@@ -68,47 +106,46 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
    */
   const handleUpdateStatus = async (newStatus) => {
     if (newStatus === status) return;
-    try {
-      setUpdating(true);
-      setError('');
 
-      const payload = { status: newStatus };
-
-      // [BR: GBR-13] Bàn giao vận chuyển yêu cầu mã vận đơn
-      if (newStatus === 'HANDED_OVER_CARRIER') {
-        const existingWaybill = order.warehouseFulfillment?.waybillCode;
-        let waybill = existingWaybill;
-        if (!waybill) {
-          waybill = window.prompt('Nhập mã vận đơn bưu tá bàn giao (ví dụ GHN_82063):', `GHN_${order.orderCode || Date.now()}`);
-          if (!waybill) {
-            setUpdating(false);
-            return;
-          }
-        }
-        payload.waybillCode = waybill;
+    // [BR: GBR-13] Bàn giao vận chuyển yêu cầu mã vận đơn
+    if (newStatus === 'HANDED_OVER_CARRIER') {
+      const existingWaybill = order.warehouseFulfillment?.waybillCode;
+      if (!existingWaybill) {
+        setPromptDialog({
+          isOpen: true,
+          title: 'Bàn Giao Vận Chuyển',
+          label: 'Nhập mã vận đơn bưu tá bàn giao:',
+          value: `GHN_${order.orderCode || Date.now()}`,
+          targetStatus: 'HANDED_OVER_CARRIER',
+          field: 'waybillCode',
+        });
+        return;
       }
-
-      // [BR: GBR-11] Hủy đơn yêu cầu lý do
-      if (newStatus === 'CANCELLED') {
-        const reason = window.prompt('Nhập lý do hủy đơn hàng:', 'Khách đổi ý hủy đơn');
-        if (!reason) {
-          setUpdating(false);
-          return;
-        }
-        payload.cancelReason = reason;
-      }
-
-      // Gọi API cập nhật trạng thái đơn hàng (UC-81)
-      const res = await sellerService.updateOrderStatus(order._id || order.id, payload);
-      if (res.success) {
-        setStatus(newStatus);
-        if (onStatusUpdated) onStatusUpdated(res.data || { ...order, status: newStatus });
-      }
-    } catch (err) {
-      setError(err.message || 'Lỗi cập nhật trạng thái');
-    } finally {
-      setUpdating(false);
+      return executeStatusUpdate(newStatus, { waybillCode: existingWaybill });
     }
+
+    // [BR: GBR-11] Hủy đơn yêu cầu lý do
+    if (newStatus === 'CANCELLED') {
+      setPromptDialog({
+        isOpen: true,
+        title: 'Hủy Đơn Hàng',
+        label: 'Nhập lý do hủy đơn hàng:',
+        value: 'Khách đổi ý hủy đơn',
+        targetStatus: 'CANCELLED',
+        field: 'cancelReason',
+      });
+      return;
+    }
+
+    return executeStatusUpdate(newStatus);
+  };
+
+  const handleConfirmPrompt = (e) => {
+    e.preventDefault();
+    if (!promptDialog.value.trim()) return;
+    const { targetStatus, field, value } = promptDialog;
+    setPromptDialog({ ...promptDialog, isOpen: false });
+    executeStatusUpdate(targetStatus, { [field]: value.trim() });
   };
 
   const items = order.items || [];
@@ -125,260 +162,214 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
   };
 
   return (
-    <Modal show={isOpen} onHide={onClose} centered size="lg" className="ara-order-detail-modal">
-      {/* Header sang trọng chuẩn Atelier */}
-      <Modal.Header
-        closeButton
-        closeVariant="white"
-        style={{
-          background: 'linear-gradient(135deg, #1C1A17 0%, #2A2622 100%)',
-          color: '#FFFFFF',
-          borderBottom: '1px solid rgba(159, 131, 101, 0.35)',
-          padding: '16px 22px',
-        }}
-      >
-        <div className="d-flex align-items-center gap-3">
-          <div
-            className="d-flex align-items-center justify-content-center rounded-circle"
-            style={{ width: '38px', height: '38px', background: 'rgba(159, 131, 101, 0.2)', border: '1px solid rgba(159, 131, 101, 0.4)' }}
-          >
-            <ShoppingBag size={18} color="var(--ara-gold, #C6B39C)" />
-          </div>
-          <div>
-            <div className="d-flex align-items-center gap-2">
-              <span className="font-monospace fw-bold fs-5 text-white" style={{ letterSpacing: '0.05em' }}>
-                #{order.orderCode || order._id?.slice(-6)}
-              </span>
-              <span
-                className="badge rounded-pill px-3 py-1 fw-bold"
-                style={{
-                  background: currentStatusObj.color,
-                  color: '#FFFFFF',
-                  fontSize: '0.75rem',
-                  letterSpacing: '0.03em',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
-                }}
-              >
-                {currentStatusObj.label || status}
-              </span>
+    <>
+      <Modal show={isOpen} onHide={onClose} centered size="lg" scrollable>
+        {/* Header tối chuẩn Atelier */}
+        <Modal.Header closeButton closeVariant="white" className="bg-dark text-white">
+          <Stack direction="horizontal" gap={3}>
+            <Icon name="bag" className="fs-4 text-warning" />
+            <div>
+              <Stack direction="horizontal" gap={2}>
+                <Modal.Title as="span" className="font-monospace fw-bold fs-5">
+                  #{order.orderCode || order._id?.slice(-6)}
+                </Modal.Title>
+                <Badge pill bg={ORDER_STATUS_VARIANT[status] || 'secondary'}>
+                  {currentStatusObj.label || status}
+                </Badge>
+              </Stack>
+              {order.createdAt && (
+                <div className="small text-white-50 d-flex align-items-center gap-1">
+                  <Icon name="calendar3" /> Đặt lúc: {formatDate(order.createdAt)}
+                </div>
+              )}
             </div>
-            {order.createdAt && (
-              <div className="text-secondary small d-flex align-items-center gap-1 mt-0.5" style={{ fontSize: '0.76rem', color: '#B5ADA4' }}>
-                <Calendar size={12} /> Đặt lúc: {formatDate(order.createdAt)}
-              </div>
-            )}
-          </div>
-        </div>
-      </Modal.Header>
+          </Stack>
+        </Modal.Header>
 
-      {/* Body: Thoáng đãng, chia 2 cột rõ ràng */}
-      <Modal.Body className="p-4 d-flex flex-column gap-3" style={{ background: '#FAF7F2' }}>
-        {error && (
-          <div className="alert alert-danger py-2 px-3 small rounded-3 mb-1 shadow-sm">
-            {error}
-          </div>
-        )}
+        {/* Body: chia 2 cột rõ ràng */}
+        <Modal.Body className="bg-body-tertiary d-flex flex-column gap-3">
+          {error && <Alert variant="danger" className="py-2 small mb-0">{error}</Alert>}
 
-        {/* Khối 1: Thông tin người nhận & Thanh toán COD */}
-        <div className="row g-3">
-          {/* Cột trái: Người nhận */}
-          <div className="col-md-6">
-            <div className="p-3 bg-white rounded-3 border h-100 shadow-sm" style={{ borderColor: 'var(--ara-border, #E3D9CD)' }}>
-              <div
-                className="d-flex align-items-center gap-2 fw-bold mb-2 pb-1.5 border-bottom text-uppercase"
-                style={{ fontSize: '0.74rem', letterSpacing: '0.06em', color: 'var(--ara-gold-hover, #7A5C3A)' }}
-              >
-                <User size={14} /> Thông Tin Người Nhận
-              </div>
-              <div className="d-flex flex-column gap-1.5" style={{ fontSize: '0.84rem' }}>
-                <div className="fw-bold text-dark fs-6">
-                  {recipient.name || 'Khách vãng lai'}
-                </div>
-                <div className="text-secondary d-flex align-items-center gap-2">
-                  <Phone size={13} className="text-muted" />
-                  <span className="fw-semibold text-dark">{recipient.phone || 'Chưa có SĐT'}</span>
-                </div>
-                <div className="text-secondary d-flex align-items-start gap-2 mt-1">
-                  <MapPin size={13} className="text-muted mt-1 flex-shrink-0" />
-                  <span>{recipient.address || 'Chưa cung cấp địa chỉ nhận hàng'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Cột phải: Tài chính & Tiền COD */}
-          <div className="col-md-6">
-            <div className="p-3 bg-white rounded-3 border h-100 shadow-sm" style={{ borderColor: 'var(--ara-border, #E3D9CD)' }}>
-              <div
-                className="d-flex align-items-center gap-2 fw-bold mb-2 pb-1.5 border-bottom text-uppercase"
-                style={{ fontSize: '0.74rem', letterSpacing: '0.06em', color: 'var(--ara-gold-hover, #7A5C3A)' }}
-              >
-                <Clock size={14} /> Tóm Tắt Thanh Toán
-              </div>
-              <div className="d-flex flex-column gap-1.5" style={{ fontSize: '0.82rem' }}>
-                <div className="d-flex justify-content-between text-secondary">
-                  <span>Tiền hàng ({items.length} món)</span>
-                  <span className="fw-semibold text-dark">{Number(financial.itemsSubtotal || 0).toLocaleString('vi-VN')} đ</span>
-                </div>
-                <div className="d-flex justify-content-between text-secondary">
-                  <span>Phí giao hàng</span>
-                  <span className="fw-semibold text-dark">{Number(financial.shippingFee || 0).toLocaleString('vi-VN')} đ</span>
-                </div>
-                {financial.discountAmount > 0 && (
-                  <div className="d-flex justify-content-between text-success">
-                    <span>Khuyến mãi / Giảm giá</span>
-                    <span className="fw-semibold">-{Number(financial.discountAmount).toLocaleString('vi-VN')} đ</span>
+          {/* Khối 1: Thông tin người nhận & Thanh toán COD */}
+          <Row className="g-3">
+            {/* Cột trái: Người nhận */}
+            <Col md={6}>
+              <Card className="h-100 shadow-sm">
+                <SectionTitle icon="person">Thông Tin Người Nhận</SectionTitle>
+                <Card.Body className="small">
+                  <div className="fw-bold fs-6">{recipient.name || 'Khách vãng lai'}</div>
+                  <div className="d-flex align-items-center gap-2 mt-1">
+                    <Icon name="telephone" className="text-secondary" />
+                    <span className="fw-semibold">{recipient.phone || 'Chưa có SĐT'}</span>
                   </div>
-                )}
-                <div
-                  className="d-flex justify-content-between align-items-center pt-2 mt-1 border-top fw-bold"
-                  style={{ background: 'linear-gradient(180deg, transparent 0%, #FBF9F6 100%)' }}
-                >
-                  <span className="text-dark">Tổng thu hộ (COD):</span>
-                  <span className="fs-5 fw-bold" style={{ color: 'var(--ara-gold-hover, #846B50)' }}>
-                    {Number(totalCodAmount).toLocaleString('vi-VN')} đ
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Khối 2: Danh sách sản phẩm chi tiết */}
-        <div className="p-3 bg-white rounded-3 border shadow-sm" style={{ borderColor: 'var(--ara-border, #E3D9CD)' }}>
-          <div
-            className="d-flex align-items-center justify-content-between mb-2 pb-1.5 border-bottom text-uppercase fw-bold"
-            style={{ fontSize: '0.74rem', letterSpacing: '0.06em', color: 'var(--ara-gold-hover, #7A5C3A)' }}
-          >
-            <span className="d-flex align-items-center gap-2">
-              <Package size={14} /> Danh Sách Kiện Hàng ({items.length})
-            </span>
-            <span className="text-muted fw-normal text-none" style={{ textTransform: 'none', fontSize: '0.75rem' }}>
-              Bán buôn & bán lẻ tại quầy
-            </span>
-          </div>
-
-          <div className="d-flex flex-column gap-2">
-            {items.map((it, idx) => {
-              const sku = it.skuId || it;
-              const subtotal = (it.orderedQty || 1) * Number(it.unitSalePrice || it.finalPrice || 0);
-
-              return (
-                <div
-                  key={idx}
-                  className="d-flex align-items-center justify-content-between p-2 rounded-2"
-                  style={{ background: idx % 2 === 0 ? '#FAF7F2' : '#FFFFFF', border: '1px solid #EFE8DF' }}
-                >
-                  <div className="d-flex align-items-center gap-3 min-w-0 pe-2">
-                    <div
-                      className="rounded-2 d-flex align-items-center justify-content-center text-secondary fw-bold flex-shrink-0"
-                      style={{ width: '36px', height: '36px', background: '#EAE3D8', fontSize: '0.8rem' }}
-                    >
-                      {idx + 1}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="fw-bold text-dark text-truncate" style={{ fontSize: '0.86rem', maxWidth: '380px' }}>
-                        {sku.styleName || sku.skuCode || it.skuCode}
-                      </div>
-                      <div className="text-muted d-flex align-items-center gap-2" style={{ fontSize: '0.74rem' }}>
-                        <span className="font-monospace text-secondary">{sku.skuCode || it.skuCode}</span>
-                        <span>·</span>
-                        <span>Size: <strong className="text-dark">{sku.size || it.size || 'F'}</strong></span>
-                        {sku.color && (
-                          <>
-                            <span>·</span>
-                            <span>Màu: <strong className="text-dark">{sku.color}</strong></span>
-                          </>
-                        )}
-                      </div>
-                    </div>
+                  <div className="d-flex align-items-start gap-2 mt-1 text-secondary">
+                    <Icon name="geo-alt" />
+                    <span>{recipient.address || 'Chưa cung cấp địa chỉ nhận hàng'}</span>
                   </div>
+                </Card.Body>
+              </Card>
+            </Col>
 
-                  <div className="text-end flex-shrink-0 ps-3">
-                    <div className="fw-bold fs-6" style={{ color: 'var(--ara-gold-hover, #7A5C3A)' }}>
-                      {Number(subtotal).toLocaleString('vi-VN')} đ
-                    </div>
-                    <div className="text-muted small" style={{ fontSize: '0.72rem' }}>
-                      {Number(it.unitSalePrice || it.finalPrice || 0).toLocaleString('vi-VN')} đ × <strong>{it.orderedQty}</strong>
-                    </div>
+            {/* Cột phải: Tài chính & Tiền COD */}
+            <Col md={6}>
+              <Card className="h-100 shadow-sm">
+                <SectionTitle icon="cash-coin">Tóm Tắt Thanh Toán</SectionTitle>
+                <Card.Body className="small">
+                  <div className="d-flex justify-content-between text-secondary mb-1">
+                    <span>Tiền hàng ({items.length} món)</span>
+                    <span className="fw-semibold text-body">{formatVnd(financial.itemsSubtotal)}</span>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                  <div className="d-flex justify-content-between text-secondary mb-1">
+                    <span>Phí giao hàng</span>
+                    <span className="fw-semibold text-body">{formatVnd(financial.shippingFee)}</span>
+                  </div>
+                  {financial.discountAmount > 0 && (
+                    <div className="d-flex justify-content-between text-success mb-1">
+                      <span>Khuyến mãi / Giảm giá</span>
+                      <span className="fw-semibold">-{formatVnd(financial.discountAmount)}</span>
+                    </div>
+                  )}
+                  <div className="d-flex justify-content-between align-items-center pt-2 mt-2 border-top fw-bold">
+                    <span>Tổng thu hộ (COD):</span>
+                    <span className="fs-5 text-warning-emphasis">{formatVnd(totalCodAmount)}</span>
+                  </div>
+                </Card.Body>
+              </Card>
+            </Col>
+          </Row>
 
-        {/* Khối 3: Cập nhật trạng thái đơn (Pancake Flow) */}
-        <div className="p-3 bg-white rounded-3 border shadow-sm" style={{ borderColor: 'var(--ara-border, #E3D9CD)' }}>
-          <div
-            className="d-flex align-items-center justify-content-between mb-2.5 pb-1.5 border-bottom text-uppercase fw-bold"
-            style={{ fontSize: '0.74rem', letterSpacing: '0.06em', color: 'var(--ara-gold-hover, #7A5C3A)' }}
-          >
-            <span className="d-flex align-items-center gap-2">
-              <Truck size={14} /> Chuyển Đổi Trạng Thái Đơn Hàng (Pancake)
-            </span>
-            {updating && <span className="spinner-border spinner-border-sm text-secondary" />}
-          </div>
-
-          <div className="d-flex flex-wrap gap-2">
-            {ORDER_STATUSES.map((s) => {
-              const isCurrent = status === s.value;
-              return (
-                <button
-                  key={s.value}
-                  type="button"
-                  className={`btn btn-sm d-flex align-items-center gap-1.5 rounded-pill px-3 py-1.5 transition-all ${
-                    isCurrent ? 'shadow-sm' : ''
-                  }`}
-                  style={{
-                    background: isCurrent ? s.color : s.bg,
-                    borderColor: s.color,
-                    color: isCurrent ? '#FFFFFF' : s.color,
-                    fontSize: '0.78rem',
-                    fontWeight: isCurrent ? 700 : 500,
-                    opacity: updating ? 0.6 : 1,
-                  }}
-                  onClick={() => handleUpdateStatus(s.value)}
-                  disabled={updating}
-                  title={`Chuyển trạng thái sang "${s.label}"`}
-                >
-                  {isCurrent && <CheckCircle2 size={13} />}
-                  <span>{s.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </Modal.Body>
-
-      {/* Footer rõ ràng, nút bấm nổi bật */}
-      <Modal.Footer className="p-3 border-top bg-white d-flex align-items-center justify-content-between">
-        <div className="text-muted small">
-          Mã giao dịch nội bộ: <span className="font-monospace text-dark">{order._id}</span>
-        </div>
-        <div className="d-flex align-items-center gap-2">
-          <button
-            type="button"
-            className="btn btn-outline-secondary px-4 py-1.5 rounded-2"
-            style={{ fontSize: '0.84rem' }}
-            onClick={onClose}
-          >
-            Đóng
-          </button>
-          {/* [BR: GBR-14] [BR: GBR-15] Cho phép tạo yêu cầu đổi/trả RMA nếu đơn hàng hợp lệ */}
-          {onOpenRma && !['CANCELLED', 'RETURNED'].includes(status) && (
-            <button
-              type="button"
-              className="btn btn-warning px-3 py-1.5 rounded-2 d-flex align-items-center gap-1.5 fw-bold text-dark border-0 shadow-sm"
-              style={{ background: '#FDE68A', fontSize: '0.84rem' }}
-              onClick={() => { onClose(); onOpenRma(order); }}
+          {/* Khối 2: Danh sách sản phẩm chi tiết */}
+          <Card className="shadow-sm">
+            <SectionTitle
+              icon="box-seam"
+              right={<span className="fw-normal text-secondary text-capitalize">Bán buôn &amp; bán lẻ tại quầy</span>}
             >
-              <RotateCcw size={14} /> Tạo Đổi / Trả Hàng (RMA)
-            </button>
-          )}
-        </div>
-      </Modal.Footer>
-    </Modal>
+              Danh Sách Kiện Hàng ({items.length})
+            </SectionTitle>
+            <ListGroup variant="flush">
+              {items.map((it, idx) => {
+                const sku = it.skuId || it;
+                const unitPrice = Number(it.unitSalePrice || it.finalPrice || 0);
+                const subtotal = (it.orderedQty || 1) * unitPrice;
+
+                return (
+                  <ListGroup.Item key={idx} className="d-flex align-items-center justify-content-between gap-3">
+                    <div className="d-flex align-items-center gap-3 text-truncate">
+                      <Badge bg="light" text="secondary" className="border fs-6">{idx + 1}</Badge>
+                      <div className="text-truncate">
+                        <div className="fw-bold text-truncate">{sku.styleName || sku.skuCode || it.skuCode}</div>
+                        <div className="small text-secondary">
+                          <span className="font-monospace">{sku.skuCode || it.skuCode}</span>
+                          {' · '}Size: <strong className="text-body">{sku.size || it.size || 'F'}</strong>
+                          {sku.color && <>{' · '}Màu: <strong className="text-body">{sku.color}</strong></>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-end flex-shrink-0">
+                      <div className="fw-bold text-warning-emphasis">{formatVnd(subtotal)}</div>
+                      <div className="small text-secondary">
+                        {formatVnd(unitPrice)} × <strong>{it.orderedQty}</strong>
+                      </div>
+                    </div>
+                  </ListGroup.Item>
+                );
+              })}
+            </ListGroup>
+          </Card>
+
+          {/* Khối 3: Cập nhật trạng thái đơn (Pancake Flow) */}
+          <Card className="shadow-sm">
+            <SectionTitle icon="truck" right={updating && <Spinner animation="border" size="sm" />}>
+              Chuyển Đổi Trạng Thái Đơn Hàng (Pancake)
+            </SectionTitle>
+            <Card.Body className="d-flex flex-wrap gap-2">
+              {ORDER_STATUSES.map((s) => {
+                const isCurrent = status === s.value;
+                const variant = ORDER_STATUS_VARIANT[s.value] || 'secondary';
+                return (
+                  <Button
+                    key={s.value}
+                    size="sm"
+                    className="rounded-pill d-flex align-items-center gap-1"
+                    variant={isCurrent ? variant : `outline-${variant}`}
+                    onClick={() => handleUpdateStatus(s.value)}
+                    disabled={updating}
+                    title={`Chuyển trạng thái sang "${s.label}"`}
+                  >
+                    {isCurrent && <Icon name="check-circle-fill" />}
+                    {s.label}
+                  </Button>
+                );
+              })}
+            </Card.Body>
+          </Card>
+        </Modal.Body>
+
+        {/* Footer */}
+        <Modal.Footer className="justify-content-between">
+          <div className="text-secondary small">
+            Mã giao dịch nội bộ: <span className="font-monospace text-body">{order._id}</span>
+          </div>
+          <Stack direction="horizontal" gap={2}>
+            <Button variant="outline-secondary" size="sm" onClick={onClose}>
+              Đóng
+            </Button>
+            {/* [BR: GBR-14] [BR: GBR-15] Cho phép tạo yêu cầu đổi/trả RMA nếu đơn hàng hợp lệ */}
+            {onOpenRma && !['CANCELLED', 'RETURNED'].includes(status) && (
+              <Button
+                variant="warning"
+                size="sm"
+                className="fw-bold d-flex align-items-center gap-1"
+                onClick={() => { onClose(); onOpenRma(order); }}
+              >
+                <Icon name="arrow-counterclockwise" /> Tạo Đổi / Trả Hàng (RMA)
+              </Button>
+            )}
+          </Stack>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal Prompt thay thế window.prompt() của trình duyệt */}
+      <Modal
+        show={promptDialog.isOpen}
+        onHide={() => setPromptDialog({ ...promptDialog, isOpen: false })}
+        centered
+        size="sm"
+      >
+        <Form onSubmit={handleConfirmPrompt}>
+          <Modal.Header closeButton>
+            <Modal.Title as="h6" className="fw-bold d-flex align-items-center gap-2">
+              <Icon name="pencil-square" className="text-warning-emphasis" />
+              {promptDialog.title}
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <Form.Group controlId="modal-prompt-input">
+              <Form.Label className="small fw-semibold">{promptDialog.label}</Form.Label>
+              <Form.Control
+                size="sm"
+                value={promptDialog.value}
+                onChange={(e) => setPromptDialog({ ...promptDialog, value: e.target.value })}
+                autoFocus
+                required
+              />
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer className="py-2">
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPromptDialog({ ...promptDialog, isOpen: false })}
+            >
+              Hủy
+            </Button>
+            <Button size="sm" variant="dark" type="submit">
+              Xác nhận
+            </Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+    </>
   );
 };
 
