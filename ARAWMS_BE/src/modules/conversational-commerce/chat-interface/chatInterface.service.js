@@ -225,7 +225,9 @@ export const sendCustomerMessage = async (conversationId, { messageText, attachm
   const customer = conversation.customerId;
   let fbMessageId = null;
 
-  if (customer && customer.facebookPsid && ENV.FB.PAGE_ACCESS_TOKEN) {
+  const pageToken = ENV.FB.getPageToken(conversation.pageId);
+
+  if (customer && customer.facebookPsid && pageToken) {
     try {
       const fbPayload = {
         recipient: { id: customer.facebookPsid },
@@ -245,7 +247,7 @@ export const sendCustomerMessage = async (conversationId, { messageText, attachm
         'https://graph.facebook.com/v19.0/me/messages',
         fbPayload,
         {
-          params: { access_token: ENV.FB.PAGE_ACCESS_TOKEN },
+          params: { access_token: pageToken },
           timeout: 10000,
         }
       );
@@ -304,7 +306,8 @@ export const sendCustomerAttachments = async (conversationId, files = [], messag
   }
 
   const customer = conversation.customerId;
-  const canPushToFacebook = Boolean(customer?.facebookPsid && ENV.FB.PAGE_ACCESS_TOKEN);
+  const pageToken = ENV.FB.getPageToken(conversation.pageId);
+  const canPushToFacebook = Boolean(customer?.facebookPsid && pageToken);
   const attachments = [];
   let fbMessageId = null;
 
@@ -314,7 +317,7 @@ export const sendCustomerAttachments = async (conversationId, files = [], messag
       const textRes = await axios.post(
         'https://graph.facebook.com/v19.0/me/messages',
         { recipient: { id: customer.facebookPsid }, message: { text: messageText } },
-        { params: { access_token: ENV.FB.PAGE_ACCESS_TOKEN }, timeout: 10000 }
+        { params: { access_token: pageToken }, timeout: 10000 }
       );
       fbMessageId = textRes.data?.message_id || null;
     } catch (fbErr) {
@@ -343,7 +346,7 @@ export const sendCustomerAttachments = async (conversationId, files = [], messag
       form.append('filedata', new Blob([buffer], { type: file.mimetype }), file.filename);
 
       const fbRes = await axios.post('https://graph.facebook.com/v19.0/me/messages', form, {
-        params: { access_token: ENV.FB.PAGE_ACCESS_TOKEN },
+        params: { access_token: pageToken },
         timeout: 60000,
         maxBodyLength: Infinity,
       });

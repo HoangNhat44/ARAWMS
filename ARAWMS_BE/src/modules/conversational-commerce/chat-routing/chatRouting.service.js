@@ -20,11 +20,11 @@ import CounterSequence from '../../../models/CounterSequence.model.js';
 import { ENV } from '../../../config/env.js';
 
 /**
- * Lấy thông tin họ tên công khai từ Facebook Graph API theo PSID
+ * Lấy thông tin họ tên công khai từ Facebook Graph API theo PSID và pageId tương ứng
  */
-const fetchFacebookProfile = async (psid) => {
+const fetchFacebookProfile = async (psid, pageId) => {
   try {
-    const token = ENV.FB.PAGE_ACCESS_TOKEN;
+    const token = ENV.FB.getPageToken(pageId);
     if (!token) return null;
 
     const response = await axios.get(`https://graph.facebook.com/v19.0/${psid}`, {
@@ -41,7 +41,7 @@ const fetchFacebookProfile = async (psid) => {
       return fullName || null;
     }
   } catch (error) {
-    console.warn(`[Facebook API] Không thể lấy profile cho PSID ${psid}:`, error.response?.data?.error?.message || error.message);
+    console.warn(`[Facebook API] Không thể lấy profile cho PSID ${psid} (Page: ${pageId}):`, error.response?.data?.error?.message || error.message);
   }
   return null;
 };
@@ -75,11 +75,12 @@ export const findBestAvailableSeller = async () => {
 };
 
 /**
- * Xử lý sự kiện tin nhắn đến từ Facebook Webhook (UC-69)
+ * Xử lý sự kiện tin nhắn đến từ Facebook Webhook (UC-69, Đa Fanpage)
  */
-export const processInboundWebhookMessage = async (messagingEvent) => {
+export const processInboundWebhookMessage = async (messagingEvent, entryPageId = null) => {
   const senderPsid = messagingEvent.sender?.id;
-  const recipientPageId = messagingEvent.recipient?.id;
+  const recipientPageId = entryPageId || messagingEvent.recipient?.id || ENV.FB.PAGE_ID;
+  const pageName = ENV.FB.getPageName(recipientPageId);
   const messageData = messagingEvent.message;
 
   if (!senderPsid || !messageData) {
@@ -102,16 +103,16 @@ export const processInboundWebhookMessage = async (messagingEvent) => {
   // 1. Tìm hoặc tạo Customer theo facebookPsid
   let customer = await Customer.findOne({ facebookPsid: senderPsid });
   if (!customer) {
-    const fbName = await fetchFacebookProfile(senderPsid);
+    const fbName = await fetchFacebookProfile(senderPsid, recipientPageId);
     const customerCode = await CounterSequence.getNextSequence('CUSTOMER_CODE', 'CUST', 5);
 
     customer = await Customer.create({
       customerCode,
       facebookPsid: senderPsid,
-      fullName: fbName || `Khách Facebook ${senderPsid.slice(-4)}`,
-      tags: ['Khách mới Facebook'],
+      fullName: fbName || `Khách ${pageName} ${senderPsid.slice(-4)}`,
+      tags: ['Khách mới Facebook', pageName].filter(Boolean),
     });
-    console.log(`✨ [UC-69] Đã tạo hồ sơ khách hàng mới: ${customer.customerCode} (${customer.fullName})`);
+    console.log(`✨ [UC-69] Đã tạo hồ sơ khách hàng mới: ${customer.customerCode} (${customer.fullName}) [${pageName}]`);
   }
 
   // 2. Tìm hoặc tạo ChatConversation
@@ -131,7 +132,7 @@ export const processInboundWebhookMessage = async (messagingEvent) => {
     assignedSeller = await findBestAvailableSeller();
     if (assignedSeller) {
       await User.findByIdAndUpdate(assignedSeller._id, { $inc: { activeChatCount: 1 } });
-      console.log(`🎯 [UC-69] Tự động phân bổ khách ${customer.fullName} cho Seller: ${assignedSeller.fullName} (${assignedSeller.employeeCode})`);
+      console.log(`🎯 [UC-69] Tự động phân bổ khách ${customer.fullName} [${pageName}] cho Seller: ${assignedSeller.fullName} (${assignedSeller.employeeCode})`);
     }
   }
 
@@ -140,15 +141,26 @@ export const processInboundWebhookMessage = async (messagingEvent) => {
   if (!conversation) {
     conversation = await ChatConversation.create({
       fbConversationId,
+      pageId: recipientPageId,
+      pageName,
       customerId: customer._id,
       assignedSellerId: assignedSeller ? assignedSeller._id : null,
       status: 'ACTIVE',
       lastMessagePreview: preview,
       lastMessageAt: sentAt,
       unreadCount: 1,
-      tags: ['Facebook'],
+      tags: ['Facebook', pageName].filter(Boolean),
     });
   } else {
+    // Cập nhật pageId, pageName nếu hội thoại chưa có
+    if (!conversation.pageId && recipientPageId) {
+      conversation.pageId = recipientPageId;
+      conversation.pageName = pageName;
+    }
+    // Gắn tag tên trang vào hội thoại nếu chưa có
+    if (pageName && !conversation.tags?.includes(pageName)) {
+      conversation.tags = [...(conversation.tags || []), pageName];
+    }
     conversation.lastMessagePreview = preview;
     conversation.lastMessageAt = sentAt;
     conversation.unreadCount = (conversation.unreadCount || 0) + 1;

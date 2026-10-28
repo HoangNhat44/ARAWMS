@@ -6,6 +6,8 @@ const { Schema } = mongoose;
 const chatConversationSchema = new Schema(
   {
     fbConversationId: { type: String, required: true, unique: true, index: true },
+    pageId: { type: String, index: true },
+    pageName: { type: String },
     customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: true, index: true },
     assignedSellerId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
     tags: [String],

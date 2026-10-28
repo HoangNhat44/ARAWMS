@@ -274,6 +274,11 @@ const ChatBox = ({
             <Stack direction="horizontal" gap={2}>
               <h5 className="fw-bold mb-0 fs-6">{customer?.fullName || 'Khách hàng'}</h5>
               <Badge bg="primary-subtle" text="primary-emphasis">Facebook Messenger</Badge>
+              {conversation?.pageName && (
+                <Badge bg={conversation.pageName === 'Learnmate' ? 'info' : 'primary'} pill>
+                  {conversation.pageName}
+                </Badge>
+              )}
             </Stack>
             <div className="text-secondary small">
               Mã: <strong className="text-body">{customer?.customerCode || 'N/A'}</strong>

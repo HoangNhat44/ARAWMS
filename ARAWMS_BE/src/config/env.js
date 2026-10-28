@@ -24,6 +24,39 @@ export const ENV = {
     PAGE_ACCESS_TOKEN: process.env.FB_PAGE_ACCESS_TOKEN,
     VERIFY_TOKEN: process.env.FB_VERIFY_TOKEN || 'arawms_fb_verify_token_2026',
     PAGE_ID: process.env.FB_PAGE_ID,
+    PAGE_NAME: process.env.FB_PAGE_NAME || 'AraStore',
+
+    // Cấu hình đa Fanpage (đọc động 100% từ biến môi trường .env)
+    PAGES: {
+      ...(process.env.FB_PAGE_ID && {
+        [process.env.FB_PAGE_ID]: {
+          pageId: process.env.FB_PAGE_ID,
+          token: process.env.FB_PAGE_ACCESS_TOKEN,
+          name: process.env.FB_PAGE_NAME || 'AraStore',
+        },
+      }),
+      ...(process.env.FB_PAGE_LEARNMATE_ID && {
+        [process.env.FB_PAGE_LEARNMATE_ID]: {
+          pageId: process.env.FB_PAGE_LEARNMATE_ID,
+          token: process.env.FB_PAGE_LEARNMATE_ACCESS_TOKEN,
+          name: process.env.FB_PAGE_LEARNMATE_NAME || 'Learnmate',
+        },
+      }),
+    },
+
+    getPageToken(pageId) {
+      if (pageId && this.PAGES[pageId]?.token) {
+        return this.PAGES[pageId].token;
+      }
+      return this.PAGE_ACCESS_TOKEN;
+    },
+
+    getPageName(pageId) {
+      if (pageId && this.PAGES[pageId]?.name) {
+        return this.PAGES[pageId].name;
+      }
+      return this.PAGE_NAME || 'Facebook';
+    },
   },
 };
 

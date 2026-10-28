@@ -44,15 +44,16 @@ export const handleInboundMessage = async (req, res) => {
       res.status(200).send('EVENT_RECEIVED');
 
       for (const entry of body.entry) {
+        const pageId = entry.id;
         const messagingList = entry.messaging || [];
         for (const webhookEvent of messagingList) {
           if (webhookEvent && webhookEvent.message) {
             const senderPsid = webhookEvent.sender.id;
-            console.log(`📩 [Messenger Inbound] Nhận tin nhắn từ PSID ${senderPsid}: "${webhookEvent.message.text || '[Tập tin]'}"`);
+            console.log(`📩 [Messenger Inbound - Page: ${pageId}] Nhận tin nhắn từ PSID ${senderPsid}: "${webhookEvent.message.text || '[Tập tin]'}"`);
 
             // Xử lý lưu hội thoại và tự động phân bổ Seller (UC-69)
             try {
-              await chatRoutingService.processInboundWebhookMessage(webhookEvent);
+              await chatRoutingService.processInboundWebhookMessage(webhookEvent, pageId);
             } catch (serviceErr) {
               console.error('❌ [UC-69 Error] Lỗi khi xử lý phân bổ Seller:', serviceErr);
             }

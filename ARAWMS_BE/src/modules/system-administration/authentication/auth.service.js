@@ -13,12 +13,16 @@ export const login = async ({ usernameOrEmail, password }) => {
 
   // Tìm theo email hoặc employeeCode (chuẩn theo User.model.js)
   const orConditions = [
-    { email: cleanInput },
+    { email: new RegExp(`^${cleanInput}$`, 'i') },
     { employeeCode: cleanInput.toUpperCase() },
   ];
 
   if (cleanInput === 'admin' || cleanInput === 'admin@arawms.com') {
     orConditions.push({ email: 'owner@arawms.com' }, { roleCode: 'OWNER' });
+  }
+
+  if (cleanInput === 'seller' || cleanInput === 'seller01@arawms.vn' || cleanInput === 'seller@arawms.vn') {
+    orConditions.push({ email: 'seller@arawms.com' }, { employeeCode: 'SEL001' }, { employeeCode: 'SE001' });
   }
 
   const user = await User.findOne({ $or: orConditions }).select('+passwordHash');

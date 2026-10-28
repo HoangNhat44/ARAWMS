@@ -126,8 +126,20 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
                   {/* Conversation Details */}
                   <div className="flex-grow-1 overflow-hidden">
                     <div className="d-flex align-items-center justify-content-between mb-1">
-                      <span className="fw-bold text-truncate small">{customer?.fullName || 'Khách chưa đặt tên'}</span>
-                      <span className="text-secondary small flex-shrink-0 ms-2">
+                      <div className="d-flex align-items-center gap-1 overflow-hidden me-1">
+                        <span className="fw-bold text-truncate small">{customer?.fullName || 'Khách chưa đặt tên'}</span>
+                        {conv.pageName && (
+                          <Badge
+                            bg={conv.pageName === 'Learnmate' ? 'info' : 'primary'}
+                            className="px-1 py-0 flex-shrink-0"
+                            style={{ fontSize: '10px' }}
+                            pill
+                          >
+                            {conv.pageName}
+                          </Badge>
+                        )}
+                      </div>
+                      <span className="text-secondary small flex-shrink-0 ms-1">
                         {conv.lastMessageAt
                           ? new Date(conv.lastMessageAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
                           : ''}
