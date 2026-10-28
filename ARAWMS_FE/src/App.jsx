@@ -15,7 +15,12 @@ import Footer from './components/common/Footer';
 /** Composes routing, authentication, navigation, and the background video runner. */
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true
+      }}
+    >
       {/* <AuthProvider> */}
         {/* <PackingUploadRunner /> */}
         <div className="app-container">
