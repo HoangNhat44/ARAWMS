@@ -23,6 +23,7 @@ import {
   getTagList,
   createCustomTag,
   deleteCustomTag,
+  markConversationAsRead,
 } from './chatInterface.controller.js';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
@@ -38,6 +39,8 @@ router.use(authorizeRole('SELLER', 'OWNER', 'WAREHOUSE_MANAGER'));
 router.get('/', getConversations);
 router.get('/:id', getConversationById);
 router.get('/:id/messages', getConversationMessages);
+router.patch('/:id/read', markConversationAsRead);
+router.post('/:id/read', markConversationAsRead);
 
 // UC-74: Gửi tin nhắn cho khách hàng
 router.post('/:id/messages', validateSendMessage, sendCustomerMessage);

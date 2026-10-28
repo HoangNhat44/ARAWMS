@@ -195,3 +195,16 @@ export const deleteCustomTag = async (req, res) => {
   }
 };
 
+/**
+ * Đánh dấu toàn bộ tin nhắn trong cuộc trò chuyện là đã đọc
+ * PATCH /api/conversations/:id/read
+ */
+export const markConversationAsRead = async (req, res) => {
+  try {
+    const result = await chatInterfaceService.markConversationAsRead(req.params.id);
+    return successResponse(res, result, 'Đã đánh dấu đã đọc');
+  } catch (error) {
+    return errorResponse(res, error.message, 400);
+  }
+};
+

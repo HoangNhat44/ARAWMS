@@ -9,7 +9,7 @@ import path from 'path';
 import cors from 'cors';
 import morgan from 'morgan';
 import apiRoutes from './routes/api.js';
-import { notFoundHandler, globalErrorHandler,errorHandler } from './common/middlewares/errorHandler.js';
+import { globalErrorHandler } from './common/middlewares/errorHandler.js';
 // Import toàn bộ models để đảm bảo tất cả Mongoose schemas đã đăng ký trước khi bất kỳ populate() nào được gọi
 import './models/index.js';
 
@@ -53,6 +53,6 @@ app.use((req, res) => {
 });
 
 // Global Error Handler
-app.use(errorHandler);
+app.use(globalErrorHandler);
 
 export default app;

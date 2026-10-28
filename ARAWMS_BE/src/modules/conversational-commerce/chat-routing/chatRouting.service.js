@@ -18,6 +18,7 @@ import ChatMessage from '../../../models/ChatMessage.model.js';
 import User from '../../../models/User.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import { ENV } from '../../../config/env.js';
+import { emitNewMessage, emitConversationUpdated } from '../../../config/socket.js';
 
 /**
  * Lấy thông tin họ tên công khai từ Facebook Graph API theo PSID và pageId tương ứng
@@ -180,6 +181,15 @@ export const processInboundWebhookMessage = async (messagingEvent, entryPageId =
     attachments,
     sentAt,
   });
+
+  // 4. Phát sự kiện realtime qua Socket.io
+  try {
+    const populatedConv = await ChatConversation.findById(conversation._id).populate('customerId').lean();
+    emitNewMessage(conversation._id, chatMessage);
+    emitConversationUpdated(populatedConv || conversation);
+  } catch (err) {
+    console.warn('⚠️ Lỗi phát socket chatRouting:', err.message);
+  }
 
   return {
     customer,

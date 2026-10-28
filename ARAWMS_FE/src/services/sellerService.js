@@ -24,6 +24,7 @@ export const sellerService = {
   }),
   addTag: (id, tag) => api.post(`/conversations/${id}/tags`, { tag }),
   removeTag: (id, tag) => api.delete(`/conversations/${id}/tags/${encodeURIComponent(tag)}`),
+  markConversationAsRead: (id) => api.patch(`/conversations/${id}/read`),
 
   // === TAG MANAGEMENT (UC-73 - Tags lưu DB) ===
   getTagList: () => api.get('/conversations/tags/list'),

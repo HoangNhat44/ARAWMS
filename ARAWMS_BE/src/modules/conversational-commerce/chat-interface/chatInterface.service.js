@@ -20,6 +20,7 @@ import Customer from '../../../models/Customer.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
 import { ENV } from '../../../config/env.js';
 import { resolveAttachmentType } from '../../../common/middlewares/chatUpload.js';
+import { emitNewMessage, emitConversationUpdated, emitConversationRead } from '../../../config/socket.js';
 
 /**
  * Ghi SystemLog kiểm toán
@@ -52,12 +53,12 @@ export const getConversations = async (filters, user) => {
   const { status, tag, search, page = 1, limit = 20 } = filters;
   const query = {};
 
-  if (user.roleCode === 'SELLER') {
-    if (filters.viewAll !== 'true') {
-      query.assignedSellerId = user._id;
-    }
-  } else if (filters.assignedSellerId) {
+  // Cho phép tất cả tài khoản Seller cùng nhận và xem toàn bộ hội thoại từ Fanpage (Hộp thư chung / Shared Inbox)
+  // Chỉ lọc riêng khi truyền assignedSellerId hoặc lọc riêng cá nhân
+  if (filters.assignedSellerId) {
     query.assignedSellerId = filters.assignedSellerId;
+  } else if (filters.onlyMyChats === 'true') {
+    query.assignedSellerId = user._id;
   }
 
   if (status) query.status = status;
@@ -120,10 +121,10 @@ export const getConversationById = async (conversationId, user) => {
     throw new Error('Cuộc hội thoại không tồn tại');
   }
 
-  if (user.roleCode === 'SELLER' && String(conversation.assignedSellerId?._id) === String(user._id)) {
-    await ChatConversation.findByIdAndUpdate(conversationId, { unreadCount: 0 });
-    conversation.unreadCount = 0;
-  }
+  // Khi mở xem chi tiết, đánh dấu đã đọc
+  await ChatConversation.findByIdAndUpdate(conversationId, { unreadCount: 0 });
+  conversation.unreadCount = 0;
+  emitConversationRead(conversationId);
 
   return conversation;
 };
@@ -133,6 +134,10 @@ export const getConversationById = async (conversationId, user) => {
  */
 export const getConversationMessages = async (conversationId, { page = 1, limit = 50 }) => {
   const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
+
+  // Đánh dấu đã đọc khi người bán mở xem tin nhắn
+  await ChatConversation.findByIdAndUpdate(conversationId, { unreadCount: 0 });
+  emitConversationRead(conversationId);
 
   const [messages, total] = await Promise.all([
     ChatMessage.find({ conversationId })
@@ -275,6 +280,15 @@ export const sendCustomerMessage = async (conversationId, { messageText, attachm
   conversation.lastMessageAt = new Date();
   await conversation.save();
 
+  // Phát socket realtime
+  try {
+    emitNewMessage(conversationId, newMessage);
+    const populatedConv = await ChatConversation.findById(conversationId).populate('customerId').lean();
+    emitConversationUpdated(populatedConv || conversation);
+  } catch (socketErr) {
+    console.warn('⚠️ Lỗi phát socket sendCustomerMessage:', socketErr.message);
+  }
+
   return newMessage;
 };
 
@@ -381,7 +395,25 @@ export const sendCustomerAttachments = async (conversationId, files = [], messag
     req,
   });
 
+  // Phát socket realtime
+  try {
+    emitNewMessage(conversationId, newMessage);
+    const populatedConv = await ChatConversation.findById(conversationId).populate('customerId').lean();
+    emitConversationUpdated(populatedConv || conversation);
+  } catch (socketErr) {
+    console.warn('⚠️ Lỗi phát socket sendCustomerAttachments:', socketErr.message);
+  }
+
   return newMessage;
+};
+
+/**
+ * Đánh dấu toàn bộ tin nhắn của cuộc hội thoại là đã đọc
+ */
+export const markConversationAsRead = async (conversationId) => {
+  await ChatConversation.findByIdAndUpdate(conversationId, { unreadCount: 0 });
+  emitConversationRead(conversationId);
+  return { success: true };
 };
 
 export default {
@@ -392,4 +424,5 @@ export default {
   removeConversationTag,
   sendCustomerMessage,
   sendCustomerAttachments,
+  markConversationAsRead,
 };
