@@ -6,17 +6,26 @@
  */
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth';
+// import { useAuth } from '../../hooks/useAuth';
 import { LogOut, User as UserIcon, LogIn, Shield } from 'lucide-react';
 
 /** Renders navigation allowed by the signed-in user's roles.
  * Logging out clears shared auth state before redirecting to sign-in. */
 const Navbar = () => {
-  const { user, logout } = useAuth();
+  // const { user, logout } = useAuth();
   const navigate = useNavigate();
 
+  // Mock user for testing without authentication
+  const user = {
+    _id: '507f1f77bcf86cd799439011',
+    username: 'test',
+    fullName: 'Test User',
+    roles: ['OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'SELLER'],
+    warehouseIds: []
+  };
+
   const handleLogout = () => {
-    logout();
+    // logout();
     navigate('/login');
   };
 
