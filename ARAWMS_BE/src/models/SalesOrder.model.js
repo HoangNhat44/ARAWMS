@@ -79,5 +79,11 @@ const salesOrderSchema = new Schema(
 
 salesOrderSchema.plugin(baseSchemaPlugin);
 
+// Compound indexes phục vụ tối ưu truy vấn danh sách đơn hàng của Seller (UC-80)
+salesOrderSchema.index({ sellerId: 1, status: 1, createdAt: -1 });
+salesOrderSchema.index({ customerId: 1, createdAt: -1 });
+salesOrderSchema.index({ 'shippingRecipient.phone': 1 });
+salesOrderSchema.index({ conversationId: 1 });
+
 const SalesOrder = mongoose.model('SalesOrder', salesOrderSchema);
 export default SalesOrder;

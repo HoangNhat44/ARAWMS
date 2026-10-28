@@ -27,6 +27,10 @@ const PAYMENT_METHODS = [
   { value: 'BANK_TRANSFER', label: 'Chuyển khoản', icon: 'bank' },
 ];
 
+// Module-level cache để tái sử dụng danh sách SKU gợi ý giữa các lần đổi trang / tab (TTL: 60s)
+let globalCachedSkus = null;
+let globalCachedTime = 0;
+
 /**
  * Component Panel tạo đơn nhanh cho Seller, tích hợp kiểm tra tồn kho realtime và giữ chỗ kho.
  *
@@ -40,7 +44,7 @@ const PAYMENT_METHODS = [
 const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-  const [defaultSkus, setDefaultSkus] = useState([]);
+  const [defaultSkus, setDefaultSkus] = useState(globalCachedSkus || []);
   const [loadingDefaultSkus, setLoadingDefaultSkus] = useState(false);
   const [searching, setSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -65,22 +69,29 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
     }
   }, [customer?._id]);
 
-  // 2. Tự động tải danh sách sản phẩm có sẵn trong kho ngay khi mở bảng tạo đơn
+  // 2. Tự động tải danh sách sản phẩm có sẵn trong kho ngay khi mở bảng tạo đơn (ưu tiên cache 60s)
   useEffect(() => {
     fetchAvailableSkus();
   }, []);
 
-  const fetchAvailableSkus = async () => {
+  const fetchAvailableSkus = async (force = false) => {
+    const now = Date.now();
+    if (!force && globalCachedSkus && now - globalCachedTime < 60000) {
+      setDefaultSkus(globalCachedSkus);
+      return;
+    }
     try {
       setLoadingDefaultSkus(true);
       const res = await sellerService.lookupRealtimeStock('');
       if (res.success) {
         const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+        globalCachedSkus = items;
+        globalCachedTime = Date.now();
         setDefaultSkus(items);
       }
     } catch (err) {
       console.warn('Lỗi tải danh sách sản phẩm:', err.message);
-      setDefaultSkus([]);
+      if (!globalCachedSkus) setDefaultSkus([]);
     } finally {
       setLoadingDefaultSkus(false);
     }
@@ -210,6 +221,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
             if (confirmRes.success) order = confirmRes.data;
           }
         }
+        globalCachedSkus = null; // Xóa cache để lượt sau lấy số lượng tồn mới nhất
         setSuccessOrder(order);
         if (onOrderCreated) onOrderCreated(order);
       }

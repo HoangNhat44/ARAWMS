@@ -16,6 +16,7 @@ import fs from 'fs';
 import axios from 'axios';
 import ChatConversation from '../../../models/ChatConversation.model.js';
 import ChatMessage from '../../../models/ChatMessage.model.js';
+import Customer from '../../../models/Customer.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
 import { ENV } from '../../../config/env.js';
 import { resolveAttachmentType } from '../../../common/middlewares/chatUpload.js';
@@ -62,31 +63,38 @@ export const getConversations = async (filters, user) => {
   if (status) query.status = status;
   if (tag) query.tags = tag;
 
-  const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
-
-  let conversationList = await ChatConversation.find(query)
-    .populate('customerId', 'customerCode fullName phone email tags addresses totalOrders totalSpent facebookPsid')
-    .populate('assignedSellerId', 'employeeCode fullName email')
-    .sort({ lastMessageAt: -1, updatedAt: -1 })
-    .skip(skip)
-    .limit(Number(limit))
-    .lean();
-
+  // Xử lý tìm kiếm tối ưu ở tầng cơ sở dữ liệu (Database-level Search)
   if (search && search.trim()) {
-    const s = search.trim().toLowerCase();
-    conversationList = conversationList.filter((conv) => {
-      const cust = conv.customerId;
-      if (!cust) return false;
-      return (
-        (cust.fullName && cust.fullName.toLowerCase().includes(s)) ||
-        (cust.phone && cust.phone.includes(s)) ||
-        (cust.customerCode && cust.customerCode.toLowerCase().includes(s)) ||
-        (conv.lastMessagePreview && conv.lastMessagePreview.toLowerCase().includes(s))
-      );
-    });
+    const s = search.trim();
+    const safeRegex = new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const matchedCustomers = await Customer.find({
+      $or: [
+        { fullName: safeRegex },
+        { phone: safeRegex },
+        { customerCode: safeRegex },
+      ],
+    }).select('_id').lean();
+    const customerIds = matchedCustomers.map((c) => c._id);
+
+    query.$or = [
+      { customerId: { $in: customerIds } },
+      { lastMessagePreview: safeRegex },
+    ];
   }
 
-  const total = await ChatConversation.countDocuments(query);
+  const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
+
+  // Chạy song song query dữ liệu và countDocuments để giảm 50% thời gian chờ
+  const [conversationList, total] = await Promise.all([
+    ChatConversation.find(query)
+      .populate('customerId', 'customerCode fullName phone email tags addresses totalOrders totalSpent facebookPsid')
+      .populate('assignedSellerId', 'employeeCode fullName email')
+      .sort({ lastMessageAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .lean(),
+    ChatConversation.countDocuments(query),
+  ]);
 
   return {
     items: conversationList,
@@ -126,15 +134,16 @@ export const getConversationById = async (conversationId, user) => {
 export const getConversationMessages = async (conversationId, { page = 1, limit = 50 }) => {
   const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
 
-  const messages = await ChatMessage.find({ conversationId })
-    .populate('senderSellerId', 'employeeCode fullName')
-    .populate('referencedSkuId', 'skuCode styleName color size retailPrice onHandQty reservedQty')
-    .sort({ sentAt: -1 })
-    .skip(skip)
-    .limit(Number(limit))
-    .lean();
-
-  const total = await ChatMessage.countDocuments({ conversationId });
+  const [messages, total] = await Promise.all([
+    ChatMessage.find({ conversationId })
+      .populate('senderSellerId', 'employeeCode fullName')
+      .populate('referencedSkuId', 'skuCode styleName color size retailPrice onHandQty reservedQty')
+      .sort({ sentAt: -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .lean(),
+    ChatMessage.countDocuments({ conversationId }),
+  ]);
 
   return {
     items: messages.reverse(),

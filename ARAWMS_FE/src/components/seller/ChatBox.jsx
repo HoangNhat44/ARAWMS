@@ -93,28 +93,45 @@ const ChatBox = ({
     }
   };
 
-  /** Xử lý chọn tệp từ máy tính */
+  /** Xử lý chọn tệp từ máy tính - Cache Blob URL để tránh leak bộ nhớ */
   const handleFileSelect = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    if (selectedFiles.length + files.length > 5) {
+    const rawFiles = Array.from(e.target.files || []);
+    if (!rawFiles.length) return;
+    if (selectedFiles.length + rawFiles.length > 5) {
       showWarning('Chỉ được chọn tối đa 5 tệp mỗi lần', 'Giới hạn tệp');
       return;
     }
     // Giới hạn 25MB mỗi tệp
-    for (const f of files) {
+    for (const f of rawFiles) {
       if (f.size > 25 * 1024 * 1024) {
         showWarning(`Tệp "${f.name}" vượt quá dung lượng 25MB cho phép`, 'Dung lượng tệp');
         return;
       }
     }
-    setSelectedFiles((prev) => [...prev, ...files]);
+    const newItems = rawFiles.map((file) => ({
+      file,
+      previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+    }));
+    setSelectedFiles((prev) => [...prev, ...newItems]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const removeSelectedFile = (idx) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== idx));
+    setSelectedFiles((prev) => {
+      const target = prev[idx];
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((_, i) => i !== idx);
+    });
   };
+
+  // Dọn dẹp Blob URL khi unmount
+  useEffect(() => {
+    return () => {
+      selectedFiles.forEach((item) => {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      });
+    };
+  }, [selectedFiles]);
 
   /** Gửi tin nhắn văn bản hoặc tệp đính kèm */
   const handleSendMessage = async (e) => {
@@ -127,13 +144,16 @@ const ChatBox = ({
       // Nếu có chọn tệp -> Gửi qua API upload tệp đính kèm (UC-74)
       if (selectedFiles.length > 0) {
         const formData = new FormData();
-        selectedFiles.forEach((file) => formData.append('files', file));
+        selectedFiles.forEach((item) => formData.append('files', item.file));
         if (text.trim()) formData.append('messageText', text.trim());
 
         const res = await sellerService.sendAttachments(conversation._id, formData);
         if (res.success) {
           setMessages((prev) => [...prev, res.data]);
           setText('');
+          selectedFiles.forEach((item) => {
+            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+          });
           setSelectedFiles([]);
         }
       } else {
@@ -415,14 +435,14 @@ const ChatBox = ({
         {/* Khay preview tệp đính kèm người bán đã chọn */}
         {selectedFiles.length > 0 && (
           <div className="d-flex flex-wrap gap-2 mb-2">
-            {selectedFiles.map((file, idx) => (
+            {selectedFiles.map((item, idx) => (
               <div key={idx} className="d-flex align-items-center gap-1 border rounded-pill ps-1 pe-2 py-1 bg-body-tertiary small">
-                {file.type.startsWith('image/') ? (
-                  <Image src={URL.createObjectURL(file)} alt={file.name} roundedCircle className="object-fit-cover" style={{ width: 22, height: 22 }} />
+                {item.previewUrl ? (
+                  <Image src={item.previewUrl} alt={item.file.name} roundedCircle className="object-fit-cover" style={{ width: 22, height: 22 }} />
                 ) : (
                   <Icon name="file-earmark-text" className="text-warning-emphasis" />
                 )}
-                <span className="text-truncate" style={{ maxWidth: 140 }}>{file.name}</span>
+                <span className="text-truncate" style={{ maxWidth: 140 }}>{item.file.name}</span>
                 <CloseButton style={{ fontSize: '0.6rem' }} onClick={() => removeSelectedFile(idx)} title="Xóa tệp" />
               </div>
             ))}

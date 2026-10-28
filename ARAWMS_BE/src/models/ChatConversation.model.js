@@ -19,5 +19,11 @@ const chatConversationSchema = new Schema(
 
 chatConversationSchema.plugin(baseSchemaPlugin);
 
+// Compound indexes tối ưu truy vấn danh sách hội thoại của Seller (UC-72)
+chatConversationSchema.index({ assignedSellerId: 1, lastMessageAt: -1, _id: -1 });
+chatConversationSchema.index({ assignedSellerId: 1, lastMessageAt: -1 });
+chatConversationSchema.index({ tags: 1, lastMessageAt: -1 });
+chatConversationSchema.index({ status: 1, lastMessageAt: -1 });
+
 const ChatConversation = mongoose.model('ChatConversation', chatConversationSchema);
 export default ChatConversation;

@@ -1,11 +1,12 @@
 /**
  * ============================================================================
- * @title        : Real-time SKU Inventory Widget Service
+ * @title        : Real-time SKU Inventory Widget Service (Optimized)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-10-28
  * @description  : Cung cấp logic tra cứu tồn kho khả dụng theo thời gian thực (UC-77)
  *                 giúp Seller tư vấn chính xác số lượng hàng còn bán được cho khách.
+ *                 (Tối ưu hóa: escapeRegex chống ReDoS/crash, tối ưu truy vấn lean, index).
  * @module       : Conversational Commerce / Inventory Widget
  * @layer        : Service
  * ============================================================================
@@ -14,10 +15,12 @@
 import Sku from '../../../models/Sku.model.js';
 import Product from '../../../models/Product.model.js';
 
+/** Escape ký tự đặc biệt để chuỗi tìm kiếm an toàn tuyệt đối với RegExp */
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * UC-77: Tra cứu số lượng tồn kho khả dụng theo từng mã SKU ngay trong màn hình chat.
- * Tích hợp tìm kiếm đa tầng theo cả collection Product (tên mẫu mã tiếng Việt, mã SP, danh mục)
- * và collection Sku (mã SKU, mã vạch, màu sắc, size).
+ * Tích hợp tìm kiếm đa tầng an toàn theo Product và Sku collection.
  * Công thức: Available = onHandQty - reservedQty
  * @businessRule GBR-10 Phản ánh tồn khả dụng sau khi trừ tồn giữ chỗ
  * @businessRule GBR-08 Kiểm tra ngưỡng cảnh báo tồn kho tối thiểu
@@ -26,17 +29,17 @@ export const lookupRealtimeStock = async (searchQuery) => {
   const filter = { isActive: true };
 
   if (searchQuery && searchQuery.trim()) {
-    const s = searchQuery.trim();
-    const regex = new RegExp(s, 'i');
+    const raw = searchQuery.trim();
+    const safeRegex = new RegExp(escapeRegex(raw), 'i');
 
     // 1. Tìm các sản phẩm trong collection products khớp tên tiếng Việt hoặc mã sản phẩm
     const matchingProducts = await Product.find({
       isActive: true,
       $or: [
-        { productName: regex },
-        { productCode: regex },
-        { category: regex },
-        { sampleCode: regex },
+        { productName: safeRegex },
+        { productCode: safeRegex },
+        { category: safeRegex },
+        { sampleCode: safeRegex },
       ],
     }).select('_id').lean();
 
@@ -44,20 +47,21 @@ export const lookupRealtimeStock = async (searchQuery) => {
 
     // 2. Lọc SKU theo thuộc tính SKU hoặc theo ID sản phẩm khớp
     filter.$or = [
-      { skuCode: regex },
-      { skuBarcode: regex },
-      { styleName: regex },
-      { color: regex },
-      { size: regex },
+      { skuCode: safeRegex },
+      { skuBarcode: safeRegex },
+      { styleName: safeRegex },
+      { color: safeRegex },
+      { size: safeRegex },
       ...(matchingProductIds.length > 0 ? [{ productId: { $in: matchingProductIds } }] : []),
     ];
   }
 
-  // Truy vấn danh sách SKU kèm thông tin từ Product collection
+  // Truy vấn danh sách SKU kèm thông tin từ Product collection (chỉ lấy các trường cần thiết)
   const skus = await Sku.find(filter)
-    .populate('productId', 'productName productCode category season basePrice thumbnailUrl')
+    .select('_id skuCode skuBarcode productId styleName color size retailPrice onHandQty reservedQty safetyStockThreshold')
+    .populate('productId', 'productName productCode category basePrice thumbnailUrl')
     .sort({ onHandQty: -1, styleName: 1, size: 1 }) // Ưu tiên hàng có sẵn tồn kho lên đầu
-    .limit(60)
+    .limit(searchQuery ? 50 : 24)
     .lean();
 
   return skus.map((sku) => {

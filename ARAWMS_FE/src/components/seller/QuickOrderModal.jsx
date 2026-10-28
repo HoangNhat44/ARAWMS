@@ -64,19 +64,28 @@ const QuickOrderModal = ({
   const [showDropdown, setShowDropdown] = useState(false);
 
   const debounceRef = useRef(null);
+  const lastFetchRef = useRef(0);
+  const cachedSkusRef = useRef([]);
   const customerId = customer?._id || customer?.id;
 
-  // 1. Tải danh sách sản phẩm có sẵn trong kho khi mở Modal
-  const fetchAvailableProducts = useCallback(async () => {
+  // 1. Tải danh sách sản phẩm có sẵn trong kho khi mở Modal (cache 30s tránh spam network)
+  const fetchAvailableProducts = useCallback(async (force = false) => {
+    const now = Date.now();
+    if (!force && cachedSkusRef.current.length > 0 && now - lastFetchRef.current < 30000) {
+      setAvailableSkus(cachedSkusRef.current);
+      return;
+    }
     try {
       setLoadingSkus(true);
       const res = await sellerService.lookupRealtimeStock('');
       if (res.success) {
         const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+        cachedSkusRef.current = items;
+        lastFetchRef.current = Date.now();
         setAvailableSkus(items);
       }
     } catch {
-      setAvailableSkus([]);
+      if (cachedSkusRef.current.length === 0) setAvailableSkus([]);
     } finally {
       setLoadingSkus(false);
     }
@@ -236,6 +245,8 @@ const QuickOrderModal = ({
           }
         }
 
+        // Xóa cache để lần mở tiếp theo lấy tồn kho mới nhất
+        cachedSkusRef.current = [];
         setSuccessOrder(createdOrder);
         if (onOrderCreated) onOrderCreated(createdOrder);
       }

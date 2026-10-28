@@ -27,6 +27,12 @@ import { sellerService } from '../../services/sellerService';
 import { useToast } from '../../context/ToastContext';
 import { Icon } from '../../components/seller/SellerUi';
 
+// Bộ đệm in-memory lưu trữ danh sách hội thoại để chuyển trang tức thì (0ms) thay vì chờ tải lại từ đầu
+let memoryConversations = [];
+let memorySelectedConv = null;
+let memoryTags = [];
+let memoryFetchTime = 0;
+
 /**
  * Trang chính Không gian làm việc bán hàng (Seller Chat Workspace) của Seller.
  *
@@ -35,12 +41,13 @@ import { Icon } from '../../components/seller/SellerUi';
  */
 const SellerChatPage = () => {
   const { showSuccess } = useToast();
-  const [conversations, setConversations] = useState([]);
-  const [selectedConversation, setSelectedConversation] = useState(null);
-  const [loading, setLoading] = useState(false);
+  // Khởi tạo ngay từ cache bộ nhớ nếu đã từng tải trước đó trong phiên làm việc
+  const [conversations, setConversations] = useState(memoryConversations);
+  const [selectedConversation, setSelectedConversation] = useState(memorySelectedConv || memoryConversations[0] || null);
+  const [loading, setLoading] = useState(memoryConversations.length === 0);
   const [activeTab, setActiveTab] = useState('order'); // 'crm' | 'order' | 'history'
   const [activeFilterTag, setActiveFilterTag] = useState('');
-  const [allTags, setAllTags] = useState([]);
+  const [allTags, setAllTags] = useState(memoryTags);
 
   // Resizable pane widths (px) - User explicitly chose to retain mouse-drag splitter
   const [pane1W, setPane1W] = useState(300);
@@ -57,32 +64,54 @@ const SellerChatPage = () => {
   const [orderDetailOpen, setOrderDetailOpen] = useState(false);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
 
+  // Đồng bộ lựa chọn vào bộ đệm bộ nhớ
+  const handleSelectConversation = (conv) => {
+    memorySelectedConv = conv;
+    setSelectedConversation(conv);
+  };
+
   useEffect(() => {
-    fetchConversations();
-    fetchTags();
+    fetchAllData();
   }, []);
 
-  const fetchConversations = async () => {
+  /**
+   * Tải song song danh sách hội thoại và danh sách thẻ tags (Parallel Promise execution)
+   * Áp dụng Stale-While-Revalidate: Hiển thị ngay từ memory cache, cập nhật ngầm.
+   */
+  const fetchAllData = async () => {
     try {
-      setLoading(true);
-      const res = await sellerService.getConversations({ limit: 50 });
-      if (res.success) {
-        const items = res.data.items || [];
+      if (memoryConversations.length === 0) setLoading(true);
+
+      const [convRes, tagRes] = await Promise.all([
+        sellerService.getConversations({ limit: 30 }),
+        sellerService.getTagList().catch(() => ({ success: false, data: [] })),
+      ]);
+
+      if (convRes.success) {
+        const items = convRes.data.items || [];
+        memoryConversations = items;
         setConversations(items);
-        if (items.length > 0 && !selectedConversation) setSelectedConversation(items[0]);
+
+        // Giữ nguyên hội thoại đang chọn hoặc gán cuộc hội thoại đầu tiên
+        if (items.length > 0) {
+          const currentId = memorySelectedConv?._id;
+          const matched = items.find((c) => c._id === currentId);
+          const nextSelected = matched || items[0];
+          memorySelectedConv = nextSelected;
+          setSelectedConversation(nextSelected);
+        }
+      }
+
+      if (tagRes.success) {
+        const tags = tagRes.data || [];
+        memoryTags = tags;
+        setAllTags(tags);
       }
     } catch (err) {
-      console.warn('Lỗi tải hội thoại:', err.message);
+      console.warn('Lỗi tải dữ liệu chat workspace:', err.message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchTags = async () => {
-    try {
-      const res = await sellerService.getTagList();
-      if (res.success) setAllTags(res.data || []);
-    } catch { /* silent */ }
   };
 
   const handleTagAdded = (updatedConv) => {
@@ -120,10 +149,10 @@ const SellerChatPage = () => {
       if (!draggingRef.current) return;
       const delta = e.clientX - startXRef.current;
       if (draggingRef.current === 'left') {
-        const newW = Math.max(220, Math.min(420, startWRef.current + delta));
+        const newW = Math.max(220, Math.min(450, startWRef.current + delta));
         setPane1W(newW);
       } else {
-        const newW = Math.max(300, Math.min(560, startWRef.current - delta));
+        const newW = Math.max(300, Math.min(650, startWRef.current - delta));
         setPane3W(newW);
       }
     };
@@ -175,7 +204,7 @@ const SellerChatPage = () => {
           <Button
             size="sm"
             variant="outline-light"
-            onClick={fetchConversations}
+            onClick={fetchAllData}
             title="Đồng bộ hội thoại"
           >
             <Icon name="arrow-clockwise" />
@@ -194,7 +223,7 @@ const SellerChatPage = () => {
             <ConversationList
               conversations={conversations}
               selectedId={selectedConversation?._id}
-              onSelect={setSelectedConversation}
+              onSelect={handleSelectConversation}
               onTagFilter={setActiveFilterTag}
               activeFilterTag={activeFilterTag}
               loading={loading}
@@ -215,7 +244,7 @@ const SellerChatPage = () => {
               conversation={selectedConversation}
               onTagAdded={handleTagAdded}
               allTags={allTags}
-              onTagsRefresh={fetchTags}
+              onTagsRefresh={fetchAllData}
               onOpenQuickOrder={() => {
                 setActiveTab('order');
                 setQuickOrderModalOpen(true);
@@ -233,16 +262,16 @@ const SellerChatPage = () => {
           {/* ===== PANE 3: Widget Panel (CRM / Quick Order / Order History) ===== */}
           <div
             className="d-flex flex-column h-100 bg-white"
-            style={{ width: pane3W, minWidth: 300, maxWidth: 560, flexShrink: 0 }}
+            style={{ width: pane3W, minWidth: 300, maxWidth: 650, flexShrink: 0 }}
           >
-            {/* Tab Nav */}
-            <Nav variant="tabs" className="px-2 pt-2 bg-body-tertiary flex-shrink-0" activeKey={activeTab}>
+            {/* Tab Nav - Dùng justify & flex-fill để 3 tab dàn đều 100% chiều rộng khi kéo dãn splitter */}
+            <Nav variant="tabs" justify className="bg-body-tertiary flex-shrink-0 border-bottom" activeKey={activeTab}>
               {TABS.map((tab) => (
-                <Nav.Item key={tab.id}>
+                <Nav.Item key={tab.id} className="flex-fill">
                   <Nav.Link
                     eventKey={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className="d-flex align-items-center gap-1.5 py-1.5 px-3 small fw-semibold"
+                    className="d-flex align-items-center justify-content-center gap-1.5 py-2 px-2 small fw-semibold"
                   >
                     <Icon name={tab.icon} />
                     <span>{tab.label}</span>
