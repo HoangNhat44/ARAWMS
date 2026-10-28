@@ -137,13 +137,22 @@ export const listOrdersForQr = async (user) => {
     orderId: { $in: visibleRealOrders.map((order) => order._id) }, revokedAt: null,
   }).select('orderId').lean() : [];
   const issuedReal = new Set(tokens.map((token) => String(token.orderId)));
-  return visibleRealOrders.map((order) => ({
+  return visibleRealOrders.map((order) => {
+    // ADMIN can issue QR for any eligible status
+    // Others must meet canIssueQr requirements + status check
+    const eligibleStatus = ['CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(order.status);
+    const canIssue = isAdmin 
+      ? eligibleStatus && !blockedStatuses.has(order.status)
+      : canIssueQr(user, order) && eligibleStatus;
+    
+    return {
       id: String(order._id), orderCode: order.orderCode, status: order.status,
       recipientName: order.recipient?.name || order.shippingRecipient?.name || null,
       itemCount: order.items.reduce((sum, item) => sum + (item.quantity ?? item.orderedQty ?? 0), 0),
       createdAt: order.createdAt, hasQr: issuedReal.has(String(order._id)),
-      canIssueQr: canIssueQr(user, order) && ['CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(order.status),
-    }));
+      canIssueQr: canIssue,
+    };
+  });
 };
 
 /** Returns or creates a QR token for a reserved or packed order. */
