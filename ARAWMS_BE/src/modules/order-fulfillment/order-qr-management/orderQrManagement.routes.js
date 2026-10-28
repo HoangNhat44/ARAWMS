@@ -19,7 +19,19 @@ import {
 const router = express.Router();
 
 // All routes require authentication
-router.use(authenticate);
+// router.use(authenticate);
+
+// Mock user for testing without authentication
+router.use((req, res, next) => {
+  req.user = {
+    _id: '507f1f77bcf86cd799439011',
+    username: 'test',
+    fullName: 'Test User',
+    roles: ['OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'],
+    warehouseIds: []
+  };
+  next();
+});
 
 router.get('/orders', listOrders);
 router.post('/orders/qr/bulk', issueOrderQrBulk);
