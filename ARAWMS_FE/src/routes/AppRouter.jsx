@@ -14,10 +14,14 @@ import OrderQrPage from '../pages/OrderQrPage';
 import WarehousePackingPage from '../pages/WarehousePackingPage';
 import ProductConfigurationPage from '../pages/ProductConfigurationPage';
 import FinishedGoodsPage from '../pages/FinishedGoodsPage';
+import SupplierInboundPage from '../pages/SupplierInboundPage';
+import WarehouseLayoutPage from '../pages/WarehouseLayoutPage';
+import WarehousePutawayPage from '../pages/WarehousePutawayPage';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
-// Restrict warehouse and order pages to authenticated users.
+/** Restricts operational pages to an authenticated user.
+ * Waits for session restoration before deciding whether to redirect. */
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
 
@@ -36,7 +40,7 @@ const RoleRoute = ({ children, roles }) => {
   return children;
 };
 
-// Redirect signed-in users away from the public login and registration pages.
+/** Redirects signed-in users away from login and registration pages. */
 const PublicRoute = ({ children }) => {
   const { user, loading } = useAuth();
 
@@ -46,6 +50,7 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
+/** Maps public, authenticated, and role-gated pages to application URLs. */
 const AppRouter = () => {
   return (
     <Routes>
@@ -55,6 +60,9 @@ const AppRouter = () => {
       <Route path="/warehouse/products/new" element={<RoleRoute roles={['WAREHOUSE_MANAGER']}><ProductConfigurationPage /></RoleRoute>} />
       <Route path="/warehouse/products/:id/edit" element={<RoleRoute roles={['WAREHOUSE_MANAGER']}><ProductConfigurationPage /></RoleRoute>} />
       <Route path="/warehouse/finished-goods" element={<RoleRoute roles={['WAREHOUSE_MANAGER']}><FinishedGoodsPage /></RoleRoute>} />
+      <Route path="/warehouse/raw-materials/inbound" element={<RoleRoute roles={['OWNER', 'WAREHOUSE_MANAGER']}><SupplierInboundPage /></RoleRoute>} />
+      <Route path="/warehouse/layout" element={<RoleRoute roles={['OWNER', 'WAREHOUSE_MANAGER']}><WarehouseLayoutPage /></RoleRoute>} />
+      <Route path="/warehouse/putaway" element={<RoleRoute roles={['WAREHOUSE_STAFF']}><WarehousePutawayPage /></RoleRoute>} />
       <Route
         path="/login"
         element={

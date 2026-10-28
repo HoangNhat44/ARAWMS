@@ -12,6 +12,8 @@ const sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'FREESIZE'];
 const blank = { productName: '', sampleCode: '', category: '', description: '', basePrice: '' };
 const variantKey = (color, size) => `${color.trim().toLocaleLowerCase('vi-VN')}:${size}`;
 
+/** Creates or edits a product and its size variants, including Excel import.
+ * Carries selected SKUs into the finished-goods receiving step. */
 export default function ProductConfigurationPage() {
   const { id: routeId } = useParams();
   const location = useLocation();

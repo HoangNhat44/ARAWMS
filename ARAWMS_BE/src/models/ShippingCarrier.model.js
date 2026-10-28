@@ -1,3 +1,9 @@
+/*
+ * File: ShippingCarrier.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines shipping carrier records and integration settings. Supports carrier selection and fulfillment tracking.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

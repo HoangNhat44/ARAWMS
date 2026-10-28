@@ -1,3 +1,9 @@
+/*
+ * File: Supplier.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines supplier contact and business records. Supports supplier lookup from procurement and inbound workflows.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

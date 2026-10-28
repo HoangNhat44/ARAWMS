@@ -1,3 +1,9 @@
+/*
+ * File: SupplierContract.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines supplier purchasing contracts. Tracks contract terms, value, status, and supplier relationships.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 import { CONTRACT_STATUS } from '../common/constants/enums.js';

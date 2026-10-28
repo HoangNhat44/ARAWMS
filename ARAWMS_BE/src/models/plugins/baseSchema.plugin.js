@@ -1,3 +1,9 @@
+/*
+ * File: baseSchema.plugin.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Adds timestamps and soft-delete fields to Mongoose schemas. Normalizes serialized documents by exposing a string ID and omitting internal fields.
+ */
 /**
  * Base Schema Plugin for Mongoose
  * - timestamps: true (createdAt, updatedAt)
@@ -12,6 +18,7 @@ export const baseSchemaPlugin = (schema) => {
 
   schema.set('timestamps', true);
 
+  /** Removes database internals and password hashes from serialized output. */
   const cleanTransform = (doc, ret) => {
     if (ret._id) {
       ret.id = ret._id.toString();

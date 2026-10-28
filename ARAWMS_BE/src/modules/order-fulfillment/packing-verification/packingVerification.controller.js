@@ -92,7 +92,7 @@ export const discardPackingAttemptRequest = async (req, res, next) => {
   }
 };
 
-/** Validates a unit barcode against the order SKU and required quantity. */
+/** Scans one physical unit; rejects another SKU or an unreserved batch/location. */
 export const scanPackingProductBarcodeRequest = async (req, res, next) => {
   try {
     await loadAuthorizedPackingSession(req);

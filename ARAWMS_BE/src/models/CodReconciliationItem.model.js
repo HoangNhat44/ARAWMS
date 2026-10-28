@@ -1,3 +1,9 @@
+/*
+ * File: CodReconciliationItem.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines a waybill line in a COD reconciliation batch. Tracks expected amounts, carrier amounts, and match results.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

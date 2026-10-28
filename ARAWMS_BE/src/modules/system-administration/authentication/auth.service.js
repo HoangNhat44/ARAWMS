@@ -1,3 +1,9 @@
+/*
+ * File: auth.service.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Validates login credentials and seller registration against MongoDB, creates signed tokens, and limits authentication responses to public account fields.
+ */
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -6,6 +12,13 @@ import Role from '../../../models/Role.model.js';
 
 const authError = (message, statusCode, code) => Object.assign(new Error(message), { statusCode, code });
 
+/**
+ * Builds the account profile returned by authentication endpoints.
+ * The password hash and internal role document are never included in the response.
+ *
+ * @param {import('mongoose').Document} user - The authenticated or newly registered user.
+ * @returns {object} Public identity, role, status, and avatar fields.
+ */
 export const publicUser = (user) => ({
   id: String(user._id),
   employeeCode: user.employeeCode,
@@ -16,6 +29,13 @@ export const publicUser = (user) => ({
   avatarUrl: user.avatarUrl,
 });
 
+/**
+ * Signs a token containing only the user ID so authorization loads current account data.
+ *
+ * @param {import('mongoose').Document} user - The account receiving the token.
+ * @returns {string} Signed JWT using the configured expiration policy.
+ * @throws {Error} When JWT_SECRET is not configured.
+ */
 const createToken = (user) => {
   if (!process.env.JWT_SECRET) throw new Error('Thiếu cấu hình JWT_SECRET');
   return jwt.sign({ id: String(user._id) }, process.env.JWT_SECRET, {
@@ -23,6 +43,17 @@ const createToken = (user) => {
   });
 };
 
+/**
+ * Authenticates an employee by email or employee code without exposing which field failed.
+ * A deleted account or mismatched password receives the same 401 response. Locked
+ * accounts receive 403 only after their password has been verified.
+ *
+ * @param {object} credentials - Login fields submitted by the client.
+ * @param {string} credentials.usernameOrEmail - Email or employee code, matched without case sensitivity.
+ * @param {string} credentials.password - Plaintext password to compare with the stored hash.
+ * @returns {Promise<object>} Public account profile and signed JWT.
+ * @throws {Error} For missing fields, invalid credentials, or a locked account.
+ */
 export const loginUser = async ({ usernameOrEmail, password } = {}) => {
   if (typeof usernameOrEmail !== 'string' || !usernameOrEmail.trim() || typeof password !== 'string' || !password) {
     throw authError('Vui lòng nhập email hoặc mã nhân viên và mật khẩu', 400, 'INVALID_INPUT');
@@ -44,6 +75,14 @@ export const loginUser = async ({ usernameOrEmail, password } = {}) => {
   return { user: publicUser(user), token: createToken(user) };
 };
 
+/**
+ * Registers a seller using the configured active SELLER role.
+ * Warehouse employee accounts are provisioned separately and are not created here.
+ *
+ * @param {object} details - Name, email, and password supplied by the registrant.
+ * @returns {Promise<object>} Public account profile and signed JWT.
+ * @throws {Error} For invalid input, an existing email, or a missing SELLER role.
+ */
 export const registerUser = async ({ name, fullName, email, password } = {}) => {
   const cleanName = typeof (fullName || name) === 'string' ? (fullName || name).trim() : '';
   const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';

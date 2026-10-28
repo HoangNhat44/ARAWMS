@@ -27,15 +27,25 @@ export const issueOrderQrBulk = async (req, res, next) => {
         new Set(ids).size !== ids.length) {
       return sendError(res, 'Chọn từ 1 đến 100 đơn không trùng nhau', { code: 'INVALID_ORDER_IDS' }, 400);
     }
-    const results = [];
-    for (const id of ids) {
-      const order = await findOrder(id);
-      if (!order) { results.push({ id, error: 'ORDER_NOT_FOUND' }); continue; }
-      if (!canIssueQr(req.user, order)) { results.push({ id, error: 'FORBIDDEN' }); continue; }
-      const result = await issueQr(order, req.user._id);
-      results.push({ id, orderCode: order.orderCode, ...result,
-        ...(result.qrValue ? { order: publicOrderDetail(order) } : {}) });
-    }
+    const results = new Array(ids.length);
+    let cursor = 0;
+    await Promise.all(Array.from({ length: Math.min(4, ids.length) }, async () => {
+      while (cursor < ids.length) {
+        const index = cursor++;
+        const id = ids[index];
+        try {
+          const order = await findOrder(id);
+          if (!order) { results[index] = { id, error: 'ORDER_NOT_FOUND' }; continue; }
+          if (!canIssueQr(req.user, order)) { results[index] = { id, error: 'FORBIDDEN' }; continue; }
+          const result = await issueQr(order, req.user._id);
+          results[index] = { id, orderCode: order.orderCode, ...result,
+            ...(result.qrValue ? { order: publicOrderDetail(order) } : {}) };
+        } catch (error) {
+          console.error('[Order QR] Bulk issue failed', id, error);
+          results[index] = { id, error: 'QR_IMAGE_UPLOAD_FAILED' };
+        }
+      }
+    }));
     return sendSuccess(res, 'Kết quả cấp QR hàng loạt', { results });
   } catch (error) { next(error); }
 };
@@ -104,7 +114,8 @@ export const confirmOrder = async (req, res, next) => {
     const qr = await issueQr(confirmed, req.user._id);
     if (qr.error) return sendError(res, 'Đơn đã giữ hàng nhưng chưa thể cấp QR', { code: qr.error }, 409);
     const detail = await findOrder(String(confirmed._id));
-    return sendSuccess(res, 'Đã giữ hàng và cấp QR', { order: publicOrderDetail(detail), qrValue: qr.qrValue });
+    return sendSuccess(res, 'Đã giữ hàng và cấp QR', { order: publicOrderDetail(detail),
+      qrValue: qr.qrValue, qrImageUrl: qr.qrImageUrl });
   } catch (error) {
     if (error.status) return sendError(res, 'Không thể giữ đủ hàng cho đơn', { code: error.code }, error.status);
     next(error);

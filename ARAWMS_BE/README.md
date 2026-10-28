@@ -160,17 +160,9 @@ ARAWMS_BE/
 
 ## Hướng dẫn Cài đặt & Khởi chạy
 
-### Đặt lại mật khẩu tài khoản kho
+### Tạo tài khoản kho
 
-Nếu mất mật khẩu `QLKHO` hoặc `NVKHO`, chạy lệnh sau trong thư mục `ARAWMS_BE` với `MONGODB_URI` trỏ đúng cơ sở dữ liệu:
-
-```bash
-npm run reset:warehouse-passwords
-```
-
-Lệnh tạo mật khẩu ngẫu nhiên mới cho cả hai tài khoản và in mỗi mật khẩu một lần ra terminal. Mật khẩu cũ sẽ không còn dùng được. Lưu mật khẩu mới ở nơi an toàn, không đưa vào Git hoặc ảnh chụp màn hình. Nếu tài khoản chưa tồn tại, chạy `node scripts/provision-warehouse-accounts.mjs` trước.
-
-Để tự chọn mật khẩu, đặt cả hai biến môi trường `QLKHO_PASSWORD` và `NVKHO_PASSWORD` (mỗi mật khẩu ít nhất 8 ký tự) trước khi chạy lệnh. Không ghi các giá trị này vào mã nguồn hoặc file `.env` được chia sẻ.
+Chạy `node scripts/provision-warehouse-accounts.mjs` trong thư mục `ARAWMS_BE` để tạo tài khoản `QLKHO` và `NVKHO` trong MongoDB Atlas khi chưa có. Script in mật khẩu của tài khoản mới một lần để lưu an toàn. Chạy lại script không đổi mật khẩu của tài khoản đã tồn tại.
 
 ### 1. Yêu cầu Tiền đề (Prerequisites)
 * Node.js (phiên bản v18.x trở lên)

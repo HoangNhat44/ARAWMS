@@ -1,3 +1,9 @@
+/*
+ * File: ChatMessage.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines messages in customer conversations. Stores sender, text, attachments, and optional product references.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

@@ -25,9 +25,9 @@ export const code128Svg = (value) => {
 };
 
 /** Opens a print page containing one label for each received physical unit. */
-export const printBarcodes = (barcodes, tab = window.open('', '_blank')) => {
+export const printBarcodes = (barcodes, tab = window.open('', '_blank'), title = 'Tem barcode thành phẩm') => {
   if (!tab) throw new Error('Trình duyệt đang chặn cửa sổ in tem');
   const labels = barcodes.map((barcode) => `<article>${code128Svg(barcode)}</article>`).join('');
-  tab.document.write(`<!doctype html><html lang="vi"><meta charset="utf-8"><title>Tem barcode thành phẩm</title><style>body{font-family:Arial;margin:16px}main{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}article{border:1px solid #bbb;padding:8px;break-inside:avoid;overflow:hidden}svg{display:block;width:100%;height:auto}button{margin-bottom:12px}@media print{button{display:none}body{margin:0}}</style><button onclick="print()">In tem</button><main>${labels}</main></html>`);
+  tab.document.write(`<!doctype html><html lang="vi"><meta charset="utf-8"><title>${title}</title><style>body{font-family:Arial;margin:16px}main{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}article{border:1px solid #bbb;padding:8px;break-inside:avoid;overflow:hidden}svg{display:block;width:100%;height:auto}button{margin-bottom:12px}@media print{button{display:none}body{margin:0}}</style><button onclick="print()">In tem</button><main>${labels}</main></html>`);
   tab.document.close();
 };

@@ -1,3 +1,9 @@
+/*
+ * File: Customer.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines customer identity and contact details. Stores purchasing totals and optional social-channel identifiers.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

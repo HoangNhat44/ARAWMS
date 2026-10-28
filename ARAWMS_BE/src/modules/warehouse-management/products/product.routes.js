@@ -2,7 +2,7 @@
  * File: product.routes.js
  * Author: Duy Anh
  * Date: 2026-10-22
- * Description: Defines warehouse product, stock, location, and media endpoints.
+ * Description: Defines warehouse product, stock, location, and media endpoints. Restricts these operations to warehouse managers and records stock changes.
  */
 import express from 'express';
 import mongoose from 'mongoose';
@@ -39,7 +39,9 @@ router.use('/configuration', productConfigurationRoutes);
 /** Lists usable finished goods locations and their current capacity. */
 router.get('/locations', async (req, res, next) => {
   try {
-    const locations = await WarehouseLocation.find({ warehouseType: 'FINISHED_GOODS', isDeleted: { $ne: true } }).sort({ locationCode: 1 }).lean();
+    const locations = await WarehouseLocation.find({ warehouseType: 'FINISHED_GOODS',
+      layoutBin: { $ne: true }, isSystemUnplaced: { $ne: true },
+      isDeleted: { $ne: true } }).sort({ locationCode: 1 }).lean();
     return sendSuccess(res, 'Vị trí kho thành phẩm', { locations: locations.map((item) => ({
       id: String(item._id), locationCode: item.locationCode, status: item.status,
       maxCapacity: item.maxCapacity, currentOccupancy: item.currentOccupancy || 0,
@@ -96,7 +98,10 @@ router.get('/', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-/** Applies a single SKU stock movement and records its inventory transaction. */
+/** Issues unreserved stock for one active SKU and records the movement.
+ * Receiving requires a separate barcode issuing flow; tracked batch stock cannot
+ * leave through this aggregate endpoint because each physical unit must be scanned.
+ */
 router.post('/:id/stock', async (req, res, next) => {
   const { id } = req.params;
   const { direction, skuId, note } = req.body || {};
@@ -155,7 +160,7 @@ router.post('/:id/stock', async (req, res, next) => {
   } finally { if (session) await session.endSession(); }
 });
 
-/** Creates a basic product record from a warehouse manager request. */
+/** Creates a basic product after checking its code, name, category, and price. */
 router.post('/', async (req, res, next) => {
   const productCode = String(req.body?.productCode || '').trim().toUpperCase();
   const productName = String(req.body?.productName || '').trim();
@@ -176,7 +181,13 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-/** Validates media type and size before streaming product assets to Cloudinary. */
+/**
+ * Accepts a product image, video, or additional image as a raw request stream.
+ * Enforces MIME type and byte limits during transfer, places the asset in the
+ * product-code Cloudinary folder, and saves the returned URL only after upload
+ * completion. Main image and video uploads replace their prior named asset;
+ * additional images get unique names and append to the product gallery.
+ */
 const uploadProductMedia = async (req, res, next) => {
   const config = media[req.params.kind];
   const mimeType = (req.headers['content-type'] || '').split(';')[0].toLowerCase();

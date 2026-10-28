@@ -1,3 +1,9 @@
+/*
+ * File: authService.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Wraps registration, login, current-user, and health API calls. Exposes authentication requests to React components.
+ */
 import api from './api';
 
 export const authService = {

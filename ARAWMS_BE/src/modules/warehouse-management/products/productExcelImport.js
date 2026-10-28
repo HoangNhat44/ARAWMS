@@ -28,7 +28,14 @@ const clean = (value) =>
 const cell = (row, column) => clean(row.getCell(column).text);
 const key = (value) => value.toLocaleLowerCase("vi-VN");
 
-/** Parses the first sheet and groups rows by STT and product code without changing stock. */
+/** Parses the first worksheet using the exported variation-column layout.
+ * Rejects invalid columns, codes, sizes, prices, media URLs, and duplicate SKU or
+ * barcode values. Rows with the same STT and product code become one product;
+ * their shared fields must agree and each size must be unique. Row errors are
+ * collected for preview and no inventory quantities are imported.
+ * @param {Buffer} buffer Uploaded XLSX bytes.
+ * @returns {Promise<{products: Array, errors: Array}>} Parsed products and row errors.
+ */
 export const parseProductWorkbook = async (buffer) => {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
@@ -152,7 +159,10 @@ export const parseProductWorkbook = async (buffer) => {
   return { products: [...products.values()], errors };
 };
 
-/** Finds codes and barcodes that would collide with existing catalog records. */
+/** Checks incoming product codes, SKU codes, and barcodes against MongoDB.
+ * The caller must stop import when any conflict is returned, including a code
+ * belonging to a soft-deleted record because the database index still reserves it.
+ */
 export const findImportConflicts = async (products) => {
   const codes = products.map((product) => product.productCode);
   const skus = products.flatMap((product) => product.variants);
@@ -181,7 +191,11 @@ export const findImportConflicts = async (products) => {
   return errors;
 };
 
-/** Saves the validated catalog and SKUs in one transaction so partial imports roll back. */
+/** Copies remote media into code-named Cloudinary assets, then creates catalog records.
+ * Media is uploaded before opening the MongoDB transaction; a failed database
+ * import rolls back product and SKU records and attempts to remove new assets.
+ * @param {Array} products Validated products from parseProductWorkbook.
+ */
 export const saveImportedProducts = async (products) => {
   const uploadedAssets = [];
   const mediaByCode = new Map();

@@ -1,3 +1,9 @@
+/*
+ * File: InventoryAlert.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines alerts raised from inventory conditions. Stores alert type, affected stock, and resolution state.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 import { ALERT_TYPES, WAREHOUSE_TYPES, ROLES } from '../common/constants/enums.js';

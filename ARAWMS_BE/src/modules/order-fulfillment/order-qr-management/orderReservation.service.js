@@ -14,7 +14,12 @@ import InventoryTransaction from '../../../models/InventoryTransaction.model.js'
 
 const createStockReservationError = (code) => Object.assign(new Error(code), { code, status: 409 });
 
-/** Allocates available batches in FIFO order without changing on-hand stock. */
+/** Reserves stock for every order line from the oldest eligible batches first.
+ * Rejects empty orders, invalid line quantities, insufficient unreserved SKU or
+ * batch stock, and batches in unusable or frozen locations.
+ * Updates SKU and batch reserved quantities with the order status in one transaction;
+ * on-hand stock remains unchanged until packing consumes the reserved units.
+ */
 export const reserveOrderStock = async (orderId, userId) => {
   const session = await mongoose.startSession();
   try {
@@ -40,7 +45,8 @@ export const reserveOrderStock = async (orderId, userId) => {
         const locations = await WarehouseLocation.find({
           _id: { $in: batches.map((batch) => batch.locationId) },
           warehouseType: 'FINISHED_GOODS', status: { $in: ['ACTIVE', 'FULL'] },
-          isFrozenForStocktake: false, isDeleted: { $ne: true },
+          isFrozenForStocktake: false, isSystemUnplaced: { $ne: true },
+          isDeleted: { $ne: true },
         }).select('_id').session(session);
         const usableLocations = new Set(locations.map((location) => String(location._id)));
         let remaining = quantity;

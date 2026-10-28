@@ -1,3 +1,9 @@
+/*
+ * File: RemnantRecoveryRequest.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines requests to recover leftover fabric. Tracks source material, requested quantity, and approval state.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

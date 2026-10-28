@@ -1,3 +1,9 @@
+/*
+ * File: ChatConversation.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines customer chat threads. Tracks the customer, channel, most recent message, and unread state.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

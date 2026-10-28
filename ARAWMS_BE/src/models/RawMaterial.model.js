@@ -1,3 +1,9 @@
+/*
+ * File: RawMaterial.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines raw materials held by the warehouse. Separates received stock awaiting putaway from stock available for use.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 
@@ -19,6 +25,7 @@ const rawMaterialSchema = new Schema(
     widthCm: { type: Number },
     unitCost: { type: Number, required: true, min: 0 },
     onHandQty: { type: Number, default: 0, min: 0 },
+    pendingPutawayQty: { type: Number, default: 0, min: 0 },
     reservedQty: { type: Number, default: 0, min: 0 },
     safetyStockThreshold: { type: Number, default: 50 },
     fifoAgingThresholdDays: { type: Number, default: 90 },
@@ -32,7 +39,7 @@ const rawMaterialSchema = new Schema(
 );
 
 rawMaterialSchema.virtual('availableQty').get(function () {
-  return (this.onHandQty || 0) - (this.reservedQty || 0);
+  return (this.onHandQty || 0) - (this.reservedQty || 0) - (this.pendingPutawayQty || 0);
 });
 
 rawMaterialSchema.plugin(baseSchemaPlugin);

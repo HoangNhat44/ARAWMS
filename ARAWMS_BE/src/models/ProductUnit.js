@@ -12,6 +12,8 @@ const { Schema } = mongoose;
 const productUnitSchema = new Schema({
   barcode: { type: String, required: true, trim: true, unique: true },
   barcodeFormat: { type: String, required: true, enum: ['CODE_128'] },
+  barcodeImageUrl: String,
+  barcodeImagePublicId: String,
   skuId: { type: Schema.Types.ObjectId, ref: 'Sku', required: true },
   warehouseId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation', required: true },
   batchId: { type: Schema.Types.ObjectId, ref: 'FinishedGoodsBatch', index: true },

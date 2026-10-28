@@ -88,8 +88,7 @@ const legacyPublicIdFor = (sessionId, recordingId) => `packing/${sessionId}/${re
 
 /** Resolves the business order code used as the Cloudinary asset name. */
 const orderCodeFor = async (packing) => {
-  const orderCode = packing.sourceType === 'DEMO' ? packing.orderKey
-    : (await SalesOrder.findById(packing.orderId).select('orderCode').lean())?.orderCode;
+  const orderCode = (await SalesOrder.findById(packing.orderId).select('orderCode').lean())?.orderCode;
   if (!orderCode || !/^[\p{L}\p{N}_.-]{2,100}$/u.test(orderCode)) {
     throw new PackingError('INVALID_ORDER_CODE', 400);
   }
@@ -121,9 +120,8 @@ const stageVideo = async (packing, recordingId, resource, durationMs, orderCode)
   return staged;
 };
 
-/** Links the video to a real order when its packing transaction completes. */
+/** Links a saved video to its order when packing completes. */
 const linkExistingOrderVideo = async (packing, video, dbSession) => {
-  if (packing.sourceType !== 'REAL') return;
   const linked = await SalesOrder.updateOne(
     { _id: packing.orderId, $or: [
       { 'warehouseFulfillment.packagingVideoUrl': { $exists: false } },
@@ -142,7 +140,7 @@ const linkExistingOrderVideo = async (packing, video, dbSession) => {
   );
 };
 
-/** Saves session video metadata and marks a real order PACKED atomically. */
+/** Saves session video metadata and marks the order PACKED atomically. */
 const completeVideo = async (packing, video) => {
   if (packing.video?.publicId) {
     if (packing.video.recordingId !== video.recordingId) throw new PackingError('VIDEO_ALREADY_SAVED');
@@ -160,7 +158,7 @@ const completeVideo = async (packing, video) => {
         if (current.video.recordingId !== video.recordingId) throw new PackingError('VIDEO_ALREADY_SAVED');
         await linkExistingOrderVideo(current, video, dbSession);
       } else {
-        if (current.sourceType === 'REAL' && current.state !== 'READY_TO_RECORD') {
+        if (current.state !== 'READY_TO_RECORD') {
           throw new PackingError('SCAN_INCOMPLETE');
         }
         const updated = await PackingSession.findOneAndUpdate(
@@ -174,22 +172,20 @@ const completeVideo = async (packing, video) => {
           { new: true, session: dbSession }
         );
         if (!updated) throw new PackingError('VIDEO_ALREADY_SAVED');
-        if (updated.sourceType === 'REAL') {
-          const order = await SalesOrder.findOneAndUpdate(
-            { _id: updated.orderId, updatedAt: updated.orderVersion, status: { $in: ['CONFIRMED_RESERVED', 'PICKING'] } },
-            { $set: {
-              status: 'PACKED',
-              'warehouseFulfillment.packagingVideoUrl': video.cloudinaryUrl,
-              'warehouseFulfillment.packedAt': new Date(),
-              'warehouseFulfillment.packedByStaffId': updated.operatorId,
-            } },
-            { new: true, session: dbSession }
-          );
-          if (!order) throw new PackingError('ORDER_CHANGED');
-          await consumePackedStock(updated, order, dbSession);
-          updated.orderVersion = order.updatedAt;
-          await updated.save({ session: dbSession });
-        }
+        const order = await SalesOrder.findOneAndUpdate(
+          { _id: updated.orderId, updatedAt: updated.orderVersion, status: { $in: ['CONFIRMED_RESERVED', 'PICKING'] } },
+          { $set: {
+            status: 'PACKED',
+            'warehouseFulfillment.packagingVideoUrl': video.cloudinaryUrl,
+            'warehouseFulfillment.packedAt': new Date(),
+            'warehouseFulfillment.packedByStaffId': updated.operatorId,
+          } },
+          { new: true, session: dbSession }
+        );
+        if (!order) throw new PackingError('ORDER_CHANGED');
+        await consumePackedStock(updated, order, dbSession);
+        updated.orderVersion = order.updatedAt;
+        await updated.save({ session: dbSession });
         current.video = updated.video;
       }
       await PackingVideo.updateOne(
@@ -214,7 +210,10 @@ const cloudinaryResource = async (publicId) => {
   }
 };
 
-/** Synchronizes the Cloudinary asset with MongoDB; reports pending database work. */
+/** Reconciles an uploaded Cloudinary recording with its packing session and order.
+ * Looks up the code-named asset and older public IDs so interrupted uploads can
+ * complete without sending the video again; reports pending database work on retryable failures.
+ */
 export const syncPackingVideo = async ({ sessionId, recordingId, durationMs = 1 }) => {
   validateRecording(sessionId, recordingId);
   configureCloudinary();
@@ -239,7 +238,10 @@ export const syncPackingVideo = async ({ sessionId, recordingId, durationMs = 1 
   }
 };
 
-/** Validates and uploads a recording under a stable ID, then synchronizes metadata. */
+/** Uploads a station recording to the order-code asset in Cloudinary.
+ * Enforces video type and duration, detects existing uploads for idempotent retries,
+ * and syncs asset metadata plus stock deduction to the real order.
+ */
 export const uploadPackingVideo = async ({ sessionId, recordingId, mimeType, durationMs, input }) => {
   validateRecording(sessionId, recordingId);
   if (!videoTypes.has(mimeType)) throw new PackingError('UNSUPPORTED_VIDEO_TYPE', 415);

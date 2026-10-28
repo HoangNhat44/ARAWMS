@@ -12,7 +12,12 @@ import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import InventoryTransaction from '../../../models/InventoryTransaction.model.js';
 import { PackingError } from './packingVerification.service.js';
 
-/** Consumes scanned units, reserved stock, and batch stock in the caller's transaction. */
+/** Deducts exactly the physical units scanned for a completed order.
+ * Rechecks every barcode against the order line's SKU, reserved batch, location,
+ * and allocated quantity before any balance changes are committed.
+ * Updates SKU, FIFO batch, and location balances, records inventory movements,
+ * and marks unit barcodes unavailable inside the caller's MongoDB transaction.
+ */
 export const consumePackedStock = async (packing, order, dbSession) => {
   if (!packing.items.length || packing.scannedUnits.length !== packing.items.reduce((n, item) => n + item.quantity, 0)) {
     throw new PackingError('SCAN_INCOMPLETE');

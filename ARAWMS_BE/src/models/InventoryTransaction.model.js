@@ -22,6 +22,7 @@ const inventoryTransactionSchema = new Schema(
     transactionType: {
       type: String,
       enum: [
+        'INBOUND_RECEIPT',
         'INBOUND_PUTAWAY',
         'OUTBOUND_ISSUE_CUTTING',
         'REMNANT_RETURN_PUTAWAY',
@@ -31,6 +32,7 @@ const inventoryTransactionSchema = new Schema(
         'RETURN_RESTOCK',
         'DEFECT_QUARANTINE',
         'DEFECT_DISPOSAL',
+        'SUPPLIER_RETURN_OUTBOUND',
         'STOCKTAKE_ADJUSTMENT',
         'MANUAL_INBOUND',
         'MANUAL_OUTBOUND',

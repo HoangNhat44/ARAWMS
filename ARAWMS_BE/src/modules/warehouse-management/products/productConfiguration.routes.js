@@ -2,7 +2,7 @@
  * File: productConfiguration.routes.js
  * Author: Duy Anh
  * Date: 2026-10-22
- * Description: Defines product setup, Excel import, variant, and pricing endpoints.
+ * Description: Defines product setup, Excel import, variant, and pricing endpoints. Validates product and SKU data before persisting catalog changes.
  */
 import express from 'express';
 import mongoose from 'mongoose';
@@ -26,7 +26,7 @@ const respondToProductError = (error, res, next) => {
   next(error);
 };
 
-/** Normalizes product details and their draft or active status. */
+/** Validates product name, sample code, category, base price, and draft/active status. */
 const parseProductCatalogInput = (body) => {
   const productName = String(body?.productName || '').trim();
   const sampleCode = String(body?.sampleCode || '').trim().toUpperCase();
@@ -40,7 +40,9 @@ const parseProductCatalogInput = (body) => {
   return { productName, sampleCode, category, description, basePrice, isActive: body.status === 'ACTIVE' };
 };
 
-/** Validates color and size variants, prices, and duplicate combinations. */
+/** Requires 1-100 variants with valid color, size, and nonnegative price.
+ * The same normalized color and size pair may occur only once per product.
+ */
 const parseProductVariantInputs = (variants, basePrice) => {
   if (!Array.isArray(variants) || variants.length < 1 || variants.length > 100) {
     throw createProductRequestError('Cần chọn ít nhất một biến thể', 'VARIANTS_REQUIRED');
@@ -71,7 +73,14 @@ const createProductVariantSkus = async (product, variants, session) => Sku.creat
   };
 }), { session });
 
-/** Previews or imports new products grouped by STT and product code. */
+/**
+ * Builds the preview and commit handlers for the same Excel workbook format.
+ * Rows with a shared STT become one product with multiple size variants. Preview
+ * reports validation and database conflicts without writing; commit rejects the
+ * entire workbook when any row is invalid, then saves all products together.
+ * @param {boolean} preview whether to return a validation summary only
+ * @returns {Function} an Express request handler for workbook bytes
+ */
 const importExcel = (preview) => async (req, res, next) => {
   if (!Buffer.isBuffer(req.body) || req.body.length < 4 || req.body.subarray(0, 2).toString() !== 'PK') {
     return sendError(res, 'Vui lòng chọn file .xlsx hợp lệ', { code: 'INVALID_EXCEL_FILE' }, 400);

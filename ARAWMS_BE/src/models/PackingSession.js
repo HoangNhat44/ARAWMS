@@ -17,7 +17,6 @@ const snapshotItemSchema = new Schema({
     locationId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation' },
     allocatedQty: Number,
   }],
-  variantId: { type: String },
   skuCode: { type: String },
   name: { type: String },
   quantity: { type: Number, required: true, min: 1 },
@@ -31,7 +30,6 @@ const scannedUnitSchema = new Schema({
 }, { _id: false });
 
 const packingSessionSchema = new Schema({
-  sourceType: { type: String, required: true, enum: ['DEMO', 'REAL'] },
   orderKey: { type: String, required: true },
   orderId: { type: Schema.Types.ObjectId, ref: 'SalesOrder' },
   orderVersion: { type: Date },
@@ -56,6 +54,6 @@ const packingSessionSchema = new Schema({
 }, { timestamps: true, collection: 'packing_sessions' });
 
 // Keep one current session per order; repacking will require a separate attempt revision.
-packingSessionSchema.index({ sourceType: 1, orderKey: 1 }, { unique: true });
+packingSessionSchema.index({ orderKey: 1 }, { unique: true });
 
 export default mongoose.model('PackingSession', packingSessionSchema);

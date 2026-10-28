@@ -2,7 +2,7 @@
  * File: packingVideoUploadManager.js
  * Author: Duy Anh
  * Date: 2026-10-21
- * Description: Coordinates background recording uploads and retries.
+ * Description: Coordinates background recording uploads and retries. Restores local jobs after reloads and tracks upload progress for the packing screen.
  */
 import { packingSessionService } from './packingSessionService';
 import {
@@ -21,6 +21,11 @@ const permanentErrors = new Set([
   'BATCH_STOCK_CHANGED', 'SKU_STOCK_CHANGED', 'LOCATION_STOCK_CHANGED',
 ]);
 
+/**
+ * Owns the browser-side queue for packing recordings awaiting server upload.
+ * Publishes job snapshots, retries transient failures, and keeps the queue
+ * available across page reloads through local persisted recording metadata.
+ */
 class PackingVideoUploadManager {
   listeners = new Set();
   running = false;
@@ -109,6 +114,7 @@ class PackingVideoUploadManager {
     this.pump();
   }
 
+  /** Requeues failed or pending jobs and resumes the upload pump. */
   async retryAll() {
     for (const job of await listPendingVideos()) {
       if (job.status === 'FAILED' || job.status === 'SYNC_PENDING') await this.retry(job.recordingId);
@@ -121,6 +127,7 @@ class PackingVideoUploadManager {
     const wasPaused = localStorage.getItem(PAUSE_KEY) === '1';
     await this.pause();
     try {
+      /** Serializes file removal with any active cross-tab upload. */
       const remove = async () => {
         const job = (await listPendingVideos()).find((item) => item.recordingId === recordingId);
         if (!job) return;

@@ -1,3 +1,9 @@
+/*
+ * File: CashFlowVoucher.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines cash receipt and payment vouchers. Links financial entries to suppliers, orders, returns, or COD batches.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

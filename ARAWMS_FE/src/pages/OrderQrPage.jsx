@@ -5,7 +5,6 @@
  * Description: Lists real sales orders and prints their packing QR labels.
  */
 import { useEffect, useMemo, useState } from 'react';
-import QRCode from 'qrcode';
 import { orderQrService } from '../services/orderQrService';
 import { useAuth } from '../hooks/useAuth';
 
@@ -29,6 +28,8 @@ function LabelField({ label, value }) {
   return <div className="order-label-field"><span>{label}</span><strong>{value}</strong></div>;
 }
 
+/** Formats a printable packing label from order details and its QR image.
+ * Omits fields that the selected order has not populated. */
 function OrderLabel({ card }) {
   const { order } = card;
   if (!order) return null;
@@ -97,6 +98,7 @@ function OrderLabel({ card }) {
   </article>;
 }
 
+/** Shows the selected order's recipient, SKU lines, and packing video link. */
 function OrderDetail({ order }) {
   if (!order) return null;
   return (
@@ -123,6 +125,8 @@ function OrderDetail({ order }) {
   );
 }
 
+/** Lists accessible orders and manages their packing QR labels.
+ * Keeps search, selection, printing, and QR issuance in one page workflow. */
 export default function OrderQrPage() {
   const { user } = useAuth();
   const canIssue = user?.roles?.some((role) => ['OWNER', 'SELLER', 'WAREHOUSE_STAFF'].includes(role));
@@ -182,9 +186,9 @@ export default function OrderQrPage() {
   };
 
   /** Builds a printable card from the order and its issued QR value. */
-  const createQrPrintCard = async (order, qrValue) => ({
+  const createQrPrintCard = (order, qrValue, qrImageUrl) => ({
     id: order.id, orderCode: order.orderCode, order, qrValue,
-    image: await QRCode.toDataURL(qrValue, { errorCorrectionLevel: 'M', width: 320, margin: 3 }),
+    image: qrImageUrl,
   });
 
   /** Queues the selected order details for printing without issuing a QR. */
@@ -200,7 +204,7 @@ export default function OrderQrPage() {
     setBusy(true); setError(''); setMessage('');
     try {
       const response = await orderQrService.getOrderQr(activeOrder.id);
-      const card = await createQrPrintCard(response.data.order, response.data.qrValue);
+      const card = createQrPrintCard(response.data.order, response.data.qrValue, response.data.qrImageUrl);
       setQrCards((current) => ({ ...current, [card.id]: card }));
       setMessage(`Đã tạo / lấy QR cho ${activeOrder.orderCode}.`);
       await refreshOrders();
@@ -219,8 +223,8 @@ export default function OrderQrPage() {
         results.push(...response.data.results);
       }
       const successful = results.filter((result) => result.qrValue);
-      const generated = await Promise.all(successful.map((result) =>
-        createQrPrintCard(result.order, result.qrValue)));
+      const generated = successful.map((result) =>
+        createQrPrintCard(result.order, result.qrValue, result.qrImageUrl));
       setQrCards((current) => Object.assign({}, current,
         ...generated.map((card) => ({ [card.id]: card }))));
       setSelectedIds(results.filter((result) => result.error).map((result) => result.id));
@@ -239,7 +243,7 @@ export default function OrderQrPage() {
       const response = await orderQrService.confirmOrder(activeOrder.id);
       setActiveOrder(response.data.order);
       if (response.data.qrValue) {
-        const card = await createQrPrintCard(response.data.order, response.data.qrValue);
+        const card = createQrPrintCard(response.data.order, response.data.qrValue, response.data.qrImageUrl);
         setQrCards((current) => ({ ...current, [card.id]: card }));
       }
       setMessage(`Đã chốt đơn ${activeOrder.orderCode} và cấp QR.`);
@@ -254,7 +258,7 @@ export default function OrderQrPage() {
     setBusy(true); setError(''); setMessage('');
     try {
       const response = await orderQrService.replaceOrderQr(activeOrder.id);
-      const card = await createQrPrintCard(response.data.order, response.data.qrValue);
+      const card = createQrPrintCard(response.data.order, response.data.qrValue, response.data.qrImageUrl);
       setQrCards((current) => ({ ...current, [card.id]: card }));
       setMessage(`Đã thay QR của ${activeOrder.orderCode}.`);
       await refreshOrders();

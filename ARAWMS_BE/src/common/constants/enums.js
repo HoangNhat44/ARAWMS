@@ -31,6 +31,7 @@ export const FABRIC_ROLL_STATUS = [
   'REMNANT_RETURNED',
   'DEPLETED',
   'DEFECTIVE',
+  'RETURNED_TO_SUPPLIER',
 ];
 
 export const CONTRACT_STATUS = [
@@ -55,6 +56,7 @@ export const PLAN_STATUS = [
 export const TICKET_STATUS = [
   'DRAFT',
   'WAITING_QC',
+  'READY_TO_CONFIRM',
   'QC_PASSED',
   'QC_FAILED',
   'WAITING_SCAN',

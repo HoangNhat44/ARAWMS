@@ -1,3 +1,9 @@
+/*
+ * File: SystemLog.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines audit records for system activity. Stores event details and references needed to trace an action.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 import { ROLES } from '../common/constants/enums.js';

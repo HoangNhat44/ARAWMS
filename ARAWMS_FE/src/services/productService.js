@@ -11,6 +11,12 @@ export const productService = {
   moveStock: (id, values) => api.post(`/products/${id}/stock`, values),
   bulkMoveStock: (values) => api.post('/products/bulk/documents', values),
   recentDocuments: () => api.get('/products/bulk/documents'),
+  pendingReceipts: () => api.get('/products/bulk/documents/pending-allocation'),
+  receiptDetail: (id) => api.get(`/products/bulk/documents/${id}`),
+  binOptions: (skuIds) => api.get('/products/bulk/bin-options', { params: { skuIds: skuIds.join(',') } }),
+  allocateReceipt: (id, values) => api.post(`/products/bulk/documents/${id}/allocations`, values),
+  documentBarcodes: (id) => api.get(`/products/bulk/documents/${id}/barcodes`),
+  syncDocumentBarcodes: (id) => api.post(`/products/bulk/documents/${id}/barcodes/sync`),
   locations: () => api.get('/products/locations'),
   createLocation: (values) => api.post('/products/locations', values),
   // Group product setup calls used by the configuration form.

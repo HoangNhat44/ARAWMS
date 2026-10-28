@@ -1,3 +1,9 @@
+/*
+ * File: Role.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines access roles and their active state. Provides role identifiers used by authentication and authorization.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 import { ROLES } from '../common/constants/enums.js';

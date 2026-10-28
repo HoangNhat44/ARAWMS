@@ -1,3 +1,9 @@
+/*
+ * File: CarrierDispute.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines claims raised against shipping carriers. Tracks waybill evidence, requested compensation, and resolution status.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

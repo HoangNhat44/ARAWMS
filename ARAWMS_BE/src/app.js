@@ -1,3 +1,9 @@
+/*
+ * File: app.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Builds the Express application with request parsing, CORS, logging, API routes, and error handling. Exports the configured app for server startup.
+ */
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';

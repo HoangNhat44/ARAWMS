@@ -1,13 +1,19 @@
+/*
+ * File: server.js
+ * Author: Duy Anh
+ * Date: 2026-10-27
+ * Description: Loads backend configuration, connects MongoDB, and starts the API server.
+ */
 import dotenv from 'dotenv';
 import app from './src/app.js';
 import connectDB from './src/config/db.js';
 
-// Load biến môi trường từ file .env
+// Load the local environment before the database connection is created.
 dotenv.config();
 
 const PORT = process.env.PORT || 5000;
 
-// Khởi chạy server và kết nối DB
+// Start accepting requests only after MongoDB connects successfully.
 const startServer = async () => {
   await connectDB();
 

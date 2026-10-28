@@ -12,7 +12,7 @@ src/
 ├── common/
 │   ├── constants/        # Enums và constants chung
 │   ├── middlewares/      # Authentication, error handling
-│   ├── services/         # Shared services (orderAccess, productUnit, demo)
+│   ├── services/         # Shared services (orderAccess, productUnit)
 │   └── utils/            # Response handlers và utilities
 ├── config/               # Database và env configuration
 ├── models/               # Tất cả mongoose models
@@ -146,5 +146,5 @@ Sau migration, cần test:
 
 - Các custom models (OrderQrToken, PackingSession, etc.) vẫn giữ nguyên schema và hoạt động bình thường
 - Video upload feature (Cloudinary) vẫn hoạt động như cũ
-- Demo order functionality được preserved
-- Tất cả tests đã được di chuyển cùng với các modules
+- Luồng đơn mẫu đã được gỡ; QR và đóng hàng dùng `sales_orders` trong MongoDB
+- Kiểm thử chức năng dùng dữ liệu được lưu trong MongoDB thay cho dữ liệu mẫu trong bộ nhớ

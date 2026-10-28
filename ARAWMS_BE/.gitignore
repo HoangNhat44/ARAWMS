@@ -1,0 +1,2 @@
+# Local QA scripts and experiments; keep them out of repository commits.
+/test/

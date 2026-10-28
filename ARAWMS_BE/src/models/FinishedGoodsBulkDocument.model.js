@@ -23,9 +23,13 @@ const bulkDocumentSchema = new Schema({
   }],
   locationId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation' },
   totalQuantity: { type: Number, required: true, min: 0 },
+  putawayReservationEpoch: { type: Number, default: 0 },
+  confirmationKey: { type: String },
+  confirmationHash: String,
   note: { type: String, maxlength: 500 },
   createdByUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
 }, { collection: 'finished_goods_bulk_documents' });
 
 bulkDocumentSchema.plugin(baseSchemaPlugin);
+bulkDocumentSchema.index({ confirmationKey: 1 }, { unique: true, partialFilterExpression: { confirmationKey: { $type: 'string' } } });
 export default mongoose.model('FinishedGoodsBulkDocument', bulkDocumentSchema);

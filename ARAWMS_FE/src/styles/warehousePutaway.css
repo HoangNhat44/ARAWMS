@@ -1,0 +1,17 @@
+/* File: warehousePutaway.css | Author: Duy Anh | Date: 2026-10-28 | Description: Styles the staff putaway queue and focused barcode scan workflow. */
+.putaway-page{max-width:1080px;margin:0 auto;padding:28px 20px 60px;color:var(--ara-noir)}
+.putaway-page header{margin-bottom:22px}.putaway-page header small{color:var(--ara-gold);font-weight:700;letter-spacing:.1em}
+.putaway-page h1{margin:5px 0 8px}.putaway-page h2{margin:0}.putaway-page header p{color:var(--ara-text-muted)}
+.putaway-card{background:#fff;border:1px solid var(--ara-border);border-radius:14px;padding:24px;box-shadow:var(--ara-shadow-sm)}
+.putaway-heading{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:18px}
+.putaway-page button{border:1px solid var(--ara-border);background:#fff;border-radius:8px;padding:10px 15px;cursor:pointer;color:var(--ara-noir)}
+.putaway-page button:disabled{opacity:.5;cursor:not-allowed}.putaway-page input,.putaway-page textarea{width:100%;border:1px solid var(--ara-border);border-radius:8px;padding:12px;font:inherit}
+.putaway-task-list{display:grid;gap:12px;margin-top:18px}.putaway-task-list article{display:flex;align-items:center;gap:16px;border:1px solid var(--ara-border);border-radius:10px;padding:14px}
+.putaway-task-list img{width:60px;height:60px;object-fit:cover;border-radius:8px}.putaway-task-list article div{display:grid;gap:4px;flex:1}.putaway-task-list small{color:var(--ara-text-muted)}
+.putaway-task-list em{color:#8d5b14;font-style:normal}.putaway-progress{display:flex;gap:20px;flex-wrap:wrap;font-size:1.1rem;margin:18px 0}
+.putaway-location strong{font-size:1.25rem}.putaway-instruction{padding:16px;background:#f5f0e8;border-radius:8px;font-weight:600}
+.putaway-video{display:block;width:100%;max-width:650px;margin:16px 0;border-radius:10px}.putaway-video.hidden{display:none}
+.putaway-input-row{display:flex;gap:10px;margin:8px 0 15px}.putaway-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+.putaway-shortage{display:grid;gap:10px;margin-top:16px}.putaway-shortage textarea{display:block;min-height:84px;margin-top:8px}
+.putaway-error,.putaway-notice{padding:13px 16px;border-radius:8px;margin:12px 0}.putaway-error{background:#fff0ed;color:#9b3023}.putaway-notice{background:#eef7ee;color:#21602a}
+@media(max-width:650px){.putaway-task-list article{align-items:flex-start;flex-wrap:wrap}.putaway-task-list article button{width:100%}.putaway-input-row{flex-direction:column}}

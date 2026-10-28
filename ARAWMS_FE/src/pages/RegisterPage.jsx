@@ -1,9 +1,17 @@
+/*
+ * File: RegisterPage.jsx
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Renders account registration and validates form submission. Signs in a newly registered user before navigation.
+ */
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../services/authService';
 import { useAuth } from '../hooks/useAuth';
 import { UserPlus, User, Mail, Lock } from 'lucide-react';
 
+/** Collects a new account's name, email, and password.
+ * Signs in immediately when the registration API succeeds. */
 const RegisterPage = () => {
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
@@ -16,6 +24,7 @@ const RegisterPage = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  /** Submits the form and keeps navigation blocked until registration completes. */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');

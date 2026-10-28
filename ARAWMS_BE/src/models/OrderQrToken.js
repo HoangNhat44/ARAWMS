@@ -14,6 +14,7 @@ const orderQrTokenSchema = new Schema(
     token: { type: String, required: true, unique: true, select: false },
     revokedAt: { type: Date, default: null },
     issuedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    qrImagePublicId: { type: String, default: null },
   },
   { timestamps: true, collection: 'order_qr_tokens' }
 );

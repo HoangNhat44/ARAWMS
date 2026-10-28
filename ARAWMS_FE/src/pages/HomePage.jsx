@@ -1,14 +1,23 @@
+/*
+ * File: HomePage.jsx
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Renders the application home view and system overview. Checks backend health and presents navigation to available workflows.
+ */
 import React, { useState, useEffect } from 'react';
 import { authService } from '../services/authService';
 import { useAuth } from '../hooks/useAuth';
 import { CheckCircle2, Server, Database, Layers, ArrowRight, Shield, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+/** Shows the application entry points and a live backend availability indicator.
+ * Reads the current user when available so the overview reflects the session. */
 const HomePage = () => {
   const { user } = useAuth();
   const [backendStatus, setBackendStatus] = useState({ loading: true, online: false, message: '' });
 
   useEffect(() => {
+    /** Converts the health endpoint result into a concise connection status. */
     const checkApi = async () => {
       try {
         const res = await authService.checkHealth();
@@ -106,6 +115,12 @@ const HomePage = () => {
           <h3 style={{ margin: '1rem 0 .5rem' }}>Quản lý kho thành phẩm</h3>
           <p style={{ color: 'var(--ara-text-muted)' }}>Xem sản phẩm trong kho, tạo sản phẩm mới, nhập kho và xuất kho.</p>
           <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Mở kho thành phẩm →</span>
+        </Link>}
+        {(user?.roles?.includes('WAREHOUSE_MANAGER') || user?.roles?.includes('OWNER')) && <Link to="/warehouse/raw-materials/inbound" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
+          <Layers size={28} color="var(--ara-gold)" />
+          <h3 style={{ margin: '1rem 0 .5rem' }}>Nhập kho nguyên phụ liệu</h3>
+          <p style={{ color: 'var(--ara-text-muted)' }}>Nhận hàng theo kế hoạch nhà cung cấp, kiểm nhận, khai báo cây/lô và cất vào kệ.</p>
+          <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Tạo phiếu nhập →</span>
         </Link>}
         <div style={{
           background: '#FFFFFF',

@@ -1,3 +1,9 @@
+/*
+ * File: StocktakeSession.model.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Defines inventory count sessions. Tracks the scope, status, and participants of a stocktake.
+ */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 

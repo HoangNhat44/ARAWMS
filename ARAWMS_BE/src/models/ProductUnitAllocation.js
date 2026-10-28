@@ -9,14 +9,13 @@ import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 const allocationSchema = new Schema({
-  sourceType: { type: String, required: true, enum: ['DEMO', 'REAL'] },
   barcode: { type: String, required: true },
   orderKey: { type: String, required: true },
   sessionId: { type: Schema.Types.ObjectId, ref: 'PackingSession', required: true },
   lineKey: { type: String, required: true },
 }, { timestamps: true, collection: 'product_unit_allocations' });
 
-allocationSchema.index({ sourceType: 1, barcode: 1 }, { unique: true });
-allocationSchema.index({ sourceType: 1, orderKey: 1 });
+allocationSchema.index({ barcode: 1 }, { unique: true });
+allocationSchema.index({ orderKey: 1 });
 
 export default mongoose.model('ProductUnitAllocation', allocationSchema);

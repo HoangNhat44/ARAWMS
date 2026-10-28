@@ -1,3 +1,9 @@
+/*
+ * File: api.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Configures the shared Axios client. Adds bearer tokens and converts API failures into messages for the interface.
+ */
 import axios from 'axios';
 import { API_BASE_URL, STORAGE_KEYS } from '../utils/constants';
 

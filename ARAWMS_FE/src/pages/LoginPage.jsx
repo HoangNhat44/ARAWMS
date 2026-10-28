@@ -1,3 +1,9 @@
+/*
+ * File: LoginPage.jsx
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Renders employee login and handles credential submission. Shows validation and server errors while updating authentication state.
+ */
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../services/authService';
@@ -13,6 +19,8 @@ import {
   AlertCircle 
 } from 'lucide-react';
 
+/** Presents the employee sign-in form and its validation state.
+ * Successful authentication updates shared user state before returning home. */
 const LoginPage = () => {
   const [formData, setFormData] = useState({
     usernameOrEmail: '',
@@ -31,6 +39,7 @@ const LoginPage = () => {
     if (error) setError('');
   };
 
+  /** Validates required credentials, calls the login API, and reports failures in the form. */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');

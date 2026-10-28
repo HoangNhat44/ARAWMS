@@ -2,7 +2,7 @@
  * File: localPackingVideoQueue.js
  * Author: Duy Anh
  * Date: 2026-10-21
- * Description: Stores recordings in OPFS and upload jobs in IndexedDB.
+ * Description: Stores recordings in OPFS and upload jobs in IndexedDB. Keeps pending videos recoverable across reloads and removes local files after completion.
  */
 const DB_NAME = 'arawms-packing-video-queue';
 const STORE_NAME = 'uploads';
@@ -54,6 +54,7 @@ const writeFile = async (name, blob) => {
   }
 };
 
+/** Deletes a local recording and treats an already missing file as complete. */
 const removeFile = async (name) => {
   if (!name) return;
   await (await folder()).removeEntry(name).catch((error) => {
@@ -85,6 +86,7 @@ export const savePendingVideo = async ({ sessionId, orderId, recordingId, blob, 
   return job;
 };
 
+/** Reads all persisted upload jobs so the runner can resume after a reload. */
 export const listPendingVideos = () => transact('readonly', (store) => store.getAll());
 /** Updates the persisted job for a recording ID. */
 export const updatePendingVideo = async (recordingId, patch) => {

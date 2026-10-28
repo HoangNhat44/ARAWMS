@@ -2,7 +2,7 @@
  * File: provision-warehouse-accounts.mjs
  * Author: Duy Anh
  * Date: 2026-10-22
- * Description: Creates warehouse manager and staff accounts.
+ * Description: Provisions the warehouse manager and staff in MongoDB Atlas. Validates account identity and role, grants current warehouse access, and preserves existing passwords on reruns.
  */
 import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
@@ -23,7 +23,8 @@ if (!process.env.MONGODB_URI) throw new Error('Thiếu MONGODB_URI');
 try {
   await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 10000 });
 
-  // Refuse conflicting employee codes, emails, or roles before creating either account.
+  // Reject a reused code or email before writing roles or users so neither warehouse
+  // account can silently take over a different employee identity.
   const existing = await User.find({ $or: accounts.flatMap(({ employeeCode, email }) => [{ employeeCode }, { email }]) }).lean();
   for (const account of accounts) {
     const matching = existing.filter((user) => user.employeeCode === account.employeeCode || user.email === account.email);
@@ -32,7 +33,8 @@ try {
     }
   }
 
-  // Grant access to warehouses referenced by reservations or finished goods locations.
+  // Include warehouses from both order reservations and location records. Existing
+  // accounts receive newly discovered access without changing their credentials.
   const reservedIds = await SalesOrder.distinct('items.reservation.warehouseId');
   const locations = await WarehouseLocation.find({ isDeleted: { $ne: true } }).select('_id').lean();
   const warehouseIds = [...new Set([...reservedIds, ...locations.map((location) => location._id)].filter((id) => mongoose.isValidObjectId(id)).map(String))];
@@ -44,13 +46,16 @@ try {
     );
     if (!role.isActive || role.isDeleted) throw new Error(`Vai trò ${account.roleCode} không hoạt động`);
 
-    // Existing users keep their passwords; reruns only add missing warehouse access.
+    // Provisioning is safe to rerun: an existing employee keeps the stored password
+    // hash while newly discovered warehouse IDs are added to their access list.
     if (existing.some((user) => user.employeeCode === account.employeeCode)) {
       await User.updateOne({ employeeCode: account.employeeCode }, { $addToSet: { warehouseIds: { $each: warehouseIds } } });
       console.log(`${account.roleCode}: ${account.employeeCode} (đã tồn tại; giữ nguyên mật khẩu)`);
       continue;
     }
 
+    // Generate credentials only for a missing account. A later server restart or
+    // provisioning run must never replace a password already stored in MongoDB.
     const password = randomBytes(24).toString('base64url');
     await User.create({
       ...account,

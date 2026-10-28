@@ -17,9 +17,9 @@ let alreadyLinked = 0;
 let skipped = 0;
 
 try {
-  // Process only real sessions with saved videos; demo sessions must not update sales orders.
+  // Only sessions linked to orders can update order video URLs.
   const sessions = PackingSession.find({
-    sourceType: 'REAL', orderId: { $exists: true }, 'video.url': { $exists: true },
+    orderId: { $exists: true }, 'video.url': { $exists: true },
   }).select('orderId video.url').lean().cursor();
 
   for await (const session of sessions) {

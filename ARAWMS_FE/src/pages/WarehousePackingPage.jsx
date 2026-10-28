@@ -36,7 +36,7 @@ const reasons = {
   BARCODE_REMOVED: 'Barcode này đã được gỡ khỏi lần đóng hàng.',
   BARCODE_ALLOCATION_MISSING: 'Không tìm thấy liên kết của barcode với đơn. Hãy tải lại phiên trước khi sửa.',
   BARCODE_ASSIGNED_OTHER_ORDER: 'Vật phẩm đã gắn với đơn khác.',
-  ITEM_NOT_IN_ORDER: 'Biến thể/SKU này không nằm trong đơn.',
+  ITEM_NOT_IN_ORDER: 'Mẫu/SKU trên tem không nằm trong đơn hàng này.',
   QTY_EXCEEDED: 'Đơn đã đủ số lượng của biến thể này.',
   ORDER_LOCKED: 'Đơn đang được xử lý ở bàn kho khác.',
   STATION_BUSY: 'Bàn này đang giữ một đơn khác. Hãy kết thúc đơn hiện tại trước.',
@@ -92,6 +92,8 @@ const stationId = (() => {
   return id;
 })();
 
+/** Runs the station workflow from order QR through unit scans and video capture.
+ * Preserves upload progress and session state when a recording must retry. */
 export default function WarehousePackingPage() {
   const [qrInput, setQrInput] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -159,6 +161,7 @@ export default function WarehousePackingPage() {
   }, []);
 
   useEffect(() => {
+    /** Warns before a page unload while the local recorder is still active. */
     const warnBeforeLeaving = (event) => {
       if (recorderRef.current) {
         event.preventDefault();
@@ -300,7 +303,9 @@ export default function WarehousePackingPage() {
     finally { busyRef.current = false; setBusy(false); }
   };
 
-  /** Scans a unit barcode and updates the session's accepted quantities. */
+  /** Sends one unit barcode for server validation against the order SKU and FIFO pick.
+   * Accepted scans update progress; rejected scans show the specific rule that failed.
+   */
   const scanBarcode = async (value) => {
     const activeSession = sessionRef.current;
     if (!activeSession || busyRef.current) return;

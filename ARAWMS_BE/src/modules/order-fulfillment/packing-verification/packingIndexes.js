@@ -12,7 +12,8 @@ import ProductUnitAllocation from '../../../models/ProductUnitAllocation.js';
 
 let initialization;
 
-// Create unique indexes before the first write to enforce retry and allocation rules.
+/** Creates unique indexes before the first packing write.
+ * Reuses one initialization promise so concurrent requests share the same setup. */
 export const ensurePackingIndexes = () => {
   if (!initialization) {
     initialization = Promise.all([

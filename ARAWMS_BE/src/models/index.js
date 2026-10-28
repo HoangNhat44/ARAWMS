@@ -1,3 +1,9 @@
+/*
+ * File: index.js
+ * Author: Duy Anh
+ * Date: 2026-10-26
+ * Description: Re-exports Mongoose models from a single module. Provides a stable import point for backend services and routes.
+ */
 /**
  * ARAWMS - Centralized Export for All Mongoose Models
  */
@@ -10,11 +16,15 @@ export { default as User } from './User.model.js';
 export { default as SystemSetting } from './SystemSetting.model.js';
 export { default as SystemLog } from './SystemLog.model.js';
 export { default as WarehouseLocation } from './WarehouseLocation.model.js';
+export { default as WarehouseLayout } from './WarehouseLayout.model.js';
+export { default as WarehouseBarcodeHistory } from './WarehouseBarcodeHistory.model.js';
+export { default as PutawayAllocation } from './PutawayAllocation.model.js';
 export { default as DocumentTemplate } from './DocumentTemplate.model.js';
 export { default as ShippingCarrier } from './ShippingCarrier.model.js';
 
 // Materials & Products
 export { default as RawMaterial } from './RawMaterial.model.js';
+export { default as MaterialStockLot } from './MaterialStockLot.model.js';
 export { default as FabricRoll } from './FabricRoll.model.js';
 export { default as Product } from './Product.model.js';
 export { default as Sku } from './Sku.model.js';
