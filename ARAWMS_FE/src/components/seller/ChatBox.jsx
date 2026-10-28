@@ -18,6 +18,7 @@ import {
   CloseButton, ListGroup, Card,
 } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
+import { getSocket } from '../../services/socketService';
 import { API_BASE_URL } from '../../utils/constants';
 import { useToast } from '../../context/ToastContext';
 import { Icon, Avatar, EmptyState, formatVnd } from './SellerUi';
@@ -74,22 +75,56 @@ const ChatBox = ({
   const activeTags = conversation?.tags || [];
 
   useEffect(() => {
-    if (conversation?._id) fetchMessages(conversation._id);
+    if (!conversation?._id) return;
+
+    fetchMessages(conversation._id);
+
+    // Kết nối Socket.io và tham gia phòng hội thoại
+    const socket = getSocket();
+    const convId = conversation._id;
+    socket.emit('join_conversation', convId);
+
+    const handleNewMessage = (newMsg) => {
+      if (!newMsg || String(newMsg.conversationId) !== String(convId)) return;
+      setMessages((prev) => {
+        // Tránh trùng lặp tin nhắn nếu đã có trong mảng
+        const exists = prev.some(
+          (m) => (m._id && m._id === newMsg._id) || (m.fbMessageId && m.fbMessageId === newMsg.fbMessageId)
+        );
+        if (exists) return prev;
+        return [...prev, newMsg];
+      });
+    };
+
+    socket.on('new_message', handleNewMessage);
+
+    return () => {
+      socket.emit('leave_conversation', convId);
+      socket.off('new_message', handleNewMessage);
+    };
   }, [conversation?._id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const fetchMessages = async (convId) => {
+  const fetchMessages = async (convId, isSilent = false) => {
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       const res = await sellerService.getConversationMessages(convId, { limit: 50 });
-      if (res.success) setMessages(res.data.items || []);
+      if (res.success) {
+        const newItems = res.data.items || [];
+        setMessages((prev) => {
+          if (newItems.length !== prev.length || (newItems.length > 0 && newItems[newItems.length - 1]?._id !== prev[prev.length - 1]?._id)) {
+            return newItems;
+          }
+          return prev;
+        });
+      }
     } catch (err) {
       console.warn('Lỗi tải tin nhắn:', err.message);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
@@ -289,7 +324,7 @@ const ChatBox = ({
 
         {/* Quick Order Button */}
         {onOpenQuickOrder && (
-          <Button size="sm" variant="dark" onClick={onOpenQuickOrder} className="d-flex align-items-center gap-1 text-nowrap">
+          <Button size="sm" className="btn-ara-header-gold d-flex align-items-center gap-1 text-nowrap" onClick={onOpenQuickOrder}>
             <Icon name="bag-plus" /> Tạo đơn nhanh
           </Button>
         )}

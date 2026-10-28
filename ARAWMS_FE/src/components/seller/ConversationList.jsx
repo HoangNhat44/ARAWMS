@@ -50,9 +50,9 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
   return (
     <div className="d-flex flex-column h-100 bg-white">
       {/* Search Header */}
-      <div className="p-2 border-bottom">
-        <InputGroup size="sm">
-          <InputGroup.Text className="bg-white"><Icon name="search" className="text-warning-emphasis" /></InputGroup.Text>
+      <div className="p-2 border-bottom" style={{ borderColor: '#E3D9CD' }}>
+        <InputGroup size="sm" className="ara-search-capsule">
+          <InputGroup.Text><Icon name="search" /></InputGroup.Text>
           <Form.Control
             placeholder="Tìm theo tên, SĐT, mã khách..."
             value={searchTerm}
@@ -62,31 +62,28 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
       </div>
 
       {/* Quick Tag Pills Bar - dùng allTags từ DB */}
-      <div className="d-flex flex-wrap gap-1 p-2 border-bottom">
-        <Button
-          size="sm"
-          className="rounded-pill py-0 px-2"
-          variant={!activeFilterTag ? 'dark' : 'outline-secondary'}
+      <div className="d-flex flex-wrap gap-1 p-2 border-bottom" style={{ borderColor: '#E3D9CD' }}>
+        <button
+          type="button"
+          className={`ara-status-pill-btn ${!activeFilterTag ? 'active' : ''}`}
           onClick={() => onTagFilter && onTagFilter('')}
         >
-          Tất cả ({conversations.length})
-        </Button>
+          <span>Tất cả ({conversations.length})</span>
+        </button>
         {allTags.slice(0, 6).map((tag) => {
           const isActive = activeFilterTag === tag.name;
           return (
-            <Button
+            <button
               key={tag._id || tag.name}
-              size="sm"
-              variant="light"
-              className="rounded-pill py-0 px-2 border"
-              // Màu thẻ do người dùng cấu hình trong DB nên bắt buộc truyền qua style
+              type="button"
+              className="ara-status-pill-btn"
               style={isActive
                 ? { background: tag.color, borderColor: tag.color, color: tag.textColor || '#fff' }
                 : { borderColor: tag.color, color: tag.color, background: 'transparent' }}
               onClick={() => onTagFilter && onTagFilter(isActive ? '' : tag.name)}
             >
-              {tag.name}
-            </Button>
+              <span>{tag.name}</span>
+            </button>
           );
         })}
       </div>
@@ -111,12 +108,19 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
                   action
                   active={isSelected}
                   onClick={() => onSelect(conv)}
-                  className={`d-flex gap-2 py-3 ${isSelected ? 'bg-body-secondary text-body border-start border-4 border-dark' : ''}`}
+                  className="d-flex gap-2 py-3"
+                  style={{
+                    backgroundColor: isSelected ? '#FAF7F2' : 'transparent',
+                    borderLeft: isSelected ? '4px solid #9F8365' : '4px solid transparent',
+                    color: '#1C1A17',
+                    borderColor: '#EDE6DC',
+                    transition: 'all 0.15s ease',
+                  }}
                 >
                   {/* Avatar Icon */}
                   <div className="position-relative">
                     <Avatar name={customer?.fullName} size={42} />
-                    {conv.unreadCount > 0 && (
+                    {conv.unreadCount > 0 && !isSelected && (
                       <Badge pill bg="danger" className="position-absolute top-0 start-100 translate-middle border border-white">
                         {conv.unreadCount}
                       </Badge>

@@ -25,7 +25,7 @@ import CreateRmaModal from '../../components/seller/CreateRmaModal';
 import OrderDetailModal from '../../components/seller/OrderDetailModal';
 import QuickOrderModal from '../../components/seller/QuickOrderModal';
 import { SkeletonOrderRow } from '../../components/common/Skeleton';
-import { Icon, Avatar, formatVnd, ORDER_STATUS_VARIANT, EmptyState } from '../../components/seller/SellerUi';
+import { Icon, Avatar, formatVnd, ORDER_STATUS_VARIANT, ORDER_STATUS_CLASS, EmptyState } from '../../components/seller/SellerUi';
 
 /**
  * Nhận diện nhà mạng viễn thông tự động dựa trên đầu số điện thoại Việt Nam
@@ -72,10 +72,10 @@ const formatDateTime = (dateStr) => {
 };
 
 /**
- * Component quản lý danh sách đơn hàng của Seller (Pancake-style layout)
+ * Component quản lý danh sách đơn hàng của Seller (Luxury Enterprise & Pancake-style layout)
  *
  * @component
- * @returns {JSX.Element} Bảng quản lý đơn hàng chuyên nghiệp phong cách Pancake.
+ * @returns {JSX.Element} Bảng quản lý đơn hàng chuyên nghiệp chuẩn ARA Luxury.
  */
 const SellerOrdersPage = () => {
   const navigate = useNavigate();
@@ -175,44 +175,150 @@ const SellerOrdersPage = () => {
     fetchOrders();
   };
 
+  /**
+   * Xuất danh sách đơn hàng ra file Excel / CSV (UTF-8 BOM chuẩn tiếng Việt)
+   */
+  const handleExportOrders = (orderList, customFilename) => {
+    if (!orderList || orderList.length === 0) {
+      showInfo('Không có đơn hàng nào để xuất file', 'Xuất file');
+      return;
+    }
+
+    const quote = (val) => `"${String(val ?? '').replaceAll('"', '""')}"`;
+    const headers = [
+      'Mã đơn hàng',
+      'Mã vận đơn',
+      'Kênh bán',
+      'Thời gian tạo',
+      'Cập nhật lần cuối',
+      'Tên khách hàng',
+      'Số điện thoại',
+      'Nhà mạng',
+      'Địa chỉ nhận hàng',
+      'Chi tiết sản phẩm (SKU - Tên - SL)',
+      'Tổng tiền hàng (VNĐ)',
+      'Phí vận chuyển (VNĐ)',
+      'Giảm giá (VNĐ)',
+      'Tổng thanh toán (VNĐ)',
+      'Hình thức thanh toán',
+      'Trạng thái thanh toán',
+      'Trạng thái đơn hàng',
+      'Ghi chú nội bộ',
+    ];
+
+    const rows = [
+      headers,
+      ...orderList.map((ord) => {
+        const id = ord._id || ord.id;
+        const code = ord.orderCode || id?.slice(-6) || '';
+        const waybill = ord.warehouseFulfillment?.waybillCode || '';
+        const channel = ord.orderType === 'POS_DIRECT' ? 'Bán tại quầy (POS)' : 'Online (Messenger)';
+        const created = formatDateTime(ord.createdAt);
+        const updated = formatDateTime(ord.updatedAt);
+        const recipient = ord.shippingRecipient || {};
+        const customer = ord.customerId || {};
+        const custName = customer.fullName || recipient.name || 'Khách vãng lai';
+        const phone = recipient.phone || customer.phone || '';
+        const telco = detectTelco(phone)?.name || '';
+        const address = [recipient.addressDetail, recipient.ward, recipient.district, recipient.province]
+          .filter(Boolean)
+          .join(', ') || '-';
+
+        const itemsStr = (ord.items || [])
+          .map((item) => {
+            const sku = item.skuCode || item.skuId?.skuCode || 'SKU';
+            const name = item.styleName || item.skuId?.styleName || '';
+            const qty = item.orderedQty || 1;
+            return `[${sku}] ${name} (x${qty})`;
+          })
+          .join('; ');
+
+        const prodAmount = ord.financialSummary?.totalProductAmount || 0;
+        const shippingFee = ord.financialSummary?.shippingFee || 0;
+        const discount = ord.financialSummary?.discountAmount || 0;
+        const totalAmount = ord.financialSummary?.totalOrderAmount || 0;
+        const paymentMethod = ord.paymentMethod || 'COD';
+        const paymentStatus = ord.paymentStatus === 'PAID' ? 'Đã thanh toán' : 'Chưa thanh toán';
+
+        const stObj = PANCAKE_STATUSES.find((s) => s.key === ord.status);
+        const statusLabel = stObj ? stObj.label : ord.status;
+        const notes = ord.notes || '';
+
+        return [
+          code,
+          waybill,
+          channel,
+          created,
+          updated,
+          custName,
+          phone,
+          telco,
+          address,
+          itemsStr,
+          prodAmount,
+          shippingFee,
+          discount,
+          totalAmount,
+          paymentMethod,
+          paymentStatus,
+          statusLabel,
+          notes,
+        ];
+      }),
+    ];
+
+    const csvContent = '\uFEFF' + rows.map((r) => r.map(quote).join(',')).join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const todayStr = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = customFilename || `danh-sach-don-hang-ara-${todayStr}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    showSuccess(`Đã xuất và tải xuống file danh sách ${orderList.length} đơn hàng!`, 'Xuất file thành công');
+  };
+
   const renderStatusBadge = (status) => {
     const stObj = PANCAKE_STATUSES.find((s) => s.key === status);
     const label = stObj ? stObj.label : status;
-    const variant = ORDER_STATUS_VARIANT[status] || 'secondary';
+    const badgeClass = ORDER_STATUS_CLASS[status] || 'ara-badge-returned';
     return (
-      <Badge bg={`${variant}-subtle`} text={`${variant}-emphasis`} className="px-2 py-1">
+      <span className={`ara-badge-status ${badgeClass}`}>
         {label}
-      </Badge>
+      </span>
     );
   };
 
   return (
-    <div className="d-flex flex-column h-100 bg-body-tertiary">
-      {/* ── Top Header Navigation Bar ─── */}
-      <div className="bg-dark text-white px-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2 shadow-sm">
+    <div className="d-flex flex-column h-100" style={{ backgroundColor: '#FAF7F2' }}>
+      {/* ── Top Header Navigation Bar (Atelier Noir & Champagne Gold) ─── */}
+      <div className="ara-seller-header px-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
         <Stack direction="horizontal" gap={3} className="align-items-center">
           <Button
             size="sm"
-            variant="outline-light"
             onClick={() => navigate('/seller/chat')}
-            className="d-flex align-items-center gap-1"
+            className="btn-ara-header-ghost d-flex align-items-center gap-1"
           >
             <Icon name="arrow-left" /> Về Chat
           </Button>
-          <div className="vr bg-secondary opacity-50 d-none d-sm-block" style={{ height: 24 }} />
+          <div className="vr opacity-25 d-none d-sm-block" style={{ height: 22, backgroundColor: '#9F8365' }} />
           <div className="d-flex align-items-center gap-2">
-            <Icon name="bag" className="text-warning fs-5" />
-            <span className="fw-bold fs-6">Quản Lý Đơn Hàng</span>
-            <Badge bg="warning" text="dark" className="d-none d-md-inline-block">ARA STORE NEW</Badge>
+            <span className="fw-bold fs-6 text-white" style={{ letterSpacing: '0.02em' }}>
+              Quản Lý Đơn Hàng
+            </span>
           </div>
         </Stack>
 
-        {/* Search input in top header */}
-        <div className="flex-grow-1 mx-2" style={{ maxWidth: 420 }}>
-          <InputGroup size="sm">
-            <InputGroup.Text className="bg-white"><Icon name="search" /></InputGroup.Text>
+        {/* Search input in top header (Capsule design) */}
+        <div className="flex-grow-1 mx-2" style={{ maxWidth: 460 }}>
+          <InputGroup size="sm" className="ara-search-capsule">
+            <InputGroup.Text><Icon name="search" /></InputGroup.Text>
             <Form.Control
-              placeholder="Tìm đơn hàng (Mã đơn, SĐT, Người nhận, SKU)..."
+              placeholder="Tìm kiếm đơn (mã đơn, SĐT, tên khách, SKU)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') fetchOrders(); }}
@@ -222,20 +328,25 @@ const SellerOrdersPage = () => {
 
         {/* Action Buttons Top Right */}
         <Stack direction="horizontal" gap={2}>
-          <Button size="sm" variant="outline-light" onClick={fetchOrders} title="Đồng bộ danh sách đơn">
-            <Icon name="arrow-clockwise" className="me-1" /> Đồng bộ
-          </Button>
           <Button
             size="sm"
-            variant="outline-light"
-            onClick={() => showSuccess(`Xuất file danh sách ${filteredOrders.length} đơn hàng thành công!`, 'Xuất file')}
+            className="btn-ara-header-ghost d-flex align-items-center gap-1"
+            onClick={fetchOrders}
+            title="Đồng bộ danh sách đơn"
           >
-            <Icon name="download" className="me-1" /> Xuất
+            <Icon name="arrow-clockwise" /> Đồng bộ
           </Button>
           <Button
             size="sm"
-            variant="warning"
-            className="fw-bold text-dark d-flex align-items-center gap-1"
+            className="btn-ara-header-ghost d-flex align-items-center gap-1"
+            onClick={() => handleExportOrders(filteredOrders, `don-hang-ara-${channelFilter.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`)}
+            title="Xuất file toàn bộ danh sách đơn hàng đang hiển thị"
+          >
+            <Icon name="download" /> Xuất ({filteredOrders.length})
+          </Button>
+          <Button
+            size="sm"
+            className="btn-ara-header-gold d-flex align-items-center gap-1"
             onClick={() => setCreateOrderModalOpen(true)}
             title="Tạo đơn hàng mới (Popup Pancake)"
           >
@@ -244,79 +355,86 @@ const SellerOrdersPage = () => {
         </Stack>
       </div>
 
-      {/* ── Channel Tabs Bar (Tất cả / Bán tại quầy / Online) & Sub Tabs ─── */}
-      <div className="bg-white px-3 py-2 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <ButtonGroup size="sm">
-          <Button
-            variant={channelFilter === 'ALL' ? 'dark' : 'outline-secondary'}
+      {/* ── Channel Tabs Bar & Sub Tabs (Segmented Control) ─── */}
+      <div
+        className="px-3 py-2 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2"
+        style={{ backgroundColor: '#FAF7F2', borderColor: '#E3D9CD' }}
+      >
+        <div className="ara-segmented-group">
+          <button
+            type="button"
+            className={`ara-segmented-btn ${channelFilter === 'ALL' ? 'active' : ''}`}
             onClick={() => setChannelFilter('ALL')}
           >
-            Tất cả
-          </Button>
-          <Button
-            variant={channelFilter === 'POS' ? 'dark' : 'outline-secondary'}
+            Tất cả kênh
+          </button>
+          <button
+            type="button"
+            className={`ara-segmented-btn ${channelFilter === 'POS' ? 'active' : ''}`}
             onClick={() => setChannelFilter('POS')}
           >
-            Bán tại quầy
-          </Button>
-          <Button
-            variant={channelFilter === 'ONLINE' ? 'dark' : 'outline-secondary'}
+            Bán tại quầy (POS)
+          </button>
+          <button
+            type="button"
+            className={`ara-segmented-btn ${channelFilter === 'ONLINE' ? 'active' : ''}`}
             onClick={() => setChannelFilter('ONLINE')}
           >
-            Online
-          </Button>
-        </ButtonGroup>
+            Online (Messenger)
+          </button>
+        </div>
 
         {/* Sub-tabs: Đơn hàng / Cần xử lý / Đơn đã hoàn */}
-        <ButtonGroup size="sm">
-          <Button
-            variant={subTab === 'ORDERS' ? 'primary' : 'outline-secondary'}
+        <div className="ara-segmented-group">
+          <button
+            type="button"
+            className={`ara-segmented-btn ${subTab === 'ORDERS' ? 'active' : ''}`}
             onClick={() => setSubTab('ORDERS')}
           >
-            Đơn hàng
-          </Button>
-          <Button
-            variant={subTab === 'NEED_ACTION' ? 'primary' : 'outline-secondary'}
+            Tất cả đơn
+          </button>
+          <button
+            type="button"
+            className={`ara-segmented-btn ${subTab === 'NEED_ACTION' ? 'active' : ''}`}
             onClick={() => { setSubTab('NEED_ACTION'); setStatusFilter('PENDING'); }}
           >
+            <i className="bi bi-clock-history text-warning me-1"></i>
             Cần xử lý
-          </Button>
-          <Button
-            variant={subTab === 'RETURNS' ? 'primary' : 'outline-secondary'}
+          </button>
+          <button
+            type="button"
+            className={`ara-segmented-btn ${subTab === 'RETURNS' ? 'active' : ''}`}
             onClick={() => { setSubTab('RETURNS'); setStatusFilter('RETURN_REQUESTED'); }}
           >
+            <i className="bi bi-arrow-counterclockwise text-danger me-1"></i>
             Đơn đã hoàn
-          </Button>
-        </ButtonGroup>
+          </button>
+        </div>
       </div>
 
       {/* ── Pancake Status Pill Counters Bar ─── */}
-      <div className="bg-white px-3 py-2 border-bottom d-flex align-items-center gap-1 overflow-x-auto">
+      <div className="ara-status-pills-container px-3 py-2 d-flex align-items-center gap-1 overflow-x-auto">
         {PANCAKE_STATUSES.map((st) => {
           const count = statusCounts[st.countKey] !== undefined ? statusCounts[st.countKey] : 0;
           const isActive = statusFilter === st.key;
           return (
-            <Button
+            <button
               key={st.key}
-              size="sm"
-              variant={isActive ? 'dark' : 'outline-secondary'}
-              className="rounded-pill py-0 px-2 text-nowrap d-flex align-items-center gap-1"
-              style={{ fontSize: '0.78rem' }}
+              type="button"
+              className={`ara-status-pill-btn ${isActive ? 'active' : ''}`}
               onClick={() => setStatusFilter(st.key)}
             >
               <span>{st.label}</span>
-              <Badge pill bg={isActive ? 'light' : 'secondary'} text={isActive ? 'dark' : undefined} className="ms-1">
-                {count}
-              </Badge>
-            </Button>
+              <span className="ara-status-pill-count">{count}</span>
+            </button>
           );
         })}
       </div>
 
       {/* ── Main Orders Table ─── */}
       <div className="flex-grow-1 overflow-auto bg-white">
-        <Table responsive hover bordered className="align-middle mb-0 small text-nowrap">
-          <thead className="table-light text-secondary sticky-top">
+        <Table responsive hover className="ara-seller-table align-middle mb-0 text-nowrap w-100">
+          <thead className="sticky-top">
             <tr>
               <th style={{ width: 40 }} className="text-center">
                 <Form.Check
@@ -385,34 +503,35 @@ const SellerOrdersPage = () => {
 
                     {/* ID */}
                     <td>
-                      <Stack direction="horizontal" gap={1}>
-                        <Icon name="facebook" className="text-primary" />
-                        <span className="font-monospace fw-bold">{ord.orderCode || id.slice(-6)}</span>
-                      </Stack>
+                      <div className="ara-code-badge">
+                        <Icon
+                          name={ord.orderType === 'POS_DIRECT' ? 'shop' : 'facebook'}
+                          style={{ color: ord.orderType === 'POS_DIRECT' ? '#7E766D' : '#1877F2' }}
+                        />
+                        <span>{ord.orderCode || id.slice(-6)}</span>
+                      </div>
                     </td>
 
                     {/* Mã vận đơn */}
                     <td>
                       {waybill ? (
-                        <span className="font-monospace text-primary">{waybill}</span>
+                        <span className="font-monospace fw-semibold" style={{ color: '#0369A1' }}>{waybill}</span>
                       ) : (
-                        <span className="text-secondary">-</span>
+                        <span className="text-muted opacity-50">-</span>
                       )}
                     </td>
 
                     {/* Thời gian tạo */}
                     <td>
-                      <div className="d-flex align-items-center gap-1">
+                      <div className="d-flex align-items-center gap-1 text-secondary" style={{ fontSize: '0.8rem' }}>
                         <span>{formatDateTime(ord.createdAt)}</span>
-                        <Badge bg="secondary-subtle" text="secondary-emphasis" style={{ fontSize: '0.65rem' }}>HT</Badge>
                       </div>
                     </td>
 
                     {/* Cập nhật TT */}
                     <td>
-                      <div className="d-flex align-items-center gap-1 text-secondary">
+                      <div className="d-flex align-items-center gap-1 text-secondary" style={{ fontSize: '0.8rem' }}>
                         <span>{formatDateTime(ord.updatedAt)}</span>
-                        <Icon name="person" />
                       </div>
                     </td>
 
@@ -420,7 +539,7 @@ const SellerOrdersPage = () => {
                     <td>
                       <div className="d-flex align-items-center gap-2">
                         <Avatar name={customer.fullName || recipient.name} size={28} />
-                        <span className="fw-semibold text-truncate" style={{ maxWidth: 140 }} title={customer.fullName || recipient.name}>
+                        <span className="fw-semibold text-truncate text-dark" style={{ maxWidth: 140 }} title={customer.fullName || recipient.name}>
                           {customer.fullName || recipient.name || 'Khách vãng lai'}
                         </span>
                       </div>
@@ -429,11 +548,11 @@ const SellerOrdersPage = () => {
                     {/* SĐT */}
                     <td>
                       <div className="d-flex align-items-center gap-1">
-                        <span>{recipient.phone || customer.phone || '-'}</span>
+                        <span className="text-secondary">{recipient.phone || customer.phone || '-'}</span>
                         {telco && (
                           <span
-                            className="badge"
-                            style={{ backgroundColor: telco.bg, color: telco.color, fontSize: '0.65rem' }}
+                            className="badge rounded-pill fw-normal"
+                            style={{ backgroundColor: telco.bg, color: telco.color, fontSize: '0.67rem', padding: '2px 6px' }}
                           >
                             {telco.name}
                           </span>
@@ -445,21 +564,28 @@ const SellerOrdersPage = () => {
                     <td>
                       {ord.items && ord.items.length > 0 ? (
                         <div className="d-flex align-items-center gap-1">
-                          <span className="fw-bold">{firstItem.skuCode || firstItem.skuId?.skuCode}</span>
-                          <span className="text-secondary"> x {firstItem.orderedQty}</span>
+                          <span className="fw-semibold font-monospace" style={{ fontSize: '0.82rem', color: '#1C1A17' }}>
+                            {firstItem.skuCode || firstItem.skuId?.skuCode}
+                          </span>
+                          <span className="text-secondary" style={{ fontSize: '0.78rem' }}>x{firstItem.orderedQty}</span>
                           {ord.items.length > 1 && (
-                            <Badge bg="secondary" pill style={{ fontSize: '0.65rem' }}>+{ord.items.length - 1}</Badge>
+                            <span
+                              className="badge rounded-pill"
+                              style={{ backgroundColor: '#EBE4DA', color: '#5A524A', fontSize: '0.67rem' }}
+                            >
+                              +{ord.items.length - 1}
+                            </span>
                           )}
                         </div>
                       ) : (
-                        <span className="text-secondary">Chưa có SP</span>
+                        <span className="text-secondary">-</span>
                       )}
                     </td>
 
                     {/* Tên sản phẩm */}
                     <td>
                       {ord.items && ord.items.length > 0 ? (
-                        <div className="text-truncate" style={{ maxWidth: 220 }}>
+                        <div className="text-truncate" style={{ maxWidth: 220, fontSize: '0.82rem' }}>
                           {firstItem.skuId?.styleName || firstItem.styleName || firstItem.skuCode}
                           {ord.items.length > 1 && ` (và ${ord.items.length - 1} món khác)`}
                         </div>
@@ -469,13 +595,13 @@ const SellerOrdersPage = () => {
                     </td>
 
                     {/* Tổng tiền */}
-                    <td className="text-end fw-bold text-warning-emphasis">
+                    <td className="text-end fw-bold" style={{ color: '#9F8365', fontSize: '0.88rem' }}>
                       {formatVnd(totalAmount)}
                     </td>
 
                     {/* Ghi chú nội bộ */}
                     <td>
-                      <div className="text-truncate text-secondary" style={{ maxWidth: 140 }}>
+                      <div className="text-truncate text-secondary" style={{ maxWidth: 140, fontSize: '0.8rem' }}>
                         {ord.notes || (ord.financialSummary?.discountAmount > 0 ? 'Đã giảm giá' : 'Đơn COD')}
                       </div>
                     </td>
@@ -490,22 +616,24 @@ const SellerOrdersPage = () => {
                       <Stack direction="horizontal" gap={1} className="justify-content-center">
                         <Button
                           size="sm"
-                          variant="outline-secondary"
-                          className="py-0 px-2"
+                          variant="light"
+                          className="py-0 px-2 border"
+                          style={{ borderColor: '#E3D9CD' }}
                           onClick={() => handleOpenDetail(ord)}
                           title="Xem chi tiết & đổi trạng thái"
                         >
-                          <Icon name="eye" />
+                          <Icon name="eye" className="text-secondary" />
                         </Button>
                         {['DELIVERED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
                           <Button
                             size="sm"
-                            variant="outline-warning"
-                            className="py-0 px-2"
+                            variant="light"
+                            className="py-0 px-2 border"
+                            style={{ borderColor: '#E3D9CD' }}
                             onClick={() => handleOpenRma(ord)}
                             title="Tạo yêu cầu Đổi / Trả (RMA)"
                           >
-                            <Icon name="arrow-counterclockwise" />
+                            <Icon name="arrow-counterclockwise" className="text-warning" />
                           </Button>
                         )}
                       </Stack>
@@ -519,48 +647,47 @@ const SellerOrdersPage = () => {
       </div>
 
       {/* ── Footer status bar ─── */}
-      <div className="bg-white border-top px-3 py-2 small text-secondary d-flex align-items-center justify-content-between">
+      <div
+        className="border-top px-3 py-2 small d-flex align-items-center justify-content-between"
+        style={{ backgroundColor: '#FAF7F2', borderColor: '#E3D9CD', color: '#7E766D' }}
+      >
         <div>
-          Hiển thị <strong>{filteredOrders.length}</strong> đơn hàng · Đã chọn <strong>{selectedIds.length}</strong> đơn
+          Tổng số: <strong className="text-dark">{filteredOrders.length}</strong> đơn hàng · Đã chọn <strong className="text-dark">{selectedIds.length}</strong> đơn
         </div>
       </div>
 
       {/* ── Thanh thao tác nổi khi tích chọn Checkbox hàng loạt ─── */}
       {selectedIds.length > 0 && (
-        <div
-          className="position-fixed bottom-0 start-50 translate-middle-x mb-3 bg-dark text-white px-3 py-2 rounded-pill shadow-lg d-flex align-items-center gap-3"
-          style={{ zIndex: 1050 }}
-        >
-          <Badge bg="light" text="dark" className="fw-bold px-2 py-1">
+        <div className="ara-floating-toolbar">
+          <span className="badge px-2 py-1" style={{ backgroundColor: '#9F8365', color: '#FFFFFF' }}>
             Đã chọn {selectedIds.length} đơn
-          </Badge>
-          <Button
-            size="sm"
-            variant="light"
-            className="rounded-pill py-1 px-3 fw-semibold"
+          </span>
+          <button
+            type="button"
+            className="btn btn-sm btn-light rounded-pill px-3 fw-semibold d-flex align-items-center gap-1"
             onClick={() => showInfo(`Chuẩn bị in phiếu gửi hàng loạt cho ${selectedIds.length} đơn hàng...`, 'In phiếu gửi')}
           >
-            <Icon name="printer" className="me-1" /> In phiếu ({selectedIds.length})
-          </Button>
-          <Button
-            size="sm"
-            variant="light"
-            className="rounded-pill py-1 px-3 fw-semibold"
+            <Icon name="printer" /> In phiếu ({selectedIds.length})
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-light rounded-pill px-3 fw-semibold d-flex align-items-center gap-1"
             onClick={() => {
-              showSuccess(`Đã xuất file dữ liệu cho ${selectedIds.length} đơn hàng đã chọn!`, 'Xuất dữ liệu');
+              const selectedOrders = filteredOrders.filter((o) => selectedIds.includes(o._id || o.id));
+              handleExportOrders(selectedOrders, `don-hang-da-chon-ara-${new Date().toISOString().slice(0, 10)}.csv`);
               setSelectedIds([]);
             }}
           >
-            <Icon name="download" className="me-1" /> Xuất dữ liệu ({selectedIds.length})
-          </Button>
-          <Button
-            size="sm"
-            variant="outline-light"
-            className="rounded-pill py-1 px-2"
+            <Icon name="download" /> Xuất ({selectedIds.length} đơn)
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-light rounded-pill px-2"
             onClick={() => setSelectedIds([])}
+            title="Bỏ chọn"
           >
-            Bỏ chọn
-          </Button>
+            <Icon name="x-lg" />
+          </button>
         </div>
       )}
 

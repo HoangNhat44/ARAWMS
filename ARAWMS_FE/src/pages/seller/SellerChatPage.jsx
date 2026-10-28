@@ -24,6 +24,7 @@ import QuickOrderModal from '../../components/seller/QuickOrderModal';
 import CreateRmaModal from '../../components/seller/CreateRmaModal';
 import OrderDetailModal from '../../components/seller/OrderDetailModal';
 import { sellerService } from '../../services/sellerService';
+import { getSocket } from '../../services/socketService';
 import { useToast } from '../../context/ToastContext';
 import { Icon } from '../../components/seller/SellerUi';
 
@@ -64,23 +65,85 @@ const SellerChatPage = () => {
   const [orderDetailOpen, setOrderDetailOpen] = useState(false);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
 
-  // Đồng bộ lựa chọn vào bộ đệm bộ nhớ
+  // Đồng bộ lựa chọn vào bộ đệm bộ nhớ và đánh dấu ĐÃ ĐỌC (xóa ngay badge đỏ tức thì)
   const handleSelectConversation = (conv) => {
-    memorySelectedConv = conv;
-    setSelectedConversation(conv);
+    if (!conv) return;
+    const updatedConv = { ...conv, unreadCount: 0 };
+    memorySelectedConv = updatedConv;
+    setSelectedConversation(updatedConv);
+
+    // Cập nhật ngay trong danh sách hội thoại: đưa unreadCount về 0 tức thì (0ms)
+    setConversations((prev) =>
+      prev.map((c) => (c._id === conv._id ? { ...c, unreadCount: 0 } : c))
+    );
+
+    // Gọi API đánh dấu đã đọc
+    sellerService.markConversationAsRead(conv._id).catch(() => {});
   };
 
   useEffect(() => {
     fetchAllData();
+
+    // Kết nối Socket.io và tham gia phòng Seller Workspace
+    const socket = getSocket();
+    socket.emit('join_seller_workspace');
+
+    // Lắng nghe sự kiện hội thoại được cập nhật (tin nhắn mới từ khách hoặc phản hồi từ Seller)
+    const handleConversationUpdated = (updatedConv) => {
+      if (!updatedConv?._id) return;
+
+      setConversations((prev) => {
+        const isCurrentSelected = memorySelectedConv?._id === updatedConv._id;
+
+        // Nếu là hội thoại người bán đang mở xem, giữ unreadCount = 0
+        const convToSave = isCurrentSelected ? { ...updatedConv, unreadCount: 0 } : updatedConv;
+
+        const filtered = prev.filter((c) => c._id !== updatedConv._id);
+        const newList = [convToSave, ...filtered];
+        memoryConversations = newList;
+        return newList;
+      });
+
+      // Nếu đúng hội thoại đang mở thì cập nhật cả pane chat
+      if (memorySelectedConv?._id === updatedConv._id) {
+        setSelectedConversation((prev) => ({
+          ...prev,
+          ...updatedConv,
+          unreadCount: 0,
+        }));
+      }
+    };
+
+    // Lắng nghe sự kiện hội thoại đã đọc từ Seller
+    const handleConversationRead = ({ conversationId }) => {
+      if (!conversationId) return;
+      setConversations((prev) =>
+        prev.map((c) => (c._id === conversationId ? { ...c, unreadCount: 0 } : c))
+      );
+    };
+
+    socket.on('conversation_updated', handleConversationUpdated);
+    socket.on('conversation_read', handleConversationRead);
+
+    // Đồng bộ nền dự phòng (45s một lần phòng khi ngắt kết nối mạng)
+    const interval = setInterval(() => {
+      fetchAllData(true);
+    }, 45000);
+
+    return () => {
+      socket.off('conversation_updated', handleConversationUpdated);
+      socket.off('conversation_read', handleConversationRead);
+      clearInterval(interval);
+    };
   }, []);
 
   /**
    * Tải song song danh sách hội thoại và danh sách thẻ tags (Parallel Promise execution)
    * Áp dụng Stale-While-Revalidate: Hiển thị ngay từ memory cache, cập nhật ngầm.
    */
-  const fetchAllData = async () => {
+  const fetchAllData = async (isSilent = false) => {
     try {
-      if (memoryConversations.length === 0) setLoading(true);
+      if (!isSilent && memoryConversations.length === 0) setLoading(true);
 
       const [convRes, tagRes] = await Promise.all([
         sellerService.getConversations({ limit: 30 }),
@@ -88,7 +151,16 @@ const SellerChatPage = () => {
       ]);
 
       if (convRes.success) {
-        const items = convRes.data.items || [];
+        let items = convRes.data.items || [];
+
+        // Đảm bảo hội thoại người bán đang xem không bị nhảy lại số chưa đọc
+        items = items.map((c) => {
+          if (memorySelectedConv?._id === c._id) {
+            return { ...c, unreadCount: 0 };
+          }
+          return c;
+        });
+
         memoryConversations = items;
         setConversations(items);
 
@@ -98,7 +170,9 @@ const SellerChatPage = () => {
           const matched = items.find((c) => c._id === currentId);
           const nextSelected = matched || items[0];
           memorySelectedConv = nextSelected;
-          setSelectedConversation(nextSelected);
+          if (!memorySelectedConv || !currentId) {
+            setSelectedConversation(nextSelected);
+          }
         }
       }
 
@@ -110,19 +184,55 @@ const SellerChatPage = () => {
     } catch (err) {
       console.warn('Lỗi tải dữ liệu chat workspace:', err.message);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
   const handleTagAdded = (updatedConv) => {
+    if (!updatedConv?._id) return;
+    memorySelectedConv = updatedConv;
     setSelectedConversation(updatedConv);
-    setConversations(conversations.map((c) => (c._id === updatedConv._id ? updatedConv : c)));
+    setConversations((prev) => {
+      const nextList = prev.map((c) => (c._id === updatedConv._id ? { ...c, ...updatedConv } : c));
+      memoryConversations = nextList;
+      return nextList;
+    });
   };
 
   const handleCustomerUpdated = (updatedCustomer) => {
-    if (selectedConversation) {
-      setSelectedConversation({ ...selectedConversation, customerId: updatedCustomer });
-    }
+    if (!updatedCustomer?._id) return;
+
+    // Cập nhật selectedConversation và lọc bỏ những tag đã xóa khỏi hồ sơ
+    setSelectedConversation((prev) => {
+      if (!prev) return prev;
+      const updatedTags = (prev.tags || []).filter((t) => {
+        if (['Facebook', prev.pageName, 'AraStore', 'Learnmate'].includes(t)) return true;
+        return updatedCustomer.tags ? updatedCustomer.tags.includes(t) : true;
+      });
+      const nextConv = { ...prev, customerId: updatedCustomer, tags: updatedTags };
+      memorySelectedConv = nextConv;
+      return nextConv;
+    });
+
+    // Cập nhật ngay trong danh sách hội thoại bên trái (0ms)
+    setConversations((prev) => {
+      const nextList = prev.map((c) => {
+        const isMatched = (c.customerId?._id === updatedCustomer._id) || (c._id === memorySelectedConv?._id);
+        if (isMatched) {
+          const updatedTags = (c.tags || []).filter((t) => {
+            if (['Facebook', c.pageName, 'AraStore', 'Learnmate'].includes(t)) return true;
+            return updatedCustomer.tags ? updatedCustomer.tags.includes(t) : true;
+          });
+          return { ...c, customerId: updatedCustomer, tags: updatedTags };
+        }
+        return c;
+      });
+      memoryConversations = nextList;
+      return nextList;
+    });
+
+    // Đồng bộ lại ngầm từ server
+    fetchAllData(true);
   };
 
   const handleOpenRma = (order) => {
@@ -178,43 +288,45 @@ const SellerChatPage = () => {
   return (
     <div
       ref={containerRef}
-      className="d-flex flex-column bg-body-tertiary"
-      style={{ height: 'calc(100vh - 75px)', minHeight: 600, overflow: 'hidden' }}
+      className="d-flex flex-column"
+      style={{ height: 'calc(100vh - 75px)', minHeight: 600, overflow: 'hidden', backgroundColor: '#FAF7F2' }}
     >
-      {/* ===== Header Bar ===== */}
-      <div className="bg-dark text-white px-3 py-2 d-flex align-items-center justify-content-between border-bottom shadow-sm flex-shrink-0">
+      {/* ===== Header Bar (Atelier Noir & Champagne Gold) ===== */}
+      <div className="ara-seller-header px-3 py-2 d-flex align-items-center justify-content-between flex-shrink-0">
         <Stack direction="horizontal" gap={2} className="align-items-center">
-          <Icon name="shop" className="text-warning fs-5" />
-          <span className="fw-bold fs-6">ARA SELLER WORKSPACE</span>
-          <Badge bg="warning" text="dark" pill className="small">PANCAKE POS</Badge>
+          <span className="fw-bold fs-6 text-white" style={{ letterSpacing: '0.02em' }}>
+            Hội Thoại & Bán Hàng
+          </span>
         </Stack>
 
         <Stack direction="horizontal" gap={2}>
           <Button
             size="sm"
-            variant="warning"
-            className="fw-bold text-dark d-flex align-items-center gap-1"
+            className="btn-ara-header-gold d-flex align-items-center gap-1"
             onClick={() => {
               setActiveTab('order');
               setQuickOrderModalOpen(true);
             }}
           >
-            <Icon name="plus-circle" /> Tạo đơn nhanh
+            <Icon name="plus-lg" /> Tạo đơn nhanh
           </Button>
           <Button
             size="sm"
-            variant="outline-light"
-            onClick={fetchAllData}
+            className="btn-ara-header-ghost d-flex align-items-center gap-1"
+            onClick={() => fetchAllData()}
             title="Đồng bộ hội thoại"
           >
-            <Icon name="arrow-clockwise" />
+            <Icon name="arrow-clockwise" /> Đồng bộ
           </Button>
         </Stack>
       </div>
 
       {/* ===== Triple-Pane Layout Container ===== */}
-      <div className="d-flex flex-grow-1 overflow-hidden p-2 gap-0">
-        <div className="d-flex flex-grow-1 border rounded-3 bg-white shadow-sm overflow-hidden">
+      <div className="d-flex flex-grow-1 overflow-hidden p-2 gap-0" style={{ backgroundColor: '#FAF7F2' }}>
+        <div
+          className="d-flex flex-grow-1 border rounded-3 bg-white shadow-sm overflow-hidden"
+          style={{ borderColor: '#E3D9CD' }}
+        >
           {/* ===== PANE 1: Conversation List ===== */}
           <div
             className="d-flex flex-column h-100 overflow-hidden bg-white"
@@ -233,7 +345,7 @@ const SellerChatPage = () => {
 
           {/* Splitter Left */}
           <div
-            className="ara-pane-splitter bg-body-secondary border-start border-end"
+            className="ara-pane-splitter border-start border-end"
             onMouseDown={(e) => startDrag('left', e)}
             title="Kéo để thay đổi chiều rộng"
           />
@@ -254,7 +366,7 @@ const SellerChatPage = () => {
 
           {/* Splitter Right */}
           <div
-            className="ara-pane-splitter bg-body-secondary border-start border-end"
+            className="ara-pane-splitter border-start border-end"
             onMouseDown={(e) => startDrag('right', e)}
             title="Kéo để thay đổi chiều rộng"
           />
@@ -264,14 +376,14 @@ const SellerChatPage = () => {
             className="d-flex flex-column h-100 bg-white"
             style={{ width: pane3W, minWidth: 300, maxWidth: 650, flexShrink: 0 }}
           >
-            {/* Tab Nav - Dùng justify & flex-fill để 3 tab dàn đều 100% chiều rộng khi kéo dãn splitter */}
-            <Nav variant="tabs" justify className="bg-body-tertiary flex-shrink-0 border-bottom" activeKey={activeTab}>
+            {/* Tab Nav - Dùng ara-workspace-nav chuẩn luxury workspace */}
+            <Nav className="ara-workspace-nav flex-shrink-0" activeKey={activeTab}>
               {TABS.map((tab) => (
                 <Nav.Item key={tab.id} className="flex-fill">
                   <Nav.Link
                     eventKey={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className="d-flex align-items-center justify-content-center gap-1.5 py-2 px-2 small fw-semibold"
+                    className="d-flex align-items-center justify-content-center gap-1"
                   >
                     <Icon name={tab.icon} />
                     <span>{tab.label}</span>

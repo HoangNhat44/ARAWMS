@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { authService } from '../services/authService';
 import { useAuth } from '../hooks/useAuth';
-import { CheckCircle2, ArrowRight } from 'lucide-react';
+import { CheckCircle2, ArrowRight, Layers, Database, Server } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 /** Shows the application entry points and a live backend availability indicator.
