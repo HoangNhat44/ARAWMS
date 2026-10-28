@@ -6,18 +6,18 @@
  */
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+// import { AuthProvider } from './context/AuthContext';
 import AppRouter from './routes/AppRouter';
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
-import PackingUploadRunner from './components/PackingUploadRunner';
+// import PackingUploadRunner from './components/PackingUploadRunner';
 
 /** Composes routing, authentication, navigation, and the background video runner. */
 function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <PackingUploadRunner />
+      {/* <AuthProvider> */}
+        {/* <PackingUploadRunner /> */}
         <div className="app-container">
           <Navbar />
           <main className="main-content">
@@ -25,7 +25,7 @@ function App() {
           </main>
           <Footer />
         </div>
-      </AuthProvider>
+      {/* </AuthProvider> */}
     </BrowserRouter>
   );
 }
