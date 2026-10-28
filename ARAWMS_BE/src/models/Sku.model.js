@@ -33,5 +33,9 @@ skuSchema.virtual('availableQty').get(function () {
 
 skuSchema.plugin(baseSchemaPlugin);
 
+// Compound indexes tối ưu widget tra cứu tồn kho thời gian thực (UC-77)
+skuSchema.index({ isActive: 1, onHandQty: -1, styleName: 1 });
+skuSchema.index({ styleName: 1, color: 1, size: 1 });
+
 const Sku = mongoose.model('Sku', skuSchema);
 export default Sku;

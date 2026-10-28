@@ -6,6 +6,8 @@ const { Schema } = mongoose;
 const chatConversationSchema = new Schema(
   {
     fbConversationId: { type: String, required: true, unique: true, index: true },
+    pageId: { type: String, index: true },
+    pageName: { type: String },
     customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: true, index: true },
     assignedSellerId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
     tags: [String],
@@ -18,6 +20,12 @@ const chatConversationSchema = new Schema(
 );
 
 chatConversationSchema.plugin(baseSchemaPlugin);
+
+// Compound indexes tối ưu truy vấn danh sách hội thoại của Seller (UC-72)
+chatConversationSchema.index({ assignedSellerId: 1, lastMessageAt: -1, _id: -1 });
+chatConversationSchema.index({ assignedSellerId: 1, lastMessageAt: -1 });
+chatConversationSchema.index({ tags: 1, lastMessageAt: -1 });
+chatConversationSchema.index({ status: 1, lastMessageAt: -1 });
 
 const ChatConversation = mongoose.model('ChatConversation', chatConversationSchema);
 export default ChatConversation;

@@ -1,8 +1,11 @@
 import express from 'express';
+import path from 'path';
 import cors from 'cors';
 import morgan from 'morgan';
 import apiRoutes from './routes/api.js';
 import { notFoundHandler, globalErrorHandler } from './common/middlewares/errorHandler.js';
+// Import toàn bộ models để đảm bảo tất cả Mongoose schemas đã đăng ký trước khi bất kỳ populate() nào được gọi
+import './models/index.js';
 
 const app = express();
 
@@ -22,6 +25,9 @@ app.use(
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
+
+// Phục vụ tĩnh tệp đính kèm chat do Seller tải lên (UC-74)
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads'), { maxAge: '7d' }));
 
 // Prefix tất cả API bằng /api
 app.use('/api', apiRoutes);

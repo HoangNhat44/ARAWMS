@@ -51,6 +51,20 @@ const Navbar = () => {
           <li>
             <Link to="/">Trang chủ</Link>
           </li>
+          {user && (
+            <>
+              <li>
+                <Link to="/seller/chat" style={{ fontWeight: 600, color: 'var(--ara-gold)' }}>
+                  💬 Bán hàng (Seller)
+                </Link>
+              </li>
+              <li>
+                <Link to="/seller/orders">
+                  📦 Đơn hàng
+                </Link>
+              </li>
+            </>
+          )}
           {user ? (
             <>
               <li style={{ 
@@ -79,6 +93,20 @@ const Navbar = () => {
                     OWNER
                   </span>
                 )}
+                <span className="spinner-grow spinner-grow-sm text-success" style={{ width: '8px', height: '8px' }} />
+                <span>{user.fullName || user.username}</span>
+                <span style={{
+                  fontSize: '0.7rem',
+                  background: 'var(--ara-noir)',
+                  color: 'var(--ara-gold-light)',
+                  padding: '0.15rem 0.45rem',
+                  borderRadius: '4px',
+                  marginLeft: '0.25rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.05em',
+                }}>
+                  {user.roleCode || (user.roles && user.roles[0]) || 'SELLER'}
+                </span>
               </li>
               <li>
                 <button 

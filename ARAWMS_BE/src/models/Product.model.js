@@ -18,5 +18,9 @@ const productSchema = new Schema(
 
 productSchema.plugin(baseSchemaPlugin);
 
+// Tối ưu tìm kiếm sản phẩm theo tên và danh mục
+productSchema.index({ productName: 1, isActive: 1 });
+productSchema.index({ category: 1, isActive: 1 });
+
 const Product = mongoose.model('Product', productSchema);
 export default Product;

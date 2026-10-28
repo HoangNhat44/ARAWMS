@@ -12,6 +12,8 @@ import AccountPage from '../modules/system-administration/account-governance/pag
 import ForgotPasswordPage from '../modules/system-administration/authentication/pages/ForgotPasswordPage';
 import ResetPasswordPage from '../modules/system-administration/authentication/pages/ResetPasswordPage';
 import NotFoundPage from '../pages/NotFoundPage';
+import SellerChatPage from '../pages/seller/SellerChatPage';
+import SellerOrdersPage from '../pages/seller/SellerOrdersPage';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
@@ -54,5 +56,44 @@ export default function AppRouter() {
     <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
     <Route path="/register" element={<Navigate to="/login" replace />} />
     <Route path="*" element={<NotFoundPage />} />
+     <Route path="/" element={<HomePage />} />
+      <Route
+        path="/login"
+        element={
+          <PublicRoute>
+            <LoginPage />
+          </PublicRoute>
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          <PublicRoute>
+            <RegisterPage />
+          </PublicRoute>
+        }
+      />
+
+      {/* Phân hệ Seller Workspace (UC-69 -> UC-83) — yêu cầu đăng nhập */}
+      <Route
+        path="/seller/chat"
+        element={
+          <ProtectedRoute>
+            <SellerChatPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/seller/orders"
+        element={
+          <ProtectedRoute>
+            <SellerOrdersPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route path="*" element={<NotFoundPage />} />
   </Routes>;
 }
+
+
