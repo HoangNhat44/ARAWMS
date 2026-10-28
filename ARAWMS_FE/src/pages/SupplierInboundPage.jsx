@@ -328,13 +328,19 @@ export default function SupplierInboundPage() {
         formSignature: JSON.stringify({ ...form, receiptLines: saved.receiptLines }) };
       pendingConfirmation.current = request;
     }
-    const confirmed = (await api.confirm(request.id, {
-      expectedVersion: request.version, idempotencyKey: confirmationKey.current,
-    })).data.receipt;
-    pendingConfirmation.current = null;
-    setReceipt(confirmed); barcodePollCount.current = 0;
-    await loadLabels(confirmed._id || confirmed.id);
-    setNotice('Đã xác nhận nhập kho. In tem và quét cất hàng đạt vào vị trí.');
+    try {
+      const confirmed = (await api.confirm(request.id, {
+        expectedVersion: request.version, idempotencyKey: confirmationKey.current,
+      })).data.receipt;
+      pendingConfirmation.current = null;
+      setReceipt(confirmed); barcodePollCount.current = 0;
+      await loadLabels(confirmed._id || confirmed.id);
+      setNotice('Đã xác nhận nhập kho. In tem và quét cất hàng đạt vào vị trí.');
+    } catch (error) {
+      // Show detailed error message from server
+      const serverMessage = error.response?.data?.error?.message || error.response?.data?.message || error.message;
+      throw new Error(`Không thể xác nhận: ${serverMessage}`);
+    }
     });
   };
 

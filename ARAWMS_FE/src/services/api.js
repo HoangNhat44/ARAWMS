@@ -38,6 +38,7 @@ api.interceptors.response.use(
     const apiError = new Error(message);
     apiError.code = error.response?.data?.error?.code || error.response?.data?.errors?.code;
     apiError.status = error.response?.status;
+    apiError.response = error.response; // Keep full response for detailed error handling
     return Promise.reject(apiError);
   }
 );
