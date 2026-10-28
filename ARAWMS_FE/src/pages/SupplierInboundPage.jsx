@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Archive, CirclePlus, ClipboardList, Download, Filter, MoreVertical, PackageCheck, Search, Tag } from 'lucide-react';
 // import { useAuth } from '../hooks/useAuth';
-import { materialInboundService as api } from '../services/materialInbound Service';
+import { materialInboundService as api } from '../services/materialInboundService';
 import '../styles/materialInbound.css';
 
 // Mock user for testing without authentication
