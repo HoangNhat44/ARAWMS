@@ -5,8 +5,12 @@
  * Description: Exposes staff barcode putaway and manager rack-content review endpoints. Authentication and role gates keep scanning separate from layout administration.
  */
 import express from 'express';
+import mongoose from 'mongoose';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
+import ProductUnit from '../../../models/ProductUnit.js';
+import PutawayAllocation from '../../../models/PutawayAllocation.model.js';
+import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import { listPutawayTasks, getPutawayTask, verifyPutawayLocation, scanPutawayUnit,
   reportPutawayShortage, resolvePutawayShortage, rackContents, binUnits,
   listPutawayIssues, reportPutawayIncident, listPutawayIncidents,
@@ -37,6 +41,23 @@ const handle = (fn) => async (req, res, next) => {
 
 router.get('/tasks', role('WAREHOUSE_STAFF'), handle(async (req, res) =>
   sendSuccess(res, 'Hàng chờ xếp', { tasks: await listPutawayTasks() })));
+/** Staff print the existing labels for unplaced units in a confirmed receipt.
+ * Printing never issues new barcodes or changes inventory. */
+router.get('/receipts/:receiptId/labels', role('WAREHOUSE_STAFF'), handle(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.receiptId))
+    return sendError(res, 'Phiếu nhập không hợp lệ', { code: 'INVALID_RECEIPT' }, 400);
+  const confirmed = await PutawayAllocation.exists({ sourceReceiptId: req.params.receiptId,
+    status: 'CONFIRMED' });
+  if (!confirmed) return sendError(res, 'Phiếu chưa có hàng được giao xếp', { code: 'RECEIPT_NOT_ASSIGNED' }, 404);
+  const source = await WarehouseLocation.findOne({ warehouseType: 'FINISHED_GOODS',
+    isSystemUnplaced: true, isDeleted: { $ne: true } }).select('_id').lean();
+  const units = source ? await ProductUnit.find({ receivingDocumentId: req.params.receiptId,
+    warehouseId: source._id, inventoryStatus: 'AVAILABLE' })
+    .select('barcode barcodeImageUrl').sort({ barcode: 1 }).lean() : [];
+  return sendSuccess(res, 'Tem của hàng còn chờ xếp', { labels: units.map((unit) => ({
+    barcode: unit.barcode, imageUrl: unit.barcodeImageUrl || null,
+  })), total: units.length });
+}));
 router.get('/tasks/:allocationId/:lineId', role('WAREHOUSE_STAFF'), handle(async (req, res) =>
   sendSuccess(res, 'Dòng cần xếp', { task: await getPutawayTask(req.params.allocationId,
     req.params.lineId) })));

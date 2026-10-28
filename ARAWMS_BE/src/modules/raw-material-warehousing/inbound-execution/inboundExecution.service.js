@@ -55,7 +55,7 @@ export async function getReceiptOptions(user) {
   const [suppliers, locations] = await Promise.all([
     Supplier.find({ isActive: true, isDeleted: { $ne: true } }).select('supplierCode supplierName').sort({ supplierName: 1 }).lean(),
     WarehouseLocation.find({ warehouseType: { $in: ['RAW_MATERIAL', 'DEFECT_QUARANTINE'] }, status: 'ACTIVE',
-      isFrozenForStocktake: false, isDeleted: { $ne: true } }).select('locationCode barcode warehouseType zoneCode rackCode shelfCode maxCapacity currentOccupancy capacityUnit').sort({ zoneCode: 1, rackCode: 1, shelfCode: 1 }).lean(),
+      isFrozenForStocktake: false, isDeleted: { $ne: true } }).select('locationCode barcode warehouseType zoneCode rackCode shelfCode floorNo binNo layoutBin displayName maxCapacity currentOccupancy plannedReservedQty capacityUnit').sort({ zoneCode: 1, rackCode: 1, floorNo: 1, binNo: 1, shelfCode: 1 }).lean(),
   ]);
   return { suppliers, locations: locations.filter((location) => accessible(location, user)) };
 }
@@ -361,13 +361,17 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
       requireValue(location?.warehouseType === 'RAW_MATERIAL' && accessible(location, user), 'Barcode vị trí không hợp lệ', 'INVALID_LOCATION');
       let amount;
       let materialId;
+      let plannedDestination = false;
       if (barcode.startsWith('FR-')) {
         const roll = await FabricRoll.findOne({ rollBarcode: barcode, inboundTicketId: receiptId }).session(session);
-        requireValue(roll && roll.status === 'QC_PASSED' && id(roll.locationId) === id(location._id),
+        requireValue(roll && roll.status === 'QC_PASSED' &&
+          (id(roll.locationId) === id(location._id) || receipt.usesPlannedLocationReservation && !roll.locationId),
           'Cây vải không chờ cất tại vị trí này', 'ROLL_NOT_PENDING', 409);
+        plannedDestination = Boolean(roll.locationId);
         amount = roll.initialLengthMeters;
         requireValue(input.quantity == null || same(input.quantity, amount), 'Phải cất toàn bộ cây vải', 'ROLL_QUANTITY_MISMATCH');
         materialId = roll.rawMaterialId;
+        roll.locationId = location._id;
         roll.status = 'IN_STOCK';
         roll.putawayConfirmedAt = new Date();
         await roll.save({ session });
@@ -375,19 +379,39 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
         const lot = await MaterialStockLot.findOne({ lotBarcode: barcode, inboundTicketId: receiptId, quality: 'ACCEPTED' }).session(session);
         requireValue(lot && lot.status === 'PENDING_PUTAWAY', 'Lô không chờ cất hàng', 'LOT_NOT_PENDING', 409);
         const allocation = lot.allocations.find((item) => id(item.locationId) === id(location._id));
-        requireValue(allocation, 'Lô không phân bổ vào vị trí này', 'LOCATION_NOT_ALLOCATED');
-        amount = input.quantity == null && lot.allocations.length === 1
-          ? round(allocation.quantity - (allocation.putawayQty || 0)) : Number(input.quantity);
-        requireValue(Number.isFinite(amount) && amount > 0 && amount <= round(allocation.quantity - (allocation.putawayQty || 0)) + 0.0001,
+        const unplacedQty = round(lot.initialQty - lot.allocations.reduce((sum, item) => sum + item.quantity, 0));
+        requireValue(allocation || receipt.usesPlannedLocationReservation && unplacedQty > 0,
+          'Lô không phân bổ vào vị trí này', 'LOCATION_NOT_ALLOCATED');
+        plannedDestination = Boolean(allocation);
+        const remaining = allocation ? round(allocation.quantity - (allocation.putawayQty || 0)) : unplacedQty;
+        amount = input.quantity == null && (lot.allocations.length === 1 || !allocation)
+          ? remaining : Number(input.quantity);
+        requireValue(Number.isFinite(amount) && amount > 0 && amount <= remaining + 0.0001,
           'Số lượng cất vượt phần lô còn lại', 'PUTAWAY_QUANTITY_INVALID');
         const material = await RawMaterial.findById(lot.rawMaterialId).select('unit').session(session);
         requireValue(material, 'Không tìm thấy nguyên phụ liệu', 'MATERIAL_UNAVAILABLE', 409);
         amount = quantity(amount, material.unit, 'Số lượng cất');
         materialId = lot.rawMaterialId;
-        allocation.putawayQty = round((allocation.putawayQty || 0) + amount);
-        if (lot.allocations.every((item) => same(item.quantity, item.putawayQty || 0))) lot.status = 'IN_STOCK';
+        if (allocation) allocation.putawayQty = round((allocation.putawayQty || 0) + amount);
+        else lot.allocations.push({ locationId: location._id, quantity: amount, putawayQty: amount });
+        if (same(lot.initialQty, lot.allocations.reduce((sum, item) => sum + (item.putawayQty || 0), 0)))
+          lot.status = 'IN_STOCK';
         await lot.save({ session });
       } else throw new ReceiptError('Barcode cây/lô không hợp lệ', 'INVALID_OBJECT_BARCODE');
+      // Author: Duy Anh. Planned bins become physically occupied only after the matching barcode scan succeeds.
+      if (receipt.usesPlannedLocationReservation) {
+        const material = await RawMaterial.findById(materialId).select('unit').session(session);
+        requireValue(material, 'Không tìm thấy nguyên phụ liệu', 'MATERIAL_UNAVAILABLE', 409);
+        const occupied = await WarehouseLocation.updateOne({ _id: location._id,
+          $or: [{ capacityUnit: material.unit }, { capacityUnit: null }],
+          ...(plannedDestination ? { plannedReservedQty: { $gte: amount } } :
+            { $expr: { $gte: [{ $subtract: ['$maxCapacity', { $add: [
+              { $ifNull: ['$currentOccupancy', 0] }, { $ifNull: ['$plannedReservedQty', 0] },
+            ] }] }, amount] } }) },
+        { $inc: { plannedReservedQty: plannedDestination ? -amount : 0, currentOccupancy: amount },
+          $set: { capacityUnit: material.unit } }, { session });
+        requireValue(occupied.matchedCount === 1, 'Vị trí không còn đủ sức chứa hoặc phần chờ cất', 'PLANNED_LOCATION_CHANGED', 409);
+      }
       const updated = await RawMaterial.updateOne({ _id: materialId, pendingPutawayQty: { $gte: amount } },
         { $inc: { pendingPutawayQty: -amount } }, { session });
       requireValue(updated.matchedCount === 1, 'Số lượng chờ cất đã thay đổi', 'PENDING_STOCK_CHANGED', 409);

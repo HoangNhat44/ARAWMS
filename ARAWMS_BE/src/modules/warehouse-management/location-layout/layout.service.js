@@ -8,6 +8,7 @@ import { randomBytes } from "node:crypto";
 import mongoose from "mongoose";
 import WarehouseLayout from "../../../models/WarehouseLayout.model.js";
 import WarehouseLocation from "../../../models/WarehouseLocation.model.js";
+import User from "../../../models/User.model.js";
 import WarehouseBarcodeHistory from "../../../models/WarehouseBarcodeHistory.model.js";
 import ProductUnit from "../../../models/ProductUnit.js";
 import FabricRoll from "../../../models/FabricRoll.model.js";
@@ -764,6 +765,18 @@ export async function publishDraft(user, version) {
             afterSnapshot: config(bin),
           });
         }
+      }
+      // Managers already assigned to raw-material storage inherit newly published
+      // zone-A bins; finished-goods-only managers keep their existing scope.
+      const rawBinIds = draft.bins.filter((bin) => draft.racks.some((rack) =>
+        id(rack.id) === id(bin.rackId) && rack.zoneCode === "A")).map((bin) => bin.id);
+      if (rawBinIds.length) {
+        const rawAccessIds = await WarehouseLocation.distinct("_id", {
+          warehouseType: "RAW_MATERIAL", status: "ACTIVE", isDeleted: { $ne: true },
+        }).session(session);
+        await User.updateMany({ roleCode: "WAREHOUSE_MANAGER",
+          warehouseIds: { $in: rawAccessIds } },
+        { $addToSet: { warehouseIds: { $each: rawBinIds } } }, { session });
       }
       const updated = await WarehouseLayout.updateOne(
         {

@@ -124,6 +124,17 @@ export default function BulkStockForm({ direction, products, initialSkuIds = [],
   const totalRepair = lines.reduce((sum, line) => sum + (Number(line.repairQty) || 0), 0);
   const invalidInspection = direction === 'IN' && lines.some((line) => line.receivedQty !== '' &&
     line.quantity !== '' && Number(line.quantity) > Number(line.receivedQty));
+  // Count all rows for the same SKU and bin before allowing the receipt to be confirmed.
+  const invalidAllocation = direction === 'IN' && step === 'allocation' && allocations.some((row) => {
+    const accepted = Number(lines.find((line) => line.key === row.lineKey)?.quantity || 0);
+    const allocated = allocations.filter((item) => item.lineKey === row.lineKey)
+      .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+    const bin = bins.find((item) => item.id === row.locationId);
+    const binAllocated = allocations.filter((item) => item.locationId === row.locationId)
+      .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+    return !bin || !Number.isSafeInteger(Number(row.quantity)) || Number(row.quantity) < 1 ||
+      allocated > accepted || binAllocated > bin.available;
+  });
   return <section className="product-card receiving-card">
     <div className="product-card-head"><div><span className="product-section-number">{step === 'allocation' ? '03' : '02'}</span><h2>{direction === 'IN' ? step === 'allocation' ? 'Phân bổ vị trí' : 'Kiểm nhận hàng từ xưởng' : 'Phiếu xuất kho'}</h2></div><span className="product-badge active">{direction === 'IN' ? `Bước ${step === 'allocation' ? 3 : 2} / 4` : 'Xuất kho'}</span></div>
     {direction === 'IN' && <p className="product-muted receiving-intro">Ghi số xưởng báo giao để đối chiếu, sau đó nhập số thực nhận. Chỉ số lượng đạt mới được cộng vào tồn kho và cấp barcode riêng từng chiếc.</p>}
@@ -187,13 +198,20 @@ export default function BulkStockForm({ direction, products, initialSkuIds = [],
             </div>
             {rows.map((row) => {
               const bin = bins.find((item) => item.id === row.locationId);
+              const otherSkuQty = rows.filter((item) => item.key !== row.key)
+                .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+              const otherBinQty = allocations.filter((item) => item.key !== row.key && item.locationId === row.locationId)
+                .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+              const maxQuantity = Math.max(0, Math.min(Number(line.quantity) - otherSkuQty,
+                bin ? bin.available - otherBinQty : Number(line.quantity)));
               return <div className="receiving-allocation-row" key={row.key}>
                 <select style={input} aria-label={`Ô kệ cho ${sku?.skuCode}`} value={row.locationId} onChange={(event) => setAllocations((current) => current.map((item) => item.key === row.key ? { ...item, locationId: event.target.value } : item))}>
                   <option value="">Chọn ô kệ</option>
                   {eligible.map((item) => <option key={item.id} value={item.id}>{item.rackLabel || item.rackCode} · Tầng {item.floorNo} · Ô {item.binNo} ({item.locationCode}) · còn {item.available}</option>)}
                   {bin && !eligible.some((item) => item.id === bin.id) && <option value={bin.id}>{bin.rackLabel || bin.rackCode} · Tầng {bin.floorNo} · Ô {bin.binNo} ({bin.locationCode})</option>}
                 </select>
-                <input style={input} aria-label="Số phân bổ lần này" type="number" min="1" step="1" value={row.quantity} onChange={(event) => setAllocations((current) => current.map((item) => item.key === row.key ? { ...item, quantity: event.target.value } : item))} />
+                <input style={input} aria-label="Số phân bổ lần này" type="number" min="1" max={maxQuantity} step="1" value={row.quantity} onChange={(event) => setAllocations((current) => current.map((item) => item.key === row.key ? { ...item, quantity: event.target.value && Number(event.target.value) > maxQuantity ? String(maxQuantity) : event.target.value } : item))} />
+                <small>Tối đa {maxQuantity} chiếc đạt có thể phân bổ vào ô này.</small>
                 {bin && <small>Sức chứa {bin.maxCapacity} · Đang có {bin.currentOccupancy} · Đã giữ {bin.plannedReservedQty} · Còn {bin.available}</small>}
                 <button className="btn-ara-secondary" type="button" onClick={() => setAllocations((current) => current.filter((item) => item.key !== row.key))}>Xóa</button>
               </div>;
@@ -202,10 +220,11 @@ export default function BulkStockForm({ direction, products, initialSkuIds = [],
           </div>;
         })}
       </section>}
+      {invalidAllocation && <p role="alert" className="receiving-quantity-error">Chọn ô và số lượng hợp lệ. Tổng phân bổ không được vượt số sản phẩm đạt hoặc sức chứa ô kệ.</p>}
       <div style={{ display: 'flex', gap: '.75rem' }}>
         {direction === 'IN' && step === 'allocation' && <button className="btn-ara-secondary" disabled={saving} type="button" onClick={() => setStep('inspection')}>Quay lại kiểm nhận</button>}
         {direction === 'IN' && step === 'allocation' && <button className="btn-ara-secondary" disabled={saving || invalidInspection} type="button" onClick={(event) => submitBulkStockDocument(event, true)}>Phân bổ sau</button>}
-        <button className="btn-ara-primary" disabled={saving || invalidInspection || products.length === 0 || (direction === 'IN' && step === 'allocation' && loadingBins)} type="submit">{saving ? 'Đang lưu phiếu...' : direction === 'IN' && step === 'inspection' ? 'Tiếp tục phân bổ vị trí' : `Xác nhận ${direction === 'IN' ? 'nhập' : 'xuất'} kho`}</button>
+        <button className="btn-ara-primary" disabled={saving || invalidInspection || invalidAllocation || products.length === 0 || (direction === 'IN' && step === 'allocation' && loadingBins)} type="submit">{saving ? 'Đang lưu phiếu...' : direction === 'IN' && step === 'inspection' ? 'Tiếp tục phân bổ vị trí' : `Xác nhận ${direction === 'IN' ? 'nhập' : 'xuất'} kho`}</button>
         <button className="btn-ara-secondary" disabled={saving} type="button" onClick={onCancel}>Hủy</button>
       </div>
     </form>

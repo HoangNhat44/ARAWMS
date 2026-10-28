@@ -82,6 +82,7 @@ const materialTicketSchema = new Schema(
     receiptVersion: { type: Number, default: 0 },
     confirmationKey: String,
     confirmationFingerprint: String,
+    usesPlannedLocationReservation: { type: Boolean, default: false },
     confirmedAt: Date,
     confirmedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
     putawayEvents: [{ key: String, barcode: String, locationBarcode: String,

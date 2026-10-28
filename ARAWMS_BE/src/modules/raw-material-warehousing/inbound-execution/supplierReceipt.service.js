@@ -42,7 +42,7 @@ const deliveryCode = (value) => String(value || '').trim().replace(/\s+/g, ' ').
 export async function getSupplierReceiptOptions(user) {
   const [base, materials] = await Promise.all([getReceiptOptions(user), RawMaterial.find({
     isActive: true, isDeleted: { $ne: true },
-  }).select('materialCode materialName materialType category color widthCm gsm unit').sort({ materialCode: 1 }).lean()]);
+  }).select('materialCode materialName materialType category color widthCm gsm unit requiresWeightKg').sort({ materialCode: 1 }).lean()]);
   return { ...base, materials };
 }
 
@@ -63,7 +63,7 @@ export async function createSupplierMaterial(input) {
   fail(Number.isFinite(unitCost) && unitCost >= 0, 'Đơn giá không hợp lệ', 'INVALID_UNIT_COST');
   return RawMaterial.create({ materialCode, materialName, materialType: input.materialType,
     category: input.category, unit: input.unit, color: String(input.color || '').trim().slice(0, 80),
-    widthCm, unitCost });
+    widthCm, unitCost, requiresWeightKg: input.materialType === 'FABRIC' && input.requiresWeightKg === true });
 }
 
 /** Searches persisted supplier receipts without mixing quantities of different units. */
@@ -83,7 +83,15 @@ export async function listSupplierReceipts(query, user) {
     fail([...editable, 'COMPLETED', 'CANCELLED'].includes(query.status), 'Trạng thái không hợp lệ', 'INVALID_STATUS');
     filter.status = query.status;
   }
-  if (query.code) filter.ticketCode = { $regex: String(query.code).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+  if (query.code) {
+    const search = String(query.code).trim().slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const matchingMaterials = await RawMaterial.find({ $or: [
+      { materialName: { $regex: search, $options: 'i' } },
+      { materialCode: { $regex: search, $options: 'i' } },
+    ] }).select('_id').lean();
+    filter.$or = [{ ticketCode: { $regex: search, $options: 'i' } },
+      { 'receiptLines.rawMaterialId': { $in: matchingMaterials.map((item) => item._id) } }];
+  }
   if (query.from || query.to) {
     filter.receivedAt = {};
     if (query.from) filter.receivedAt.$gte = new Date(`${query.from}T00:00:00.000Z`);
@@ -91,10 +99,11 @@ export async function listSupplierReceipts(query, user) {
     fail(Object.values(filter.receivedAt).every((date) => !Number.isNaN(date.getTime())), 'Ngày lọc không hợp lệ', 'INVALID_DATE');
   }
   const receipts = await MaterialTicket.find(filter)
-    .select('ticketCode supplierId supplierDeliveryCode receivingLocationId receivedAt createdByManagerId status createdAt confirmedAt supplierReturns.status')
+    .select('ticketCode supplierId supplierDeliveryCode receivingLocationId receivedAt createdByManagerId status createdAt confirmedAt receiptLines.rawMaterialId')
     .populate('supplierId', 'supplierName supplierCode')
     .populate('receivingLocationId', 'locationCode')
     .populate('createdByManagerId', 'fullName')
+    .populate('receiptLines.rawMaterialId', 'materialCode materialName color')
     .sort({ createdAt: -1 }).limit(100).lean();
   return receipts;
 }
@@ -107,7 +116,7 @@ export async function getSupplierReceipt(receiptId, user) {
   fail(receipt, 'Không tìm thấy phiếu nhập', 'RECEIPT_NOT_FOUND', 404);
   fail(accessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền xem phiếu này', 'RECEIPT_FORBIDDEN', 403);
   const materials = await RawMaterial.find({ _id: { $in: receipt.receiptLines.map((line) => line.rawMaterialId) } })
-    .select('materialCode materialName materialType category color widthCm gsm unit').lean();
+    .select('materialCode materialName materialType category color widthCm gsm unit requiresWeightKg').lean();
   return { receipt, materials };
 }
 
@@ -135,7 +144,8 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
   fail(input.receivedAt && !Number.isNaN(receivedAt.getTime()) && receivedAt <= new Date(),
     'Ngày nhận không hợp lệ hoặc ở tương lai', 'INVALID_DATE');
   const handoverName = String(input.handoverName || '').trim();
-  fail(handoverName.length >= 2 && handoverName.length <= 120, 'Cần nhập người giao', 'HANDOVER_REQUIRED');
+  fail(!handoverName || handoverName.length >= 2 && handoverName.length <= 120,
+    'Tên người giao không hợp lệ', 'INVALID_HANDOVER');
   const code = deliveryCode(input.supplierDeliveryCode);
   fail(code.length <= 80, 'Mã chứng từ quá dài', 'INVALID_DELIVERY_CODE');
   fail(String(input.receiptNote || '').length <= 500, 'Ghi chú quá dài', 'INVALID_NOTE');
@@ -194,14 +204,14 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
         supplierRollCode: String(roll.supplierRollCode || '').trim().slice(0, 80),
         lotCode: String(roll.lotCode || '').trim().slice(0, 80),
         widthCm: Number(roll.widthCm || 0), lengthMeters: stockQuantity(roll.lengthMeters ?? 0, 'METER', 'Chiều dài cây'),
-        weightKg: stockQuantity(roll.weightKg ?? 0, 'KG', 'Cân nặng cây'), quality: roll.quality,
+        weightKg: stockQuantity(roll.weightKg ?? 0, 'KG', 'Cân nặng cây'), quality: roll.quality || undefined,
         defectReason: String(roll.defectReason || '').trim().slice(0, 500), locationId: roll.locationId || undefined })),
       lots: lots.map((lot) => ({ clientLineId: lot.clientLineId,
         supplierLotCode: String(lot.supplierLotCode || '').trim().slice(0, 80),
         packageUnit: String(lot.packageUnit || '').trim().slice(0, 40),
         packageCount: stockQuantity(lot.packageCount ?? 0, 'PIECE', 'Số bao gói'),
         unitsPerPackage: stockQuantity(lot.unitsPerPackage ?? 0, unit, 'Quy cách bao gói'),
-        countedQty: stockQuantity(lot.countedQty ?? 0, unit, 'Số thực kiểm'), quality: lot.quality,
+        countedQty: stockQuantity(lot.countedQty ?? 0, unit, 'Số thực kiểm'), quality: lot.quality || undefined,
         defectReason: String(lot.defectReason || '').trim().slice(0, 500),
         allocations: (Array.isArray(lot.allocations) ? lot.allocations : []).map((item) => ({
           locationId: item.locationId || undefined, quantity: stockQuantity(item.quantity ?? 0, unit, 'Số phân bổ') })) })),
@@ -295,6 +305,7 @@ function validateConfirmation(receipt, materials, locations, user) {
   const byMaterial = new Map(materials.map((item) => [id(item._id), item]));
   const byLocation = new Map(locations.map((item) => [id(item._id), item]));
   const allocations = new Map();
+  const plannedAllocations = new Map();
   const units = new Map();
   fail(receipt.receiptLines.some((line) => line.actualQty > 0), 'Phiếu chưa có hàng thực nhận', 'EMPTY_RECEIPT');
   for (const line of receipt.receiptLines) {
@@ -319,14 +330,19 @@ function validateConfirmation(receipt, materials, locations, user) {
       const value = material.materialType === 'FABRIC' ? object.lengthMeters : object.countedQty;
       fail(value > 0 && ['ACCEPTED', 'REJECTED'].includes(object.quality), 'Cây/lô cần số lượng và kết quả', 'INVALID_OBJECT');
       fail(object.quality !== 'REJECTED' || object.defectReason, 'Cây/lô không đạt cần lý do', 'DEFECT_REASON_REQUIRED');
-      fail(material.materialType === 'FABRIC' ? object.widthCm > 0 : object.packageCount > 0 && object.unitsPerPackage > 0,
-        'Thiếu khổ vải hoặc quy cách bao gói', 'OBJECT_DETAILS_REQUIRED');
+      // Author: Duy Anh. Accessory receipts may record counted stock directly; packaging is optional unless one side is supplied.
+      fail(material.materialType === 'FABRIC' ? object.widthCm > 0 &&
+        (!material.requiresWeightKg || object.weightKg > 0) :
+        !object.packageCount && !object.unitsPerPackage || object.packageCount > 0 && object.unitsPerPackage > 0,
+      'Thiếu khổ vải hoặc quy cách bao gói chưa đủ', 'OBJECT_DETAILS_REQUIRED');
       const destinations = material.materialType === 'FABRIC'
         ? [{ locationId: object.locationId, quantity: value }] : object.allocations;
-      fail(destinations.length > 0 && same(destinations.reduce((sum, item) => sum + item.quantity, 0), value),
+      fail((destinations.length > 0 || object.quality === 'ACCEPTED') &&
+        same(destinations.length ? destinations.reduce((sum, item) => sum + item.quantity, 0) : value, value),
         'Tổng phân bổ vị trí phải bằng số lượng cây/lô', 'LOCATION_TOTAL_MISMATCH');
       const seen = new Set();
       for (const item of destinations) {
+        if (!item.locationId && object.quality === 'ACCEPTED') continue;
         const key = id(item.locationId);
         const location = byLocation.get(key);
         fail(location && item.quantity > 0 && !seen.has(key) && accessible(location, user),
@@ -339,15 +355,17 @@ function validateConfirmation(receipt, materials, locations, user) {
           (location.capacityUnit || !location.currentOccupancy), 'Đơn vị sức chứa không khớp', 'LOCATION_UNIT_MISMATCH');
         units.set(key, material.unit);
         allocations.set(key, round((allocations.get(key) || 0) + item.quantity));
+        if (object.quality === 'ACCEPTED') plannedAllocations.set(key,
+          round((plannedAllocations.get(key) || 0) + item.quantity));
       }
     }
   }
   for (const [key, amount] of allocations) {
     const location = byLocation.get(key);
-    fail(round(location.currentOccupancy + amount) <= location.maxCapacity + 0.0001,
+    fail(round((location.currentOccupancy || 0) + (location.plannedReservedQty || 0) + amount) <= location.maxCapacity + 0.0001,
       `Vị trí ${location.locationCode} không đủ sức chứa`, 'LOCATION_FULL', 409);
   }
-  return { allocations, units, byMaterial, byLocation };
+  return { allocations, plannedAllocations, units, byMaterial, byLocation };
 }
 
 /** Confirms the direct receipt exactly once and commits objects, stock, ledger, and audit atomically. */
@@ -385,12 +403,16 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
         isFrozenForStocktake: false, isDeleted: { $ne: true } }).session(session);
       const receiving = locations.find((item) => id(item._id) === id(receipt.receivingLocationId));
       fail(receiving?.warehouseType === 'RAW_MATERIAL' && accessible(receiving, user), 'Kho nhận không hợp lệ', 'INVALID_RECEIVING_LOCATION');
-      const { allocations, units, byMaterial, byLocation } = validateConfirmation(receipt, materials, locations, user);
+      const { allocations, plannedAllocations, units, byMaterial, byLocation } = validateConfirmation(receipt, materials, locations, user);
       for (const [locationId, amount] of allocations) {
+        const plannedAmount = plannedAllocations.get(locationId) || 0;
         const updated = await WarehouseLocation.updateOne({ _id: locationId, status: 'ACTIVE', isFrozenForStocktake: false,
           $or: [{ capacityUnit: units.get(locationId) }, { capacityUnit: null }],
-          $expr: { $gte: [{ $subtract: ['$maxCapacity', { $ifNull: ['$currentOccupancy', 0] }] }, amount] } },
-        { $inc: { currentOccupancy: amount }, $set: { capacityUnit: units.get(locationId) } }, { session });
+          $expr: { $gte: [{ $subtract: ['$maxCapacity', { $add: [
+            { $ifNull: ['$currentOccupancy', 0] }, { $ifNull: ['$plannedReservedQty', 0] },
+          ] }] }, amount] } },
+        { $inc: { currentOccupancy: round(amount - plannedAmount), plannedReservedQty: plannedAmount },
+          $set: { capacityUnit: units.get(locationId) } }, { session });
         fail(updated.matchedCount === 1, 'Sức chứa vị trí đã thay đổi', 'LOCATION_FULL', 409);
       }
       const now = new Date();
@@ -415,7 +437,8 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
             packageUnit: lot.packageUnit, packageCount: lot.packageCount, unitsPerPackage: lot.unitsPerPackage,
             initialQty: lot.countedQty, currentQty: lot.countedQty, quality: lot.quality,
             status: lot.quality === 'ACCEPTED' ? 'PENDING_PUTAWAY' : 'QUARANTINED',
-            defectReason: lot.defectReason, fifoInboundTimestamp: now, allocations: lot.allocations }], { session });
+            defectReason: lot.defectReason, fifoInboundTimestamp: now,
+            allocations: lot.allocations.filter((item) => item.locationId) }], { session });
         }
         if (line.acceptedQty > 0) {
           const before = material.onHandQty || 0;
@@ -426,8 +449,11 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
             .map((item) => [{ locationId: item.locationId, quantity: item.lengthMeters }])
             : line.lots.filter((item) => item.quality === 'ACCEPTED').map((item) => item.allocations);
           const totals = new Map();
-          for (const allocation of accepted.flat()) totals.set(id(allocation.locationId),
-            round((totals.get(id(allocation.locationId)) || 0) + allocation.quantity));
+          for (const allocation of accepted.flat()) {
+            if (!allocation.locationId) continue;
+            totals.set(id(allocation.locationId),
+              round((totals.get(id(allocation.locationId)) || 0) + allocation.quantity));
+          }
           let running = before;
           for (const [locationId, amount] of totals) {
             await InventoryTransaction.create([{ transactionCode: `MRI-${receipt._id}-${lineIndex}-${locationId}`,
@@ -437,6 +463,14 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
               unitCostSnapshot: material.unitCost, performedByUserId: user._id }], { session });
             running = round(running + amount);
           }
+          const unplacedQty = round(line.acceptedQty - [...totals.values()].reduce((sum, amount) => sum + amount, 0));
+          if (unplacedQty > 0) await InventoryTransaction.create([{
+            transactionCode: `MRI-${receipt._id}-${lineIndex}-UNPLACED`, warehouseType: 'RAW_MATERIAL',
+            itemType: 'RAW_MATERIAL', rawMaterialId: material._id, transactionType: 'INBOUND_RECEIPT',
+            referenceModel: 'MaterialTicket', referenceId: receipt._id, quantityChange: unplacedQty,
+            onHandBefore: running, onHandAfter: round(running + unplacedQty),
+            unitCostSnapshot: material.unitCost, performedByUserId: user._id,
+            note: 'Chưa chọn vị trí; chờ xác nhận cất hàng' }], { session });
         }
         const rejected = material.materialType === 'FABRIC' ? line.rolls.filter((item) => item.quality === 'REJECTED')
           .map((item) => [{ locationId: item.locationId, quantity: item.lengthMeters, reason: item.defectReason }])
@@ -456,6 +490,7 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
       receipt.status = 'COMPLETED';
       receipt.confirmationKey = key;
       receipt.confirmationFingerprint = fingerprint;
+      receipt.usesPlannedLocationReservation = true;
       receipt.confirmedAt = now;
       receipt.confirmedByUserId = user._id;
       receipt.receiptVersion += 1;

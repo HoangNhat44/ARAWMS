@@ -23,6 +23,7 @@ const rawMaterialSchema = new Schema(
     color: { type: String },
     gsm: { type: Number },
     widthCm: { type: Number },
+    requiresWeightKg: { type: Boolean, default: false },
     unitCost: { type: Number, required: true, min: 0 },
     onHandQty: { type: Number, default: 0, min: 0 },
     pendingPutawayQty: { type: Number, default: 0, min: 0 },

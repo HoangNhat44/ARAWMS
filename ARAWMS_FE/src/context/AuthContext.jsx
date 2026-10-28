@@ -17,24 +17,43 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    /** Rechecks the saved token with the backend before restoring the user. */
-    const initAuth = async () => {
+    let active = true;
+    let request = 0;
+    /** Rechecks the token so the displayed account always matches API requests. */
+    const syncAuth = async () => {
+      const currentRequest = ++request;
       const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-      if (token) {
-        try {
-          const res = await authService.getMe();
-          if (res.success && res.data?.user) {
-            setUser(res.data.user);
-          }
-        } catch (err) {
-          console.error('Lỗi xác thực người dùng:', err);
-          logout();
-        }
+      if (!token) {
+        setUser(null);
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+      try {
+        const res = await authService.getMe();
+        if (!active || currentRequest !== request) return;
+        if (token !== localStorage.getItem(STORAGE_KEYS.TOKEN)) return syncAuth();
+        setUser(res.success && res.data?.user ? res.data.user : null);
+      } catch (err) {
+        if (!active || currentRequest !== request) return;
+        // Axios can clear an expired token before this handler runs.
+        if (token !== localStorage.getItem(STORAGE_KEYS.TOKEN)) return syncAuth();
+        console.error('Lỗi xác thực người dùng:', err);
+        logout();
+      } finally {
+        if (active && currentRequest === request) setLoading(false);
+      }
     };
 
-    initAuth();
+    syncAuth();
+    // A second tab may replace the token while this tab still shows the old user.
+    const onStorage = (event) => {
+      if (event.key === STORAGE_KEYS.TOKEN || event.key === null) {
+        setLoading(true);
+        syncAuth();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => { active = false; window.removeEventListener('storage', onStorage); };
   }, []);
 
   /** Persists the authenticated user and token for subsequent API requests. */

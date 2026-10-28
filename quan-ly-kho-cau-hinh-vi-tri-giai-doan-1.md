@@ -1,130 +1,147 @@
-Tôi đề xuất phần 2 dùng một màn hình xếp hàng với hai bước rõ ràng, đồng thời bổ sung tab “Hàng trong kệ” cho quản lý. Hệ thống tái sử dụng dữ liệu phân bổ của phần 1, tránh bắt nhân viên nhập lại thông tin.
+Tôi đề xuất rút gọn thành một màn hình nhập hàng, chia ba phần và dùng một nút “Xác nhận nhập kho”. Người dùng nhập dữ liệu ngay trên phiếu, chỉ mở chi tiết khi cần.
 
-1. Luồng nhân viên sử dụng
-   Chọn hàng cần xếp → quét vị trí → quét từng sản phẩm → tự ghi nhận tiến độ → chuyển ô tiếp theo.
+Luồng chính:
 
-Nhân viên không cần chọn thủ công SKU cho từng chiếc, nhập số lượng đã xếp hoặc bấm lưu sau mỗi lần quét. Backend tự xác định sản phẩm từ barcode và cập nhật kết quả.
+Chọn nhà cung cấp → thêm nguyên phụ liệu và số lượng → kiểm tra, chọn vị trí → xác nhận nhập → in tem.
 
-2. Màn hình đầu tiên: “Hàng chờ xếp”
+Luồng này không sử dụng kế hoạch nhập hay hợp đồng.
 
-Chỉ hiển thị các phân bổ đã được quản lý xác nhận và còn hàng chưa xếp:
-Sản phẩm Vị trí cần xếp Tiến độ Thao tác
-Áo trắng · M B-01 · Tầng 1 · Ô 01 12/30 Tiếp tục
-Áo trắng · L B-01 · Tầng 2 · Ô 01 0/20 Bắt đầu
+1. Thông tin giao hàng — nhập ngắn gọn
 
-Mỗi dòng có ảnh nhỏ và mã phiếu nhập để nhận diện nguồn hàng. Có ô tìm kiếm theo sản phẩm, mã phiếu hoặc kệ.
+Phần đầu phiếu chỉ giữ các trường cần thiết:
+Trường Cách hoạt động
+Nhà cung cấp Tìm và chọn từ danh mục
+Ngày nhận Mặc định hôm nay
+Kho nhận Tự chọn nếu người dùng chỉ có một kho
+Mã chứng từ NCC Không bắt buộc
+Ghi chú, ảnh chứng từ Thu gọn, mở khi cần
 
-Không yêu cầu nhân viên tự tạo nhiệm vụ. Họ chỉ mở dòng phân bổ rồi thực hiện.
+Mã phiếu tự sinh. Người nhận lấy từ tài khoản đăng nhập. Không bắt người dùng nhập lại các thông tin hệ thống đã biết.
 
-3. Màn hình quét: chỉ tập trung vào một ô
+2. Thêm nguyên phụ liệu — một bảng chính
 
-Phía trên luôn hiện thông tin lớn, dễ đọc:
-Áo thun trắng — Size M
-Vị trí: B-01 · Tầng 1 · Ô 01
+Người dùng tìm theo mã hoặc tên rồi chọn nguyên phụ liệu. Hệ thống tự điền quy cách và đơn vị.
+Nguyên phụ liệu Thực nhận Không đạt Đạt nhập kho Vị trí Chi tiết
+Vải cotton trắng · m 590 20 570 Chọn vị trí 4 cây
+Chỉ trắng · cuộn 100 5 95 B-01-T1-O01 Mở
+Cúc trắng · chiếc 3.000 0 3.000 B-02-T1-O01 Mở
 
-Đã xếp: 12/30
-Còn lại: 18 chiếc
+Để giảm thao tác:
 
-Phía dưới gồm camera, hướng dẫn hiện tại và kết quả vừa quét.
-Bước Hướng dẫn
-Chưa xác nhận ô “Quét barcode vị trí B-01-T1-O01”
-Đã xác nhận ô “Quét barcode từng sản phẩm khi đặt vào ô”
-Đủ số lượng “Đã xếp đủ 30 chiếc”
+- Người dùng nhập thực nhận và không đạt.
+- Hệ thống tự tính đạt = thực nhận − không đạt.
+- Khi chọn “đã kiểm tra, toàn bộ đạt”, đặt số không đạt bằng 0.
+- Nếu chưa kiểm tra xong, cho lưu nháp, chưa xác nhận nhập chính thức.
+- Khi có số không đạt, mới mở trường lý do lỗi và hướng xử lý.
+- “Số NCC báo giao” và chênh lệch nằm trong phần chi tiết tùy chọn, không bắt nhập nếu không có chứng từ.
+  Không nên để nhiều ô tổng số đều cho sửa độc lập vì dễ tạo số liệu mâu thuẫn.
 
-Các nút phụ chỉ gồm Đổi vị trí, Tạm dừng, Báo sự cố. Khi đổi sang ô khác phải quét lại vị trí.
+3. Vải có chi tiết từng cây; phụ liệu chỉ mở thêm khi cần
 
-4. Phản hồi sau khi quét phải dễ hiểu
+Đây là điểm cần tách để form đơn giản nhưng dữ liệu vẫn đúng.
 
-Ngay khi nhận diện barcode, giao diện phản hồi rằng đã đọc được mã; sau đó xác nhận với backend.
-Kết quả Thông báo cho nhân viên
-Thành công “Đã xếp — 13/30”
-Đang chờ server “Đang xác nhận sản phẩm…”
-Trùng barcode “Chiếc này đã được xác nhận. Không cộng thêm.”
-Sai SKU “Sai sản phẩm. Cần áo trắng size M.”
-Sai vị trí “Sai ô. Hãy quét B-01-T1-O01.”
-Hết số lượng “Đã đủ 30 chiếc, không cần xếp thêm.”
-Mất mạng “Mất kết nối. Tạm ngừng xác nhận hàng.”
+Đối với vải
 
-Dùng chữ rõ ràng, màu và âm báo tùy chọn. Tránh hiển thị mã lỗi kỹ thuật cho nhân viên.
+Bấm “Nhập danh sách cây”, mở panel bên cạnh:
+Cây Chiều dài thực tế Kết quả Vị trí
+01 200 m Đạt A-01-T1-O01
+02 190 m Đạt A-01-T1-O02
+03 180 m Đạt A-02-T1-O01
+04 20 m Không đạt Khu chờ xử lý
 
-Không tăng số lượng chính thức trước khi backend chấp nhận. Nếu phản hồi chậm, giữ trạng thái đang xác nhận để người dùng biết hệ thống vẫn xử lý.
+Màu, khổ tiêu chuẩn và tên nguyên liệu tự lấy từ dòng đã chọn. Mã cây NCC, lô nhuộm, cân nặng hoặc ghi chú mở khi cần hoặc bắt buộc theo quy cách vật tư.
 
-5. Cách xử lý đơn giản và an toàn ở backend
+Sau khi có chi tiết cây, bảng chính lấy tổng từ các cây và khóa sửa trực tiếp các số tổng. Người dùng chỉ nhập một nơi.
 
-Mỗi lần quét sản phẩm, backend kiểm tra:
+Có nút “Thêm cây giống dòng trên” để không nhập lại thông tin chung. Import Excel có thể bổ sung sau nếu thực tế cần.
 
-- Nhân viên có quyền và đang thực hiện dòng phân bổ hợp lệ.
-- Đã quét đúng vị trí.
-- Barcode tồn tại, đúng SKU, màu, size và nguồn hàng.
-- Chiếc đó được phép cất, chưa được xác nhận ở vị trí khác.
-- Chưa vượt số lượng phân bổ.
-- Ô vẫn hoạt động và phân bổ chưa bị thay đổi.
-  Nếu hợp lệ, cập nhật nhất quán:
+Đối với phụ liệu
 
-1. Vị trí hiện tại của chiếc.
-2. Số đã xếp của dòng phân bổ.
-3. Phần giữ chỗ còn lại.
-4. Lịch sử xác nhận.
-   Xếp hàng không cộng tồn nhập lần nữa. Phần chờ xếp chuyển thành hàng thực tế tại ô, không chiếm thêm chỗ lần hai.
+Mặc định chỉ cần số lượng và vị trí. Phần chi tiết cho phép nhập:
 
-Ví dụ:
-Thời điểm Thực tế Chờ xếp Sức chứa còn lại
-Trước quét 10 30 10
-Sau một lần thành công 11 29 10
+- Mã lô nếu có.
+- Quy cách đóng gói nếu cần quy đổi.
+- Chia số lượng vào nhiều ô.
+  Ví dụ: 30 túi × 100 chiếc = 3.000 chiếc. Nếu đã nhập số thực kiểm, không tự ghi đè bằng số quy đổi trên bao bì.
 
-6. Giữ hệ thống nhẹ và phản hồi nhanh
+Phụ liệu quản lý theo lô hoặc bao gói phù hợp; không mặc định sinh barcode cho từng chiếc cúc.
 
-Đề xuất MVP:
+4. Chọn vị trí bằng danh sách, không cần bản đồ
 
-- Dùng API thông thường, chưa cần WebSocket hoặc cơ chế đồng bộ phức tạp.
-- Tải danh sách chờ xếp gọn; mở dòng nào mới tải chi tiết dòng đó.
-- Camera được mở một lần trong màn hình thao tác, tránh khởi tạo lại sau mỗi sản phẩm.
-- Mỗi màn hình chỉ xử lý một yêu cầu xác nhận sản phẩm tại một thời điểm. Hiển thị sẵn sàng ngay sau khi có kết quả, tránh hàng đợi dài khó kiểm soát.
-- Chống camera đọc lặp một mã qua nhiều frame.
-- Mỗi yêu cầu có ID ổn định; mất phản hồi thì thử lại cùng ID, không cộng hai lần.
-- Sau thành công, chỉ cập nhật tiến độ và kết quả mới nhất; không tải lại toàn trang.
-- Tạm dừng giữ kết quả đã được backend xác nhận. Mở lại trang lấy tiến độ từ server và quét lại vị trí.
-  Không triển khai xác nhận offline ở MVP. Cách này giảm việc xử lý xung đột và tránh nhân viên tưởng hàng đã được ghi nhận khi chưa có kết quả.
+Ngay tại dòng hoặc chi tiết cây/lô:
 
-7. Hoàn tất và xử lý thiếu hàng
+1. Bấm “Chọn vị trí”.
+2. Hệ thống hiển thị các ô phù hợp trong kho đang nhận.
+3. Chọn kệ, tầng và ô.
+4. Có thể “Áp dụng vị trí cho các dòng đã chọn” khi hợp lệ.
+   Danh sách nên hiển thị:
+   Vị trí Trạng thái Thông tin hỗ trợ
+   A-01-T1-O01 Hoạt động Dành cho cây vải
+   A-02-T1-O01 Hoạt động Dành cho phụ liệu
 
-Khi đủ số lượng, hệ thống tự đánh dấu dòng Hoàn tất, ngừng nhận thêm và hiện nút “Xếp dòng tiếp theo”.
+Chỉ kiểm tra sức chứa khi ô đã được cấu hình bằng đơn vị phù hợp. Không dùng sức chứa “chiếc thành phẩm” để so với mét vải hoặc kg nguyên liệu.
 
-Nếu mới xếp 28/30:
+Nên cho lựa chọn “Chưa chọn vị trí” để người dùng vẫn nhập hàng được. Phần này được ghi là chờ cất, chưa sẵn sàng xuất sử dụng.
 
-- Tạm dừng: giữ 28 chiếc đã xác nhận.
-- Báo thiếu 2 chiếc: nhập lý do ngắn, quản lý xử lý phần còn lại.
-- Không cho bấm hoàn tất để tự coi đủ 30.
-  Với trường hợp xếp nhầm đã xác nhận, nhân viên báo sự cố; quản lý xử lý có lịch sử. Chưa cần làm chức năng tự đảo/chuyển hàng phức tạp trong bản đầu.
+Vị trí đã chọn trên phiếu là vị trí dự kiến. Nếu hệ thống có chức năng quét xác nhận cất hàng, chỉ cập nhật vị trí thực tế khi bước đó thành công. MVP chưa có quét thì cần hành động “Xác nhận đã cất” theo quyền, thay vì tự coi đã cất ngay khi chọn ô.
 
-8. Quản lý xem hàng trong kệ
+5. Xác nhận nhập — một lần, kết quả rõ
 
-Giữ hai khung danh sách kệ A/B như phần 1. Khi chọn một kệ, panel có hai tab:
+Cuối màn hình có:
 
-Hàng trong kệ | Cấu hình
+Lưu nháp Xác nhận nhập kho
 
-Tab Hàng trong kệ hiển thị trước:
+Trước khi xác nhận, hiển thị bản tóm tắt ngắn theo từng đơn vị:
 
-- Tổng số chiếc thực tế.
-- Số SKU.
-- Số lượng chờ xếp.
-- Sức chứa còn khả dụng.
-  Sau đó là bảng:
-  Ô Sản phẩm Thực tế Chờ xếp
-  Tầng 1 · Ô 01 Áo trắng M 25 5
-  Tầng 2 · Ô 01 Áo trắng L 20 0
+- Vải: 590 m thực nhận, 570 m đạt, 20 m không đạt.
+- Chỉ: 100 cuộn thực nhận, 95 đạt, 5 không đạt.
+- Các phần chưa chọn vị trí hoặc chưa cất.
+  Không cộng mét, cuộn và chiếc thành một tổng.
 
-Bấm một dòng để xem barcode từng chiếc, người xếp và thời gian. Danh sách này chỉ tải khi mở và có phân trang nếu nhiều dữ liệu.
+Khi xác nhận, backend:
 
-Số lượng thực tế phải lấy từ vị trí hiện hành của sản phẩm, không đếm tất cả sự kiện quét lịch sử. Làm mới khi mở panel, có nút Làm mới; chưa cần cập nhật thời gian thực liên tục.
+1. Kiểm tra quyền, trạng thái và phiên bản phiếu.
+2. Kiểm tra số lượng, cây/lô và vị trí.
+3. Tạo cây vải/lô quản lý, cấp barcode tương ứng.
+4. Ghi tồn đạt và hàng không đạt riêng.
+5. Ghi lịch sử giao dịch.
+6. Đánh dấu phiếu đã xác nhận.
+   Bấm đúp hoặc retry phải trả kết quả cũ, không tạo thêm barcode hoặc cộng tồn hai lần.
 
-9. Tiêu chí để Codex thực hiện đúng
+7. Sau nhập — chỉ hiện việc cần làm tiếp
 
-- Nhân viên hiểu mình phải đến ô nào, xếp sản phẩm nào và còn bao nhiêu chiếc.
-- Quét sai có thông báo chỉ rõ cách sửa.
-- Không cần nhập tay số lượng đã xếp hoặc lưu từng chiếc.
-- Quét trùng, retry hay hai thiết bị cùng gửi không làm tăng sai số lượng.
-- Mất mạng không báo thành công giả và không mất tiến độ đã xác nhận.
-- Quản lý thấy số thực tế khớp danh sách barcode hiện nằm tại kệ.
-- Đo thời gian phản hồi trên mạng và thiết bị thực tế; ưu tiên sửa truy vấn/API chậm trước khi bổ sung công nghệ phức tạp.
-  Luồng này giữ thao tác của nhân viên ngắn: chọn → quét ô → quét hàng, còn quyền, số lượng, vị trí và chống trùng được kiểm tra ở backend.
+Trang chi tiết phiếu hiển thị:
+Kết quả Hành động
+Hàng đạt đã nhận In tem
+Hàng chưa cất Xem danh sách chờ cất
+Hàng không đạt Xem danh sách chờ xử lý/trả NCC
+
+Chỉ hàng đạt và hoàn thành điều kiện cất mới được đưa vào tồn sẵn sàng xuất dùng. Hàng không đạt vẫn được theo dõi khi đang nằm tại kho, nhưng không xuất cho sản xuất.
+
+In lại dùng barcode cũ. Phiếu đã xác nhận không sửa trực tiếp số lượng; cần nghiệp vụ điều chỉnh có lịch sử.
+
+7. Cách làm để hệ thống nhanh và dễ bảo trì
+   Vấn đề Thiết kế đề xuất
+   Quá nhiều màn hình Một form chính, panel chi tiết cây/lô
+   Nhập cùng dữ liệu nhiều lần Dùng chi tiết làm nguồn tính tổng, tự điền thông tin danh mục
+   Tải toàn bộ danh mục Tìm kiếm và tải theo kết quả
+   Tải lại trang khi sửa Chỉ cập nhật dòng hoặc panel liên quan
+   Gọi API mỗi lần gõ số Tính tạm tại giao diện; lưu nháp/xác nhận theo thao tác rõ ràng
+   Bấm lưu nhiều lần Khóa nút đang lưu và chống trùng tại backend
+   Lưu lỗi làm mất công nhập Giữ form, chỉ rõ lỗi tại dòng, cho thử lại
+   Hệ thống phức tạp sớm API thông thường; chưa cần WebSocket hoặc xử lý nền nếu dữ liệu thực tế chưa yêu cầu
+
+Khi chọn nguyên liệu hoặc mở panel, giao diện phản hồi ngay bằng trạng thái chọn/đang tải. Chỉ báo “Đã lưu” sau khi server xác nhận.
+
+8. Những kiểm tra tối thiểu phải có
+
+- Phiếu có nhà cung cấp, kho và ít nhất một dòng thực nhận lớn hơn 0.
+- Số lượng hợp lệ theo đơn vị; không đạt không vượt thực nhận.
+- Chưa kiểm tra xong thì chưa xác nhận chính thức.
+- Tổng cây/lô khớp số lượng dòng.
+- Vị trí đúng kho, đang hoạt động và phù hợp loại hàng.
+- Hàng không đạt có lý do và không vào tồn khả dụng.
+- Barcode không trùng; retry không cộng tồn hai lần.
+- Hai người sửa cùng phiếu được phát hiện bằng phiên bản dữ liệu.
+- Phiếu đã xác nhận không bị sửa số lượng trực tiếp.
+  Luồng người dùng chỉ cần nhớ: chọn hàng → nhập thực nhận và phần lỗi → chọn chỗ cất → xác nhận. Chi tiết cây vải, kiểm tra tồn và chống trùng được hệ thống xử lý phía sau.

@@ -66,6 +66,16 @@ export default function PendingReceiptAllocation({ receipt, products, onDone, on
     } catch (requestError) { setError(requestError.message); }
     finally { setSaving(false); }
   };
+  const invalidAllocation = rows.some((row) => {
+    const available = progress.find((item) => item.skuId === row.skuId)?.unallocated || 0;
+    const skuTotal = rows.filter((item) => item.skuId === row.skuId)
+      .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+    const bin = bins.find((item) => item.id === row.locationId);
+    const binTotal = rows.filter((item) => item.locationId === row.locationId)
+      .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+    return !bin || !Number.isSafeInteger(Number(row.quantity)) || Number(row.quantity) < 1 ||
+      skuTotal > available || binTotal > bin.available;
+  });
   return <section className="receiving-allocation" aria-label="Hàng chờ phân bổ">
     <h3>Phân bổ hàng từ phiếu {receipt.documentCode}</h3>
     <p>Chỉ số hàng đạt còn ở khu chờ mới được phân bổ. Sức chứa được kiểm tra lại lúc lưu.</p>
@@ -92,13 +102,20 @@ export default function PendingReceiptAllocation({ receipt, products, onDone, on
           </div>
           {chosen.map((row) => {
             const bin = bins.find((entry) => entry.id === row.locationId);
+            const otherSkuQty = chosen.filter((entry) => entry.key !== row.key)
+              .reduce((sum, entry) => sum + (Number(entry.quantity) || 0), 0);
+            const otherBinQty = rows.filter((entry) => entry.key !== row.key && entry.locationId === row.locationId)
+              .reduce((sum, entry) => sum + (Number(entry.quantity) || 0), 0);
+            const maxQuantity = Math.max(0, Math.min(item.unallocated - otherSkuQty,
+              bin ? bin.available - otherBinQty : item.unallocated));
             return <div className="receiving-allocation-row" key={row.key}>
               <select style={field} aria-label={`Ô kệ cho ${sku?.skuCode}`} value={row.locationId} onChange={(event) => setRows((current) => current.map((entry) => entry.key === row.key ? { ...entry, locationId: event.target.value } : entry))}>
                 <option value="">Chọn ô kệ</option>
                 {eligible.map((entry) => <option key={entry.id} value={entry.id}>{entry.rackLabel || entry.rackCode} · Tầng {entry.floorNo} · Ô {entry.binNo} · còn {entry.available}</option>)}
                 {bin && !eligible.some((entry) => entry.id === bin.id) && <option value={bin.id}>{bin.locationCode}</option>}
               </select>
-              <input style={field} type="number" min="1" step="1" aria-label="Số phân bổ" value={row.quantity} onChange={(event) => setRows((current) => current.map((entry) => entry.key === row.key ? { ...entry, quantity: event.target.value } : entry))} />
+              <input style={field} type="number" min="1" max={maxQuantity} step="1" aria-label="Số phân bổ" value={row.quantity} onChange={(event) => setRows((current) => current.map((entry) => entry.key === row.key ? { ...entry, quantity: event.target.value && Number(event.target.value) > maxQuantity ? String(maxQuantity) : event.target.value } : entry))} />
+              <small>Tối đa {maxQuantity} chiếc có thể phân bổ vào ô này.</small>
               {bin && <small>Sức chứa {bin.maxCapacity} · Đang có {bin.currentOccupancy} · Đã giữ {bin.plannedReservedQty} · Còn {bin.available}</small>}
               <button className="btn-ara-secondary" type="button" onClick={() => setRows((current) => current.filter((entry) => entry.key !== row.key))}>Xóa</button>
             </div>;
@@ -107,7 +124,8 @@ export default function PendingReceiptAllocation({ receipt, products, onDone, on
         </div>;
       })}
       {error && <p role="alert">{error}</p>}
-      <div style={{ display: 'flex', gap: '.75rem' }}><button className="btn-ara-primary" type="submit" disabled={saving || !progress.length}>{saving ? 'Đang giữ chỗ...' : 'Xác nhận phân bổ'}</button><button className="btn-ara-secondary" type="button" onClick={onClose}>Đóng</button></div>
+      {invalidAllocation && <p role="alert" className="receiving-quantity-error">Tổng phân bổ vượt số hàng đạt còn lại hoặc sức chứa ô kệ.</p>}
+      <div style={{ display: 'flex', gap: '.75rem' }}><button className="btn-ara-primary" type="submit" disabled={saving || !progress.length || !rows.length || invalidAllocation}>{saving ? 'Đang giữ chỗ...' : 'Xác nhận phân bổ'}</button><button className="btn-ara-secondary" type="button" onClick={onClose}>Đóng</button></div>
     </form>}
     {loading && error && <p role="alert">{error}</p>}
   </section>;

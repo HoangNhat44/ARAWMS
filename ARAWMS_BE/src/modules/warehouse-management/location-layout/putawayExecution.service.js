@@ -33,7 +33,8 @@ export async function listPutawayTasks() {
     .populate('lines.targetLocationId', 'locationCode barcode status').lean();
   return allocations.flatMap((allocation) => allocation.lines.filter((line) => remainingQuantity(line) > 0)
     .map((line) => ({ allocationId: allocation._id, lineId: line.lineId,
-      allocationCode: allocation.allocationCode, receiptCode: allocation.sourceReceiptId?.documentCode,
+      allocationCode: allocation.allocationCode, receiptId: allocation.sourceReceiptId?._id,
+      receiptCode: allocation.sourceReceiptId?.documentCode,
       skuCode: line.skuId?.skuCode, productName: line.skuId?.productId?.productName,
       thumbnailUrl: line.skuId?.productId?.thumbnailUrl, color: line.skuId?.color,
       size: line.skuId?.size, locationCode: line.targetLocationId?.locationCode,

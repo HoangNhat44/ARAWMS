@@ -22,6 +22,7 @@ export default function WarehousePutawayPage() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [printingReceiptId, setPrintingReceiptId] = useState('');
   const [cameraOn, setCameraOn] = useState(false);
   const [pendingRetry, setPendingRetry] = useState(null);
   const [showShortage, setShowShortage] = useState(false);
@@ -158,6 +159,24 @@ export default function WarehousePutawayPage() {
     finally { setBusy(false); }
   };
 
+  /** Print the existing labels of units still waiting to be placed. */
+  const printReceipt = async (receipt) => {
+    const tab = window.open('', '_blank');
+    if (!tab) { setError('Trình duyệt đang chặn cửa sổ in tem.'); return; }
+    setPrintingReceiptId(receipt.id); setError('');
+    try {
+      const response = await api.receiptLabels(receipt.id);
+      const labels = response.data.labels;
+      if (!labels.length) throw new Error('Phiếu này không còn sản phẩm chờ dán tem.');
+      const { printProductLabels } = await import('../utils/productLabelPrint');
+      printProductLabels(labels, tab);
+      setNotice(`Đã mở ${labels.length} tem của phiếu ${receipt.code}. Dán một tem lên mỗi sản phẩm trước khi xếp kệ.`);
+    } catch (err) { tab.close(); setError(err.message); }
+    finally { setPrintingReceiptId(''); }
+  };
+
+  const printReceipts = [...new Map(tasks.filter((item) => item.receiptId)
+    .map((item) => [String(item.receiptId), { id: String(item.receiptId), code: item.receiptCode }])).values()];
   const visibleTasks = tasks.filter((item) => [label(item), item.receiptCode,
     item.locationCode, item.allocationCode].join(' ').toLowerCase().includes(query.toLowerCase()));
 
@@ -166,8 +185,17 @@ export default function WarehousePutawayPage() {
       <p>Chọn hàng cần xếp, quét đúng ô, rồi quét từng chiếc khi đặt vào kệ.</p></header>
     {error && <div className="putaway-error" role="alert">{error}</div>}
     {notice && <div className="putaway-notice" role="status">{notice}</div>}
+    {!task && <section className="putaway-card" aria-label="In tem thành phẩm">
+      <div className="putaway-heading"><h2>1 · In tem cho hàng chờ xếp</h2></div>
+      <p>Chọn phiếu đã được quản lý phân bổ. In tem barcode hàng loạt rồi dán một tem lên từng sản phẩm.</p>
+      <div className="putaway-task-list">{printReceipts.map((receipt) => <article key={receipt.id}>
+        <div><strong>Phiếu {receipt.code}</strong><small>Tem của các sản phẩm còn ở khu chờ xếp</small></div>
+        <button type="button" disabled={Boolean(printingReceiptId)} onClick={() => printReceipt(receipt)}>
+          {printingReceiptId === receipt.id ? 'Đang lấy tem...' : 'In tem hàng loạt'}</button>
+      </article>)}</div>
+    </section>}
     {!task ? <section className="putaway-card">
-      <div className="putaway-heading"><h2>Hàng chờ xếp</h2>
+      <div className="putaway-heading"><h2>2 · Quét mã và xếp kệ</h2>
         <button type="button" onClick={loadTasks}>Làm mới</button></div>
       <input aria-label="Tìm sản phẩm, phiếu hoặc kệ" placeholder="Tìm sản phẩm, phiếu hoặc kệ…"
         value={query} onChange={(event) => setQuery(event.target.value)} />
