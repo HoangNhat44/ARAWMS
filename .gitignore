@@ -20,4 +20,21 @@ dist-ssr
 *.sw?
 
 # Local browser QA artifacts
-/output/playwright/
+/output/
+/test/
+
+# Documentation and support files (not part of source code)
+/*.md
+/docs/
+/image/
+
+# Office files (planning, diagrams, notes)
+*.docx
+*.xlsx
+*.pptx
+*.doc
+*.xls
+*.ppt
+
+# PDF files (unless needed for deployment)
+*.pdf
