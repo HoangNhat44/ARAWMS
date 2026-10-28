@@ -98,6 +98,7 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
         phone: formData.phone,
         email: formData.email,
         tags,
+        conversationId,
         addresses: formData.fullAddress
           ? [
               {

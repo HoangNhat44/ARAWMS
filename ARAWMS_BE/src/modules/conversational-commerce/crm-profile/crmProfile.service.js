@@ -16,6 +16,7 @@ import ChatConversation from '../../../models/ChatConversation.model.js';
 import SalesOrder from '../../../models/SalesOrder.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
+import { emitConversationUpdated } from '../../../config/socket.js';
 
 /**
  * Ghi SystemLog kiểm toán
@@ -62,7 +63,36 @@ export const updateCustomer = async (customerId, updateData, user, req) => {
   if (updateData.phone !== undefined) customer.phone = updateData.phone;
   if (updateData.email !== undefined) customer.email = updateData.email;
   if (Array.isArray(updateData.addresses)) customer.addresses = updateData.addresses;
-  if (Array.isArray(updateData.tags)) customer.tags = updateData.tags;
+
+  if (Array.isArray(updateData.tags)) {
+    const previousTags = beforeSnapshot.tags || [];
+    const newTags = updateData.tags;
+    const removedTags = previousTags.filter((t) => !newTags.includes(t));
+    customer.tags = newTags;
+
+    // Đồng bộ thẻ: Nếu tag bị xóa khỏi khách hàng, gỡ tag đó khỏi các cuộc hội thoại của khách
+    if (removedTags.length > 0) {
+      await ChatConversation.updateMany(
+        { customerId: customer._id },
+        { $pull: { tags: { $in: removedTags } } }
+      );
+    }
+
+    // Nếu có conversationId chỉ định, cập nhật và phát Socket realtime
+    if (updateData.conversationId) {
+      if (removedTags.length > 0) {
+        await ChatConversation.findByIdAndUpdate(
+          updateData.conversationId,
+          { $pull: { tags: { $in: removedTags } } }
+        );
+      }
+      const updatedConv = await ChatConversation.findById(updateData.conversationId)
+        .populate('customerId', 'customerCode fullName phone email tags addresses totalOrders totalSpent facebookPsid')
+        .populate('assignedSellerId', 'employeeCode fullName email')
+        .lean();
+      if (updatedConv) emitConversationUpdated(updatedConv);
+    }
+  }
 
   await customer.save();
 
