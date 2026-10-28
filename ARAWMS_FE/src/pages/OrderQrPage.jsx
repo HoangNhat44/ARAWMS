@@ -9,7 +9,7 @@ import { orderQrService } from '../services/orderQrService';
 // import { useAuth } from '../hooks/useAuth';
 
 // Mock user for testing
-const mockUser = { _id: '1', username: 'test', fullName: 'Test User', roles: ['OWNER', 'WAREHOUSE_STAFF'] };
+const mockUser = { _id: '1', username: 'test', fullName: 'Test User', roles: ['OWNER', 'ADMIN'] };
 
 const panel = {
   background: '#fff', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-md)',

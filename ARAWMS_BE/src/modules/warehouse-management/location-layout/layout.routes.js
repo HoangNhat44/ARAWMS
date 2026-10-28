@@ -32,8 +32,8 @@ router.use((req, res, next) => {
     username: 'test',
     fullName: 'Test User',
     roleId: '507f1f77bcf86cd799439022',
-    roleCode: 'WAREHOUSE_MANAGER',
-    roles: ['WAREHOUSE_MANAGER', 'OWNER'],
+    roleCode: 'ADMIN',
+    roles: ['ADMIN', 'OWNER'],
     warehouseIds: []
   };
   next();

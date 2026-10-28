@@ -36,7 +36,7 @@ router.use((req, res, next) => {
     _id: '507f1f77bcf86cd799439011',
     username: 'test',
     fullName: 'Test User',
-    roles: ['WAREHOUSE_MANAGER', 'OWNER'],
+    roles: ['OWNER', 'ADMIN'],
     warehouseIds: []
   };
   next();
