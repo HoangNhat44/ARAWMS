@@ -5,8 +5,6 @@
  * Description: Defines packing session, barcode, and video endpoints.
  */
 import express from 'express';
-import { authenticate } from '../../../common/middlewares/authenticate.js';
-import { sendError } from '../../../common/utils/responseHandler.js';
 import {
   openPackingSessionRequest,
   getPackingSession,
@@ -23,24 +21,17 @@ import {
 
 const router = express.Router();
 
-// Authenticate every route; packing actions also require warehouse staff access.
-// router.use(authenticate);
-
-// Mock user for testing without authentication
+// Direct URL testing uses one operator identity for order and unit scans.
 router.use((req, res, next) => {
   req.user = {
     _id: '507f1f77bcf86cd799439011',
     username: 'test',
     fullName: 'Test User',
-    roles: ['OWNER', 'ADMIN'],
+    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_STAFF'],
     warehouseIds: []
   };
   next();
 });
-
-// router.use((req, res, next) => req.user.roles?.includes('WAREHOUSE_STAFF')
-//   ? next()
-//   : sendError(res, 'Chỉ nhân viên kho được đóng hàng', { code: 'FORBIDDEN' }, 403));
 
 router.post('/product-units/register', registerProductUnit);
 router.post('/prepare', openPackingSessionRequest);

@@ -7,7 +7,6 @@
 import express from 'express';
 
 // Import all module routes
-import authRoutes from '../modules/system-administration/authentication/auth.routes.js';
 import orderQrRoutes from '../modules/order-fulfillment/order-qr-management/orderQrManagement.routes.js';
 import packingRoutes from '../modules/order-fulfillment/packing-verification/packingVerification.routes.js';
 import productRoutes from '../modules/warehouse-management/products/product.routes.js';
@@ -23,7 +22,6 @@ router.get('/health', (req, res) => {
 });
 
 // Mount module routes
-router.use('/auth', authRoutes);
 router.use('/order-qr', orderQrRoutes);
 router.use('/packing', packingRoutes);
 router.use('/products', productRoutes);

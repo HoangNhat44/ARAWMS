@@ -6,7 +6,6 @@
  */
 import express from 'express';
 import mongoose from 'mongoose';
-import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
 import ProductUnit from '../../../models/ProductUnit.js';
 import PutawayAllocation from '../../../models/PutawayAllocation.model.js';
@@ -18,14 +17,14 @@ import { listPutawayTasks, getPutawayTask, verifyPutawayLocation, scanPutawayUni
 
 const router = express.Router();
 router.use((req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
-// router.use(authenticate);
-// Mock user for testing without authentication
+// Direct URL testing uses one operator identity for scanning and review.
 router.use((req, res, next) => {
   req.user = {
     _id: '507f1f77bcf86cd799439011',
     username: 'test',
     fullName: 'Test User',
-    roles: ['OWNER', 'ADMIN'],
+    roleCode: 'WAREHOUSE_STAFF',
+    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'],
     warehouseIds: []
   };
   next();

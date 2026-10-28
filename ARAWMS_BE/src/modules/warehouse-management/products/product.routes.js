@@ -13,7 +13,6 @@ import Product from '../../../models/Product.model.js';
 import Sku from '../../../models/Sku.model.js';
 import InventoryTransaction from '../../../models/InventoryTransaction.model.js';
 import { randomUUID } from 'node:crypto';
-import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
 import { configureProductCloudinary, productMediaOptions } from '../../../common/services/productMediaStorage.js';
 import bulkStockRoutes from './bulkStock.routes.js';
@@ -28,9 +27,7 @@ const media = {
   'additional-image': { types: ['image/jpeg', 'image/png', 'image/webp'], limit: 10 * 1024 * 1024, field: 'additionalImageUrls' },
 };
 
-// Product configuration endpoints require warehouse manager access.
-// router.use(authenticate);
-// Mock user for testing without authentication
+// Direct URL testing uses one operator identity for product actions.
 router.use((req, res, next) => {
   req.user = {
     _id: '507f1f77bcf86cd799439011',

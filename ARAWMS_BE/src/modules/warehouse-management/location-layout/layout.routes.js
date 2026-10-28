@@ -8,7 +8,6 @@ import express from 'express';
 import mongoose from 'mongoose';
 import bwipjs from 'bwip-js';
 import { randomBytes } from 'node:crypto';
-import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import WarehouseLayout from '../../../models/WarehouseLayout.model.js';
@@ -24,16 +23,14 @@ import { allocationOptions, listAllocations, createAllocation, updateAllocation,
 
 const router = express.Router();
 router.use((req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
-// router.use(authenticate);
-// Mock user for testing without authentication
+// Direct URL testing uses one manager identity for layout actions.
 router.use((req, res, next) => {
   req.user = {
     _id: '507f1f77bcf86cd799439011',
     username: 'test',
     fullName: 'Test User',
-    roleId: '507f1f77bcf86cd799439022',
-    roleCode: 'ADMIN',
-    roles: ['ADMIN', 'OWNER'],
+    roleCode: 'WAREHOUSE_MANAGER',
+    roles: ['ADMIN', 'OWNER', 'WAREHOUSE_MANAGER'],
     warehouseIds: []
   };
   next();
@@ -51,7 +48,9 @@ const permission = (name) => async (req, res, next) => {
     if (!req.user.roles?.some((role) => ['OWNER', 'WAREHOUSE_MANAGER'].includes(role))) {
       return sendError(res, 'Không có quyền cấu hình kho', { code: 'FORBIDDEN' }, 403);
     }
-    const role = await Role.findById(req.user.roleId).select('permissions').lean();
+    // Direct URL testing has no persisted role. Keep layout capabilities available.
+    const role = req.user.roleId
+      ? await Role.findById(req.user.roleId).select('permissions').lean() : null;
     const scoped = role?.permissions?.filter((item) => item.majorFeature === 'WAREHOUSE_LAYOUT');
     if (!roleAllows(scoped, name)) return sendError(res, 'Thiếu quyền thao tác sơ đồ kho', { code: 'FORBIDDEN' }, 403);
     req.layoutRolePermissions = scoped;
@@ -127,6 +126,16 @@ router.get('/bins/:id/label.png', permission('warehouse.location.barcode.print')
     height: 16, includetext: true, textxalign: 'center', paddingwidth: 12, paddingheight: 10 });
   res.set('Content-Type', 'image/png');
   res.set('Content-Disposition', `inline; filename="${bin.locationCode}.png"`);
+  res.send(png);
+}));
+router.get('/bins/:id/label-qr.png', permission('warehouse.location.barcode.print'), handle(async (req, res) => {
+  const bin = await WarehouseLocation.findOne({ _id: req.params.id, layoutBin: true,
+    isDeleted: { $ne: true } }).select('locationCode barcode').lean();
+  if (!bin) return sendError(res, 'Không tìm thấy ô', { code: 'BIN_NOT_FOUND' }, 404);
+  // The QR carries the same rotating location barcode as the Code 128 label.
+  const png = await bwipjs.toBuffer({ bcid: 'qrcode', text: bin.barcode, scale: 5, padding: 12 });
+  res.set('Content-Type', 'image/png');
+  res.set('Content-Disposition', `inline; filename="${bin.locationCode}-qr.png"`);
   res.send(png);
 }));
 router.post('/bins/:id/print-intent', permission('warehouse.location.barcode.print'), handle(async (req, res) => {

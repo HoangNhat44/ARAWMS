@@ -8,7 +8,12 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "migrate:sku-index": "node scripts/drop-obsolete-sku-index.mjs",
-    "backfill:product-media": "node scripts/backfill-product-media.mjs"
+    "backfill:product-media": "node scripts/backfill-product-media.mjs",
+    "test": "jest --detectOpenHandles --forceExit",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:packing": "jest packingVerification.test.js",
+    "test:inbound": "jest finishedGoodsInbound.test.js"
   },
   "keywords": [
     "express",
@@ -32,6 +37,9 @@
     "morgan": "^1.10.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.4"
+    "@types/jest": "^30.0.0",
+    "jest": "^30.5.2",
+    "nodemon": "^3.1.4",
+    "supertest": "^7.3.1"
   }
 }

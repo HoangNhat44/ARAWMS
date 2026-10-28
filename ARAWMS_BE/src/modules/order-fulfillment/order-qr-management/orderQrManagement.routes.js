@@ -5,7 +5,6 @@
  * Description: Defines order lookup, confirmation, and QR endpoints.
  */
 import express from 'express';
-import { authenticate } from '../../../common/middlewares/authenticate.js';
 import {
   listOrders,
   issueOrderQrBulk,
@@ -18,10 +17,7 @@ import {
 
 const router = express.Router();
 
-// All routes require authentication
-// router.use(authenticate);
-
-// Mock user for testing without authentication
+// Direct URL testing uses one operator identity for QR issuance and lookup.
 router.use((req, res, next) => {
   req.user = {
     _id: '507f1f77bcf86cd799439011',

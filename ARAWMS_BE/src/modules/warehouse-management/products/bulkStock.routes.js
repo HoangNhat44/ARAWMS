@@ -21,6 +21,25 @@ import { confirmReceiptAllocation, fingerprint, parseLines, remainingQuantity } 
 
 const router = express.Router();
 const createBulkStockRequestError = (message, code, status = 400) => Object.assign(new Error(message), { code, status });
+/** Factory handoff bounds received units; inspection divides received into accepted and repair. */
+export const receivingQuantityError = (item) => {
+  const expected = Number(item?.expectedQty);
+  const received = Number(item?.receivedQty);
+  const accepted = Number(item?.quantity);
+  if (item?.expectedQty === '' || item?.expectedQty == null ||
+    !Number.isSafeInteger(expected) || expected < 1 || expected > 500)
+    return 'Số xưởng bàn giao phải là số nguyên dương, tối đa 500.';
+  if (item?.receivedQty === '' || item?.receivedQty == null ||
+    !Number.isSafeInteger(received) || received < 1 || received > expected)
+    return 'Số thực nhận phải là số nguyên dương và không vượt số xưởng bàn giao.';
+  if (item?.quantity === '' || item?.quantity == null ||
+    !Number.isSafeInteger(accepted) || accepted < 0 || accepted > received)
+    return 'Số đạt nhập kho phải là số nguyên từ 0 đến số thực nhận.';
+  if (item?.repairQty != null && item.repairQty !== '' &&
+    Number(item.repairQty) !== received - accepted)
+    return 'Số trả xưởng phải bằng thực nhận trừ đạt nhập kho.';
+  return null;
+};
 const receiptResponse = (document) => ({ id: String(document._id), documentCode: document.documentCode,
   direction: document.direction, lineCount: document.items.length, totalQuantity: document.totalQuantity,
   items: document.direction === 'IN' ? document.items.map((item) => ({ skuId: String(item.skuId),
@@ -245,6 +264,12 @@ router.post('/documents', async (req, res, next) => {
   const locationId = req.body?.locationId;
   const confirmationKey = String(req.body?.confirmationKey || '').trim();
   const allocations = direction === 'IN' ? req.body?.allocations || [] : [];
+  if (direction === 'IN' && Array.isArray(items)) {
+    const invalidLine = items.findIndex((item) => receivingQuantityError(item));
+    if (invalidLine !== -1) return sendError(res,
+      `Dòng ${invalidLine + 1}: ${receivingQuantityError(items[invalidLine])}`,
+      { code: 'INVALID_RECEIVING_QUANTITY' }, 400);
+  }
   if (direction === 'IN' && (!confirmationKey || confirmationKey.length > 100 || !Array.isArray(allocations)))
     return sendError(res, 'Yêu cầu nhập kho không hợp lệ', { code: 'INVALID_CONFIRMATION' }, 400);
   const confirmationHash = direction === 'IN' ? inboundHash(req.body) : null;
@@ -260,12 +285,7 @@ router.post('/documents', async (req, res, next) => {
       items.some((item) => !mongoose.isValidObjectId(item?.productId) ||
         (item?.skuId && !mongoose.isValidObjectId(item.skuId)) ||
         !Number.isSafeInteger(Number(item?.quantity)) || Number(item.quantity) < (direction === 'IN' ? 0 : 1) || Number(item.quantity) > (direction === 'IN' ? 500 : 100000) ||
-        (direction === 'IN' && ((item?.expectedQty != null && item.expectedQty !== '' &&
-          (!Number.isSafeInteger(Number(item.expectedQty)) || Number(item.expectedQty) < 0 || Number(item.expectedQty) > 500)) ||
-          !Number.isSafeInteger(Number(item?.receivedQty)) ||
-          !Number.isSafeInteger(Number(item?.repairQty)) || Number(item.receivedQty) < 1 || Number(item.receivedQty) > 500 ||
-          Number(item.repairQty) < 0 || Number(item.repairQty) > 500 ||
-          Number(item.receivedQty) !== Number(item.quantity) + Number(item.repairQty))))) {
+        (direction === 'IN' && receivingQuantityError(item)))) {
     return sendError(res, 'Phiếu nhập/xuất không hợp lệ', { code: 'INVALID_BULK_DOCUMENT' }, 400);
   }
   if (direction === 'IN' && items.reduce((sum, item) => sum + Number(item.quantity), 0) > 500) {
@@ -353,9 +373,9 @@ router.post('/documents', async (req, res, next) => {
           })), { session });
         }
         lines.push({ productId: product._id, skuId: sku._id, quantity,
-          ...(direction === 'IN' ? { expectedQty: item.expectedQty === '' || item.expectedQty == null ? undefined : Number(item.expectedQty),
-            receivedQty: Number(item.receivedQty), repairQty: Number(item.repairQty),
-            repairStatus: Number(item.repairQty) > 0 ? 'WAITING_RETURN' : undefined, barcodes } : {}) });
+          ...(direction === 'IN' ? { expectedQty: Number(item.expectedQty),
+            receivedQty: Number(item.receivedQty), repairQty: Number(item.receivedQty) - quantity,
+            repairStatus: Number(item.receivedQty) > quantity ? 'WAITING_RETURN' : undefined, barcodes } : {}) });
       }
       if (direction === 'IN') {
         const totalAccepted = lines.reduce((sum, line) => sum + line.quantity, 0);
