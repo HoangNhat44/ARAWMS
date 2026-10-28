@@ -11,6 +11,7 @@ import LoginPage from '../modules/system-administration/authentication/pages/Log
 import AccountPage from '../modules/system-administration/account-governance/pages/AccountPage';
 import ForgotPasswordPage from '../modules/system-administration/authentication/pages/ForgotPasswordPage';
 import ResetPasswordPage from '../modules/system-administration/authentication/pages/ResetPasswordPage';
+import RegisterPage from '../pages/RegisterPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import SellerChatPage from '../pages/seller/SellerChatPage';
 import SellerOrdersPage from '../pages/seller/SellerOrdersPage';
@@ -48,52 +49,20 @@ const PublicRoute = ({ children }) => {
  * khẩu.
  */
 export default function AppRouter() {
-  return <Routes>
-    <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
-    <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-    <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
-    <Route path="/reset-password" element={<ResetPasswordPage />} />
-    <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
-    <Route path="/register" element={<Navigate to="/login" replace />} />
-    <Route path="*" element={<NotFoundPage />} />
-     <Route path="/" element={<HomePage />} />
-      <Route
-        path="/login"
-        element={
-          <PublicRoute>
-            <LoginPage />
-          </PublicRoute>
-        }
-      />
-      <Route
-        path="/register"
-        element={
-          <PublicRoute>
-            <RegisterPage />
-          </PublicRoute>
-        }
-      />
+  return (
+    <Routes>
+      <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+      <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+      <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+      <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
 
       {/* Phân hệ Seller Workspace (UC-69 -> UC-83) — yêu cầu đăng nhập */}
-      <Route
-        path="/seller/chat"
-        element={
-          <ProtectedRoute>
-            <SellerChatPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/seller/orders"
-        element={
-          <ProtectedRoute>
-            <SellerOrdersPage />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/seller/chat" element={<ProtectedRoute><SellerChatPage /></ProtectedRoute>} />
+      <Route path="/seller/orders" element={<ProtectedRoute><SellerOrdersPage /></ProtectedRoute>} />
 
       <Route path="*" element={<NotFoundPage />} />
-  </Routes>;
+    </Routes>
+  );
 }
-
-

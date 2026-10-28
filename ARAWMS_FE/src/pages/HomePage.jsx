@@ -55,23 +55,6 @@ const HomePage = () => {
         </p>
 
         {user ? (
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '1rem',
-            padding: '1rem 2rem',
-            background: 'var(--ara-bg-surface)',
-            border: '1px solid var(--ara-gold)',
-            borderRadius: 'var(--radius-full)',
-            boxShadow: 'var(--ara-shadow-sm)',
-          }}>
-            <CheckCircle2 color="var(--ara-success)" size={24} />
-            <div style={{ textAlign: 'left' }}>
-              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--ara-noir)' }}>
-                Xin chào, {user.fullName || user.username}!
-              </div>
-              <div style={{ fontSize: '0.82rem', color: 'var(--ara-text-muted)' }}>
-                Tài khoản: <strong>{user.employeeCode}</strong> | Vai trò: <strong>{user.roleName || user.roleCode}</strong>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
             <div style={{
               display: 'inline-flex',
@@ -89,7 +72,7 @@ const HomePage = () => {
                   Xin chào, {user.fullName || user.username}!
                 </div>
                 <div style={{ fontSize: '0.82rem', color: 'var(--ara-text-muted)' }}>
-                  Tài khoản: <strong>{user.email || user.username}</strong> | Vai trò: <strong>{user.roleCode || user.roles?.join(', ') || 'USER'}</strong>
+                  Tài khoản: <strong>{user.employeeCode || user.email || user.username}</strong> | Vai trò: <strong>{user.roleName || user.roleCode || 'USER'}</strong>
                 </div>
               </div>
             </div>
