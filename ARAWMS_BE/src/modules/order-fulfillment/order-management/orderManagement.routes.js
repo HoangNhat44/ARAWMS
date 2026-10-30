@@ -14,9 +14,13 @@
 import express from 'express';
 import {
   createDirectOrder,
+  updateOrderItems,
   confirmOrderReserve,
   updateOrderStatus,
   cancelOrder,
+  createPosDirectOrder,
+  sendOrderConfirmationReceipt,
+  simulateCustomerConfirm,
   getOrderList,
   getOrderById,
 } from './orderManagement.controller.js';
@@ -41,8 +45,29 @@ router.get('/:id', authorizeRole('SELLER', 'OWNER', 'WAREHOUSE_MANAGER', 'WAREHO
  */
 router.post('/', authorizeRole('SELLER', 'OWNER'), validateCreateOrder, createDirectOrder);
 
+/**
+ * @route   POST /api/orders/pos-direct
+ * @desc    Tạo đơn bán lẻ trực tiếp tại quầy AraStore POS (Khách lấy ngay)
+ * @access  SELLER, OWNER
+ */
+router.post('/pos-direct', authorizeRole('SELLER', 'OWNER'), validateCreateOrder, createPosDirectOrder);
+
+/**
+ * @route   PUT /api/orders/:id/items
+ * @desc    Chỉnh sửa sản phẩm và chi tiết đơn hàng khi đang ở trạng thái PENDING
+ * @access  SELLER, OWNER
+ * @see     BR: GBR-08
+ */
+router.put('/:id/items', authorizeRole('SELLER', 'OWNER'), updateOrderItems);
+
 // UC-79: Xác nhận đơn hàng & Kích hoạt giữ chỗ tồn kho
 router.post('/:id/confirm', authorizeRole('SELLER', 'OWNER'), confirmOrderReserve);
+
+// Gửi phiếu xác nhận đơn hàng vào chat Messenger
+router.post('/:id/send-confirmation', authorizeRole('SELLER', 'OWNER'), sendOrderConfirmationReceipt);
+
+// Sandbox Simulator: Giả lập khách hàng nhắn "OK chốt đơn"
+router.post('/:id/simulate-confirm', authorizeRole('SELLER', 'OWNER'), simulateCustomerConfirm);
 
 // UC-80: Cập nhật thông tin nhận hàng / trạng thái
 router.patch('/:id/status', authorizeRole('SELLER', 'OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'), updateOrderStatus);

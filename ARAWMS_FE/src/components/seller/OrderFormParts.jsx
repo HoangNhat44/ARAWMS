@@ -24,40 +24,82 @@ export const getAvailQty = (sku) => sku.availableQty ?? sku.availableStock ?? 0;
 export const getSkuId = (sku) => sku.skuId || sku._id;
 
 /**
+ * Kiểm tra tính hợp lệ của số điện thoại Việt Nam (10 chữ số, đầu số 03, 05, 07, 08, 09)
+ * @param {string} phone
+ * @returns {boolean}
+ */
+export const isValidVnPhone = (phone) => {
+  if (!phone) return false;
+  return /^(0[35789])[0-9]{8}$/.test(String(phone).trim());
+};
+
+/**
  * Form thông tin người nhận hàng.
  * @param {Object} props
  * @param {{name:string, phone:string, address:string}} props.recipient - Dữ liệu người nhận.
  * @param {Function} props.onChange - Callback nhận object recipient mới.
  */
-export const RecipientFields = ({ recipient, onChange }) => (
-  <>
-    <Row className="g-2 mb-2">
-      <Col xs={12} sm={6}>
+export const RecipientFields = ({ recipient, onChange }) => {
+  const handlePhoneChange = (e) => {
+    // Chỉ cho phép nhập chữ số, loại bỏ ngay lập tức chữ cái hoặc ký tự đặc biệt, tối đa 10 số
+    const cleaned = e.target.value.replace(/\D/g, '').slice(0, 10);
+    onChange({ ...recipient, phone: cleaned });
+  };
+
+  const isPhoneInvalid = Boolean(recipient.phone && !isValidVnPhone(recipient.phone));
+  const isPhoneValid = Boolean(recipient.phone && isValidVnPhone(recipient.phone));
+
+  return (
+    <div className="d-flex flex-column gap-2">
+      <Row className="g-2">
+        <Col xs={12} sm={6}>
+          <Form.Group controlId="order-recipient-name">
+            <Form.Label className="small text-secondary fw-semibold mb-1" style={{ fontSize: '11px' }}>
+              Họ và tên
+            </Form.Label>
+            <Form.Control
+              size="sm"
+              placeholder="Nhập tên người nhận"
+              value={recipient.name || ''}
+              onChange={(e) => onChange({ ...recipient, name: e.target.value })}
+            />
+          </Form.Group>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Form.Group controlId="order-recipient-phone">
+            <Form.Label className="small text-secondary fw-semibold mb-1" style={{ fontSize: '11px' }}>
+              Số điện thoại <span className="text-danger">*</span>
+            </Form.Label>
+            <Form.Control
+              size="sm"
+              placeholder="09xx xxx xxx"
+              value={recipient.phone || ''}
+              onChange={handlePhoneChange}
+              isInvalid={isPhoneInvalid}
+              isValid={isPhoneValid}
+              maxLength={10}
+              required
+            />
+            <Form.Control.Feedback type="invalid" className="small" style={{ fontSize: '10.5px' }}>
+              10 số (đầu 03, 05, 07, 08, 09)
+            </Form.Control.Feedback>
+          </Form.Group>
+        </Col>
+      </Row>
+      <Form.Group controlId="order-recipient-address">
+        <Form.Label className="small text-secondary fw-semibold mb-1" style={{ fontSize: '11px' }}>
+          Địa chỉ giao hàng
+        </Form.Label>
         <Form.Control
           size="sm"
-          placeholder="Họ và tên người nhận"
-          value={recipient.name}
-          onChange={(e) => onChange({ ...recipient, name: e.target.value })}
+          placeholder="Số nhà, tên đường, phường/xã, quận/huyện..."
+          value={recipient.address || ''}
+          onChange={(e) => onChange({ ...recipient, address: e.target.value })}
         />
-      </Col>
-      <Col xs={12} sm={6}>
-        <Form.Control
-          size="sm"
-          placeholder="Số điện thoại *"
-          value={recipient.phone}
-          onChange={(e) => onChange({ ...recipient, phone: e.target.value })}
-          required
-        />
-      </Col>
-    </Row>
-    <Form.Control
-      size="sm"
-      placeholder="Địa chỉ giao hàng (Số nhà, đường, phường, quận...)"
-      value={recipient.address}
-      onChange={(e) => onChange({ ...recipient, address: e.target.value })}
-    />
-  </>
-);
+      </Form.Group>
+    </div>
+  );
+};
 
 /**
  * Ô tìm kiếm SKU kèm dropdown gợi ý (tồn kho realtime).

@@ -43,6 +43,24 @@ export const validateCreateOrder = (req, res, next) => {
     }
   }
 
+  // Validate số điện thoại người nhận (Bắt buộc 10 số di động VN nếu có hoặc là đơn Online)
+  const phone = req.body?.shippingRecipient?.phone?.trim();
+  const VN_PHONE_REGEX = /^(0[35789])[0-9]{8}$/;
+
+  if (phone && phone !== '0900000000') {
+    if (!VN_PHONE_REGEX.test(phone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Số điện thoại người nhận không hợp lệ. Vui lòng nhập đúng 10 chữ số (đầu số 03, 05, 07, 08, 09).',
+      });
+    }
+  } else if (req.body?.orderType !== 'POS_DIRECT' && req.body?.channel !== 'POS' && !phone) {
+    return res.status(400).json({
+      success: false,
+      message: 'Vui lòng cung cấp số điện thoại người nhận hợp lệ cho đơn hàng Online.',
+    });
+  }
+
   next();
 };
 

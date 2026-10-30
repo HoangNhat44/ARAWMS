@@ -14,7 +14,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Nav, Button, Badge, Stack } from 'react-bootstrap';
+import { Nav, Button, Badge, Stack, Offcanvas } from 'react-bootstrap';
 import ConversationList from '../../components/seller/ConversationList';
 import ChatBox from '../../components/seller/ChatBox';
 import CustomerProfilePanel from '../../components/seller/CustomerProfilePanel';
@@ -65,12 +65,38 @@ const SellerChatPage = () => {
   const [orderDetailOpen, setOrderDetailOpen] = useState(false);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState(null);
 
+  // Responsive viewport states (International standard: Mobile < 768, Tablet 768-1199, Desktop >= 1200)
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1280);
+  const [mobileView, setMobileView] = useState('list'); // 'list' | 'chat'
+  const [pane3Visible, setPane3Visible] = useState(true); // Desktop toggle
+  const [offcanvasOpen, setOffcanvasOpen] = useState(false); // Tablet & Mobile drawer
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const isMobile = windowWidth < 768;
+  const isTablet = windowWidth >= 768 && windowWidth < 1200;
+  const isDesktop = windowWidth >= 1200;
+
+  // Toggle right panel (CRM / Quick Order / History)
+  const handleToggleRightPanel = () => {
+    if (isDesktop) {
+      setPane3Visible((prev) => !prev);
+    } else {
+      setOffcanvasOpen((prev) => !prev);
+    }
+  };
+
   // Đồng bộ lựa chọn vào bộ đệm bộ nhớ và đánh dấu ĐÃ ĐỌC (xóa ngay badge đỏ tức thì)
   const handleSelectConversation = (conv) => {
     if (!conv) return;
     const updatedConv = { ...conv, unreadCount: 0 };
     memorySelectedConv = updatedConv;
     setSelectedConversation(updatedConv);
+    setMobileView('chat'); // Tự động trượt sang màn hình chat trên mobile
 
     // Cập nhật ngay trong danh sách hội thoại: đưa unreadCount về 0 tức thì (0ms)
     setConversations((prev) =>
@@ -285,11 +311,56 @@ const SellerChatPage = () => {
     { id: 'history', icon: 'clock-history', label: 'Đơn cũ' },
   ];
 
+  const renderPane3Content = () => (
+    <div className="d-flex flex-column h-100 bg-white">
+      {/* Tab Nav - Dùng ara-workspace-nav chuẩn luxury workspace */}
+      <Nav className="ara-workspace-nav flex-shrink-0" activeKey={activeTab}>
+        {TABS.map((tab) => (
+          <Nav.Item key={tab.id} className="flex-fill">
+            <Nav.Link
+              eventKey={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className="d-flex align-items-center justify-content-center gap-1"
+            >
+              <Icon name={tab.icon} />
+              <span>{tab.label}</span>
+            </Nav.Link>
+          </Nav.Item>
+        ))}
+      </Nav>
+
+      {/* Tab Content */}
+      <div className="flex-grow-1 overflow-auto p-2 p-md-3 bg-white">
+        {activeTab === 'crm' && (
+          <CustomerProfilePanel
+            customer={selectedConversation?.customerId}
+            conversationId={selectedConversation?._id}
+            onCustomerUpdated={handleCustomerUpdated}
+          />
+        )}
+        {activeTab === 'order' && (
+          <QuickOrderPanel
+            customer={selectedConversation?.customerId}
+            conversationId={selectedConversation?._id}
+            onOrderCreated={() => setActiveTab('history')}
+          />
+        )}
+        {activeTab === 'history' && (
+          <CustomerOrderHistory
+            customerId={selectedConversation?.customerId?._id}
+            onRequestRma={handleOpenRma}
+            onViewDetail={handleOpenOrderDetail}
+          />
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div
       ref={containerRef}
       className="d-flex flex-column"
-      style={{ height: 'calc(100vh - 75px)', minHeight: 600, overflow: 'hidden', backgroundColor: '#FAF7F2' }}
+      style={{ height: 'calc(100dvh - 70px)', minHeight: 480, overflow: 'hidden', backgroundColor: '#FAF7F2' }}
     >
       {/* ===== Header Bar (Atelier Noir & Champagne Gold) ===== */}
       <div className="ara-seller-header px-3 py-2 d-flex align-items-center justify-content-between flex-shrink-0">
@@ -308,7 +379,7 @@ const SellerChatPage = () => {
               setQuickOrderModalOpen(true);
             }}
           >
-            <Icon name="plus-lg" /> Tạo đơn nhanh
+            <Icon name="plus-lg" /> <span className="d-none d-sm-inline">Tạo đơn nhanh</span><span className="d-sm-none">Tạo đơn</span>
           </Button>
           <Button
             size="sm"
@@ -316,109 +387,108 @@ const SellerChatPage = () => {
             onClick={() => fetchAllData()}
             title="Đồng bộ hội thoại"
           >
-            <Icon name="arrow-clockwise" /> Đồng bộ
+            <Icon name="arrow-clockwise" /> <span className="d-none d-sm-inline">Đồng bộ</span>
           </Button>
         </Stack>
       </div>
 
-      {/* ===== Triple-Pane Layout Container ===== */}
-      <div className="d-flex flex-grow-1 overflow-hidden p-2 gap-0" style={{ backgroundColor: '#FAF7F2' }}>
+      {/* ===== Responsive Workspace Layout Container ===== */}
+      <div className="d-flex flex-grow-1 overflow-hidden p-1 p-md-2 gap-0" style={{ backgroundColor: '#FAF7F2' }}>
         <div
           className="d-flex flex-grow-1 border rounded-3 bg-white shadow-sm overflow-hidden"
           style={{ borderColor: '#E3D9CD' }}
         >
           {/* ===== PANE 1: Conversation List ===== */}
-          <div
-            className="d-flex flex-column h-100 overflow-hidden bg-white"
-            style={{ width: pane1W, minWidth: 220, maxWidth: 420, flexShrink: 0 }}
-          >
-            <ConversationList
-              conversations={conversations}
-              selectedId={selectedConversation?._id}
-              onSelect={handleSelectConversation}
-              onTagFilter={setActiveFilterTag}
-              activeFilterTag={activeFilterTag}
-              loading={loading}
-              allTags={allTags}
-            />
-          </div>
+          {(!isMobile || mobileView === 'list') && (
+            <div
+              className={`d-flex flex-column h-100 overflow-hidden bg-white ${isMobile ? 'w-100' : ''}`}
+              style={!isMobile ? { width: isTablet ? 280 : pane1W, minWidth: 220, maxWidth: 420, flexShrink: 0 } : {}}
+            >
+              <ConversationList
+                conversations={conversations}
+                selectedId={selectedConversation?._id}
+                onSelect={handleSelectConversation}
+                onTagFilter={setActiveFilterTag}
+                activeFilterTag={activeFilterTag}
+                loading={loading}
+                allTags={allTags}
+              />
+            </div>
+          )}
 
-          {/* Splitter Left */}
-          <div
-            className="ara-pane-splitter border-start border-end"
-            onMouseDown={(e) => startDrag('left', e)}
-            title="Kéo để thay đổi chiều rộng"
-          />
+          {/* Splitter Left (Desktop Only) */}
+          {isDesktop && (
+            <div
+              className="ara-pane-splitter border-start border-end"
+              onMouseDown={(e) => startDrag('left', e)}
+              title="Kéo để thay đổi chiều rộng"
+            />
+          )}
 
           {/* ===== PANE 2: Chat Window ===== */}
-          <div className="d-flex flex-column h-100 flex-grow-1" style={{ minWidth: 0 }}>
-            <ChatBox
-              conversation={selectedConversation}
-              onTagAdded={handleTagAdded}
-              allTags={allTags}
-              onTagsRefresh={fetchAllData}
-              onOpenQuickOrder={() => {
-                setActiveTab('order');
-                setQuickOrderModalOpen(true);
-              }}
-            />
-          </div>
-
-          {/* Splitter Right */}
-          <div
-            className="ara-pane-splitter border-start border-end"
-            onMouseDown={(e) => startDrag('right', e)}
-            title="Kéo để thay đổi chiều rộng"
-          />
-
-          {/* ===== PANE 3: Widget Panel (CRM / Quick Order / Order History) ===== */}
-          <div
-            className="d-flex flex-column h-100 bg-white"
-            style={{ width: pane3W, minWidth: 300, maxWidth: 650, flexShrink: 0 }}
-          >
-            {/* Tab Nav - Dùng ara-workspace-nav chuẩn luxury workspace */}
-            <Nav className="ara-workspace-nav flex-shrink-0" activeKey={activeTab}>
-              {TABS.map((tab) => (
-                <Nav.Item key={tab.id} className="flex-fill">
-                  <Nav.Link
-                    eventKey={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className="d-flex align-items-center justify-content-center gap-1"
-                  >
-                    <Icon name={tab.icon} />
-                    <span>{tab.label}</span>
-                  </Nav.Link>
-                </Nav.Item>
-              ))}
-            </Nav>
-
-            {/* Tab Content */}
-            <div className="flex-grow-1 overflow-auto p-3 bg-white">
-              {activeTab === 'crm' && (
-                <CustomerProfilePanel
-                  customer={selectedConversation?.customerId}
-                  conversationId={selectedConversation?._id}
-                  onCustomerUpdated={handleCustomerUpdated}
-                />
-              )}
-              {activeTab === 'order' && (
-                <QuickOrderPanel
-                  customer={selectedConversation?.customerId}
-                  conversationId={selectedConversation?._id}
-                  onOrderCreated={() => setActiveTab('history')}
-                />
-              )}
-              {activeTab === 'history' && (
-                <CustomerOrderHistory
-                  customerId={selectedConversation?.customerId?._id}
-                  onRequestRma={handleOpenRma}
-                  onViewDetail={handleOpenOrderDetail}
-                />
-              )}
+          {(!isMobile || mobileView === 'chat') && (
+            <div className="d-flex flex-column h-100 flex-grow-1" style={{ minWidth: 0 }}>
+              <ChatBox
+                conversation={selectedConversation}
+                onTagAdded={handleTagAdded}
+                allTags={allTags}
+                onTagsRefresh={fetchAllData}
+                onOpenQuickOrder={() => {
+                  setActiveTab('order');
+                  if (!isDesktop) setOffcanvasOpen(true);
+                  else setPane3Visible(true);
+                }}
+                onBackToList={() => setMobileView('list')}
+                onToggleRightPanel={handleToggleRightPanel}
+                isRightPanelOpen={isDesktop ? pane3Visible : offcanvasOpen}
+              />
             </div>
-          </div>
+          )}
+
+          {/* Splitter Right (Desktop Only when pane3 is visible) */}
+          {isDesktop && pane3Visible && (
+            <div
+              className="ara-pane-splitter border-start border-end"
+              onMouseDown={(e) => startDrag('right', e)}
+              title="Kéo để thay đổi chiều rộng"
+            />
+          )}
+
+          {/* ===== PANE 3: Widget Panel (Desktop Inline Only) ===== */}
+          {isDesktop && pane3Visible && (
+            <div
+              className="d-flex flex-column h-100 bg-white"
+              style={{ width: pane3W, minWidth: 300, maxWidth: 650, flexShrink: 0 }}
+            >
+              {renderPane3Content()}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* ===== Offcanvas Drawer for Tablet & Mobile (Pane 3: CRM / Quick Order / History) ===== */}
+      <Offcanvas
+        show={offcanvasOpen && !isDesktop}
+        onHide={() => setOffcanvasOpen(false)}
+        placement="end"
+        className="ara-seller-offcanvas"
+        style={{ width: isMobile ? '100%' : 420, maxWidth: '100vw' }}
+      >
+        <Offcanvas.Header closeButton className="py-2 px-3">
+          <Offcanvas.Title className="fs-6 fw-bold text-white d-flex align-items-center gap-2">
+            <Icon name="person-badge" />
+            <span>Tác Nghiệp Bán Hàng</span>
+            {selectedConversation?.customerId?.fullName && (
+              <Badge bg="warning" text="dark" pill className="small text-truncate" style={{ maxWidth: 160 }}>
+                {selectedConversation.customerId.fullName}
+              </Badge>
+            )}
+          </Offcanvas.Title>
+        </Offcanvas.Header>
+        <Offcanvas.Body className="p-0 h-100 overflow-hidden">
+          {renderPane3Content()}
+        </Offcanvas.Body>
+      </Offcanvas>
 
       {/* Quick Order Modal Popup (Hiện ngay khi bấm Tạo đơn nhanh) */}
       <QuickOrderModal

@@ -36,6 +36,7 @@ const inventoryTransactionSchema = new Schema(
         'STOCKTAKE_ADJUSTMENT',
         'MANUAL_INBOUND',
         'MANUAL_OUTBOUND',
+        'POS_DIRECT_SALE',
       ],
       required: true,
       index: true,

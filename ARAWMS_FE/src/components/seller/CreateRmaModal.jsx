@@ -85,7 +85,7 @@ const CreateRmaModal = ({ isOpen, onClose, order, onRmaCreated }) => {
   };
 
   return (
-    <Modal show={isOpen} onHide={onClose} centered size="lg" scrollable>
+    <Modal show={isOpen} onHide={onClose} centered size="lg" fullscreen="sm-down" scrollable>
       <Modal.Header closeButton className="bg-warning-subtle">
         <Modal.Title as="h5" className="d-flex align-items-center gap-2">
           <Icon name="arrow-counterclockwise" className="text-warning-emphasis" />

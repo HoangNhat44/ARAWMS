@@ -5,7 +5,7 @@
  * @createdDate  : 2026-10-27
  * @lastModified : 2026-10-28
  * @description  : Khung chat nhắn tin trực tiếp với khách hàng Messenger (UC-72, UC-74),
- *                 tích hợp thanh nhãn màu Pancake gán tag 1 chạm (UC-73) và nút mở nhanh tạo đơn.
+ *                 tích hợp thanh nhãn màu gán tag 1 chạm (UC-73) và nút mở nhanh tạo đơn.
  *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
  * @module       : Conversational Commerce / Chat Interface
  * @layer        : Front-end
@@ -37,6 +37,93 @@ const getMediaUrl = (url) => {
 };
 
 /**
+ * Component hiển thị thông báo chốt đơn / phiếu xác nhận theo dạng thẻ tương tác (Rich Interactive Receipt Card)
+ * thay thế cho khối đen ASCII thô sơ theo tiêu chuẩn thiết kế eCommerce quốc tế (Shopify Polaris, Intercom, Pancake).
+ */
+const OrderReceiptCard = ({ text, isSeller }) => {
+  const isConfirmSuccess = text.includes('XÁC NHẬN CHỐT ĐƠN THÀNH CÔNG');
+  const isConfirmationRequest = text.includes('THÔNG TIN XÁC NHẬN ĐƠN HÀNG') || text.includes('PHIẾU XÁC NHẬN');
+  const isPackingNotice = text.includes('ĐÃ ĐƯỢC ĐÓNG GÓI XONG');
+
+  if (!isConfirmSuccess && !isConfirmationRequest && !isPackingNotice) {
+    return <div style={{ whiteSpace: 'pre-wrap' }}>{text}</div>;
+  }
+
+  // Làm sạch các ký tự gạch nối ASCII thô
+  const lines = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith('━━━━') && !l.startsWith('----'));
+
+  const headerTitle = isConfirmSuccess
+    ? 'Xác Nhận Chốt Đơn Thành Công'
+    : isConfirmationRequest
+    ? 'Phiếu Xác Nhận Đơn Hàng'
+    : 'Thông Báo Đóng Gói Đơn Hàng';
+
+  const accentColor = isConfirmSuccess ? '#198754' : isConfirmationRequest ? '#9F8365' : '#0D6EFD';
+
+  return (
+    <div
+      className="p-3 rounded-3 bg-white text-dark shadow-sm border text-start"
+      style={{
+        maxWidth: 380,
+        borderLeft: `4px solid ${accentColor} !important`,
+        fontFamily: 'var(--font-sans)',
+      }}
+    >
+      {/* Header Card */}
+      <div className="d-flex align-items-center justify-content-between mb-2 pb-2 border-bottom">
+        <div className="d-flex align-items-center gap-2">
+          {isConfirmSuccess && <Icon name="check-circle-fill" className="text-success fs-5" />}
+          {isConfirmationRequest && <Icon name="receipt" className="text-warning-emphasis fs-5" />}
+          {isPackingNotice && <Icon name="box-seam" className="text-primary fs-5" />}
+          <div>
+            <div className="fw-bold small text-body">{headerTitle}</div>
+            <div className="text-secondary" style={{ fontSize: '11px' }}>AraStore Luxury Apparel</div>
+          </div>
+        </div>
+        <Badge bg={isConfirmSuccess ? 'success-subtle' : isConfirmationRequest ? 'warning-subtle' : 'primary-subtle'} text="dark" className="border">
+          {isConfirmSuccess ? 'ĐÃ CHỐT' : isConfirmationRequest ? 'CHỜ XÁC NHẬN' : 'ĐÃ ĐÓNG GÓI'}
+        </Badge>
+      </div>
+
+      {/* Body content parsed cleanly */}
+      <div className="small lh-base" style={{ color: '#2B2825' }}>
+        {lines.map((line, idx) => {
+          if (line.startsWith('🎉') || line.startsWith('📋') || line.startsWith('📦')) {
+            return null;
+          }
+          if (line.includes('Mã đơn hàng:') || line.includes('Mã vận đơn:')) {
+            return (
+              <div key={idx} className="my-1 p-2 rounded bg-body-tertiary font-monospace fw-semibold small text-primary d-flex align-items-center justify-content-between">
+                <span>{line}</span>
+                <Icon name="check2" className="text-success" />
+              </div>
+            );
+          }
+          if (line.includes('TỔNG THU HỘ') || line.includes('Tổng thanh toán') || line.includes('TỔNG TIỀN')) {
+            return (
+              <div key={idx} className="my-2 pt-2 border-top d-flex align-items-center justify-content-between fw-bold text-danger fs-6">
+                <span>{line}</span>
+              </div>
+            );
+          }
+          if (line.startsWith('👉') || line.startsWith('Chúng tôi sẽ gửi') || line.startsWith('Cảm ơn quý khách')) {
+            return (
+              <div key={idx} className="mt-2 pt-2 border-top text-secondary small fst-italic">
+                {line}
+              </div>
+            );
+          }
+          return <div key={idx} className="py-0.5">{line}</div>;
+        })}
+      </div>
+    </div>
+  );
+};
+
+/**
  * Component khung chat chính với khách hàng kèm Quick Tag Bar.
  *
  * @component
@@ -46,6 +133,9 @@ const getMediaUrl = (url) => {
  * @param {Array<Object>} props.allTags - Danh sách tất cả thẻ tag từ DB.
  * @param {Function} [props.onTagsRefresh] - Callback làm mới danh sách thẻ tag.
  * @param {Function} [props.onOpenQuickOrder] - Callback chuyển sang tab tạo đơn nhanh.
+ * @param {Function} [props.onBackToList] - Callback quay về danh sách hội thoại trên mobile.
+ * @param {Function} [props.onToggleRightPanel] - Callback mở/đóng bảng tác nghiệp bên phải.
+ * @param {boolean} [props.isRightPanelOpen] - Trạng thái bảng tác nghiệp đang mở.
  * @returns {JSX.Element} Khung chat hoàn chỉnh.
  */
 const ChatBox = ({
@@ -54,6 +144,9 @@ const ChatBox = ({
   allTags = [],
   onTagsRefresh,
   onOpenQuickOrder,
+  onBackToList,
+  onToggleRightPanel,
+  isRightPanelOpen = false,
 }) => {
   const { showWarning, showError, showSuccess } = useToast();
   const [messages, setMessages] = useState([]);
@@ -68,6 +161,7 @@ const ChatBox = ({
   // Tệp đính kèm người bán chọn gửi
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [previewImage, setPreviewImage] = useState(null); // Modal phóng to ảnh
+  const [simulating, setSimulating] = useState(false); // Giả lập Sandbox confirm
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -269,6 +363,33 @@ const ChatBox = ({
 
   const customer = conversation.customerId;
 
+  /** Sandbox Simulator: Giả lập khách hàng nhắn 'OK chốt đơn' (Phase 2 & 3) */
+  const handleSimulateCustomerConfirm = async () => {
+    const custId = customer?._id || customer?.id;
+    if (!custId) {
+      showWarning('Không tìm thấy thông tin khách hàng', 'Sandbox Simulator');
+      return;
+    }
+    try {
+      setSimulating(true);
+      const res = await sellerService.getOrderList({ customerId: custId, status: 'PENDING', limit: 1 });
+      const pendingOrders = res.data?.items || [];
+      if (pendingOrders.length === 0) {
+        showWarning('Khách hàng này hiện chưa có đơn nào ở trạng thái "Chờ xác nhận" (PENDING). Vui lòng tạo đơn trước!', 'Sandbox Simulator');
+        return;
+      }
+      const target = pendingOrders[0];
+      const simRes = await sellerService.simulateCustomerConfirm(target._id);
+      if (simRes.success) {
+        showSuccess(`🤖 [Sandbox] Đã giả lập khách xác nhận đơn #${target.orderCode} -> Tự động chuyển CONFIRMED_RESERVED & Giữ kho!`, 'Giả lập thành công');
+      }
+    } catch (err) {
+      showError(err.message || 'Lỗi khi giả lập xác nhận', 'Sandbox Error');
+    } finally {
+      setSimulating(false);
+    }
+  };
+
   /** Popover tạo tag mới (thay cho form inline tự định vị). */
   const newTagPopover = (
     <Popover id="chat-new-tag-popover">
@@ -303,31 +424,85 @@ const ChatBox = ({
     <div className="d-flex flex-column h-100 position-relative">
       {/* ===== Chat Top Header ===== */}
       <div className="d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-bottom bg-white">
-        <Stack direction="horizontal" gap={3}>
-          <Avatar name={customer?.fullName} size={40} />
-          <div>
-            <Stack direction="horizontal" gap={2}>
-              <h5 className="fw-bold mb-0 fs-6">{customer?.fullName || 'Khách hàng'}</h5>
-              <Badge bg="primary-subtle" text="primary-emphasis">Facebook Messenger</Badge>
+        <Stack direction="horizontal" gap={2} className="align-items-center overflow-hidden">
+          {/* Nút quay lại danh sách trên mobile */}
+          {onBackToList && (
+            <Button
+              size="sm"
+              variant="light"
+              className="d-md-none border me-1 px-2 py-1 rounded-pill d-flex align-items-center gap-1 text-secondary"
+              onClick={onBackToList}
+              title="Quay lại danh sách hội thoại"
+            >
+              <Icon name="chevron-left" />
+              <span className="small d-none d-sm-inline">Hội thoại</span>
+            </Button>
+          )}
+
+          <Avatar name={customer?.fullName} size={38} />
+          <div className="overflow-hidden">
+            <Stack direction="horizontal" gap={1} className="flex-wrap align-items-center">
+              <h5 className="fw-bold mb-0 fs-6 text-truncate" style={{ maxWidth: 160 }}>
+                {customer?.fullName || 'Khách hàng'}
+              </h5>
+              <Badge bg="primary-subtle" text="primary-emphasis" className="d-none d-sm-inline-block small">
+                Messenger
+              </Badge>
               {conversation?.pageName && (
-                <Badge bg={conversation.pageName === 'Learnmate' ? 'info' : 'primary'} pill>
+                <Badge bg={conversation.pageName === 'Learnmate' ? 'info' : 'primary'} pill className="small">
                   {conversation.pageName}
                 </Badge>
               )}
             </Stack>
-            <div className="text-secondary small">
+            <div className="text-secondary small text-truncate" style={{ fontSize: '11px' }}>
               Mã: <strong className="text-body">{customer?.customerCode || 'N/A'}</strong>
-              {customer?.phone && <> • SĐT: <strong className="text-body">{customer.phone}</strong></>}
+              {customer?.phone && (
+                <span className="d-none d-sm-inline"> • SĐT: <strong className="text-body">{customer.phone}</strong></span>
+              )}
             </div>
           </div>
         </Stack>
 
-        {/* Quick Order Button */}
-        {onOpenQuickOrder && (
-          <Button size="sm" className="btn-ara-header-gold d-flex align-items-center gap-1 text-nowrap" onClick={onOpenQuickOrder}>
-            <Icon name="bag-plus" /> Tạo đơn nhanh
+        {/* Action Buttons: Simulator, Quick Order, Toggle Right Panel */}
+        <Stack direction="horizontal" gap={1} className="align-items-center flex-shrink-0">
+          <Button
+            size="sm"
+            variant="outline-secondary"
+            className="d-none d-lg-flex align-items-center gap-1 text-nowrap px-2 py-1"
+            style={{ fontSize: '12px', borderStyle: 'dashed' }}
+            disabled={simulating}
+            onClick={handleSimulateCustomerConfirm}
+            title="Sandbox Simulator: Giả lập khách nhắn 'OK chốt đơn' trên Messenger để kiểm thử luồng tự động"
+          >
+            {simulating ? <Spinner animation="border" size="sm" /> : <Icon name="robot" className="text-secondary" />}
+            <span>Giả lập "OK"</span>
           </Button>
-        )}
+
+          {onOpenQuickOrder && (
+            <Button
+              size="sm"
+              className="btn-ara-header-gold d-flex align-items-center gap-1 text-nowrap px-2 py-1"
+              onClick={onOpenQuickOrder}
+              title="Tạo đơn hàng nhanh cho khách"
+            >
+              <Icon name="bag-plus" />
+              <span className="d-none d-md-inline">Tạo đơn</span>
+            </Button>
+          )}
+
+          {onToggleRightPanel && (
+            <Button
+              size="sm"
+              variant={isRightPanelOpen ? 'dark' : 'outline-dark'}
+              className="d-flex align-items-center gap-1 text-nowrap px-2 py-1"
+              onClick={onToggleRightPanel}
+              title={isRightPanelOpen ? 'Đóng bảng tác nghiệp' : 'Mở bảng tác nghiệp (Hồ sơ, Tạo đơn, Đơn cũ)'}
+            >
+              <Icon name="layout-sidebar-reverse" />
+              <span className="d-none d-xl-inline">Tác nghiệp</span>
+            </Button>
+          )}
+        </Stack>
       </div>
 
       {/* ===== Pancake-style Quick Tag Bar ===== */}
@@ -378,91 +553,173 @@ const ChatBox = ({
         ) : messages.length === 0 ? (
           <EmptyState icon="chat-square" title="Chưa có tin nhắn trong hội thoại này" />
         ) : (
-          messages.map((m) => {
+          messages.map((m, idx) => {
             const isSeller = m.senderType === 'SELLER';
+            const prevMsg = messages[idx - 1];
+            const nextMsg = messages[idx + 1];
+
+            // Gom cụm tin nhắn liên tiếp cùng người gửi trong vòng 2 phút
+            const sameSenderAsPrev = prevMsg && prevMsg.senderType === m.senderType;
+            const timeDiffPrev = prevMsg ? (new Date(m.sentAt) - new Date(prevMsg.sentAt)) : Infinity;
+            const isFirstInCluster = !sameSenderAsPrev || timeDiffPrev > 120000;
+
+            const sameSenderAsNext = nextMsg && nextMsg.senderType === m.senderType;
+            const timeDiffNext = nextMsg ? (new Date(nextMsg.sentAt) - new Date(m.sentAt)) : Infinity;
+            const isLastInCluster = !sameSenderAsNext || timeDiffNext > 120000;
+
+            const isOrderCard = m.messageText && (
+              m.messageText.includes('XÁC NHẬN CHỐT ĐƠN THÀNH CÔNG') ||
+              m.messageText.includes('THÔNG TIN XÁC NHẬN ĐƠN HÀNG') ||
+              m.messageText.includes('PHIẾU XÁC NHẬN') ||
+              m.messageText.includes('ĐÃ ĐƯỢC ĐÓNG GÓI XONG')
+            );
+
+            // Khoảng cách: 4px nếu cùng cụm, 14px nếu khác cụm (chuẩn UX Messenger/Slack)
+            const gapClass = isLastInCluster ? 'mb-3' : 'mb-1';
+
             return (
-              <div key={m._id} className={`d-flex align-items-end gap-2 mb-3 ${isSeller ? 'justify-content-end' : ''}`}>
-                {!isSeller && <Avatar name={customer?.fullName} size={32} />}
-                <div
-                  className={`px-3 py-2 rounded-4 shadow-sm small ${isSeller ? 'bg-dark text-white' : 'bg-white border'}`}
-                  style={{ maxWidth: '75%' }}
-                >
-                  {/* Hiển thị sản phẩm đính kèm nếu có */}
-                  {m.referencedSkuId && (
-                    <Card body className="mb-2 text-body">
-                      <Stack direction="horizontal" gap={2}>
-                        <Icon name="box-seam" className="fs-4 text-warning-emphasis" />
-                        <div>
-                          <div className="fw-bold">{m.referencedSkuId.styleName || m.referencedSkuId.skuCode}</div>
-                          <div className="text-secondary small">
-                            Màu: {m.referencedSkuId.color} | Size: <strong>{m.referencedSkuId.size}</strong> |{' '}
-                            <span className="fw-bold text-warning-emphasis">{formatVnd(m.referencedSkuId.retailPrice)}</span>
-                          </div>
-                        </div>
-                      </Stack>
-                    </Card>
-                  )}
-
-                  {/* Hiển thị ảnh / video / tệp đính kèm của khách hàng hoặc người bán */}
-                  {m.attachments && m.attachments.length > 0 && (
-                    <div className="d-flex flex-wrap gap-2 mb-1">
-                      {m.attachments.map((att, idx) => {
-                        const fullUrl = getMediaUrl(att.url);
-                        if (att.type === 'image') {
-                          return (
-                            <Image
-                              key={idx}
-                              src={fullUrl}
-                              alt={att.name || 'Ảnh đính kèm'}
-                              loading="lazy"
-                              thumbnail
-                              role="button"
-                              title="Bấm để xem ảnh phóng to"
-                              className="object-fit-cover"
-                              style={{ maxWidth: 220, maxHeight: 220 }}
-                              onClick={() => setPreviewImage(fullUrl)}
-                              onError={(e) => {
-                                // Fallback nếu ảnh không tải được
-                                e.target.style.display = 'none';
-                              }}
-                            />
-                          );
-                        }
-                        if (att.type === 'video') {
-                          return <video key={idx} controls src={fullUrl} className="rounded w-100" style={{ maxWidth: 280 }} />;
-                        }
-                        if (att.type === 'audio') {
-                          return <audio key={idx} controls src={fullUrl} className="w-100" />;
-                        }
-                        return (
-                          <a
-                            key={idx}
-                            href={fullUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            download={att.name || 'file'}
-                            className="d-flex align-items-center gap-2 p-2 rounded border bg-body text-body text-decoration-none"
-                          >
-                            <Icon name="file-earmark-text" className="fs-5" />
-                            <div className="text-truncate" style={{ maxWidth: 180 }}>
-                              <div className="text-truncate fw-semibold">{att.name || 'Tệp đính kèm'}</div>
-                              {att.size && <div className="text-secondary small">{(att.size / 1024).toFixed(1)} KB</div>}
-                            </div>
-                            <Icon name="download" />
-                          </a>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* Nội dung tin nhắn văn bản */}
-                  {m.messageText && <div style={{ whiteSpace: 'pre-wrap' }}>{m.messageText}</div>}
-
-                  <div className={`d-flex align-items-center gap-1 mt-1 small ${isSeller ? 'justify-content-end text-white-50' : 'text-secondary'}`}>
-                    <span>{new Date(m.sentAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
-                    {isSeller && <Icon name="check2-all" className="text-warning" />}
+              <div
+                key={m._id}
+                className={`d-flex align-items-end gap-2 ${gapClass} ${isSeller ? 'justify-content-end' : ''}`}
+              >
+                {/* Avatar khách: Chỉ hiển thị ở tin nhắn cuối cùng trong cụm để tránh lặp vô nghĩa */}
+                {!isSeller && (
+                  <div style={{ width: 32, flexShrink: 0 }}>
+                    {isLastInCluster ? (
+                      <Avatar name={customer?.fullName} size={32} />
+                    ) : (
+                      <div style={{ width: 32, height: 32 }} />
+                    )}
                   </div>
-                </div>
+                )}
+
+                {/* Nếu là tin nhắn xác nhận / thông báo đơn hàng: Hiển thị thẻ Rich Card */}
+                {isOrderCard ? (
+                  <div>
+                    <OrderReceiptCard text={m.messageText} isSeller={isSeller} />
+                    {isLastInCluster && (
+                      <div className={`d-flex align-items-center gap-1 mt-1 small ${isSeller ? 'justify-content-end text-secondary' : 'text-secondary'}`} style={{ fontSize: '11px' }}>
+                        <span>{new Date(m.sentAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
+                        {isSeller && (
+                          m.deliveryStatus === 'FAILED_24H_EXPIRED' ? (
+                            <span
+                              className="badge bg-warning-subtle text-warning-emphasis border border-warning px-1 py-0"
+                              style={{ fontSize: '10px' }}
+                              title="Facebook chặn gửi qua Messenger do đã quá 24h kể từ lần nhắn gần nhất của khách. Hãy nhờ khách gửi 1 tin nhắn để mở lại luồng!"
+                            >
+                              ⚠️ Chưa tới Messenger (quá 24h)
+                            </span>
+                          ) : (
+                            <Icon name="check2-all" className="text-success" />
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    className={`px-3 py-2 shadow-sm small ${
+                      isSeller
+                        ? 'bg-dark text-white rounded-4'
+                        : 'bg-white border rounded-4 text-body'
+                    }`}
+                    style={{
+                      maxWidth: '75%',
+                      borderBottomRightRadius: isSeller && !isLastInCluster ? '6px !important' : undefined,
+                      borderBottomLeftRadius: !isSeller && !isLastInCluster ? '6px !important' : undefined,
+                      borderTopRightRadius: isSeller && !isFirstInCluster ? '6px !important' : undefined,
+                      borderTopLeftRadius: !isSeller && !isFirstInCluster ? '6px !important' : undefined,
+                    }}
+                  >
+                    {/* Hiển thị sản phẩm đính kèm nếu có */}
+                    {m.referencedSkuId && (
+                      <Card body className="mb-2 text-body bg-light border-0">
+                        <Stack direction="horizontal" gap={2}>
+                          <Icon name="box-seam" className="fs-4 text-warning-emphasis" />
+                          <div>
+                            <div className="fw-bold">{m.referencedSkuId.styleName || m.referencedSkuId.skuCode}</div>
+                            <div className="text-secondary small">
+                              Màu: {m.referencedSkuId.color} | Size: <strong>{m.referencedSkuId.size}</strong> |{' '}
+                              <span className="fw-bold text-warning-emphasis">{formatVnd(m.referencedSkuId.retailPrice)}</span>
+                            </div>
+                          </div>
+                        </Stack>
+                      </Card>
+                    )}
+
+                    {/* Hiển thị ảnh / video / tệp đính kèm */}
+                    {m.attachments && m.attachments.length > 0 && (
+                      <div className="d-flex flex-wrap gap-2 mb-1">
+                        {m.attachments.map((att, idx) => {
+                          const fullUrl = getMediaUrl(att.url);
+                          if (att.type === 'image') {
+                            return (
+                              <Image
+                                key={idx}
+                                src={fullUrl}
+                                alt={att.name || 'Ảnh đính kèm'}
+                                loading="lazy"
+                                thumbnail
+                                role="button"
+                                title="Bấm để xem ảnh phóng to"
+                                className="object-fit-cover"
+                                style={{ maxWidth: 220, maxHeight: 220 }}
+                                onClick={() => setPreviewImage(fullUrl)}
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                              />
+                            );
+                          }
+                          if (att.type === 'video') {
+                            return <video key={idx} controls src={fullUrl} className="rounded w-100" style={{ maxWidth: 280 }} />;
+                          }
+                          if (att.type === 'audio') {
+                            return <audio key={idx} controls src={fullUrl} className="w-100" />;
+                          }
+                          return (
+                            <a
+                              key={idx}
+                              href={fullUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              download={att.name || 'file'}
+                              className="d-flex align-items-center gap-2 p-2 rounded border bg-body text-body text-decoration-none"
+                            >
+                              <Icon name="file-earmark-text" className="fs-5" />
+                              <div className="text-truncate" style={{ maxWidth: 180 }}>
+                                <div className="text-truncate fw-semibold">{att.name || 'Tệp đính kèm'}</div>
+                                {att.size && <div className="text-secondary small">{(att.size / 1024).toFixed(1)} KB</div>}
+                              </div>
+                              <Icon name="download" />
+                            </a>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Nội dung tin nhắn văn bản */}
+                    {m.messageText && <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.messageText}</div>}
+
+                    {/* Thời gian gửi: Chỉ hiện ở cuối cụm hoặc trên hover */}
+                    {isLastInCluster && (
+                      <div className={`d-flex align-items-center gap-1 mt-1 small ${isSeller ? 'justify-content-end text-white-50' : 'text-secondary'}`} style={{ fontSize: '11px' }}>
+                        <span>{new Date(m.sentAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
+                        {isSeller && (
+                          m.deliveryStatus === 'FAILED_24H_EXPIRED' ? (
+                            <span
+                              className="badge bg-warning text-dark px-1 py-0"
+                              style={{ fontSize: '10px' }}
+                              title="Facebook chặn gửi qua Messenger do đã quá 24h kể từ lần nhắn gần nhất của khách."
+                            >
+                              ⚠️ Quá 24h
+                            </span>
+                          ) : (
+                            <Icon name="check2-all" className="text-warning" />
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })

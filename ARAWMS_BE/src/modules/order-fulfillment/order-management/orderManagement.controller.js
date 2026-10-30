@@ -95,11 +95,68 @@ export const getOrderById = async (req, res) => {
   }
 };
 
+/**
+ * Chỉnh sửa sản phẩm và chi tiết đơn hàng khi đang ở trạng thái PENDING
+ * PUT /api/orders/:id/items
+ * @businessRule GBR-08 Đơn hàng chỉ được phép sửa sản phẩm khi ở PENDING
+ */
+export const updateOrderItems = async (req, res) => {
+  try {
+    const order = await orderManagementService.updateOrderItemsAndDetails(req.params.id, req.body, req.user, req);
+    return successResponse(res, order, 'Cập nhật sản phẩm đơn hàng thành công');
+  } catch (error) {
+    return errorResponse(res, error.message, 400);
+  }
+};
+
+/**
+ * Tạo đơn bán lẻ trực tiếp tại quầy AraStore POS
+ * POST /api/orders/pos-direct
+ */
+export const createPosDirectOrder = async (req, res) => {
+  try {
+    const order = await orderManagementService.createPosDirectOrder(req.body, req.user, req);
+    return successResponse(res, order, 'Tạo đơn hàng bán tại quầy POS thành công', 201);
+  } catch (error) {
+    return errorResponse(res, error.message, 400);
+  }
+};
+
+/**
+ * Gửi phiếu xác nhận đơn hàng vào chat
+ * POST /api/orders/:id/send-confirmation
+ */
+export const sendOrderConfirmationReceipt = async (req, res) => {
+  try {
+    const result = await orderManagementService.sendOrderConfirmationReceipt(req.params.id, req.user, req);
+    return successResponse(res, result, 'Đã gửi phiếu xác nhận đơn hàng vào chat');
+  } catch (error) {
+    return errorResponse(res, error.message, 400);
+  }
+};
+
+/**
+ * Giả lập khách hàng nhắn tin xác nhận chốt đơn (Sandbox)
+ * POST /api/orders/:id/simulate-confirm
+ */
+export const simulateCustomerConfirm = async (req, res) => {
+  try {
+    const result = await orderManagementService.simulateCustomerConfirm(req.params.id, req.user, req);
+    return successResponse(res, result, 'Giả lập khách chốt đơn thành công');
+  } catch (error) {
+    return errorResponse(res, error.message, 400);
+  }
+};
+
 export default {
   createDirectOrder,
+  updateOrderItems,
   confirmOrderReserve,
   updateOrderStatus,
   cancelOrder,
+  createPosDirectOrder,
+  sendOrderConfirmationReceipt,
+  simulateCustomerConfirm,
   getOrderList,
   getOrderById,
 };

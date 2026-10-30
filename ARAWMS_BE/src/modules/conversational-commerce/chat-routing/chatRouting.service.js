@@ -17,6 +17,8 @@ import ChatConversation from '../../../models/ChatConversation.model.js';
 import ChatMessage from '../../../models/ChatMessage.model.js';
 import User from '../../../models/User.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
+import SalesOrder from '../../../models/SalesOrder.model.js';
+import orderManagementService from '../../order-fulfillment/order-management/orderManagement.service.js';
 import { ENV } from '../../../config/env.js';
 import { emitNewMessage, emitConversationUpdated } from '../../../config/socket.js';
 
@@ -82,7 +84,11 @@ export const processInboundWebhookMessage = async (messagingEvent, entryPageId =
   const senderPsid = messagingEvent.sender?.id;
   const recipientPageId = entryPageId || messagingEvent.recipient?.id || ENV.FB.PAGE_ID;
   const pageName = ENV.FB.getPageName(recipientPageId);
-  const messageData = messagingEvent.message;
+  const messageData = messagingEvent.message || (messagingEvent.postback ? {
+    text: messagingEvent.postback.title || messagingEvent.postback.payload,
+    mid: `postback_${Date.now()}`,
+    quick_reply: { payload: messagingEvent.postback.payload },
+  } : null);
 
   if (!senderPsid || !messageData) {
     return null;
@@ -189,6 +195,41 @@ export const processInboundWebhookMessage = async (messagingEvent, entryPageId =
     emitConversationUpdated(populatedConv || conversation);
   } catch (err) {
     console.warn('⚠️ Lỗi phát socket chatRouting:', err.message);
+  }
+
+  // 5. [Phase 2: Two-way Order Confirmation] Nhận diện tin nhắn xác nhận chốt đơn từ khách
+  try {
+    const isConfirmPayload = messagingEvent.postback?.payload?.startsWith('CONFIRM_ORDER_')
+      || messageData.quick_reply?.payload?.startsWith('CONFIRM_ORDER_');
+
+    const confirmKeywordsRegex = /\b(ok|oke|oki|okie|chốt|chot|chốt đơn|chot don|xác nhận|xac nhan|confirm|đồng ý|dong y|đúng rồi|dung roi|giao đi|giao di)\b/i;
+    const isConfirmKeyword = messageText && confirmKeywordsRegex.test(messageText.trim());
+
+    if (isConfirmPayload || isConfirmKeyword) {
+      let targetOrder = null;
+      if (isConfirmPayload) {
+        const payloadStr = messagingEvent.postback?.payload || messageData.quick_reply?.payload;
+        const targetOrderId = payloadStr.replace('CONFIRM_ORDER_', '').trim();
+        targetOrder = await SalesOrder.findOne({ _id: targetOrderId, status: 'PENDING' });
+      }
+
+      if (!targetOrder) {
+        // Tìm đơn hàng PENDING gần nhất của khách hàng này
+        targetOrder = await SalesOrder.findOne({ customerId: customer._id, status: 'PENDING' })
+          .sort({ createdAt: -1 });
+      }
+
+      if (targetOrder) {
+        console.log(`🎯 [Two-way Order Confirmation] Khách hàng ${customer.fullName} đã xác nhận chốt đơn #${targetOrder.orderCode}`);
+        // Tự động giữ chỗ tồn kho và chuyển trạng thái CONFIRMED_RESERVED
+        await orderManagementService.confirmOrderReserve(
+          targetOrder._id,
+          assignedSeller || { _id: targetOrder.sellerId }
+        );
+      }
+    }
+  } catch (confirmErr) {
+    console.error('⚠️ [Auto-Confirm Error]:', confirmErr.message);
   }
 
   return {

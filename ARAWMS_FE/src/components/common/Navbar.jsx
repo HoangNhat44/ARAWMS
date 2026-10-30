@@ -55,12 +55,12 @@ const Navbar = () => {
             <>
               <li>
                 <Link to="/seller/chat" style={{ fontWeight: 600, color: 'var(--ara-gold)' }}>
-                  💬 Bán hàng (Seller)
+                  Bán hàng (Seller)
                 </Link>
               </li>
               <li>
                 <Link to="/seller/orders">
-                  📦 Đơn hàng
+                Đơn hàng
                 </Link>
               </li>
               {(user.roles?.includes('OWNER') || user.roles?.includes('SELLER') || user.roles?.includes('WAREHOUSE_STAFF')) && <li><Link to="/orders/qr">{user.roles?.includes('WAREHOUSE_STAFF') ? 'Xem / in đơn & QR' : 'Chốt đơn / QR'}</Link></li>}
@@ -86,21 +86,10 @@ const Navbar = () => {
                 fontWeight: 600 
               }}>
                 <UserIcon size={16} color="var(--ara-gold)" />
-                <Link to="/account" title="Xem và cập nhật tài khoản">{user.fullName || user.employeeCode}</Link>
-                {user.roleCode === 'OWNER' && (
-                  <span style={{
-                    fontSize: '0.7rem',
-                    background: 'var(--ara-noir)',
-                    color: '#FFFFFF',
-                    padding: '0.15rem 0.45rem',
-                    borderRadius: '4px',
-                    marginLeft: '0.25rem',
-                  }}>
-                    OWNER
-                  </span>
-                )}
-                <span className="spinner-grow spinner-grow-sm text-success" style={{ width: '8px', height: '8px' }} />
-                <span>{user.fullName || user.username}</span>
+                <Link to="/account" title="Xem và cập nhật tài khoản" style={{ textDecoration: 'none', color: 'inherit' }}>
+                  {user.fullName || user.username || user.employeeCode}
+                </Link>
+                <span className="spinner-grow spinner-grow-sm text-success" style={{ width: '8px', height: '8px' }} title="Trực tuyến" />
                 <span style={{
                   fontSize: '0.7rem',
                   background: 'var(--ara-noir)',

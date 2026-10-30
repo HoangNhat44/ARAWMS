@@ -31,6 +31,12 @@ const chatMessageSchema = new Schema(
     messageText: { type: String },
     attachments: [chatAttachmentSchema],
     referencedSkuId: { type: Schema.Types.ObjectId, ref: 'Sku' },
+    deliveryStatus: {
+      type: String,
+      enum: ['DELIVERED', 'FAILED_24H_EXPIRED', 'FAILED_META_ERROR', 'NOT_CONNECTED'],
+      default: 'DELIVERED',
+    },
+    deliveryError: { type: String },
     sentAt: { type: Date, default: Date.now, index: true },
   },
   { collection: 'chat_messages' }

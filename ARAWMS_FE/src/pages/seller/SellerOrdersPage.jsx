@@ -4,8 +4,7 @@
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
  * @lastModified : 2026-10-28
- * @description  : Màn hình quản lý danh sách đơn hàng bán lẻ của Seller theo phong cách
- *                 Pancake/PosCake: Tab đa kênh, dải đếm trạng thái realtime,
+ * @description  : Màn hình quản lý danh sách đơn hàng bán lẻ của Seller: Tab đa kênh, dải đếm trạng thái realtime,
  *                 bảng chi tiết đầy đủ cột với React-Bootstrap Table, Form và Icons.
  *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
  * @module       : Order Fulfillment / Seller Orders
@@ -56,6 +55,7 @@ const PANCAKE_STATUSES = [
   { key: 'PACKED',              label: 'Đang đóng hàng',   countKey: 'PACKED' },
   { key: 'HANDED_OVER_CARRIER', label: 'Đã gửi hàng',      countKey: 'HANDED_OVER_CARRIER' },
   { key: 'DELIVERED',           label: 'Đã nhận',          countKey: 'DELIVERED' },
+  { key: 'COMPLETED',           label: 'Hoàn thành / POS', countKey: 'COMPLETED' },
   { key: 'RETURN_REQUESTED',    label: 'Đang hoàn',        countKey: 'RETURN_REQUESTED' },
   { key: 'CANCELLED',           label: 'Đã hủy',           countKey: 'CANCELLED' },
   { key: 'RETURNED',            label: 'Đã trả hàng',      countKey: 'RETURNED' },
@@ -69,6 +69,23 @@ const formatDateTime = (dateStr) => {
   const d = new Date(dateStr);
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+};
+
+/**
+ * Hiển thị ngày giờ 2 dòng thanh thoát trong bảng (chuẩn Shopify Polaris / Stripe)
+ */
+const renderDateTimeCell = (dateStr) => {
+  if (!dateStr) return <span className="text-muted opacity-50">-</span>;
+  const d = new Date(dateStr);
+  const pad = (n) => String(n).padStart(2, '0');
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const date = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+  return (
+    <div className="d-flex flex-column lh-sm">
+      <span className="fw-semibold text-dark" style={{ fontSize: '0.82rem' }}>{time}</span>
+      <span className="text-secondary" style={{ fontSize: '0.72rem' }}>{date}</span>
+    </div>
+  );
 };
 
 /**
@@ -133,8 +150,8 @@ const SellerOrdersPage = () => {
    */
   const filteredOrders = useMemo(() => {
     return orders.filter((ord) => {
-      if (channelFilter === 'POS') return ord.orderType === 'POS_DIRECT';
-      if (channelFilter === 'ONLINE') return ord.orderType !== 'POS_DIRECT';
+      if (channelFilter === 'POS') return ord.orderType === 'POS_DIRECT' || ord.channel === 'POS_OFFLINE';
+      if (channelFilter === 'ONLINE') return ord.orderType !== 'POS_DIRECT' && ord.channel !== 'POS_OFFLINE';
       return true;
     });
   }, [orders, channelFilter]);
@@ -296,71 +313,71 @@ const SellerOrdersPage = () => {
   return (
     <div className="d-flex flex-column h-100" style={{ backgroundColor: '#FAF7F2' }}>
       {/* ── Top Header Navigation Bar (Atelier Noir & Champagne Gold) ─── */}
-      <div className="ara-seller-header px-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <Stack direction="horizontal" gap={3} className="align-items-center">
+      <div className="ara-seller-header px-2 px-md-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <Stack direction="horizontal" gap={2} className="align-items-center">
           <Button
             size="sm"
             onClick={() => navigate('/seller/chat')}
             className="btn-ara-header-ghost d-flex align-items-center gap-1"
           >
-            <Icon name="arrow-left" /> Về Chat
+            <Icon name="arrow-left" /> <span className="d-none d-sm-inline">Về Chat</span>
           </Button>
           <div className="vr opacity-25 d-none d-sm-block" style={{ height: 22, backgroundColor: '#9F8365' }} />
           <div className="d-flex align-items-center gap-2">
-            <span className="fw-bold fs-6 text-white" style={{ letterSpacing: '0.02em' }}>
+            <span className="fw-bold fs-6 text-white text-nowrap" style={{ letterSpacing: '0.02em' }}>
               Quản Lý Đơn Hàng
             </span>
           </div>
         </Stack>
 
-        {/* Search input in top header (Capsule design) */}
-        <div className="flex-grow-1 mx-2" style={{ maxWidth: 460 }}>
+        {/* Action Buttons Top Right: Row 1 on mobile */}
+        <Stack direction="horizontal" gap={1} className="order-2 order-md-3">
+          <Button
+            size="sm"
+            className="btn-ara-header-ghost d-flex align-items-center gap-1 px-2"
+            onClick={fetchOrders}
+            title="Đồng bộ danh sách đơn"
+          >
+            <Icon name="arrow-clockwise" /> <span className="d-none d-md-inline">Đồng bộ</span>
+          </Button>
+          <Button
+            size="sm"
+            className="btn-ara-header-ghost d-flex align-items-center gap-1 px-2"
+            onClick={() => handleExportOrders(filteredOrders, `don-hang-ara-${channelFilter.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`)}
+            title="Xuất file toàn bộ danh sách đơn hàng đang hiển thị"
+          >
+            <Icon name="download" /> <span className="d-none d-md-inline">Xuất</span><span className="d-none d-sm-inline">({filteredOrders.length})</span>
+          </Button>
+          <Button
+            size="sm"
+            className="btn-ara-header-gold d-flex align-items-center gap-1 px-2 px-sm-3"
+            onClick={() => setCreateOrderModalOpen(true)}
+            title="Tạo đơn hàng mới (Popup Pancake)"
+          >
+            <Icon name="plus-lg" /> <span className="d-none d-sm-inline">Tạo đơn</span>
+          </Button>
+        </Stack>
+
+        {/* Search input: Full width on mobile (order-3), middle on desktop (order-md-2) */}
+        <div className="order-3 order-md-2 flex-grow-1 w-100 w-md-auto mx-0 mx-md-2 my-1 my-md-0" style={{ maxWidth: 460 }}>
           <InputGroup size="sm" className="ara-search-capsule">
             <InputGroup.Text><Icon name="search" /></InputGroup.Text>
             <Form.Control
-              placeholder="Tìm kiếm đơn (mã đơn, SĐT, tên khách, SKU)..."
+              placeholder="Tìm theo mã đơn, SĐT, tên khách, SKU..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') fetchOrders(); }}
             />
           </InputGroup>
         </div>
-
-        {/* Action Buttons Top Right */}
-        <Stack direction="horizontal" gap={2}>
-          <Button
-            size="sm"
-            className="btn-ara-header-ghost d-flex align-items-center gap-1"
-            onClick={fetchOrders}
-            title="Đồng bộ danh sách đơn"
-          >
-            <Icon name="arrow-clockwise" /> Đồng bộ
-          </Button>
-          <Button
-            size="sm"
-            className="btn-ara-header-ghost d-flex align-items-center gap-1"
-            onClick={() => handleExportOrders(filteredOrders, `don-hang-ara-${channelFilter.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`)}
-            title="Xuất file toàn bộ danh sách đơn hàng đang hiển thị"
-          >
-            <Icon name="download" /> Xuất ({filteredOrders.length})
-          </Button>
-          <Button
-            size="sm"
-            className="btn-ara-header-gold d-flex align-items-center gap-1"
-            onClick={() => setCreateOrderModalOpen(true)}
-            title="Tạo đơn hàng mới (Popup Pancake)"
-          >
-            <Icon name="plus-lg" /> Tạo đơn
-          </Button>
-        </Stack>
       </div>
 
       {/* ── Channel Tabs Bar & Sub Tabs (Segmented Control) ─── */}
       <div
-        className="px-3 py-2 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2"
+        className="px-2 px-md-3 py-2 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2 overflow-x-auto"
         style={{ backgroundColor: '#FAF7F2', borderColor: '#E3D9CD' }}
       >
-        <div className="ara-segmented-group">
+        <div className="ara-segmented-group text-nowrap flex-shrink-0">
           <button
             type="button"
             className={`ara-segmented-btn ${channelFilter === 'ALL' ? 'active' : ''}`}
@@ -373,7 +390,7 @@ const SellerOrdersPage = () => {
             className={`ara-segmented-btn ${channelFilter === 'POS' ? 'active' : ''}`}
             onClick={() => setChannelFilter('POS')}
           >
-            Bán tại quầy (POS)
+            Tại quầy (POS)
           </button>
           <button
             type="button"
@@ -385,7 +402,7 @@ const SellerOrdersPage = () => {
         </div>
 
         {/* Sub-tabs: Đơn hàng / Cần xử lý / Đơn đã hoàn */}
-        <div className="ara-segmented-group">
+        <div className="ara-segmented-group text-nowrap flex-shrink-0">
           <button
             type="button"
             className={`ara-segmented-btn ${subTab === 'ORDERS' ? 'active' : ''}`}
@@ -417,22 +434,30 @@ const SellerOrdersPage = () => {
         {PANCAKE_STATUSES.map((st) => {
           const count = statusCounts[st.countKey] !== undefined ? statusCounts[st.countKey] : 0;
           const isActive = statusFilter === st.key;
+          const isZero = count === 0 && st.key !== 'ALL';
           return (
             <button
               key={st.key}
               type="button"
               className={`ara-status-pill-btn ${isActive ? 'active' : ''}`}
+              style={isZero && !isActive ? { opacity: 0.55, backgroundColor: '#FAFAF8' } : {}}
               onClick={() => setStatusFilter(st.key)}
             >
               <span>{st.label}</span>
-              <span className="ara-status-pill-count">{count}</span>
+              <span
+                className="ara-status-pill-count"
+                style={count > 0 && !isActive ? { backgroundColor: '#E2D3C0', color: '#1C1A17' } : {}}
+              >
+                {count}
+              </span>
             </button>
           );
         })}
       </div>
 
-      {/* ── Main Orders Table ─── */}
-      <div className="flex-grow-1 overflow-auto bg-white">
+      {/* ── Main Orders Data View: Desktop/Tablet Table vs Mobile Cards Stream ─── */}
+      {/* 1. Desktop & Tablet Table (>= md, >= 768px) */}
+      <div className="d-none d-md-block flex-grow-1 overflow-auto bg-white">
         <Table responsive hover className="ara-seller-table align-middle mb-0 text-nowrap w-100">
           <thead className="sticky-top">
             <tr>
@@ -523,16 +548,12 @@ const SellerOrdersPage = () => {
 
                     {/* Thời gian tạo */}
                     <td>
-                      <div className="d-flex align-items-center gap-1 text-secondary" style={{ fontSize: '0.8rem' }}>
-                        <span>{formatDateTime(ord.createdAt)}</span>
-                      </div>
+                      {renderDateTimeCell(ord.createdAt)}
                     </td>
 
                     {/* Cập nhật TT */}
                     <td>
-                      <div className="d-flex align-items-center gap-1 text-secondary" style={{ fontSize: '0.8rem' }}>
-                        <span>{formatDateTime(ord.updatedAt)}</span>
-                      </div>
+                      {renderDateTimeCell(ord.updatedAt)}
                     </td>
 
                     {/* Khách hàng */}
@@ -548,11 +569,13 @@ const SellerOrdersPage = () => {
                     {/* SĐT */}
                     <td>
                       <div className="d-flex align-items-center gap-1">
-                        <span className="text-secondary">{recipient.phone || customer.phone || '-'}</span>
+                        <span className="fw-semibold text-body" style={{ fontSize: '0.82rem' }}>
+                          {recipient.phone || customer.phone || '-'}
+                        </span>
                         {telco && (
                           <span
                             className="badge rounded-pill fw-normal"
-                            style={{ backgroundColor: telco.bg, color: telco.color, fontSize: '0.67rem', padding: '2px 6px' }}
+                            style={{ backgroundColor: 'rgba(0,0,0,0.06)', color: '#555', fontSize: '0.65rem', padding: '1px 5px' }}
                           >
                             {telco.name}
                           </span>
@@ -644,6 +667,140 @@ const SellerOrdersPage = () => {
             )}
           </tbody>
         </Table>
+      </div>
+
+      {/* 2. Mobile Cards Stream (< md, < 768px) */}
+      <div className="d-md-none flex-grow-1 overflow-auto p-2" style={{ backgroundColor: '#FAF7F2' }}>
+        {loading ? (
+          [1, 2, 3, 4].map((i) => (
+            <div key={i} className="mb-2 p-3 bg-white border rounded-3 shadow-sm">
+              <SkeletonOrderRow />
+            </div>
+          ))
+        ) : filteredOrders.length === 0 ? (
+          <div className="text-center py-5 bg-white rounded-3 border">
+            <EmptyState icon="bag" title="Không tìm thấy đơn hàng nào phù hợp bộ lọc" />
+          </div>
+        ) : (
+          filteredOrders.map((ord) => {
+            const id = ord._id || ord.id;
+            const isSelected = selectedIds.includes(id);
+            const recipient = ord.shippingRecipient || {};
+            const customer = ord.customerId || {};
+            const custName = customer.fullName || recipient.name || 'Khách vãng lai';
+            const phone = recipient.phone || customer.phone || '';
+            const telco = detectTelco(phone);
+            const waybill = ord.warehouseFulfillment?.waybillCode;
+            const firstItem = ord.items?.[0] || {};
+            const totalAmount = ord.financialSummary?.totalOrderAmount || 0;
+
+            return (
+              <div
+                key={id}
+                className={`ara-mobile-order-card bg-white border rounded-3 p-3 mb-2 shadow-sm ${isSelected ? 'border-primary' : ''}`}
+                onClick={() => handleOpenDetail(ord)}
+                style={{ cursor: 'pointer' }}
+              >
+                {/* Header: Checkbox, Order Code, Channel badge, Status badge */}
+                <div className="d-flex align-items-center justify-content-between mb-2">
+                  <div className="d-flex align-items-center gap-2">
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <Form.Check
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelectOrder(id)}
+                        aria-label={`Chọn đơn ${ord.orderCode || id}`}
+                      />
+                    </span>
+                    <span className="fw-bold text-dark fs-6 font-monospace">#{ord.orderCode || id.slice(-6)}</span>
+                    <span
+                      className="badge rounded-pill fw-normal"
+                      style={{
+                        backgroundColor: ord.orderType === 'POS_DIRECT' ? '#F3F4F6' : '#EFF6FF',
+                        color: ord.orderType === 'POS_DIRECT' ? '#4B5563' : '#1D4ED8',
+                        fontSize: '11px',
+                      }}
+                    >
+                      <Icon name={ord.orderType === 'POS_DIRECT' ? 'shop' : 'facebook'} className="me-1" />
+                      {ord.orderType === 'POS_DIRECT' ? 'POS' : 'Messenger'}
+                    </span>
+                  </div>
+                  {renderStatusBadge(ord.status)}
+                </div>
+
+                {/* Customer, Phone & Telco */}
+                <div className="d-flex align-items-center justify-content-between mb-2 text-secondary small">
+                  <div className="d-flex align-items-center gap-2 text-truncate" style={{ maxWidth: '60%' }}>
+                    <Avatar name={custName} size={24} />
+                    <span className="fw-semibold text-dark text-truncate">{custName}</span>
+                  </div>
+                  {phone && (
+                    <div className="d-flex align-items-center gap-1">
+                      <span className="fw-medium text-body">{phone}</span>
+                      {telco && (
+                        <span
+                          className="badge rounded-pill fw-normal"
+                          style={{ backgroundColor: telco.bg, color: telco.color, fontSize: '10px' }}
+                        >
+                          {telco.name}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Product items snippet */}
+                <div className="p-2 rounded mb-2 text-secondary small" style={{ backgroundColor: '#F8F6F2' }}>
+                  <div className="d-flex align-items-center justify-content-between">
+                    <span className="text-truncate fw-medium text-dark" style={{ maxWidth: '75%' }}>
+                      {firstItem.skuId?.styleName || firstItem.styleName || firstItem.skuCode || 'Sản phẩm'}
+                    </span>
+                    <span className="fw-semibold text-dark">x{firstItem.orderedQty || 1}</span>
+                  </div>
+                  {ord.items?.length > 1 && (
+                    <div className="text-muted fst-italic mt-1" style={{ fontSize: '11px' }}>
+                      + và {ord.items.length - 1} sản phẩm khác
+                    </div>
+                  )}
+                  {waybill && (
+                    <div className="mt-1 font-monospace" style={{ fontSize: '11px', color: '#0369A1' }}>
+                      Mã vận đơn: <strong>{waybill}</strong>
+                    </div>
+                  )}
+                </div>
+
+                {/* Total COD & Actions */}
+                <div className="d-flex align-items-center justify-content-between pt-2 border-top">
+                  <div>
+                    <div className="text-secondary" style={{ fontSize: '11px' }}>Tổng tiền (COD)</div>
+                    <div className="fw-bold fs-6" style={{ color: '#9F8365' }}>{formatVnd(totalAmount)}</div>
+                  </div>
+                  <div className="d-flex align-items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      size="sm"
+                      variant="outline-dark"
+                      className="px-3 py-1"
+                      onClick={() => handleOpenDetail(ord)}
+                    >
+                      Chi tiết
+                    </Button>
+                    {['DELIVERED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
+                      <Button
+                        size="sm"
+                        variant="outline-warning"
+                        className="px-2 py-1"
+                        onClick={() => handleOpenRma(ord)}
+                        title="Đổi/Trả"
+                      >
+                        Đổi/Trả
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* ── Footer status bar ─── */}

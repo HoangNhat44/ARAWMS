@@ -47,9 +47,10 @@ export const handleInboundMessage = async (req, res) => {
         const pageId = entry.id;
         const messagingList = entry.messaging || [];
         for (const webhookEvent of messagingList) {
-          if (webhookEvent && webhookEvent.message) {
-            const senderPsid = webhookEvent.sender.id;
-            console.log(`📩 [Messenger Inbound - Page: ${pageId}] Nhận tin nhắn từ PSID ${senderPsid}: "${webhookEvent.message.text || '[Tập tin]'}"`);
+          if (webhookEvent && (webhookEvent.message || webhookEvent.postback)) {
+            const senderPsid = webhookEvent.sender?.id;
+            const textPreview = webhookEvent.message?.text || webhookEvent.postback?.title || '[Tập tin/Hành động]';
+            console.log(`📩 [Messenger Inbound - Page: ${pageId}] Nhận sự kiện từ PSID ${senderPsid}: "${textPreview}"`);
 
             // Xử lý lưu hội thoại và tự động phân bổ Seller (UC-69)
             try {

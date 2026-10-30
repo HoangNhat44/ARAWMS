@@ -21,6 +21,7 @@ import InventoryTransaction from '../../../models/InventoryTransaction.model.js'
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
 import { ORDER_STATUS } from '../../../common/constants/enums.js';
+import notificationTemplateService from '../../conversational-commerce/chat-interface/notificationTemplate.service.js';
 
 /**
  * Ghi SystemLog kiểm toán
@@ -63,6 +64,15 @@ export const createDirectOrder = async (orderData, user, req) => {
     throw new Error('Đơn hàng phải chứa ít nhất một sản phẩm');
   }
 
+  // Validate số điện thoại người nhận (chỉ chấp nhận 10 chữ số Việt Nam)
+  const rawPhone = shippingRecipient?.phone || customer.phone || '';
+  const cleanPhone = String(rawPhone).replace(/\D/g, '');
+  if (orderData.orderType !== 'POS_DIRECT' && cleanPhone && cleanPhone !== '0900000000') {
+    if (!/^(0[35789])[0-9]{8}$/.test(cleanPhone)) {
+      throw new Error('Số điện thoại người nhận không hợp lệ. Vui lòng nhập đúng 10 chữ số (đầu số 03, 05, 07, 08, 09).');
+    }
+  }
+
   // 2. Validate từng SKU và snapshot giá vốn / thông tin
   let itemsSubtotal = 0;
   const processedItems = [];
@@ -82,6 +92,10 @@ export const createDirectOrder = async (orderData, user, req) => {
       skuId: sku._id,
       skuCode: sku.skuCode,
       skuBarcode: sku.skuBarcode,
+      productName: item.productName || sku.styleName,
+      color: item.color || sku.color,
+      size: item.size || sku.size,
+      thumbnailUrl: item.thumbnailUrl || sku.thumbnailUrl || '',
       orderedQty: qty,
       unitSalePrice: salePrice,
       unitCogsSnapshot: sku.unitCogs || 0,
@@ -93,7 +107,7 @@ export const createDirectOrder = async (orderData, user, req) => {
   const shippingFee = Number(financialSummary.shippingFee) || 0;
   const discountAmount = Number(financialSummary.discountAmount) || 0;
   const totalOrderAmount = itemsSubtotal + shippingFee - discountAmount;
-  const expectedCodAmount = totalOrderAmount;
+  const expectedCodAmount = orderData.paymentMethod === 'BANK_TRANSFER' ? 0 : totalOrderAmount;
 
   // 3. Sinh mã đơn nguyên tử qua CounterSequence (ORD-00001)
   const orderCode = await CounterSequence.getNextSequence('ORDER_CODE', 'ORD', 5);
@@ -105,11 +119,16 @@ export const createDirectOrder = async (orderData, user, req) => {
     conversationId: conversationId || undefined,
     sellerId: user._id,
     orderType: orderData.orderType || 'DIRECT_SALES',
+    channel: orderData.channel || 'FACEBOOK_MESSENGER',
+    paymentMethod: orderData.paymentMethod || 'COD',
+    paymentStatus: orderData.paymentStatus || 'PENDING',
+    notes: orderData.notes || '',
     linkedReturnRequestId: orderData.linkedReturnRequestId || null,
     status: 'PENDING',
+    isCustomerConfirmed: false,
     shippingRecipient: {
       name: shippingRecipient?.name || customer.fullName,
-      phone: shippingRecipient?.phone || customer.phone,
+      phone: cleanPhone || shippingRecipient?.phone || customer.phone || '',
       address: shippingRecipient?.address || (customer.addresses?.[0]?.fullAddress || ''),
     },
     items: processedItems,
@@ -143,6 +162,112 @@ export const createDirectOrder = async (orderData, user, req) => {
   });
 
   return newOrder;
+};
+
+/**
+ * Cập nhật danh sách sản phẩm và chi tiết đơn hàng khi đang ở trạng thái PENDING
+ * @businessRule GBR-08 Đơn hàng chỉ được phép sửa sản phẩm khi ở trạng thái PENDING. Sau khi xác nhận chốt đơn thì khóa hoàn toàn.
+ */
+export const updateOrderItemsAndDetails = async (orderId, updateData, user, req) => {
+  const order = await SalesOrder.findById(orderId);
+  if (!order) {
+    throw new Error('Đơn hàng không tồn tại');
+  }
+
+  // [BR: GBR-08] Chỉ cho phép sửa sản phẩm khi PENDING
+  if (order.status !== 'PENDING') {
+    throw new Error(`[BR: GBR-08] Chỉ có thể chỉnh sửa sản phẩm khi đơn hàng ở trạng thái PENDING (chưa chốt). Trạng thái hiện tại: ${order.status}`);
+  }
+
+  const beforeSnapshot = order.toObject();
+
+  // Cập nhật người nhận & ghi chú & hình thức thanh toán
+  if (updateData.shippingRecipient) {
+    let updatePhone = updateData.shippingRecipient.phone;
+    if (updatePhone) {
+      updatePhone = String(updatePhone).replace(/\D/g, '');
+      if (updatePhone !== '0900000000' && !/^(0[35789])[0-9]{8}$/.test(updatePhone)) {
+        throw new Error('Số điện thoại người nhận không hợp lệ. Vui lòng nhập đúng 10 chữ số (đầu số 03, 05, 07, 08, 09).');
+      }
+    }
+    order.shippingRecipient = {
+      ...order.shippingRecipient,
+      ...updateData.shippingRecipient,
+      ...(updatePhone ? { phone: updatePhone } : {}),
+    };
+  }
+  if (updateData.notes !== undefined) order.notes = updateData.notes;
+  if (updateData.paymentMethod) order.paymentMethod = updateData.paymentMethod;
+
+  // Cập nhật sản phẩm nếu có truyền danh sách items mới
+  if (Array.isArray(updateData.items) && updateData.items.length > 0) {
+    let itemsSubtotal = 0;
+    const processedItems = [];
+
+    for (const item of updateData.items) {
+      const sku = await Sku.findById(item.skuId);
+      if (!sku || !sku.isActive) {
+        throw new Error(`Sản phẩm SKU ${item.skuId} không tồn tại hoặc đã ngừng kinh doanh`);
+      }
+
+      const qty = Math.max(1, Number(item.orderedQty) || 1);
+      const salePrice = Number(item.unitSalePrice) !== undefined ? Number(item.unitSalePrice) : sku.retailPrice;
+
+      itemsSubtotal += qty * salePrice;
+
+      processedItems.push({
+        skuId: sku._id,
+        skuCode: sku.skuCode,
+        skuBarcode: sku.skuBarcode,
+        productName: item.productName || sku.styleName,
+        color: item.color || sku.color,
+        size: item.size || sku.size,
+        thumbnailUrl: item.thumbnailUrl || sku.thumbnailUrl || '',
+        orderedQty: qty,
+        unitSalePrice: salePrice,
+        unitCogsSnapshot: sku.unitCogs || 0,
+        fifoPickList: [],
+        packedScannedQty: 0,
+      });
+    }
+
+    const shippingFee = updateData.financialSummary?.shippingFee !== undefined
+      ? Number(updateData.financialSummary.shippingFee)
+      : (order.financialSummary?.shippingFee || 0);
+
+    const discountAmount = updateData.financialSummary?.discountAmount !== undefined
+      ? Number(updateData.financialSummary.discountAmount)
+      : (order.financialSummary?.discountAmount || 0);
+
+    const totalOrderAmount = itemsSubtotal + shippingFee - discountAmount;
+    const expectedCodAmount = order.paymentMethod === 'BANK_TRANSFER' ? 0 : totalOrderAmount;
+
+    order.items = processedItems;
+    order.financialSummary = {
+      itemsSubtotal,
+      shippingFee,
+      discountAmount,
+      totalOrderAmount,
+      expectedCodAmount,
+    };
+  }
+
+  await order.save();
+
+  await recordSystemLog({
+    actor: user,
+    majorFeature: 'Order Fulfillment',
+    subFeature: 'Order Management',
+    action: 'UPDATE_ORDER_ITEMS',
+    targetCollection: 'SalesOrder',
+    targetId: order._id,
+    targetCode: order.orderCode,
+    beforeSnapshot,
+    afterSnapshot: order.toObject(),
+    req,
+  });
+
+  return order;
 };
 
 /**
@@ -203,11 +328,26 @@ export const confirmOrderReserve = async (orderId, user, req) => {
 
   // Cập nhật trạng thái đơn hàng
   order.status = 'CONFIRMED_RESERVED';
+  order.isCustomerConfirmed = true;
+  order.customerConfirmedAt = new Date();
+  order.confirmedAt = new Date();
   order.warehouseFulfillment = {
     ...order.warehouseFulfillment,
     stockReservedAt: new Date(),
   };
   await order.save();
+
+  // Gửi thông báo tự động xác nhận chốt đơn vào chat
+  try {
+    await notificationTemplateService.sendOrderNotificationToChat({
+      order,
+      messageText: notificationTemplateService.buildOrderConfirmedSuccessText(order),
+      notificationType: 'CONFIRMED_SUCCESS',
+      senderSellerId: user?._id,
+    });
+  } catch (notifyErr) {
+    console.warn('⚠️ Lỗi gửi thông báo chốt đơn tự động:', notifyErr.message);
+  }
 
   await recordSystemLog({
     actor: user,
@@ -237,6 +377,7 @@ export const ORDER_STATUS_TRANSITIONS = {
   PACKED: ['HANDED_OVER_CARRIER'],
   HANDED_OVER_CARRIER: ['DELIVERED', 'RETURN_REQUESTED'],
   DELIVERED: ['RETURN_REQUESTED'],
+  COMPLETED: ['RETURN_REQUESTED'],
   RETURN_REQUESTED: ['RETURNED'],
   CANCELLED: [],
   RETURNED: [],
@@ -302,6 +443,18 @@ export const updateOrderStatus = async (orderId, updateData, user, req) => {
       if (!waybill) throw new Error('[BR: GBR-13] Vui lòng nhập mã vận đơn trước khi bàn giao vận chuyển');
       order.warehouseFulfillment.waybillCode = waybill;
       order.warehouseFulfillment.handedOverAt = new Date();
+
+      // Gửi thông báo vận đơn tự động vào chat
+      try {
+        await notificationTemplateService.sendOrderNotificationToChat({
+          order,
+          messageText: notificationTemplateService.buildPackingCompletedText(order, waybill),
+          notificationType: 'PACKED_WAYBILL',
+          senderSellerId: user?._id,
+        });
+      } catch (notifyErr) {
+        console.warn('⚠️ Lỗi gửi thông báo vận đơn:', notifyErr.message);
+      }
     }
     if (nextStatus === 'PACKED') {
       order.warehouseFulfillment.packedAt = new Date();
@@ -331,6 +484,7 @@ export const updateOrderStatus = async (orderId, updateData, user, req) => {
 /**
  * UC-81: Hủy đơn hàng & Giải phóng tồn kho giữ chỗ (-ReservedQty)
  * Cancel Order & Stock Release
+ * @businessRule GBR-08 / GBR-11 Bắt buộc phải có lý do hủy đơn. Chỉ cho phép hủy khi chưa đóng gói.
  */
 export const cancelOrder = async (orderId, cancelReason, user, req) => {
   const order = await SalesOrder.findById(orderId);
@@ -338,14 +492,18 @@ export const cancelOrder = async (orderId, cancelReason, user, req) => {
     throw new Error('Đơn hàng không tồn tại');
   }
 
-  // Không cho phép hủy khi đã đóng gói hoặc đang giao
-  if (['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'CANCELLED'].includes(order.status)) {
-    throw new Error(`Không thể hủy đơn hàng ở trạng thái ${order.status}`);
+  if (!cancelReason || !cancelReason.trim()) {
+    throw new Error('[BR: GBR-08] Bắt buộc phải nhập lý do hủy đơn hàng.');
+  }
+
+  // Không cho phép hủy khi đã đóng gói, đang giao, đã giao hoặc đã hoàn thành
+  if (['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'COMPLETED', 'CANCELLED'].includes(order.status)) {
+    throw new Error(`[BR: GBR-08] Không thể hủy đơn hàng ở trạng thái ${order.status}. Chỉ có thể hủy đơn trước khi đóng gói (PENDING, CONFIRMED_RESERVED, PICKING).`);
   }
 
   const beforeSnapshot = order.toObject();
 
-  // [BR: GBR-11] Đơn đã giữ chỗ (CONFIRMED_RESERVED / PICKING): nhả reservedQty của từng SKU
+  // [BR: GBR-08] Đơn đã giữ chỗ (CONFIRMED_RESERVED / PICKING): nhả reservedQty của từng SKU
   if (['CONFIRMED_RESERVED', 'PICKING'].includes(order.status)) {
     for (const item of order.items) {
       const sku = await Sku.findByIdAndUpdate(
@@ -372,8 +530,11 @@ export const cancelOrder = async (orderId, cancelReason, user, req) => {
     }
   }
 
-  // Cập nhật trạng thái đơn
+  // Cập nhật trạng thái đơn và lý do hủy
   order.status = 'CANCELLED';
+  order.cancelReason = cancelReason.trim();
+  order.canceledByUserId = user?._id;
+  order.canceledAt = new Date();
   await order.save();
 
   // Hoàn lại tích lũy của khách hàng
@@ -398,6 +559,201 @@ export const cancelOrder = async (orderId, cancelReason, user, req) => {
   });
 
   return order;
+};
+
+/**
+ * Tạo đơn bán lẻ trực tiếp tại quầy AraStore POS (Khách lấy hàng ngay)
+ * Trừ trực tiếp onHandQty (không qua bước giữ chỗ), trạng thái COMPLETED.
+ * @businessRule GBR-07 / GBR-08 / Offline POS Flow
+ */
+export const createPosDirectOrder = async (posData, user, req) => {
+  const { customerId, items, shippingRecipient, financialSummary = {}, paymentMethod = 'CASH', notes = '' } = posData;
+
+  let customer = null;
+  if (customerId) {
+    customer = await Customer.findById(customerId);
+  }
+  if (!customer) {
+    // Nếu không chọn khách cụ thể, tìm hoặc tạo khách vãng lai bán lẻ tại quầy
+    customer = await Customer.findOne({ customerCode: 'CUST-WALKIN' });
+    if (!customer) {
+      customer = await Customer.create({
+        customerCode: 'CUST-WALKIN',
+        fullName: shippingRecipient?.name || 'Khách vãng lai POS',
+        phone: shippingRecipient?.phone || '0900000000',
+        notes: 'Khách mua trực tiếp tại quầy AraStore',
+      });
+    }
+  }
+
+  if (!items || items.length === 0) {
+    throw new Error('Đơn bán tại quầy phải có ít nhất 1 sản phẩm');
+  }
+
+  let itemsSubtotal = 0;
+  const processedItems = [];
+
+  // 1. Kiểm tra tồn kho khả dụng cho toàn bộ SKU trước khi trừ
+  for (const item of items) {
+    const sku = await Sku.findById(item.skuId);
+    if (!sku || !sku.isActive) {
+      throw new Error(`Sản phẩm SKU ${item.skuId} không tồn tại hoặc đã ngừng kinh doanh`);
+    }
+
+    const qty = Math.max(1, Number(item.orderedQty) || 1);
+    const available = (sku.onHandQty || 0) - (sku.reservedQty || 0);
+    if (available < qty) {
+      throw new Error(`Sản phẩm ${sku.skuCode} không đủ tồn khả dụng tại quầy (Tồn khả dụng: ${available}, Cần: ${qty})`);
+    }
+
+    const salePrice = Number(item.unitSalePrice) !== undefined ? Number(item.unitSalePrice) : sku.retailPrice;
+    itemsSubtotal += qty * salePrice;
+
+    processedItems.push({
+      skuId: sku._id,
+      skuCode: sku.skuCode,
+      skuBarcode: sku.skuBarcode,
+      productName: item.productName || sku.styleName,
+      color: item.color || sku.color,
+      size: item.size || sku.size,
+      thumbnailUrl: item.thumbnailUrl || sku.thumbnailUrl || '',
+      orderedQty: qty,
+      unitSalePrice: salePrice,
+      unitCogsSnapshot: sku.unitCogs || 0,
+      fifoPickList: [],
+      packedScannedQty: qty,
+    });
+  }
+
+  const discountAmount = Number(financialSummary.discountAmount) || 0;
+  const totalOrderAmount = itemsSubtotal - discountAmount;
+
+  // 2. Sinh mã đơn POS-xxxxx
+  const orderCode = await CounterSequence.getNextSequence('ORDER_CODE_POS', 'POS', 5);
+
+  // 3. Tạo bản ghi SalesOrder trạng thái COMPLETED
+  const newOrder = await SalesOrder.create({
+    orderCode,
+    customerId: customer._id,
+    sellerId: user._id,
+    orderType: 'POS_DIRECT',
+    channel: 'POS_OFFLINE',
+    status: 'COMPLETED',
+    isCustomerConfirmed: true,
+    customerConfirmedAt: new Date(),
+    confirmedAt: new Date(),
+    paymentMethod,
+    paymentStatus: 'PAID',
+    notes: notes || 'Bán lẻ tại quầy AraStore',
+    shippingRecipient: {
+      name: shippingRecipient?.name || customer.fullName,
+      phone: shippingRecipient?.phone || customer.phone,
+      address: shippingRecipient?.address || 'Nhận trực tiếp tại quầy AraStore',
+    },
+    items: processedItems,
+    financialSummary: {
+      itemsSubtotal,
+      shippingFee: 0,
+      discountAmount,
+      totalOrderAmount,
+      expectedCodAmount: 0,
+    },
+    warehouseFulfillment: {
+      packedAt: new Date(),
+      packedByStaffId: user._id,
+    },
+    codReconciliationStatus: 'MATCHED',
+  });
+
+  // 4. Trừ trực tiếp onHandQty và ghi nhận InventoryTransaction
+  for (const it of processedItems) {
+    const sku = await Sku.findByIdAndUpdate(
+      it.skuId,
+      { $inc: { onHandQty: -it.orderedQty } },
+      { new: true }
+    );
+
+    const txCode = await CounterSequence.getNextSequence('INVENTORY_TX', 'TX', 6);
+    await InventoryTransaction.create({
+      transactionCode: txCode,
+      warehouseType: 'FINISHED_GOODS',
+      itemType: 'FINISHED_SKU',
+      skuId: it.skuId,
+      transactionType: 'POS_DIRECT_SALE',
+      referenceModel: 'SalesOrder',
+      referenceId: newOrder._id,
+      quantityChange: -it.orderedQty,
+      onHandBefore: (sku ? sku.onHandQty : 0) + it.orderedQty,
+      onHandAfter: sku ? sku.onHandQty : 0,
+      unitCostSnapshot: it.unitCogsSnapshot,
+      performedByUserId: user._id,
+    });
+  }
+
+  await Customer.findByIdAndUpdate(customer._id, {
+    $inc: { totalOrders: 1, totalSpent: totalOrderAmount },
+  });
+
+  await recordSystemLog({
+    actor: user,
+    majorFeature: 'Order Fulfillment',
+    subFeature: 'Order Management',
+    action: 'CREATE_POS_DIRECT_ORDER',
+    targetCollection: 'SalesOrder',
+    targetId: newOrder._id,
+    targetCode: newOrder.orderCode,
+    afterSnapshot: newOrder.toObject(),
+    req,
+  });
+
+  return newOrder;
+};
+
+/**
+ * Gửi phiếu xác nhận đơn hàng vào phiên chat Messenger
+ */
+export const sendOrderConfirmationReceipt = async (orderId, user, req) => {
+  const order = await SalesOrder.findById(orderId);
+  if (!order) throw new Error('Đơn hàng không tồn tại');
+
+  const msgText = notificationTemplateService.buildOrderConfirmationText(order);
+  const chatMessage = await notificationTemplateService.sendOrderNotificationToChat({
+    order,
+    messageText: msgText,
+    notificationType: 'CONFIRM_REQUEST',
+    senderSellerId: user?._id,
+  });
+
+  const isExpired24h = chatMessage?.deliveryStatus === 'FAILED_24H_EXPIRED';
+  const message = isExpired24h
+    ? 'Đã tạo phiếu trên web, nhưng Messenger chưa nhận được do khách chưa nhắn tin trong vòng 24 giờ qua. Hãy nhờ khách gửi 1 tin nhắn để mở lại kết nối.'
+    : 'Đã gửi phiếu xác nhận đơn hàng vào chat thành công!';
+
+  return {
+    success: true,
+    message,
+    chatMessage,
+    deliveryStatus: chatMessage?.deliveryStatus || 'DELIVERED',
+  };
+};
+
+/**
+ * Sandbox / Simulator: Giả lập khách hàng nhắn "OK chốt đơn"
+ */
+export const simulateCustomerConfirm = async (orderId, user, req) => {
+  const order = await SalesOrder.findById(orderId);
+  if (!order) throw new Error('Đơn hàng không tồn tại');
+
+  if (order.status !== 'PENDING') {
+    throw new Error(`Đơn hàng hiện tại ở trạng thái ${order.status}, không thể xác nhận lại.`);
+  }
+
+  const confirmedOrder = await confirmOrderReserve(orderId, user, req);
+  return {
+    success: true,
+    message: 'Đã giả lập khách hàng xác nhận chốt đơn thành công!',
+    order: confirmedOrder,
+  };
 };
 
 /** Escape ký tự đặc biệt để chuỗi tìm kiếm không bị hiểu là biểu thức RegExp */
@@ -510,9 +866,13 @@ export const getOrderById = async (orderId) => {
 
 export default {
   createDirectOrder,
+  updateOrderItemsAndDetails,
   confirmOrderReserve,
   updateOrderStatus,
   cancelOrder,
+  createPosDirectOrder,
+  sendOrderConfirmationReceipt,
+  simulateCustomerConfirm,
   getOrderList,
   getOrderById,
 };

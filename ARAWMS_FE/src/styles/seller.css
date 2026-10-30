@@ -449,3 +449,49 @@
   background-color: #FFFFFF !important;
   box-shadow: 0 1px 4px rgba(28, 26, 23, 0.08);
 }
+
+/* ── 11. International Responsive Design Utilities (Mobile / Tablet / Desktop) ─ */
+.ara-status-pills-container {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  touch-action: pan-x;
+}
+
+.ara-status-pills-container .ara-status-pill-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ara-mobile-order-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  border-color: #E3D9CD !important;
+}
+
+.ara-mobile-order-card:active {
+  transform: scale(0.99);
+  background-color: #FAF7F2;
+}
+
+.ara-seller-offcanvas {
+  background-color: #FAF7F2 !important;
+}
+
+.ara-seller-offcanvas .offcanvas-header {
+  background: linear-gradient(135deg, #1C1A17 0%, #2A2521 100%);
+  color: #FAF7F2;
+  border-bottom: 1px solid rgba(159, 131, 101, 0.35);
+}
+
+.ara-seller-offcanvas .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+@media (max-width: 767.98px) {
+  .ara-seller-header {
+    padding: 0.5rem 0.75rem !important;
+  }
+  .ara-pane-splitter {
+    display: none !important;
+  }
+}
+
