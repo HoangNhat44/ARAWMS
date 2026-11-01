@@ -49,12 +49,24 @@ const SkuStockLookupWidget = ({ onAttachSku, onAddToOrder }) => {
 
   const getStatusBadge = (sku) => {
     if (sku.availableQty <= 0) {
-      return <Badge bg="danger-subtle" text="danger-emphasis"><Icon name="x-circle" /> Hết hàng (0)</Badge>;
+      return (
+        <span className="ara-badge ara-badge-cancelled d-inline-flex align-items-center gap-1">
+          <Icon name="x-circle" /> Hết hàng (0)
+        </span>
+      );
     }
     if (sku.availableQty <= 10) {
-      return <Badge bg="warning-subtle" text="warning-emphasis"><Icon name="exclamation-triangle" /> Sắp hết ({sku.availableQty})</Badge>;
+      return (
+        <span className="ara-badge ara-badge-pending d-inline-flex align-items-center gap-1">
+          <Icon name="exclamation-triangle" /> Sắp hết ({sku.availableQty})
+        </span>
+      );
     }
-    return <Badge bg="success-subtle" text="success-emphasis"><Icon name="box-seam" /> Khả dụng ({sku.availableQty})</Badge>;
+    return (
+      <span className="ara-badge ara-badge-delivered d-inline-flex align-items-center gap-1">
+        <Icon name="box-seam" /> Khả dụng ({sku.availableQty})
+      </span>
+    );
   };
 
   return (
@@ -62,11 +74,14 @@ const SkuStockLookupWidget = ({ onAttachSku, onAddToOrder }) => {
       {/* Search Header */}
       <Form onSubmit={handleSearch} className="mb-3">
         <InputGroup>
-          <InputGroup.Text className="bg-white"><Icon name="search" /></InputGroup.Text>
+          <InputGroup.Text style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)', color: 'var(--wms-text-secondary, #574F46)' }}>
+            <Icon name="search" />
+          </InputGroup.Text>
           <Form.Control
             placeholder="Tìm theo mã SKU, tên mẫu, màu, size..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
           />
         </InputGroup>
       </Form>
@@ -78,20 +93,34 @@ const SkuStockLookupWidget = ({ onAttachSku, onAddToOrder }) => {
         {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
 
         {!loading && skus.length === 0 && (
-          <div className="text-center py-5 text-secondary small">Không tìm thấy sản phẩm phù hợp</div>
+          <div className="text-center py-5 small" style={{ color: 'var(--wms-text-secondary, #574F46)' }}>
+            Không tìm thấy sản phẩm phù hợp
+          </div>
         )}
 
         {!loading &&
           skus.map((sku) => (
-            <Card key={sku.skuId} className="shadow-sm small">
+            <Card
+              key={sku.skuId}
+              className="shadow-sm small"
+              style={{
+                border: '1px solid var(--wms-border, #C8B9A6)',
+                borderRadius: '6px',
+                backgroundColor: 'var(--wms-bg-surface, #FFFFFF)'
+              }}
+            >
               <Card.Body className="pb-2">
                 <div className="d-flex align-items-start justify-content-between gap-2">
                   <div>
-                    <Card.Title as="h6" className="fw-bold mb-1">{sku.styleName}</Card.Title>
-                    <Stack direction="horizontal" gap={2} className="text-secondary">
-                      <Badge bg="warning-subtle" text="warning-emphasis">{sku.skuCode}</Badge>
-                      <span>Màu: <strong>{sku.color}</strong></span>
-                      <span>Size: <strong className="text-warning-emphasis">{sku.size}</strong></span>
+                    <Card.Title as="h6" className="fw-bold mb-1" style={{ color: 'var(--wms-primary, #141210)' }}>
+                      {sku.styleName}
+                    </Card.Title>
+                    <Stack direction="horizontal" gap={2} style={{ color: 'var(--wms-text-secondary, #574F46)' }}>
+                      <span className="font-monospace fw-semibold px-2 py-0 rounded" style={{ backgroundColor: 'var(--wms-primary-subtle, #EFE6DA)', color: 'var(--wms-accent-deep, #6E5233)', border: '1px solid var(--wms-border, #C8B9A6)', fontSize: '0.75rem' }}>
+                        {sku.skuCode}
+                      </span>
+                      <span>Màu: <strong style={{ color: 'var(--wms-primary, #141210)' }}>{sku.color}</strong></span>
+                      <span>Size: <strong style={{ color: 'var(--wms-accent, #8A6A46)' }}>{sku.size}</strong></span>
                     </Stack>
                   </div>
                   {getStatusBadge(sku)}
@@ -99,15 +128,24 @@ const SkuStockLookupWidget = ({ onAttachSku, onAddToOrder }) => {
               </Card.Body>
 
               {/* Price & Quantity Breakdown */}
-              <Card.Footer className="bg-white d-flex align-items-center justify-content-between">
+              <Card.Footer
+                className="d-flex align-items-center justify-content-between"
+                style={{
+                  backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)',
+                  borderTop: '1px solid var(--wms-border, #C8B9A6)',
+                  padding: '8px 12px'
+                }}
+              >
                 <div>
-                  <span className="text-secondary">Giá bán: </span>
-                  <span className="fw-bold text-warning-emphasis">{formatVnd(sku.retailPrice)}</span>
+                  <span style={{ color: 'var(--wms-text-secondary, #574F46)' }}>Giá bán: </span>
+                  <span className="fw-bold" style={{ color: 'var(--wms-accent, #8A6A46)', fontSize: '0.95rem' }}>
+                    {formatVnd(sku.retailPrice)}
+                  </span>
                 </div>
                 <Stack direction="horizontal" gap={1}>
                   <Button
                     size="sm"
-                    variant="outline-secondary"
+                    className="btn-wms-default"
                     onClick={() => onAttachSku && onAttachSku(sku)}
                     title="Gửi đính kèm vào khung Chat"
                   >
@@ -115,7 +153,7 @@ const SkuStockLookupWidget = ({ onAttachSku, onAddToOrder }) => {
                   </Button>
                   <Button
                     size="sm"
-                    variant="dark"
+                    className="btn-wms-primary"
                     disabled={sku.availableQty <= 0}
                     onClick={() => onAddToOrder && onAddToOrder(sku)}
                     title="Thêm vào đơn hàng nhanh"

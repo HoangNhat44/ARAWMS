@@ -285,28 +285,35 @@ const QuickOrderModal = ({
   return (
     <Modal show={isOpen} onHide={onClose} centered size="lg" fullscreen="sm-down" backdrop="static" scrollable>
       {/* Header */}
-      <Modal.Header closeButton>
-        <Modal.Title as="h5" className="d-flex align-items-center gap-2">
-          <Icon name="bag-plus" className="text-warning-emphasis" />
-          Tạo Đơn Hàng Nhanh (Pancake POS)
+      <Modal.Header closeButton style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
+        <Modal.Title as="h5" className="d-flex align-items-center gap-2" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+          <Icon name="bag-plus" style={{ color: 'var(--wms-accent, #8A6A46)' }} />
+          Tạo Đơn Hàng Nhanh
         </Modal.Title>
       </Modal.Header>
 
       {/* Body */}
-      <Modal.Body className="bg-body-tertiary">
+      <Modal.Body style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
         {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
 
         {successOrder ? (
-          <div className="text-center py-4">
-            <Icon name="check-circle-fill" className="text-success display-4 d-block mb-3" />
-            <h4 className="fw-bold">Tạo Đơn Hàng Thành Công!</h4>
-            <p className="text-secondary small mb-2">
-              Mã đơn hàng: <strong className="font-monospace text-body fs-6">{successOrder.orderCode}</strong>
+          <div className="text-center py-4 bg-white rounded p-4" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
+            <Icon name="check-circle-fill" className="display-4 d-block mb-3" style={{ color: 'var(--wms-success, #1E6B47)' }} />
+            <h4 className="fw-bold" style={{ color: 'var(--wms-text-primary, #141210)' }}>Tạo Đơn Hàng Thành Công!</h4>
+            <p className="small mb-2" style={{ color: 'var(--wms-secondary, #574F46)' }}>
+              Mã đơn hàng: <strong className="font-monospace fs-6" style={{ color: 'var(--wms-text-primary, #141210)' }}>{successOrder.orderCode}</strong>
             </p>
             <div className="mb-3">
-              <Badge bg={successOrder.status === 'COMPLETED' ? 'success' : 'warning'} className="fs-6 text-dark">
+              <span
+                className="badge rounded px-2.5 py-1"
+                style={
+                  successOrder.status === 'COMPLETED'
+                    ? { backgroundColor: '#E3F5EC', color: '#1E6B47', border: '1px solid #86CFA8', fontSize: '13px' }
+                    : { backgroundColor: '#FEF0C7', color: '#9A5B06', border: '1px solid #F5B95F', fontSize: '13px' }
+                }
+              >
                 Trạng thái: {successOrder.status}
-              </Badge>
+              </span>
             </div>
             {successOrder.status === 'PENDING' && (
               <Alert variant="info" className="small text-start mx-auto py-2 px-3 mb-4" style={{ maxWidth: 540 }}>
@@ -315,21 +322,22 @@ const QuickOrderModal = ({
               </Alert>
             )}
             <div>
-              <Button variant="dark" onClick={onClose}>Đóng cửa sổ</Button>
+              <Button className="btn-wms-primary" onClick={onClose}>Đóng cửa sổ</Button>
             </div>
           </div>
         ) : (
           <div className="d-flex flex-column gap-3">
             {/* Chuyển đổi kênh bán hàng: Online giao hàng vs Tại quầy POS */}
-            <div className="bg-white p-2 rounded border d-flex align-items-center justify-content-between shadow-sm">
-              <div className="small fw-semibold text-secondary">
-                <Icon name="shop" className="me-1 text-warning-emphasis" /> Kênh Bán Hàng:
+            <div className="bg-white p-2 rounded d-flex align-items-center justify-content-between shadow-sm" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
+              <div className="small fw-semibold" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+                <Icon name="shop" className="me-1" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> Kênh Bán Hàng:
               </div>
               <ButtonGroup size="sm">
                 <ToggleButton
                   id="qom-mode-online"
                   type="radio"
                   variant={orderChannel === 'ONLINE' ? 'dark' : 'outline-secondary'}
+                  className={orderChannel === 'ONLINE' ? 'btn-wms-primary' : 'btn-wms-default'}
                   name="qom-order-mode"
                   value="ONLINE"
                   checked={orderChannel === 'ONLINE'}
@@ -340,7 +348,8 @@ const QuickOrderModal = ({
                 <ToggleButton
                   id="qom-mode-pos"
                   type="radio"
-                  variant={orderChannel === 'POS' ? 'success' : 'outline-secondary'}
+                  variant={orderChannel === 'POS' ? 'dark' : 'outline-secondary'}
+                  className={orderChannel === 'POS' ? 'btn-wms-primary' : 'btn-wms-default'}
                   name="qom-order-mode"
                   value="POS"
                   checked={orderChannel === 'POS'}
@@ -352,25 +361,25 @@ const QuickOrderModal = ({
             </div>
 
             {/* Thông tin người nhận hàng */}
-            <Card>
+            <Card style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
               <Card.Body>
-                <Card.Title as="h6" className="d-flex align-items-center gap-2">
-                  <Icon name="person" /> {orderChannel === 'POS' ? 'Thông tin khách mua tại quầy' : 'Thông tin người nhận hàng'}
+                <Card.Title as="h6" className="d-flex align-items-center gap-2 mb-2 pb-1 border-bottom" style={{ color: 'var(--wms-text-primary, #141210)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
+                  <Icon name="person" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> {orderChannel === 'POS' ? 'Thông tin khách mua tại quầy' : 'Thông tin người nhận hàng'}
                 </Card.Title>
                 <RecipientFields recipient={recipient} onChange={setRecipient} />
               </Card.Body>
             </Card>
 
             {/* Tìm kiếm & Chọn sản phẩm */}
-            <Card>
+            <Card style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
               <Card.Body>
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <Card.Title as="h6" className="d-flex align-items-center gap-2 mb-0">
-                    <Icon name="box-seam" /> Chọn sản phẩm ({items.length} món đã chọn)
+                <div className="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
+                  <Card.Title as="h6" className="d-flex align-items-center gap-2 mb-0" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+                    <Icon name="box-seam" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> Chọn sản phẩm ({items.length} món đã chọn)
                   </Card.Title>
-                  <Badge bg="light" text="secondary" className="border">
+                  <span className="badge rounded px-2 py-0.5" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', color: 'var(--wms-secondary, #574F46)', border: '1px solid var(--wms-border, #C8B9A6)' }}>
                     {availableSkus.length} sản phẩm có sẵn
-                  </Badge>
+                  </span>
                 </div>
 
                 <SkuSearchBox
@@ -392,7 +401,7 @@ const QuickOrderModal = ({
                 ) : (
                   /* Gợi ý sản phẩm khi chưa có sản phẩm nào được chọn */
                   <div className="mt-2">
-                    <div className="text-secondary fw-bold small text-uppercase mb-2">
+                    <div className="fw-semibold small mb-2" style={{ color: 'var(--wms-secondary, #574F46)' }}>
                       Sản phẩm có sẵn trong kho (Bấm "+ Thêm" để đưa vào đơn):
                     </div>
                     <AvailableSkuList
@@ -408,7 +417,7 @@ const QuickOrderModal = ({
             </Card>
 
             {/* Chi tiết thanh toán */}
-            <Card body>
+            <Card body style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
               <PaymentSummary
                 subtotal={itemsSubtotal}
                 shippingFee={shippingFee}
@@ -425,17 +434,16 @@ const QuickOrderModal = ({
 
       {/* Footer */}
       {!successOrder && (
-        <Modal.Footer>
-          <Button size="sm" variant="outline-secondary" onClick={onClose}>
+        <Modal.Footer style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
+          <Button size="sm" className="btn-wms-default" onClick={onClose}>
             Hủy bỏ
           </Button>
           {orderChannel === 'POS' ? (
             <Button
               size="sm"
-              variant="success"
               disabled={loading || items.length === 0}
               onClick={() => handleCreateOrder(false)}
-              className="d-flex align-items-center gap-2 fw-bold"
+              className="d-flex align-items-center gap-2 fw-bold btn-wms-primary"
             >
               {loading ? <Spinner animation="border" size="sm" /> : <Icon name="cart-check-fill" />}
               Xuất Kho &amp; Thanh Toán Ngay (POS)
@@ -444,7 +452,7 @@ const QuickOrderModal = ({
             <>
               <Button
                 size="sm"
-                variant="outline-secondary"
+                className="btn-wms-default"
                 disabled={loading || items.length === 0}
                 onClick={() => handleCreateOrder(false)}
               >
@@ -452,10 +460,9 @@ const QuickOrderModal = ({
               </Button>
               <Button
                 size="sm"
-                variant="dark"
                 disabled={loading || items.length === 0}
                 onClick={() => handleCreateOrder(true)}
-                className="d-flex align-items-center gap-2 fw-semibold"
+                className="d-flex align-items-center gap-2 fw-semibold btn-wms-accent"
               >
                 {loading ? <Spinner animation="border" size="sm" /> : <Icon name="send-check" />}
                 Tạo Đơn &amp; Gửi Phiếu Xác Nhận

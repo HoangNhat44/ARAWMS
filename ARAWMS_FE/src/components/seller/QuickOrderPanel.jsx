@@ -293,10 +293,10 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
   return (
     <Stack gap={3} className="w-100 overflow-x-hidden">
       {/* Chọn kênh bán hàng */}
-      <Card className="shadow-sm border">
+      <Card className="shadow-sm" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
         <Card.Body className="py-2 px-3">
-          <div className="small fw-semibold text-secondary mb-2 d-flex align-items-center gap-2">
-            <Icon name="shop" className="text-warning-emphasis" /> Kênh Bán Hàng
+          <div className="small fw-semibold mb-2 d-flex align-items-center gap-2" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+            <Icon name="shop" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> Kênh Bán Hàng
           </div>
           <ButtonGroup className="w-100">
             <ToggleButton
@@ -304,6 +304,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
               type="radio"
               size="sm"
               variant={channel === 'ONLINE' ? 'dark' : 'outline-secondary'}
+              className={channel === 'ONLINE' ? 'btn-wms-primary' : 'btn-wms-default'}
               name="qop-mode"
               value="ONLINE"
               checked={channel === 'ONLINE'}
@@ -315,7 +316,8 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
               id="qop-mode-pos"
               type="radio"
               size="sm"
-              variant={channel === 'POS' ? 'success' : 'outline-secondary'}
+              variant={channel === 'POS' ? 'dark' : 'outline-secondary'}
+              className={channel === 'POS' ? 'btn-wms-primary' : 'btn-wms-default'}
               name="qop-mode"
               value="POS"
               checked={channel === 'POS'}
@@ -328,23 +330,25 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
       </Card>
 
       {/* Thông tin người nhận */}
-      <Card className="shadow-sm border">
+      <Card className="shadow-sm" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
         <Card.Body className="p-3">
-          <Card.Title as="div" className="small fw-semibold text-body d-flex align-items-center gap-2 mb-2 pb-1 border-bottom">
-            <Icon name="person" className="text-warning-emphasis" /> {channel === 'POS' ? 'Khách mua tại quầy' : 'Thông tin người nhận'}
+          <Card.Title as="div" className="small fw-semibold d-flex align-items-center gap-2 mb-2 pb-1 border-bottom" style={{ color: 'var(--wms-text-primary, #141210)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
+            <Icon name="person" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> {channel === 'POS' ? 'Khách mua tại quầy' : 'Thông tin người nhận'}
           </Card.Title>
           <RecipientFields recipient={recipient} onChange={setRecipient} />
         </Card.Body>
       </Card>
 
       {/* Tìm kiếm sản phẩm */}
-      <Card className="shadow-sm border">
+      <Card className="shadow-sm" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
         <Card.Body className="p-3">
-          <div className="d-flex align-items-center justify-content-between mb-2 pb-1 border-bottom">
-            <Card.Title as="div" className="small fw-semibold text-body d-flex align-items-center gap-2 mb-0">
-              <Icon name="box-seam" className="text-warning-emphasis" /> Sản phẩm ({items.length})
+          <div className="d-flex align-items-center justify-content-between mb-2 pb-1 border-bottom" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
+            <Card.Title as="div" className="small fw-semibold d-flex align-items-center gap-2 mb-0" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+              <Icon name="box-seam" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> Sản phẩm ({items.length})
             </Card.Title>
-            <Badge bg="light" text="secondary" className="border fw-normal">{defaultSkus.length} mẫu có sẵn</Badge>
+            <span className="badge rounded px-2 py-0.5" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', color: 'var(--wms-secondary, #574F46)', border: '1px solid var(--wms-border, #C8B9A6)' }}>
+              {defaultSkus.length} mẫu có sẵn
+            </span>
           </div>
 
           <SkuSearchBox
@@ -363,7 +367,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
           {/* Danh sách sản phẩm đã thêm vào đơn */}
           {items.length > 0 && (
             <>
-              <div className="text-secondary fw-semibold small mt-2 mb-1" style={{ fontSize: '11.5px' }}>
+              <div className="fw-semibold small mt-2 mb-1" style={{ fontSize: '11.5px', color: 'var(--wms-secondary, #574F46)' }}>
                 Đã chọn vào đơn ({items.length} món)
               </div>
               <SelectedItemsList items={items} onQty={updateQty} onRemove={removeItem} maxHeight="none" />
@@ -371,7 +375,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
           )}
 
           {/* Khối gợi ý sản phẩm có sẵn trong kho */}
-          <div className="text-secondary fw-semibold small mt-3 mb-2" style={{ fontSize: '11.5px' }}>
+          <div className="fw-semibold small mt-3 mb-2" style={{ fontSize: '11.5px', color: 'var(--wms-secondary, #574F46)' }}>
             Sản phẩm có sẵn trong kho ({defaultSkus.length})
           </div>
           <AvailableSkuList
@@ -386,10 +390,10 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
       </Card>
 
       {/* Thanh toán */}
-      <Card className="shadow-sm">
+      <Card className="shadow-sm" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
         <Card.Body>
-          <Card.Title as="div" className="small fw-bold text-uppercase d-flex align-items-center gap-2">
-            <Icon name="wallet2" /> Thanh toán
+          <Card.Title as="div" className="small fw-bold text-uppercase d-flex align-items-center gap-2 mb-2" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+            <Icon name="wallet2" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> Thanh toán
           </Card.Title>
           <ButtonGroup className="w-100 mb-3">
             {PAYMENT_METHODS.map((m) => (
@@ -401,6 +405,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
                 name="qop-payment-method"
                 value={m.value}
                 variant={paymentMethod === m.value ? 'dark' : 'outline-secondary'}
+                className={paymentMethod === m.value ? 'btn-wms-primary' : 'btn-wms-default'}
                 checked={paymentMethod === m.value}
                 onChange={(e) => setPaymentMethod(e.currentTarget.value)}
               >
@@ -427,8 +432,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
       {channel === 'POS' ? (
         <Button
           size="sm"
-          variant="success"
-          className="w-100 py-2 fw-semibold d-flex align-items-center justify-content-center gap-2"
+          className="w-100 py-2 fw-semibold d-flex align-items-center justify-content-center gap-2 btn-wms-primary"
           disabled={loading || items.length === 0}
           onClick={() => handleCreate(false)}
         >
@@ -439,8 +443,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
         <Stack direction="horizontal" gap={2}>
           <Button
             size="sm"
-            variant="outline-secondary"
-            className="w-50 py-2 fw-semibold"
+            className="w-50 py-2 fw-semibold btn-wms-default"
             disabled={loading || items.length === 0}
             onClick={() => handleCreate(false)}
           >
@@ -448,8 +451,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
           </Button>
           <Button
             size="sm"
-            variant="dark"
-            className="w-50 py-2 fw-semibold d-flex align-items-center justify-content-center gap-2"
+            className="w-50 py-2 fw-semibold d-flex align-items-center justify-content-center gap-2 btn-wms-accent"
             disabled={loading || items.length === 0}
             onClick={() => handleCreate(true)}
           >
