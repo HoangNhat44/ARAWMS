@@ -1,32 +1,106 @@
 /**
  * ============================================================================
- * @title        : Seller Workspace Luxury Enterprise Stylesheet
- * @author       : Nguyễn Quang Huy & AraWMS Design Team
- * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-29
- * @description  : Bảng định kiểu chuẩn Luxury Enterprise / Atelier Beige cho phân hệ Seller.
- *                 Tương thích 100% với React-Bootstrap, kết hợp Design Tokens
- *                 của ARAWMS (Editorial Luxury, Beige & Noir) lấy cảm hứng từ
- *                 các nền tảng CRM & Workspace hàng đầu thế giới (Intercom, Linear, Pancake Pro).
+ * @title        : Seller Workspace Enterprise Stylesheet
+ * @author       : AraStore UI/UX Team
+ * @description  : Bảng định kiểu chuẩn AraStore Enterprise Design System (UIDesign.md)
+ *                 cho toàn bộ phân hệ Bán Hàng (Seller Chat & Order Management).
+ *                 Màu sắc chủ đạo: Deep Noir (#141210), Rich Bronze Gold (#8A6A46),
+ *                 Warm Stone (#E8DFD3 / #F3EDE4), viền sắc nét (#C8B9A6, #AE9C86)
+ *                 tối ưu trình chiếu máy chiếu và tuân thủ WCAG 2.2 AA.
  * @module       : Conversational Commerce / Seller Styles
- * @layer        : Front-end
  * ============================================================================
  */
 
-/* ── 1. Top Header Bar (Atelier Noir & Champagne Gold) ───────────────────── */
+:root {
+  /* Design Tokens from UIDesign.md */
+  --wms-primary: #141210;
+  --wms-primary-hover: #24201C;
+  --wms-accent: #8A6A46;
+  --wms-accent-light: #D4B48C;
+  --wms-accent-hover: #6E5233;
+  --wms-primary-subtle: #EFE6DA;
+  --wms-secondary: #574F46;
+
+  /* Background & Surface */
+  --wms-bg-app: #E8DFD3;
+  --wms-bg-subtle: #F3EDE4;
+  --wms-bg-surface: #FFFFFF;
+  --wms-bg-muted: #DDD2C4;
+  --wms-border: #C8B9A6;
+  --wms-border-strong: #AE9C86;
+
+  /* Typography Colors */
+  --wms-text-primary: #141210;
+  --wms-text-body: #26221E;
+  --wms-text-secondary: #574F46;
+  --wms-text-light: #786E63;
+
+  /* Semantic Colors */
+  --wms-success: #1E6B47;
+  --wms-success-bg: #E3F5EC;
+  --wms-success-border: #86CFA8;
+
+  --wms-warning: #9A5B06;
+  --wms-warning-bg: #FEF0C7;
+  --wms-warning-border: #F5B95F;
+
+  --wms-error: #A62626;
+  --wms-error-bg: #FCE4E4;
+  --wms-error-border: #EDA1A1;
+
+  --wms-info: #6E5233;
+  --wms-info-bg: #EFE6DA;
+  --wms-info-border: #C8B9A6;
+
+  --wms-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ── Disable Outer Window Scrollbar for Seller Workspace ────────────────── */
+html:has(.seller-workspace),
+body:has(.seller-workspace),
+.seller-workspace-active {
+  overflow: hidden !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+}
+
+.seller-workspace-active .main-content {
+  flex: 1 1 0% !important;
+  height: calc(100dvh - 64px) !important;
+  max-height: calc(100dvh - 64px) !important;
+  overflow: hidden !important;
+  min-height: 0 !important;
+}
+
+/* ── Typography & Global Wrapper for Seller ────────────────────────────── */
+.ara-seller-root,
+.seller-workspace {
+  font-family: var(--wms-font);
+  color: var(--wms-text-body);
+  background-color: var(--wms-bg-app);
+  height: calc(100dvh - 64px);
+  max-height: calc(100dvh - 64px);
+  overflow: hidden !important;
+}
+
+/* ── 1. Top Header Bar (Enterprise Solid Surface) ───────────────────────── */
 .ara-seller-header {
-  background: linear-gradient(135deg, #1C1A17 0%, #2A2521 100%);
-  color: #FAF7F2;
-  border-bottom: 1px solid rgba(159, 131, 101, 0.35);
-  box-shadow: 0 2px 10px rgba(28, 26, 23, 0.15);
+  background-color: var(--wms-bg-subtle) !important;
+  color: var(--wms-text-primary) !important;
+  border-bottom: 1px solid var(--wms-border) !important;
+  box-shadow: 0 1px 3px rgba(20, 18, 16, 0.05);
+}
+
+.ara-seller-header .fw-bold {
+  color: var(--wms-text-primary) !important;
 }
 
 .ara-seller-brand-badge {
-  background: rgba(159, 131, 101, 0.18);
-  color: #E2D3C0;
-  border: 1px solid rgba(159, 131, 101, 0.35);
-  font-family: var(--font-serif, 'Cormorant Garamond', serif);
-  letter-spacing: 0.08em;
+  background: var(--wms-primary-subtle);
+  color: var(--wms-accent-hover);
+  border: 1px solid var(--wms-border);
+  font-family: var(--wms-font);
+  letter-spacing: 0.05em;
   font-weight: 700;
   font-size: 0.72rem;
   padding: 0.2rem 0.6rem;
@@ -34,75 +108,138 @@
   text-transform: uppercase;
 }
 
-.btn-ara-header-gold {
-  background: #9F8365 !important;
+/* ── 2. Standardized Button Variants (UIDesign.md Section 5) ───────────── */
+/* Primary Action Button (#141210) */
+.btn-wms-primary,
+.btn-ara-header-primary {
+  background-color: var(--wms-primary) !important;
   color: #FFFFFF !important;
-  border: 1px solid #8E7356 !important;
+  border: 1px solid var(--wms-primary) !important;
   font-weight: 600 !important;
   font-size: 0.84rem !important;
   border-radius: 6px !important;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  box-shadow: 0 2px 6px rgba(159, 131, 101, 0.25);
+  transition: all 0.15s ease !important;
 }
 
-.btn-ara-header-gold:hover {
-  background: #846B50 !important;
-  border-color: #755E45 !important;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(159, 131, 101, 0.4);
+.btn-wms-primary:hover,
+.btn-ara-header-primary:hover {
+  background-color: var(--wms-primary-hover) !important;
+  border-color: var(--wms-primary-hover) !important;
 }
 
-.btn-ara-header-ghost {
-  background: rgba(255, 255, 255, 0.08) !important;
-  color: #FAF7F2 !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+/* Brand Accent Action Button (#8A6A46) */
+.btn-wms-accent,
+.btn-ara-header-gold {
+  background-color: var(--wms-accent) !important;
+  color: #FFFFFF !important;
+  border: 1px solid var(--wms-accent) !important;
+  font-weight: 600 !important;
   font-size: 0.84rem !important;
   border-radius: 6px !important;
-  transition: all 0.2s ease !important;
+  transition: all 0.15s ease !important;
 }
 
+.btn-wms-accent:hover,
+.btn-ara-header-gold:hover {
+  background-color: var(--wms-accent-hover) !important;
+  border-color: var(--wms-accent-hover) !important;
+}
+
+/* Secondary / Default Button (#FFFFFF with #AE9C86 border) */
+.btn-wms-default,
+.btn-ara-header-ghost {
+  background-color: #FFFFFF !important;
+  color: var(--wms-text-primary) !important;
+  border: 1px solid var(--wms-border-strong) !important;
+  font-weight: 500 !important;
+  font-size: 0.84rem !important;
+  border-radius: 6px !important;
+  transition: all 0.15s ease !important;
+}
+
+.btn-wms-default:hover,
 .btn-ara-header-ghost:hover {
-  background: rgba(255, 255, 255, 0.16) !important;
-  color: #FFFFFF !important;
-  border-color: rgba(255, 255, 255, 0.28) !important;
+  background-color: var(--wms-bg-subtle) !important;
+  border-color: var(--wms-accent) !important;
+  color: var(--wms-text-primary) !important;
 }
 
-/* ── 2. Search Capsule (Header & List) ──────────────────────────────────── */
+/* Danger Button (#A62626) */
+.btn-wms-danger {
+  background-color: var(--wms-error) !important;
+  color: #FFFFFF !important;
+  border: 1px solid var(--wms-error) !important;
+  font-weight: 600 !important;
+  font-size: 0.84rem !important;
+  border-radius: 6px !important;
+  transition: all 0.15s ease !important;
+}
+
+.btn-wms-danger:hover {
+  background-color: #8C1F1F !important;
+  border-color: #8C1F1F !important;
+}
+
+/* Dashed Button */
+.btn-wms-dashed {
+  background: transparent !important;
+  border: 1px dashed var(--wms-border-strong) !important;
+  color: var(--wms-secondary) !important;
+  font-weight: 500 !important;
+  font-size: 0.84rem !important;
+  border-radius: 6px !important;
+}
+
+.btn-wms-dashed:hover {
+  border-color: var(--wms-accent) !important;
+  color: var(--wms-primary) !important;
+  background-color: var(--wms-bg-subtle) !important;
+}
+
+/* ── 3. Search Capsule & Inputs ─────────────────────────────────────────── */
 .ara-search-capsule .input-group-text {
-  background-color: rgba(255, 255, 255, 0.95);
-  border: 1px solid #E3D9CD;
+  background-color: #FFFFFF;
+  border: 1px solid var(--wms-border);
   border-right: none;
-  border-radius: 20px 0 0 20px;
-  color: #7E766D;
+  border-radius: 6px 0 0 6px;
+  color: var(--wms-secondary);
 }
 
 .ara-search-capsule .form-control {
-  background-color: rgba(255, 255, 255, 0.95);
-  border: 1px solid #E3D9CD;
+  background-color: #FFFFFF;
+  border: 1px solid var(--wms-border);
   border-left: none;
-  border-radius: 0 20px 20px 0;
+  border-radius: 0 6px 6px 0;
   font-size: 0.84rem;
-  color: #1C1A17;
+  color: var(--wms-text-primary);
 }
 
 .ara-search-capsule .form-control:focus {
   background-color: #FFFFFF;
-  border-color: #9F8365;
+  border-color: var(--wms-accent);
   box-shadow: none;
 }
 
 .ara-search-capsule:focus-within .input-group-text,
 .ara-search-capsule:focus-within .form-control {
-  border-color: #9F8365;
+  border-color: var(--wms-accent);
 }
 
-/* ── 3. Segmented Control Filter Bars (Apple / Linear style) ────────────── */
+/* General form control focus adhering to UIDesign.md */
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--wms-accent) !important;
+  box-shadow: 0 0 0 2px rgba(138, 106, 70, 0.2) !important;
+}
+
+/* ── 4. Segmented Control Filter Bars ───────────────────────────────────── */
 .ara-segmented-group {
   display: inline-flex;
   align-items: center;
-  background-color: #EBE4DA;
+  background-color: var(--wms-primary-subtle);
+  border: 1px solid var(--wms-border);
   padding: 3px;
-  border-radius: 8px;
+  border-radius: 6px;
   gap: 2px;
 }
 
@@ -110,30 +247,31 @@
   background: transparent;
   border: none;
   padding: 4px 12px;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 0.81rem;
   font-weight: 500;
-  color: #5A524A;
+  color: var(--wms-secondary);
   transition: all 0.15s ease-in-out;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .ara-segmented-btn:hover {
-  color: #1C1A17;
+  color: var(--wms-text-primary);
 }
 
 .ara-segmented-btn.active {
   background: #FFFFFF;
-  color: #1C1A17;
+  color: var(--wms-text-primary);
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(28, 26, 23, 0.12);
+  border: 1px solid var(--wms-border);
+  box-shadow: 0 1px 2px rgba(20, 18, 16, 0.06);
 }
 
-/* ── 4. Status Filter Pills Bar (Pancake-style status stream) ───────────── */
+/* ── 5. Status Filter Pills Bar ─────────────────────────────────────────── */
 .ara-status-pills-container {
-  background-color: #FAF7F2;
-  border-bottom: 1px solid #E3D9CD;
+  background-color: var(--wms-bg-subtle);
+  border-bottom: 1px solid var(--wms-border);
 }
 
 .ara-status-pill-btn {
@@ -141,30 +279,28 @@
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-radius: 20px;
+  border-radius: 6px;
   font-size: 0.78rem;
   font-weight: 500;
-  color: #5A524A;
+  color: var(--wms-text-body);
   background-color: #FFFFFF;
-  border: 1px solid #E3D9CD;
-  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--wms-border);
+  transition: all 0.15s ease;
   white-space: nowrap;
   cursor: pointer;
 }
 
 .ara-status-pill-btn:hover {
-  border-color: #9F8365;
-  color: #1C1A17;
-  background-color: #F8F4EE;
-  transform: translateY(-1px);
+  border-color: var(--wms-accent);
+  color: var(--wms-text-primary);
+  background-color: var(--wms-primary-subtle);
 }
 
 .ara-status-pill-btn.active {
-  background-color: #1C1A17;
-  border-color: #1C1A17;
-  color: #FAF7F2;
+  background-color: var(--wms-primary);
+  border-color: var(--wms-primary);
+  color: #FFFFFF;
   font-weight: 600;
-  box-shadow: 0 2px 6px rgba(28, 26, 23, 0.2);
 }
 
 .ara-status-pill-count {
@@ -174,35 +310,35 @@
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border-radius: 9999px;
+  border-radius: 4px;
   font-size: 0.69rem;
   font-weight: 700;
-  background-color: #EBE4DA;
-  color: #5A524A;
-  transition: all 0.18s ease;
+  background-color: var(--wms-primary-subtle);
+  color: var(--wms-secondary);
+  transition: all 0.15s ease;
 }
 
 .ara-status-pill-btn.active .ara-status-pill-count {
-  background-color: #9F8365;
+  background-color: var(--wms-accent);
   color: #FFFFFF;
 }
 
-/* ── 5. Luxury Enterprise Table ─────────────────────────────────────────── */
+/* ── 6. Enterprise High-Contrast Table (UIDesign.md Section 5) ──────────── */
 .ara-seller-table {
   border-collapse: separate;
   border-spacing: 0;
-  font-family: var(--font-sans);
+  font-family: var(--wms-font);
 }
 
 .ara-seller-table thead th {
-  background-color: #FAF7F2 !important;
-  color: #7E766D !important;
-  font-size: 0.74rem !important;
+  background-color: var(--wms-bg-subtle) !important;
+  color: var(--wms-text-primary) !important;
+  font-size: 0.76rem !important;
   font-weight: 700 !important;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   padding: 10px 12px !important;
-  border-bottom: 1px solid #E3D9CD !important;
+  border-bottom: 2px solid var(--wms-border) !important;
   border-top: none !important;
   border-left: none !important;
   border-right: none !important;
@@ -211,45 +347,45 @@
 .ara-seller-table tbody td {
   padding: 9px 12px !important;
   font-size: 0.83rem;
-  color: #34302C;
-  border-bottom: 1px solid #EDE6DC !important;
+  color: var(--wms-text-body);
+  border-bottom: 1px solid var(--wms-border) !important;
   border-top: none !important;
   border-left: none !important;
   border-right: none !important;
   vertical-align: middle;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.12s ease;
 }
 
 .ara-seller-table tbody tr:hover td {
-  background-color: #F8F4EE !important;
+  background-color: var(--wms-primary-subtle) !important;
 }
 
 .ara-seller-table tbody tr.table-active td {
-  background-color: rgba(159, 131, 101, 0.1) !important;
+  background-color: rgba(138, 106, 70, 0.14) !important;
 }
 
-/* Monospace Code Pill */
+/* Monospace Code Pill (Consolas/monospace, high contrast) */
 .ara-code-badge {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
   font-size: 0.77rem;
   font-weight: 600;
   padding: 2px 6px;
   border-radius: 4px;
-  background-color: #F4EFEB;
-  color: #1C1A17;
-  border: 1px solid #E3D9CD;
+  background-color: var(--wms-bg-subtle);
+  color: var(--wms-text-primary);
+  border: 1px solid var(--wms-border);
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 
-/* ── 6. Soft Status Badges (Atelier Tinted System) ───────────────────────── */
+/* ── 7. High-Contrast Status Badges (UIDesign.md Section 6 Table) ────────── */
 .ara-badge-status {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 0.74rem;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -264,77 +400,88 @@
   border-radius: 50%;
 }
 
+/* Pending: Text #9A5B06, Bg #FEF0C7, Border #F5B95F */
 .ara-badge-pending {
-  background-color: #FEF3C7;
-  color: #92400E;
-  border: 1px solid #FDE68A;
+  background-color: #FEF0C7;
+  color: #9A5B06;
+  border: 1px solid #F5B95F;
 }
-.ara-badge-pending::before { background-color: #D97706; }
+.ara-badge-pending::before { background-color: #9A5B06; }
 
-.ara-badge-confirmed {
-  background-color: #EEF2FF;
-  color: #3730A3;
-  border: 1px solid #C7D2FE;
+/* Reserved: Text #6E5233, Bg #EFE6DA, Border #C8B9A6 */
+.ara-badge-confirmed,
+.ara-badge-reserved {
+  background-color: #EFE6DA;
+  color: #6E5233;
+  border: 1px solid #C8B9A6;
 }
-.ara-badge-confirmed::before { background-color: #4F46E5; }
+.ara-badge-confirmed::before,
+.ara-badge-reserved::before { background-color: #6E5233; }
 
-.ara-badge-picking {
-  background-color: #F0F9FF;
-  color: #0369A1;
-  border: 1px solid #BAE6FD;
+/* Processing (Picking, Packed, Handed over): Text #6E5233, Bg #EFE6DA, Border #C8B9A6 */
+.ara-badge-picking,
+.ara-badge-packed,
+.ara-badge-handed,
+.ara-badge-processing {
+  background-color: #EFE6DA;
+  color: #6E5233;
+  border: 1px solid #C8B9A6;
 }
-.ara-badge-picking::before { background-color: #0284C7; }
+.ara-badge-picking::before,
+.ara-badge-packed::before,
+.ara-badge-handed::before,
+.ara-badge-processing::before { background-color: #6E5233; }
 
-.ara-badge-packed {
-  background-color: #FAF5FF;
-  color: #6B21A8;
-  border: 1px solid #E9D5FF;
+/* Completed & Delivered: Text #1E6B47, Bg #E3F5EC, Border #86CFA8 */
+.ara-badge-delivered,
+.ara-badge-completed,
+.ara-badge-available {
+  background-color: #E3F5EC;
+  color: #1E6B47;
+  border: 1px solid #86CFA8;
 }
-.ara-badge-packed::before { background-color: #9333EA; }
+.ara-badge-delivered::before,
+.ara-badge-completed::before,
+.ara-badge-available::before { background-color: #1E6B47; }
 
-.ara-badge-handed {
-  background-color: #ECFEFF;
-  color: #0E7490;
-  border: 1px solid #A5F3FC;
-}
-.ara-badge-handed::before { background-color: #0891B2; }
-
-.ara-badge-delivered, .ara-badge-completed {
-  background-color: #F0FDF4;
-  color: #166534;
-  border: 1px solid #BBF7D0;
-}
-.ara-badge-delivered::before, .ara-badge-completed::before { background-color: #16A34A; }
-
+/* Return Requested: Text #9A5B06, Bg #FEF0C7, Border #F5B95F */
 .ara-badge-return {
-  background-color: #FFF7ED;
-  color: #C2410C;
-  border: 1px solid #FFEDD5;
+  background-color: #FEF0C7;
+  color: #9A5B06;
+  border: 1px solid #F5B95F;
 }
-.ara-badge-return::before { background-color: #EA580C; }
+.ara-badge-return::before { background-color: #9A5B06; }
 
-.ara-badge-cancelled {
-  background-color: #FEF2F2;
-  color: #991B1B;
-  border: 1px solid #FECACA;
+/* Cancelled / Rejected: Text #A62626, Bg #FCE4E4, Border #EDA1A1 */
+.ara-badge-cancelled,
+.ara-badge-rejected,
+.ara-badge-damaged {
+  background-color: #FCE4E4;
+  color: #A62626;
+  border: 1px solid #EDA1A1;
 }
-.ara-badge-cancelled::before { background-color: #DC2626; }
+.ara-badge-cancelled::before,
+.ara-badge-rejected::before,
+.ara-badge-damaged::before { background-color: #A62626; }
 
-.ara-badge-returned {
-  background-color: #F3F4F6;
-  color: #4B5563;
-  border: 1px solid #E5E7EB;
+/* Returned / Out of Stock: Text #574F46, Bg #DDD2C4, Border #AE9C86 */
+.ara-badge-returned,
+.ara-badge-outofstock {
+  background-color: #DDD2C4;
+  color: #574F46;
+  border: 1px solid #AE9C86;
 }
-.ara-badge-returned::before { background-color: #6B7280; }
+.ara-badge-returned::before,
+.ara-badge-outofstock::before { background-color: #574F46; }
 
-/* ── 7. Resizable Pane Splitter (Chat Workspace) ────────────────────────── */
+/* ── 8. Resizable Splitter (Chat Workspace) ─────────────────────────────── */
 .ara-pane-splitter {
   width: 6px;
   cursor: col-resize;
   flex-shrink: 0;
-  background-color: #E3D9CD;
+  background-color: var(--wms-border);
   position: relative;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.15s ease;
   user-select: none;
 }
 
@@ -346,57 +493,141 @@
   transform: translate(-50%, -50%);
   width: 2px;
   height: 20px;
-  background-color: #9F8365;
-  border-radius: 2px;
-  opacity: 0.6;
-  transition: all 0.2s ease;
+  background-color: var(--wms-border-strong);
+  border-radius: 1px;
 }
 
 .ara-pane-splitter:hover,
 .ara-pane-splitter:active {
-  background-color: #9F8365 !important;
+  background-color: var(--wms-accent) !important;
 }
 
 .ara-pane-splitter:hover::after,
 .ara-pane-splitter:active::after {
   background-color: #FFFFFF;
-  opacity: 1;
   height: 28px;
 }
 
-/* ── 8. Floating Action Bar (Bulk Select) ───────────────────────────────── */
+/* ── 9. Floating Action Bar (Bulk Select) ───────────────────────────────── */
 .ara-floating-toolbar {
   position: fixed;
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1050;
-  background: rgba(28, 26, 23, 0.94);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: #FAF7F2;
+  background: var(--wms-primary);
+  color: #FFFFFF;
   padding: 8px 18px;
-  border-radius: 9999px;
-  border: 1px solid rgba(159, 131, 101, 0.45);
-  box-shadow: 0 12px 32px rgba(28, 26, 23, 0.35);
+  border-radius: 6px;
+  border: 1px solid var(--wms-accent);
+  box-shadow: 0 4px 16px rgba(20, 18, 16, 0.25);
   display: flex;
   align-items: center;
   gap: 12px;
-  animation: araFloatUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes araFloatUp {
-  from {
-    opacity: 0;
-    transform: translate(-50%, 14px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
+/* ── 10. Workspace Tab Nav (Pane 3 in Chat) ─────────────────────────────── */
+.ara-workspace-nav {
+  background-color: var(--wms-bg-subtle);
+  border-bottom: 1px solid var(--wms-border);
+  padding: 4px 6px;
+  gap: 4px;
 }
 
-/* ── 9. Slim Scrollbars for Panels ──────────────────────────────────────── */
+.ara-workspace-nav .nav-link {
+  color: var(--wms-secondary);
+  border: 1px solid transparent !important;
+  border-radius: 4px !important;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: all 0.12s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.ara-workspace-nav .nav-link:hover {
+  color: var(--wms-text-primary);
+  background-color: var(--wms-primary-subtle);
+}
+
+.ara-workspace-nav .nav-link.active {
+  color: var(--wms-text-primary) !important;
+  background-color: #FFFFFF !important;
+  border-color: var(--wms-border) !important;
+  box-shadow: 0 1px 2px rgba(20, 18, 16, 0.05);
+}
+
+/* ── 11. Cards & Containers ─────────────────────────────────────────────── */
+.card,
+.ara-card {
+  border: 1px solid var(--wms-border) !important;
+  border-radius: 6px !important;
+  background-color: var(--wms-bg-surface);
+}
+
+.card-header {
+  background-color: var(--wms-bg-subtle) !important;
+  border-bottom: 1px solid var(--wms-border) !important;
+  color: var(--wms-text-primary) !important;
+  font-weight: 600 !important;
+}
+
+.card-footer {
+  background-color: var(--wms-bg-subtle) !important;
+  border-top: 1px solid var(--wms-border) !important;
+}
+
+/* Modals */
+.modal-content {
+  border: 1px solid var(--wms-border-strong) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 30px rgba(20, 18, 16, 0.2) !important;
+}
+
+.modal-header {
+  background-color: var(--wms-bg-subtle) !important;
+  border-bottom: 1px solid var(--wms-border) !important;
+  color: var(--wms-text-primary) !important;
+}
+
+.modal-header .modal-title {
+  color: var(--wms-text-primary) !important;
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.modal-footer {
+  background-color: var(--wms-bg-subtle) !important;
+  border-top: 1px solid var(--wms-border) !important;
+}
+
+/* Offcanvas */
+.ara-seller-offcanvas {
+  background-color: var(--wms-bg-app) !important;
+}
+
+.ara-seller-offcanvas .offcanvas-header {
+  background-color: var(--wms-bg-subtle) !important;
+  color: var(--wms-text-primary) !important;
+  border-bottom: 1px solid var(--wms-border) !important;
+}
+
+/* Mobile cards */
+.ara-mobile-order-card {
+  border: 1px solid var(--wms-border) !important;
+  border-radius: 6px;
+  background-color: #FFFFFF;
+  transition: border-color 0.15s ease;
+}
+
+.ara-mobile-order-card:active {
+  background-color: var(--wms-bg-subtle);
+}
+
+/* ── 12. Slim Scrollbars ────────────────────────────────────────────────── */
 .overflow-auto::-webkit-scrollbar,
 .overflow-x-auto::-webkit-scrollbar,
 .overflow-y-auto::-webkit-scrollbar {
@@ -407,83 +638,14 @@
 .overflow-auto::-webkit-scrollbar-thumb,
 .overflow-x-auto::-webkit-scrollbar-thumb,
 .overflow-y-auto::-webkit-scrollbar-thumb {
-  background-color: rgba(159, 131, 101, 0.25);
-  border-radius: 9999px;
+  background-color: var(--wms-border-strong);
+  border-radius: 4px;
 }
 
 .overflow-auto::-webkit-scrollbar-thumb:hover,
 .overflow-x-auto::-webkit-scrollbar-thumb:hover,
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(159, 131, 101, 0.55);
-}
-
-/* ── 10. Workspace Tab Nav (Pane 3 in Chat) ─────────────────────────────── */
-.ara-workspace-nav {
-  background-color: #FAF7F2;
-  border-bottom: 1px solid #E3D9CD;
-  padding: 4px 6px;
-  gap: 4px;
-}
-
-.ara-workspace-nav .nav-link {
-  color: #7E766D;
-  border: none !important;
-  border-radius: 6px !important;
-  padding: 6px 12px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.ara-workspace-nav .nav-link:hover {
-  color: #1C1A17;
-  background-color: #EFE8DF;
-}
-
-.ara-workspace-nav .nav-link.active {
-  color: #1C1A17 !important;
-  background-color: #FFFFFF !important;
-  box-shadow: 0 1px 4px rgba(28, 26, 23, 0.08);
-}
-
-/* ── 11. International Responsive Design Utilities (Mobile / Tablet / Desktop) ─ */
-.ara-status-pills-container {
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
-  touch-action: pan-x;
-}
-
-.ara-status-pills-container .ara-status-pill-btn {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.ara-mobile-order-card {
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-  border-color: #E3D9CD !important;
-}
-
-.ara-mobile-order-card:active {
-  transform: scale(0.99);
-  background-color: #FAF7F2;
-}
-
-.ara-seller-offcanvas {
-  background-color: #FAF7F2 !important;
-}
-
-.ara-seller-offcanvas .offcanvas-header {
-  background: linear-gradient(135deg, #1C1A17 0%, #2A2521 100%);
-  color: #FAF7F2;
-  border-bottom: 1px solid rgba(159, 131, 101, 0.35);
-}
-
-.ara-seller-offcanvas .btn-close {
-  filter: invert(1) grayscale(100%) brightness(200%);
+  background-color: var(--wms-accent);
 }
 
 @media (max-width: 767.98px) {
@@ -494,4 +656,3 @@
     display: none !important;
   }
 }
-
