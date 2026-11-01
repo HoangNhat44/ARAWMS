@@ -117,7 +117,9 @@ export default function PendingReceiptAllocation({ receipt, products, onDone, on
               <input style={field} type="number" min="1" max={maxQuantity} step="1" aria-label="Số phân bổ" value={row.quantity} onChange={(event) => setRows((current) => current.map((entry) => entry.key === row.key ? { ...entry, quantity: event.target.value && Number(event.target.value) > maxQuantity ? String(maxQuantity) : event.target.value } : entry))} />
               <small>Tối đa {maxQuantity} chiếc có thể phân bổ vào ô này.</small>
               {bin && <small>Sức chứa {bin.maxCapacity} · Đang có {bin.currentOccupancy} · Đã giữ {bin.plannedReservedQty} · Còn {bin.available}</small>}
-              <button className="btn-ara-secondary" type="button" onClick={() => setRows((current) => current.filter((entry) => entry.key !== row.key))}>Xóa</button>
+              <button className="btn-ara-secondary" type="button" onClick={() => {
+                if (window.confirm('Xóa vị trí phân bổ này?')) setRows((current) => current.filter((entry) => entry.key !== row.key));
+              }}>Xóa</button>
             </div>;
           })}
           <button className="btn-ara-secondary" type="button" onClick={() => setRows((current) => [...current, { key: crypto.randomUUID(), skuId: item.skuId, locationId: '', quantity: '' }])}>+ Chọn ô kệ</button>

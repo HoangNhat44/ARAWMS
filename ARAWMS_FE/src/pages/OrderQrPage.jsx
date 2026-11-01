@@ -5,6 +5,7 @@
  * Description: Lists real sales orders and prints their packing QR labels.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { orderQrService } from '../services/orderQrService';
 // import { useAuth } from '../hooks/useAuth';
 
@@ -25,6 +26,7 @@ const statusNames = { PENDING: 'Chờ chốt', CONFIRMED: 'Đã chốt', CONFIRM
   DELIVERED: 'Đã giao', CANCELLED: 'Đã hủy', RETURN_REQUESTED: 'Yêu cầu trả hàng', RETURNED: 'Đã trả hàng' };
 const packedStatuses = new Set(['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'RETURN_REQUESTED', 'RETURNED']);
 const statusLabel = (status) => statusNames[status] || status;
+const unplacedStockMessage = 'Hàng của SKU còn trong kho nhưng chưa đủ chiếc ở vị trí có thể soạn. Hãy xếp hàng vào kệ, rồi chốt đơn và tạo QR lại.';
 
 function LabelField({ label, value }) {
   if (value == null || value === '') return null;
@@ -252,7 +254,7 @@ export default function OrderQrPage() {
       }
       setMessage(`Đã chốt đơn ${activeOrder.orderCode} và cấp QR.`);
       await refreshOrders();
-    } catch (err) { setError(err.message); }
+    } catch (err) { setError(err.code === 'INSUFFICIENT_BATCH_STOCK' ? unplacedStockMessage : err.message); }
     finally { setBusy(false); }
   };
 
@@ -274,7 +276,11 @@ export default function OrderQrPage() {
     <div style={{ width: 'min(100%, 1100px)', margin: '2rem auto', padding: '0 1rem', display: 'grid', gap: '1rem' }}>
       <h1>{canConfirm ? 'Chốt đơn và cấp QR' : 'Xem, in đơn hàng và tạo QR'}</h1>
       <p>Chọn đơn để xem chi tiết, in tem hoặc tạo QR. Có thể chọn nhiều đơn đủ điều kiện để tạo QR hàng loạt.</p>
-      {error && <div role="alert" style={{ ...panel, color: 'var(--ara-error)', overflowWrap: 'anywhere' }}>{error}</div>}
+      {error && <div role="alert" style={{ ...panel, color: 'var(--ara-error)', overflowWrap: 'anywhere' }}>
+        {error}{error === unplacedStockMessage && <p style={{ margin: '.75rem 0 0' }}>
+          <Link to="/warehouse/putaway">Mở danh sách hàng chờ xếp →</Link>
+        </p>}
+      </div>}
       {message && <div role="status" style={panel}>{message}</div>}
       <section style={panel}>
         <h2>Danh sách đơn hàng ({filteredOrders.length}/{orders.length})</h2>
@@ -339,7 +345,9 @@ export default function OrderQrPage() {
         <div className="qr-gallery-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
           <h2>Đơn chờ in ({cards.length})</h2>
           <button className="btn-ara-secondary" type="button" onClick={() => window.print()}>In tem các đơn đang hiển thị</button>
-          <button className="btn-ara-secondary" type="button" onClick={() => setQrCards({})}>Xóa khỏi màn hình</button>
+          <button className="btn-ara-secondary" type="button" onClick={() => {
+            if (window.confirm('Xóa các thẻ QR đang hiển thị khỏi màn hình?')) setQrCards({});
+          }}>Xóa khỏi màn hình</button>
         </div>
         <div className="qr-gallery" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginTop: '1rem' }}>
           {cards.map((card) => <article className="qr-gallery-card" key={card.id} style={{ border: '1px solid var(--ara-border)', padding: '1rem', display: 'grid', justifyItems: 'center', gap: '.5rem' }}>

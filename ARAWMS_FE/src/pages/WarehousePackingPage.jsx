@@ -336,6 +336,7 @@ export default function WarehousePackingPage() {
   const removeScannedBarcode = async (barcode) => {
     const activeSession = sessionRef.current;
     if (!activeSession || !recording || busyRef.current) return;
+    if (!window.confirm(`Gỡ barcode ${barcode} khỏi đơn này?`)) return;
     busyRef.current = true;
     setBusy(true); setError(''); setMessage('');
     try {

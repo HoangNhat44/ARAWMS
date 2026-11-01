@@ -2,36 +2,38 @@
  * File: App.jsx
  * Author: Duy Anh
  * Date: 2026-10-26
- * Description: Composes the application shell with routing, authentication context, and shared navigation. Runs pending packing-video uploads while the app is open.
+ * Description: Composes direct routes, navigation, and pending packing-video uploads.
  */
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
-// import { AuthProvider } from './context/AuthContext';
 import AppRouter from './routes/AppRouter';
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
-// import PackingUploadRunner from './components/PackingUploadRunner';
+import PackingUploadRunner from './components/PackingUploadRunner';
+import { AuthProvider } from './context/AuthContext';
+import CatalogSyncRunner from './components/CatalogSyncRunner';
+import FinishedGoodsSyncRunner from './components/FinishedGoodsSyncRunner';
 
-/** Composes routing, authentication, navigation, and the background video runner. */
+/** Keeps pending packing recordings uploading across direct URL navigation. */
 function App() {
   return (
-    <BrowserRouter
+    <AuthProvider><BrowserRouter
       future={{
         v7_startTransition: true,
         v7_relativeSplatPath: true
       }}
     >
-      {/* <AuthProvider> */}
-        {/* <PackingUploadRunner /> */}
-        <div className="app-container">
-          <Navbar />
-          <main className="main-content">
-            <AppRouter />
-          </main>
-          <Footer />
-        </div>
-      {/* </AuthProvider> */}
-    </BrowserRouter>
+      <PackingUploadRunner />
+      <CatalogSyncRunner />
+      <FinishedGoodsSyncRunner />
+      <div className="app-container">
+        <Navbar />
+        <main className="main-content">
+          <AppRouter />
+        </main>
+        <Footer />
+      </div>
+    </BrowserRouter></AuthProvider>
   );
 }
 

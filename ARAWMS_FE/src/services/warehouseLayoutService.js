@@ -20,6 +20,7 @@ export const warehouseLayoutService = {
   history: (id) => api.get(`${root}/bins/${id}/history`),
   label: (id) => api.get(`${root}/bins/${id}/label`),
   labelImage: (id) => api.get(`${root}/bins/${id}/label.png`, { responseType: 'blob' }),
+  labelQrImage: (id) => api.get(`${root}/bins/${id}/label-qr.png`, { responseType: 'blob' }),
   printIntent: (id) => api.post(`${root}/bins/${id}/print-intent`),
   rotate: (id, reason) => api.post(`${root}/bins/${id}/rotate`, { reason }),
   options: () => api.get(`${root}/allocation-options`),

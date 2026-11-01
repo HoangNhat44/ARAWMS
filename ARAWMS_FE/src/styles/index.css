@@ -148,6 +148,8 @@ h1, h2, h3, h4, .brand-title {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .ara-brand {
@@ -182,6 +184,8 @@ h1, h2, h3, h4, .brand-title {
   align-items: center;
   gap: 1.25rem;
   list-style: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .ara-nav-links a {
@@ -449,6 +453,12 @@ h1, h2, h3, h4, .brand-title {
 
 /* Warehouse product configuration and receiving */
 .product-workspace { width: min(100% - 2rem, 1280px); margin: 1.6rem auto 5rem; }
+
+/* Warehouse screens use the same Plus Jakarta Sans face as product names. */
+:is(.product-workspace, .material-inbound-page, .warehouse-layout-page, .putaway-page) {
+  --font-serif: var(--font-sans);
+  font-family: var(--font-sans);
+}
 .product-excel-import { margin-bottom: 1.4rem; }
 .product-excel-import .product-inline-actions { margin-top: 1rem; }
 .product-import-preview { margin-top: 1rem; }

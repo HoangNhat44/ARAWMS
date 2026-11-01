@@ -2,34 +2,40 @@
  * File: FinishedGoodsPage.jsx
  * Author: Duy Anh
  * Date: 2026-10-22
- * Description: Displays finished goods stock and receiving actions.
+ * Description: Displays stock, cached documents, local drafts, barcode labels, and receiving actions.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ArrowDownToLine, ArrowUpRight, ArrowRightLeft, Box, CirclePlus, ClipboardList, Filter, LayoutGrid, MoreVertical, Search, Tag } from 'lucide-react';
+import { ArrowUpRight, ArrowRightLeft, CirclePlus, RefreshCw } from 'lucide-react';
 import { productService } from '../services/productService';
+import { useAuth } from '../hooks/useAuth';
+import { getPendingCatalogChanges, subscribeCatalogChanges } from '../services/offlineCatalogSync';
+import { finishedGoodsOffline } from '../services/offlineFinishedGoods';
+import { printProductLabels } from '../utils/productLabelPrint';
 import BulkStockForm from '../components/BulkStockForm';
 import PendingReceiptAllocation from '../components/PendingReceiptAllocation';
+import FinishedGoodsOverview from '../components/FinishedGoodsOverview';
 import '../styles/finishedGoods.css';
 
 const panel = { background: '#fff', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-md)', padding: '1.25rem', boxShadow: 'var(--ara-shadow-sm)' };
 const input = { width: '100%', padding: '.65rem', border: '1px solid var(--ara-border)', borderRadius: 8, font: 'inherit' };
 
 /** Displays finished-goods stock and the receive or dispatch workflow.
- * Coordinates product selection, stock documents, and navigation from configuration. */
+ * Uses account-scoped cached data for offline viewing while keeping local work separate from server stock. */
 export default function FinishedGoodsPage() {
   const location = useLocation();
+  const { user } = useAuth();
+  const ownerId = user?.id || user?._id;
+  const [localCatalog, setLocalCatalog] = useState([]);
   const [products, setProducts] = useState([]);
+  const [cacheTime, setCacheTime] = useState(null);
+  const [pendingConfirmations, setPendingConfirmations] = useState([]);
+  const [savedDrafts, setSavedDrafts] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [page, setPage] = useState(1);
+  const [activeTab, setActiveTab] = useState('stock');
   const [movement, setMovement] = useState(null);
-  const [openActionId, setOpenActionId] = useState(null);
   const movementRef = useRef(null);
   const [quantity, setQuantity] = useState('');
   const [skuId, setSkuId] = useState('');
@@ -45,31 +51,109 @@ export default function FinishedGoodsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const barcodeRefreshCount = useRef(0);
 
-  /** Refreshes products and SKU stock totals after a movement. */
+  /** Shows the last downloaded SKU stock immediately, then refreshes it when reachable.
+   * The capture time remains visible because cached stock is not safe for final issue decisions. */
   const loadProducts = async () => {
+    if (ownerId) {
+      const cached = await finishedGoodsOffline.getCached(ownerId, 'products', 'list').catch(() => null);
+      if (cached) { setProducts(cached.value); setCacheTime(cached.updatedAt); setLoading(false); }
+    }
+    if (!navigator.onLine) { setLoading(false); return; }
     try {
       const response = await productService.list();
       setProducts(response.data.products);
+      if (ownerId) { const snapshot = await finishedGoodsOffline.cache(ownerId, 'products', 'list', response.data.products);
+        setCacheTime(snapshot.updatedAt); }
       setError('');
-    } catch (requestError) { setError(requestError.message); }
+    } catch (requestError) {
+      const snapshot = ownerId && await finishedGoodsOffline.getCached(ownerId, 'products', 'list').catch(() => null);
+      if (snapshot) { setProducts(snapshot.value); setCacheTime(snapshot.updatedAt); }
+      else setError(requestError.message);
+    }
     finally { setLoading(false); }
   };
-  /** Loads recent receiving documents so their physical unit labels can be reprinted. */
+  /** Loads recent stock documents and saves the opened list for offline lookup.
+   * A network failure falls back to the account's last downloaded list. */
   const loadRecentStockDocuments = async () => {
-    try { const response = await productService.recentDocuments(); setRecentDocuments(response.data.documents); }
-    catch (requestError) { setError(requestError.message); }
+    if (ownerId) {
+      const cached = await finishedGoodsOffline.getCached(ownerId, 'documents', 'recent').catch(() => null);
+      if (cached) setRecentDocuments(cached.value);
+    }
+    if (!navigator.onLine) return;
+    try { const response = await productService.recentDocuments(); setRecentDocuments(response.data.documents);
+      if (ownerId) await finishedGoodsOffline.cache(ownerId, 'documents', 'recent', response.data.documents); }
+    catch (requestError) {
+      const snapshot = ownerId && await finishedGoodsOffline.getCached(ownerId, 'documents', 'recent').catch(() => null);
+      if (snapshot) setRecentDocuments(snapshot.value);
+      else setError(requestError.message);
+    }
   };
+  /** Refreshes server-side unallocated receipts only while connected. */
   const loadPendingReceipts = async () => {
+    if (!navigator.onLine) return;
     try { const response = await productService.pendingReceipts(); setPendingReceipts(response.data.receipts); }
     catch (requestError) { setError(requestError.message); }
   };
+  /** Opens a receipt detail and retains it locally for a later disconnected lookup. */
   const showReceiptDetail = async (id) => {
     setDetailLoading(true);
-    try { const response = await productService.receiptDetail(id); setReceiptDetail(response.data); }
-    catch (requestError) { setError(requestError.message); }
+    try { const response = await productService.receiptDetail(id); setReceiptDetail(response.data);
+      if (ownerId) await finishedGoodsOffline.cache(ownerId, 'receipt', id, response.data); }
+    catch (requestError) {
+      const snapshot = ownerId && await finishedGoodsOffline.getCached(ownerId, 'receipt', id).catch(() => null);
+      if (snapshot) setReceiptDetail(snapshot.value);
+      else setError(requestError.message);
+    }
     finally { setDetailLoading(false); }
   };
-  useEffect(() => { loadProducts(); loadRecentStockDocuments(); loadPendingReceipts(); }, []);
+  // Reset account-specific stock data when the authenticated owner changes.
+  useEffect(() => {
+    setProducts([]); setRecentDocuments([]); setPendingReceipts([]); setCacheTime(null);
+    if (ownerId) { loadProducts(); loadRecentStockDocuments(); loadPendingReceipts(); }
+  }, [ownerId]);
+  // Show pending and rejected confirmations without treating them as completed documents.
+  useEffect(() => {
+    if (!ownerId) { setPendingConfirmations([]); return undefined; }
+    const refresh = () => finishedGoodsOffline.confirmations(ownerId).then((items) =>
+      setPendingConfirmations(items.filter((item) => item.status !== 'DONE'))).catch(() => {});
+    refresh();
+    const unsubscribe = finishedGoodsOffline.subscribe(refresh);
+    window.addEventListener('arawms-finished-goods-synced', refresh);
+    return () => { unsubscribe(); window.removeEventListener('arawms-finished-goods-synced', refresh); };
+  }, [ownerId]);
+  // Offer an explicit way to reopen either local draft after closing or reloading the page.
+  useEffect(() => {
+    if (!ownerId) { setSavedDrafts({}); return undefined; }
+    const refresh = () => Promise.all(['IN', 'OUT'].map((direction) =>
+      finishedGoodsOffline.getDraft(ownerId, direction))).then(([inbound, outbound]) =>
+      setSavedDrafts({ IN: inbound, OUT: outbound })).catch(() => {});
+    refresh();
+    return finishedGoodsOffline.subscribe(refresh);
+  }, [ownerId]);
+  // Refresh stock and documents only after the backend acknowledges a queued confirmation.
+  useEffect(() => {
+    const refresh = (event) => { if (String(event.detail?.ownerId) === String(ownerId)) {
+      loadProducts(); loadRecentStockDocuments(); loadPendingReceipts();
+    } };
+    window.addEventListener('arawms-finished-goods-synced', refresh);
+    return () => window.removeEventListener('arawms-finished-goods-synced', refresh);
+  }, [ownerId]);
+  // A synchronized SKU configuration can change the catalog used by the receipt form.
+  useEffect(() => {
+    const refresh = (event) => { if (String(event.detail?.ownerId) === String(ownerId)) loadProducts(); };
+    window.addEventListener('arawms-catalog-synced', refresh);
+    return () => window.removeEventListener('arawms-catalog-synced', refresh);
+  }, [ownerId]);
+  // Keep unsynchronized local catalog records visible, but exclude them from stock operations.
+  useEffect(() => {
+    if (!ownerId) { setLocalCatalog([]); return undefined; }
+    const refresh = () => getPendingCatalogChanges(ownerId).then((items) =>
+      setLocalCatalog(items.filter((item) => ['CREATE', 'IMPORT_PRODUCT'].includes(item.operationType) &&
+        !['DONE', 'DISCARDED', 'SUPERSEDED'].includes(item.status)))).catch(() => setLocalCatalog([]));
+    refresh();
+    return subscribeCatalogChanges(refresh);
+  }, [ownerId]);
+  // Poll only a bounded number of times while barcode images are still being generated.
   useEffect(() => {
     const pending = recentDocuments.some((item) => item.direction === 'IN' && (item.barcodeImagesReady || 0) < item.totalQuantity);
     if (!pending) { barcodeRefreshCount.current = 0; return undefined; }
@@ -77,32 +161,32 @@ export default function FinishedGoodsPage() {
     const timer = window.setTimeout(() => { barcodeRefreshCount.current += 1; loadRecentStockDocuments(); }, 5000);
     return () => window.clearTimeout(timer);
   }, [recentDocuments]);
+  // Keep the selected single-product movement visible after opening it from a catalog row.
   useEffect(() => { if (movement) movementRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, [movement]);
-  useEffect(() => {
-    if (!openActionId) return undefined;
-    const closeActions = (event) => {
-      if (event.type === 'keydown' && event.key === 'Escape') setOpenActionId(null);
-      if (event.type === 'pointerdown' && !event.target.closest('.finished-goods-action-wrap')) setOpenActionId(null);
-    };
-    document.addEventListener('keydown', closeActions);
-    document.addEventListener('pointerdown', closeActions);
-    return () => { document.removeEventListener('keydown', closeActions); document.removeEventListener('pointerdown', closeActions); };
-  }, [openActionId]);
 
-  /** Opens a printable page for the individual barcodes issued by a receipt. */
+  /** Opens existing unit labels without creating new units or stock.
+   * If the API is unavailable, previously downloaded label data is rendered as local Code 128. */
   const printDocumentBarcodes = async (document) => {
     try {
       const tab = window.open('', '_blank');
       if (!tab) throw new Error('Trình duyệt đang chặn cửa sổ in tem');
-      const response = await productService.documentBarcodes(document.id);
-      const { printProductLabels } = await import('../utils/productLabelPrint');
-      printProductLabels(response.data.labels, tab);
-      setRecentDocuments((current) => current.map((item) => item.id === document.id
-        ? { ...item, barcodeImagesReady: response.data.ready } : item));
+      let labels;
+      try {
+        const response = await productService.documentBarcodes(document.id);
+        labels = response.data.labels;
+        if (ownerId) await finishedGoodsOffline.cache(ownerId, 'labels', document.id, labels);
+        setRecentDocuments((current) => current.map((item) => item.id === document.id
+          ? { ...item, barcodeImagesReady: response.data.ready } : item));
+      } catch (requestError) {
+        const snapshot = ownerId && await finishedGoodsOffline.getCached(ownerId, 'labels', document.id);
+        if (!snapshot) throw requestError;
+        labels = snapshot.value;
+      }
+      printProductLabels(labels.map((item) => ({ ...item, imageUrl: navigator.onLine ? item.imageUrl : null })), tab);
     } catch (printError) { setError(printError.message); }
   };
 
-  /** Requeues only images still missing from Cloudinary without issuing new stock barcodes. */
+  /** Requests missing barcode images for an existing receipt; it never issues new unit codes. */
   const retryDocumentBarcodeImages = async (document) => {
     try {
       await productService.syncDocumentBarcodes(document.id);
@@ -111,37 +195,10 @@ export default function FinishedGoodsPage() {
     } catch (requestError) { setError(requestError.message); }
   };
 
-  const categories = useMemo(() => [...new Set(products.map((item) => item.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi')), [products]);
-  const visible = useMemo(() => products.filter((item) => {
-    const matchesSearch = `${item.productCode} ${item.productName} ${item.sampleCode} ${item.category} ${(item.skus || []).map((sku) => sku.skuCode).join(' ')}`.toLocaleLowerCase('vi-VN').includes(search.trim().toLocaleLowerCase('vi-VN'));
-    const stockStatus = !item.isActive ? 'draft' : item.onHandQty <= 0 ? 'empty' : 'active';
-    return matchesSearch && (!categoryFilter || item.category === categoryFilter) && (!statusFilter || stockStatus === statusFilter);
-  }), [products, search, categoryFilter, statusFilter]);
-  const pageSize = 5;
-  const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
-  const currentPage = Math.min(page, pageCount);
-  const pageProducts = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const totalStock = products.reduce((sum, product) => sum + (product.onHandQty || 0), 0);
-  const outOfStockCount = products.filter((product) => product.isActive && product.onHandQty <= 0).length;
-
-  /** Downloads the currently filtered catalog using values already loaded from the product API. */
-  const exportProducts = () => {
-    const columns = ['Mã sản phẩm', 'Tên sản phẩm', 'Mã mẫu', 'Danh mục', 'Trạng thái', 'Tồn kho', 'Đã giữ'];
-    const rows = visible.map((product) => [product.productCode, product.productName, product.sampleCode, product.category, product.isActive ? 'Đang sử dụng' : 'Nháp', product.onHandQty, product.reservedQty]);
-    const csv = '\uFEFF' + [columns, ...rows].map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = 'danh-muc-san-pham.csv';
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
-
   /** Opens an individual stock movement with SKU selection when needed. */
-  const openStockMovementForm = (product, direction) => {
-    setOpenActionId(null);
+  const openStockMovementForm = (product, direction, selectedSkuId = '') => {
     setMovement({ product, direction });
-    setSkuId(product.skus.length === 1 ? product.skus[0].id : '');
+    setSkuId(selectedSkuId || (product.skus.length === 1 ? product.skus[0].id : ''));
     setQuantity('');
     setNote('');
     setError('');
@@ -166,19 +223,39 @@ export default function FinishedGoodsPage() {
     finally { setSaving(false); }
   };
 
-  return <main className="product-workspace finished-goods-page">
-    <nav className="product-breadcrumb" aria-label="Đường dẫn"><Link to="/">Trang chủ</Link><span>/</span><span>Kho thành phẩm</span><span>/</span><strong>Danh mục &amp; nhập xuất</strong></nav>
+  return <main className={`finished-goods-page${bulkDirection === 'IN' ? ' receiving-mode' : ''}`}>
+    <nav className="product-breadcrumb" aria-label="Đường dẫn"><Link to="/">Trang chủ</Link><span>/</span><strong>Kho thành phẩm</strong></nav>
     <div className="product-page-head finished-goods-hero">
-      <div className="finished-goods-intro"><p className="product-eyebrow">HỆ THỐNG VẬN HÀNH BOUTIQUE</p><h1>Kho thành phẩm</h1><p>Quản lý mẫu, biến thể và kiểm nhận từng đợt hàng từ xưởng. Theo dõi trạng thái tồn kho thực tế và lượng hàng đã được giữ cho đơn đặt trước.</p></div>
+      <div className="finished-goods-intro"><p className="product-eyebrow">QUẢN LÝ KHO THÀNH PHẨM</p><h1>Kho thành phẩm</h1><p>Theo dõi tồn theo SKU, lượng tạm giữ và tiến độ xếp kệ. Kiểm nhận hàng từ xưởng và tra cứu phiếu nhập, xuất trong cùng một màn hình.</p></div>
       <div className="finished-goods-main-actions">
+        <button className="btn-ara-secondary" type="button" disabled={loading} onClick={() => { loadProducts(); loadRecentStockDocuments(); loadPendingReceipts(); }}><RefreshCw size={17} />Làm mới</button>
         <Link to="/warehouse/products/new" state={{ mode: 'existing' }} className="btn-ara-secondary"><ArrowUpRight size={17} />Nhập từ xưởng</Link>
         <button className="btn-ara-secondary" type="button" onClick={() => { setHandoffSkuIds([]); setInitialProductId(''); setBulkDirection('OUT'); setMovement(null); setError(''); setNotice(''); }}><ArrowRightLeft size={17} />Xuất kho hàng loạt</button>
         <Link to="/warehouse/products/new" className="btn-ara-primary"><CirclePlus size={18} />Cấu hình sản phẩm</Link>
       </div>
     </div>
-
     {bulkDirection === 'IN' && <ol className="product-steps" aria-label="Tiến trình nhập kho"><li><span>01</span>Cấu hình sản phẩm</li><li className="current"><span>02</span>Kiểm nhận</li><li><span>03</span>Phân bổ vị trí</li><li><span>04</span>Xác nhận nhập kho</li></ol>}
-    {bulkDirection && <BulkStockForm key={`${bulkDirection}:${initialProductId}:${handoffSkuIds.join(',')}`} direction={bulkDirection} products={products} initialSkuIds={handoffSkuIds} initialProductId={initialProductId} onCancel={() => setBulkDirection('')} onDone={async (document) => {
+    {error && <p className="finished-goods-message error" role="alert">{error}</p>}
+    {notice && <p className="finished-goods-message success" role="status">{notice}</p>}
+    {bulkDirection !== 'IN' && (savedDrafts.IN || savedDrafts.OUT) && <section style={panel} aria-label="Phiếu đang lưu trên thiết bị">
+      <h2>Phiếu đang lưu trên thiết bị</h2>
+      {['IN', 'OUT'].filter((direction) => savedDrafts[direction]).map((direction) =>
+        <button key={direction} className="btn-ara-secondary" type="button" style={{ marginRight: '.5rem' }}
+          onClick={() => { setBulkDirection(direction); setInitialProductId(''); setHandoffSkuIds([]); }}>
+          Mở nháp {direction === 'IN' ? 'nhập' : 'xuất'} · {savedDrafts[direction].documentCode || 'Chưa có mã'}
+        </button>)}
+    </section>}
+    {bulkDirection !== 'IN' && cacheTime && <p role="status">Dữ liệu tồn tải lần cuối lúc {new Date(cacheTime).toLocaleString('vi-VN')}. Kiểm tra lại trước khi xác nhận xuất kho.</p>}
+    {!navigator.onLine && <p role="status">Mất kết nối — bạn có thể tiếp tục kiểm nhận và lưu trên thiết bị. Đang tìm trong dữ liệu đã tải.</p>}
+    {pendingConfirmations.length > 0 && <section style={panel} aria-label="Dữ liệu kho chờ đồng bộ">
+      <h2>Dữ liệu chờ đồng bộ</h2>
+      {pendingConfirmations.map((item) => <p key={item.operationId}>
+        {item.payload.documentCode} · {item.status === 'REVIEW' ? 'Cần kiểm tra' : 'Chờ đối chiếu'}
+        {item.lastError && ` · ${item.lastError}`}
+      </p>)}
+    </section>}
+
+    {bulkDirection && <BulkStockForm key={`${bulkDirection}:${initialProductId}:${handoffSkuIds.join(',')}`} direction={bulkDirection} products={products} ownerId={ownerId} initialSkuIds={handoffSkuIds} initialProductId={initialProductId} onCancel={() => setBulkDirection('')} onQueued={(message) => { setBulkDirection(''); setNotice(message); }} onDone={async (document) => {
       setBulkDirection('');
       setHandoffSkuIds([]);
       setNotice(`Đã lưu phiếu ${document.documentCode}: ${document.lineCount} dòng, tổng ${document.totalQuantity} sản phẩm.`);
@@ -188,50 +265,26 @@ export default function FinishedGoodsPage() {
       await loadPendingReceipts();
     }} />}
 
-    <section className="finished-goods-catalog" aria-labelledby="finished-goods-title">
-      <div className="finished-goods-catalog-head">
-        <div><h2 id="finished-goods-title">Danh mục sản phẩm</h2><p>Hiển thị {visible.length} sản phẩm trong kho hiện tại</p></div>
-        <div className="finished-goods-tools">
-          <button type="button" onClick={() => setShowFilters((open) => !open)} aria-expanded={showFilters}><Filter size={17} />Lọc nâng cao</button>
-          <button type="button" onClick={exportProducts} disabled={loading || visible.length === 0} title="Tải tệp CSV mở bằng Excel"><ArrowDownToLine size={17} />Xuất Excel</button>
-        </div>
-      </div>
-      <div className="finished-goods-search-area">
-        <label htmlFor="finished-goods-search">Tìm sản phẩm</label>
-        <div className="finished-goods-search-box"><Search size={18} /><input id="finished-goods-search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Mã, tên, mã mẫu hoặc danh mục" /></div>
-        {showFilters && <div className="finished-goods-filters">
-          <label>Danh mục<select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setPage(1); }}><option value="">Tất cả danh mục</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
-          <label>Trạng thái<select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}><option value="">Tất cả trạng thái</option><option value="active">Đang sử dụng</option><option value="empty">Hết hàng</option><option value="draft">Nháp</option></select></label>
-          <button type="button" onClick={() => { setCategoryFilter(''); setStatusFilter(''); setPage(1); }}>Xóa bộ lọc</button>
-        </div>}
-      </div>
-      {error && <p role="alert" className="finished-goods-message error">{error}</p>}
-      {notice && <p role="status" className="finished-goods-message success">{notice}</p>}
-      {loading ? <p className="finished-goods-empty">Đang tải sản phẩm...</p> : visible.length === 0 ? <p className="finished-goods-empty">Chưa có sản phẩm phù hợp.</p> :
-        <div className="finished-goods-table-scroll"><table className="finished-goods-table">
-          <thead><tr>{['Ảnh', 'Mã sản phẩm', 'Tên / mã mẫu', 'Danh mục', 'Trạng thái', 'Tồn kho', 'Đã giữ', 'Thao tác'].map((heading) => <th key={heading} scope="col">{heading}</th>)}</tr></thead>
-          <tbody>{pageProducts.map((product) => <tr key={product.id}>
-            <td>{product.thumbnailUrl ? <img className="finished-goods-thumbnail" src={product.thumbnailUrl} alt={product.productName} /> : <span className="finished-goods-thumbnail finished-goods-no-image"><Box size={22} /></span>}</td>
-            <td className="finished-goods-code">{product.productCode}</td>
-            <td className="finished-goods-name"><strong>{product.productName}</strong><small>{(product.skus || []).length ? product.skus.map((sku) => `${sku.skuCode}: ${sku.onHandQty}`).join('  ·  ') : product.sampleCode || 'Chưa có mã mẫu'}</small></td>
-            <td className="finished-goods-category"><Tag size={14} />{product.category || '—'}</td>
-            <td><span className={`finished-goods-status ${!product.isActive ? 'draft' : product.onHandQty <= 0 ? 'empty' : 'active'}`}>{!product.isActive ? 'Nháp' : product.onHandQty <= 0 ? 'Hết hàng' : 'Đang sử dụng'}</span></td>
-            <td className={`finished-goods-quantity ${product.onHandQty <= 0 ? 'muted' : ''}`}>{product.onHandQty}</td>
-            <td className={`finished-goods-reserved ${product.reservedQty > 0 ? 'has-reserved' : ''}`}>{product.reservedQty}</td>
-            <td><div className="finished-goods-row-actions"><Link to={`/warehouse/products/${product.id}/edit`}>Cấu hình / Nhập</Link><div className="finished-goods-action-wrap"><button type="button" className="finished-goods-more" aria-label={`Thao tác cho ${product.productCode}`} aria-expanded={openActionId === product.id} aria-haspopup="true" onClick={() => setOpenActionId((current) => current === product.id ? null : product.id)}><MoreVertical size={18} /></button>{openActionId === product.id && <div className="finished-goods-action-menu"><button type="button" disabled={!product.isActive || product.onHandQty - product.reservedQty <= 0} onClick={() => { setBulkDirection(''); openStockMovementForm(product, 'OUT'); }}>Xuất kho</button></div>}</div></div></td>
-          </tr>)}</tbody>
-        </table></div>}
-      <div className="finished-goods-pagination"><span>{visible.length ? `Hiển thị ${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, visible.length)} trên ${visible.length} sản phẩm` : 'Hiển thị 0 sản phẩm'}</span>{pageCount > 1 && <nav aria-label="Phân trang sản phẩm">{Array.from({ length: pageCount }, (_, index) => <button key={index} type="button" className={currentPage === index + 1 ? 'current' : ''} onClick={() => setPage(index + 1)} aria-current={currentPage === index + 1 ? 'page' : undefined}>{index + 1}</button>)}</nav>}</div>
-    </section>
-
-    <div className="finished-goods-summary">
-      <section><span className="finished-goods-summary-icon gold"><Box size={23} /></span><div><h3>Tổng tồn kho lý thuyết</h3><p>Toàn bộ hàng hóa hiện đang có mặt tại kho thành phẩm AraWMS.</p><strong>{totalStock.toLocaleString('vi-VN')} đơn vị</strong></div></section>
-      <section><span className="finished-goods-summary-icon"><LayoutGrid size={22} /></span><div><h3>Phân bổ danh mục</h3><p>Hệ thống ghi nhận các nhóm hàng trong danh mục hiện tại.</p><strong>{categories.length.toLocaleString('vi-VN')} danh mục</strong></div></section>
-      <section><span className="finished-goods-summary-icon"><ClipboardList size={22} /></span><div><h3>Sản phẩm cần nhập kho</h3><p>Sản phẩm đang sử dụng nhưng chưa có hàng trong kho.</p><strong>{outOfStockCount.toLocaleString('vi-VN')} sản phẩm</strong>{outOfStockCount > 0 && <span className="finished-goods-summary-pill">Cần xử lý</span>}</div></section>
+    {localCatalog.length > 0 && <section className="finished-goods-catalog" aria-label="Sản phẩm trên thiết bị chờ đồng bộ">
+      <h2>Sản phẩm trên thiết bị</h2>
+      <p>Các sản phẩm này chưa được dùng để nhập, xuất kho hoặc chốt đơn.</p>
+      <div className="product-table-scroll"><table className="product-table"><thead><tr><th>Tên sản phẩm</th><th>Mã</th><th>Trạng thái</th></tr></thead><tbody>
+        {localCatalog.map((item) => <tr key={item.operationId}><td>{item.payload.productName}</td>
+          <td>{item.payload.productCode || 'Cấp khi đồng bộ'}</td>
+          <td>{item.status === 'REVIEW' ? 'Cần kiểm tra' : item.status === 'SYNCING' ? 'Đang đồng bộ' : 'Chờ đồng bộ'}</td></tr>)}
+      </tbody></table></div>
+      <Link to="/warehouse/products/new">Xem dữ liệu chờ đồng bộ</Link>
+    </section>}
+    <div className="fg-tabs" role="tablist" aria-label="Nội dung kho thành phẩm">
+      <button type="button" role="tab" aria-selected={activeTab === 'stock'} className={activeTab === 'stock' ? 'active' : ''} onClick={() => setActiveTab('stock')}>Tồn kho theo SKU</button>
+      <button type="button" role="tab" aria-selected={activeTab === 'records'} className={activeTab === 'records' ? 'active' : ''} onClick={() => setActiveTab('records')}>Phiếu kho <span>{recentDocuments.length}</span></button>
     </div>
-
-    {recentDocuments.length > 0 && <section style={{ ...panel, marginTop: '1rem' }}>
-      <h2>Phiếu kho gần đây</h2>
+    {activeTab === 'stock' && <FinishedGoodsOverview products={products} recentDocuments={recentDocuments} ownerId={ownerId} loading={loading}
+      onIssue={(product, sku) => { setBulkDirection(''); openStockMovementForm(product, 'OUT', sku.id); }} onError={setError} />}
+    {activeTab === 'records' && <div className="fg-records">
+      <div className="fg-records-head"><div><h2>Phiếu kho gần đây</h2><p>20 phiếu nhập, xuất gần nhất từ hệ thống</p></div><button className="btn-ara-secondary" type="button" onClick={() => { loadRecentStockDocuments(); loadPendingReceipts(); }}><RefreshCw size={17} /> Làm mới</button></div>
+      {recentDocuments.length === 0 && <p className="fg-empty">Chưa có phiếu kho gần đây.</p>}
+    {recentDocuments.length > 0 && <section className="fg-record-table" style={{ ...panel, marginTop: '0' }} aria-label="Danh sách phiếu kho gần đây">
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
         <thead><tr><th style={{ textAlign: 'left' }}>Số chứng từ</th><th>Loại</th><th>Số dòng</th><th>Đạt / xuất</th><th>Trả sửa</th><th>Ngày tạo</th><th /></tr></thead>
         <tbody>{recentDocuments.map((document) => <tr key={document.id}>
@@ -239,7 +292,7 @@ export default function FinishedGoodsPage() {
           <td style={{ textAlign: 'center' }}>{document.direction === 'IN' ? 'Nhập' : 'Xuất'}</td>
           <td style={{ textAlign: 'center' }}>{document.lineCount}</td>
           <td style={{ textAlign: 'center' }}>{document.totalQuantity}</td>
-          <td style={{ textAlign: 'center' }}>{document.direction === 'IN' ? document.items.reduce((sum, item) => sum + (item.repairQty || 0), 0) : '—'}</td>
+          <td style={{ textAlign: 'center' }}>{document.direction === 'IN' ? (document.items || []).reduce((sum, item) => sum + (item.repairQty || 0), 0) : '—'}</td>
           <td style={{ textAlign: 'center' }}>{new Date(document.createdAt).toLocaleString('vi-VN')}</td>
           <td>{document.direction === 'IN' && document.totalQuantity > 0 && <div style={{ display: 'grid', gap: '.35rem' }}><small>Ảnh mã: {document.barcodeImagesReady || 0}/{document.totalQuantity}</small><button className="btn-ara-secondary" type="button" onClick={() => printDocumentBarcodes(document)}>In tem barcode</button>{(document.barcodeImagesReady || 0) < document.totalQuantity && <button className="btn-ara-secondary" type="button" onClick={() => retryDocumentBarcodeImages(document)}>Tạo ảnh còn thiếu</button>}</div>}</td>
         </tr>)}</tbody>
@@ -283,6 +336,8 @@ export default function FinishedGoodsPage() {
         setLaterReceipt(null);
       }} />}
 
+    </div>}
+
     {movement && <section ref={movementRef} style={{ ...panel, marginTop: '1rem', maxWidth: 560 }}>
       <h2>{movement.direction === 'IN' ? 'Nhập kho' : 'Xuất kho'} · {movement.product.productCode}</h2>
       <p style={{ margin: '.5rem 0 1rem', color: 'var(--ara-text-muted)' }}>{movement.product.productName}</p>
@@ -298,7 +353,10 @@ export default function FinishedGoodsPage() {
         {error && <p role="alert" style={{ color: '#a32121' }}>{error}</p>}
         <div style={{ display: 'flex', gap: '.75rem' }}>
           <button className="btn-ara-primary" disabled={saving} type="submit">{saving ? 'Đang lưu...' : 'Xác nhận'}</button>
-          <button className="btn-ara-secondary" disabled={saving} type="button" onClick={() => { setMovement(null); setError(''); }}>Hủy</button>
+          <button className="btn-ara-secondary" disabled={saving} type="button" onClick={() => {
+            if (!window.confirm('Hủy thao tác nhập hoặc xuất kho đang thực hiện?')) return;
+            setMovement(null); setError('');
+          }}>Hủy</button>
         </div>
       </form>
     </section>}

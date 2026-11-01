@@ -1,0 +1,102 @@
+/* File: materialInboundReference.css | Description: Scopes the supplier receipt reference layout to its live page. */
+.material-inbound-page.material-receipt-list-page { max-width: 1760px; padding: 32px; background: #fcf9f8; color: #1c1b1b; }
+.material-reference-list { min-width: 0; display: grid; gap: 24px; }
+.material-reference-heading { display: flex; justify-content: space-between; align-items: center; gap: 24px; }
+.material-reference-heading nav { margin-bottom: 9px; color: #837564; font-size: 11px; }
+.material-reference-heading nav a { color: inherit; text-decoration: none; }
+.material-reference-heading h1 { font-family: var(--font-sans); font-size: 32px; font-weight: 500; line-height: 1.3; }
+.material-reference-heading p { margin: 7px 0 0; color: #837564; font-size: 14px; }
+.material-reference-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.material-ref-button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid #d5c4b0; border-radius: 8px; padding: 10px 15px; background: white; color: #514536; font: 600 13px/20px 'Plus Jakarta Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+.material-ref-button.primary { color: white; border-color: #825500; background: #825500; }
+.material-ref-button.small { min-height: 36px; padding: 6px 10px; font-size: 11px; }
+.material-ref-button:disabled { opacity: .55; cursor: not-allowed; }
+.material-ref-button:hover:not(:disabled) { border-color: #825500; }
+.material-reference-card { min-width: 0; padding: 24px; border: 1px solid #ece5dc; border-radius: 16px; background: white; box-shadow: 0 2px 6px #00000008; }
+.material-reference-filters { display: flex; align-items: end; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; padding: 12px; border-radius: 10px; background: #f6f3f2; }
+.material-reference-filters > input { flex: 2 1 230px; }
+.material-reference-filters > select { flex: 1 1 145px; }
+.material-reference-filters > label { flex: 1 1 130px; display: grid; gap: 6px; min-width: 0; font-size: 12px; }
+.material-reference-filters input, .material-reference-filters select { width: 100%; min-width: 0; min-height: 44px; padding: 9px 12px; border: 1px solid #e5ded6; border-radius: 8px; background: #fff; color: #1c1b1b; font: inherit; }
+.material-reference-table { width: 100%; min-width: 1040px; border-collapse: collapse; text-align: left; font-size: 13px; }
+.material-reference-table th { padding: 12px 10px; background: #f6f3f2; color: #514536; font-size: 11px; font-weight: 600; }
+.material-reference-table td { padding: 16px 10px; border-bottom: 1px solid #eee7df; vertical-align: top; }
+.material-reference-table td small { display: block; margin-top: 4px; color: #837564; font-size: 11px; }
+.material-reference-table .right { text-align: right; }
+.material-ref-status { display: inline-flex; padding: 3px 10px; border-radius: 20px; background: #ffead0; color: #825500; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.material-ref-status.status-completed { background: #e0f5eb; color: #006c4a; }
+.material-ref-status.status-cancelled { background: #f0eded; color: #837564; }
+.material-reference-empty { padding: 20px 10px; color: #837564; }
+.material-reference-pagination { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-top: 16px; color: #837564; font-size: 12px; }
+.material-reference-pagination div { display: flex; flex-wrap: wrap; gap: 5px; }
+.material-reference-pagination button { width: 34px; height: 34px; border: 1px solid #e5ded6; border-radius: 6px; background: white; cursor: pointer; }
+.material-reference-pagination button.active { border-color: #825500; color: #825500; }
+
+.material-reference-overlay { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 28px; background: #1c1b1b66; backdrop-filter: blur(4px); }
+.material-reference-sheet { display: flex; flex-direction: column; width: min(1500px, 100%); max-height: 94dvh; min-height: 0; overflow: hidden; border-radius: 16px; background: #fcf9f8; box-shadow: 0 20px 70px #0003; }
+.material-reference-sheet-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; flex-shrink: 0; padding: 22px 32px; border-bottom: 1px solid #eae7e7; background: white; }
+.material-reference-sheet-head .material-inbound-heading { justify-content: start; flex-wrap: wrap; }
+.material-reference-sheet-head h2 { margin: 0; color: #1c1b1b; font-family: var(--font-sans); font-size: 26px; font-weight: 500; }
+.material-reference-sheet-head p { margin: 5px 0 0; color: #837564; font-size: 13px; }
+.material-reference-close { width: 44px; height: 44px; flex-shrink: 0; border: 0; background: transparent; color: #837564; font-size: 28px; cursor: pointer; }
+.material-reference-sheet-content { min-height: 0; overflow: auto; padding: 24px 32px; overscroll-behavior: contain; }
+.material-reference-sheet .material-editor { gap: 24px; }
+.material-reference-sheet .material-card { padding: 24px; border-color: #ece5dc; border-radius: 16px; box-shadow: 0 2px 6px #00000008; }
+.material-reference-sheet .material-card > h3 { margin: 0; color: #825500; font: 600 16px 'Plus Jakarta Sans', sans-serif; }
+.material-reference-add-controls { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
+.material-reference-add-controls label { flex: 1 1 300px; }
+.material-reference-add-controls button { flex: 0 0 auto; }
+.material-reference-sheet .material-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.material-reference-sheet input:not([type='checkbox']), .material-reference-sheet select, .material-reference-sheet textarea { min-height: 44px; border-radius: 8px; }
+.material-reference-sheet .material-entry { border: 0; border-top: 1px solid #eee7df; border-radius: 0; padding: 20px 0; background: transparent; }
+.material-reference-sheet .material-line-heading { align-items: start; }
+.material-reference-sheet .material-line-heading h3 { margin: 0; color: #1c1b1b; font: 600 14px 'Plus Jakarta Sans', sans-serif; }
+.material-reference-line-summary { display: grid; grid-template-columns: repeat(3, minmax(90px, .7fr)) minmax(150px, 1.3fr) minmax(140px, 1fr); align-items: end; gap: 12px; }
+.material-reference-line-summary > div { display: grid; gap: 7px; min-height: 64px; }
+.material-reference-line-summary span, .material-reference-line-summary label { color: #837564; font-size: 12px; }
+.material-reference-line-summary strong { color: #1c1b1b; font-size: 14px; }
+.material-reference-line-summary .material-reference-accepted { display: inline-block; width: fit-content; padding: 8px 12px; border-radius: 8px; background: #dcfaed; color: #006c4a; }
+.material-reference-line-summary label { display: grid; gap: 7px; }
+.material-reference-line-summary input { width: 100%; border: 1px solid #e5ded6; padding: 9px; color: #1c1b1b; }
+.material-reference-detail-heading { margin: 0; color: #825500; font-size: 12px; font-weight: 700; }
+.material-reference-summary { display: flex; justify-content: space-between; gap: 24px; padding: 24px; border: 1px solid #efd4ad; border-radius: 16px; background: #fff7ed; }
+.material-reference-summary h3 { margin: 0 0 8px; color: #1c1b1b; }
+.material-reference-summary p { margin: 0 0 8px; }
+.material-reference-summary small { color: #837564; }
+.material-reference-money { min-width: 310px; }
+.material-reference-money p { display: flex; justify-content: space-between; gap: 28px; padding: 6px 0; font-size: 13px; }
+.material-reference-money .total { margin-top: 8px; padding-top: 14px; border-top: 1px solid #e8d7c0; color: #825500; font-size: 16px; }
+.material-reference-sheet .material-actions { position: static; flex-shrink: 0; align-items: center; padding: 16px 32px; border: 0; border-top: 1px solid #eae7e7; border-radius: 0; background: white; box-shadow: none; }
+.material-reference-sheet .btn-ara-primary { border-color: #825500; border-radius: 8px; background: #825500; color: #fff; }
+.material-reference-sheet .btn-ara-secondary { border-color: #d5c4b0; border-radius: 8px; background: white; color: #514536; }
+.material-reference-reviewed { display: inline-flex; align-items: center; gap: 8px; margin-right: auto; font-size: 12px; }
+.material-reference-reviewed input { width: 18px; height: 18px; accent-color: #825500; }
+.material-reference-review-error { color: #ba1a1a; font-size: 12px; }
+.material-reference-sheet button:focus-visible, .material-reference-sheet input:focus-visible, .material-reference-sheet select:focus-visible,
+.material-reference-filters input:focus-visible, .material-reference-filters select:focus-visible { outline: 2px solid #c28522; outline-offset: 2px; }
+@media (max-width: 1100px) { .material-reference-line-summary { grid-template-columns: repeat(3, 1fr); } .material-reference-sheet .material-grid { gap: 16px; } }
+@media (max-width: 767px) {
+  .material-inbound-page.material-receipt-list-page { padding: 20px 16px; }
+  .material-reference-heading { align-items: stretch; flex-direction: column; }
+  .material-reference-actions .material-ref-button { flex: 1; }
+  .material-reference-heading h1 { font-size: 28px; }
+  .material-reference-card { padding: 16px; }
+  .material-reference-filters { flex-direction: column; align-items: stretch; }
+  .material-reference-filters > * { width: 100%; }
+  .material-reference-filters > input, .material-reference-filters > select { height: 44px; flex: 0 0 44px; }
+  .material-reference-filters > label { flex: 0 0 auto; }
+  .material-reference-overlay { padding: 0; }
+  .material-reference-sheet { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+  .material-reference-sheet-head { padding: 16px; }
+  .material-reference-sheet-content { padding: 16px; }
+  .material-reference-sheet .material-card { padding: 16px; }
+  .material-reference-sheet .material-grid { grid-template-columns: 1fr; }
+  .material-reference-add-controls button { width: 100%; }
+  .material-reference-line-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .material-reference-line-summary label { grid-column: 1 / -1; }
+  .material-reference-summary { flex-direction: column; padding: 16px; }
+  .material-reference-money { min-width: 0; }
+  .material-reference-sheet .material-actions { padding: 12px 16px; }
+  .material-reference-reviewed { width: 100%; }
+  .material-reference-sheet .material-actions > button { flex: 1 1 110px; }
+}

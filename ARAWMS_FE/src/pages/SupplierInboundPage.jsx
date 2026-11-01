@@ -6,18 +6,11 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Archive, CirclePlus, ClipboardList, Download, Filter, MoreVertical, PackageCheck, Search, Tag } from 'lucide-react';
-// import { useAuth } from '../hooks/useAuth';
+import MaterialReceiptList from '../components/MaterialReceiptList';
+import { useAuth } from '../hooks/useAuth';
 import { materialInboundService as api } from '../services/materialInboundService';
 import '../styles/materialInbound.css';
-
-// Mock user for testing without authentication
-const mockUser = {
-  _id: '507f1f77bcf86cd799439011',
-  username: 'test',
-  fullName: 'Test User',
-  roles: ['OWNER', 'WAREHOUSE_MANAGER'],
-};
+import '../styles/materialInboundReference.css';
 
 const field = { width: '100%', padding: '.65rem .75rem', border: '1px solid var(--ara-border)', borderRadius: 8,
   background: '#fff', color: 'var(--ara-noir)', font: 'inherit' };
@@ -25,6 +18,7 @@ const fieldset = { display: 'grid', gap: '.35rem', minWidth: 0 };
 const number = (value) => Number(value) || 0;
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
 const amount = (value) => Number(number(value).toFixed(3)).toLocaleString('vi-VN');
+const money = (value) => Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + ' ₫';
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const displayDate = (iso) => iso?.split('-').reverse().join('/') || '';
 const parseDate = (value) => {
@@ -43,7 +37,7 @@ const materialLabel = (item) => `${item.materialCode} · ${item.materialName}${i
 const receivingWarehouses = (locations) => [...new Map(locations.filter((item) => item.warehouseType === 'RAW_MATERIAL')
   .map((item) => [item.zoneCode || item.locationCode, item])).values()];
 const blankForm = () => ({ supplierId: '', receivedAt: today(), receivingLocationId: '', receiptLines: [] });
-const blankLine = (material) => ({ rawMaterialId: String(material._id), actualQty: 0, acceptedQty: 0,
+const blankLine = (material) => ({ rawMaterialId: String(material._id), unitCost: material.unitCost ?? '', zeroCostReason: '', actualQty: 0, acceptedQty: 0,
   rejectedQty: 0, pendingQty: 0, defectReason: '', inspectionConclusion: '',
   rolls: material.materialType === 'FABRIC' ? [{ clientLineId: crypto.randomUUID(),
     widthCm: material.widthCm || '', lengthMeters: '', quality: '', locationId: '' }] : [], lots: [] });
@@ -76,15 +70,13 @@ function LocationPicker({ locations, quality, unit, value, onChange }) {
 
 /** One screen keeps supplier receipt input, validation, and confirmation together. */
 export default function SupplierInboundPage() {
-  // const { user } = useAuth();
-  const user = mockUser; // Use mock user for testing
+  const { user, loading } = useAuth();
   const [options, setOptions] = useState({ suppliers: [], materials: [], locations: [] });
   const [receipts, setReceipts] = useState([]);
   const [filters, setFilters] = useState({ code: '', supplierId: '', from: '', to: '', status: '', locationId: '' });
   const [view, setView] = useState('list');
   const [listPage, setListPage] = useState(1);
-  const [showDateFilter, setShowDateFilter] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
+  const [reviewed, setReviewed] = useState(false);
   const [form, setForm] = useState(blankForm);
   const [dateText, setDateText] = useState(displayDate(today()));
   const [receipt, setReceipt] = useState(null);
@@ -105,12 +97,14 @@ export default function SupplierInboundPage() {
   const [attemptedConfirm, setAttemptedConfirm] = useState(false);
   const confirmationKey = useRef(crypto.randomUUID());
   const pendingConfirmation = useRef(null);
+  const savedFormSignature = useRef('');
   const listRequestSequence = useRef(0);
   const putawayKey = useRef(crypto.randomUUID());
   const barcodePollCount = useRef(0);
   const materials = new Map(options.materials.map((item) => [String(item._id), item]));
   const locked = ['COMPLETED', 'CANCELLED'].includes(receipt?.status);
   const receiptId = receipt?._id || receipt?.id;
+  useEffect(() => { setReviewed(false); }, [form]);
 
   const loadOptions = async () => setOptions((await api.options()).data);
   const loadReceipts = async (criteria = filters) => {
@@ -127,19 +121,20 @@ export default function SupplierInboundPage() {
   };
 
   useEffect(() => {
+    if (loading || !user) return;
     loadInitialData(String(user?._id || user?.id || '')).then(([choices, listing]) => {
       setOptions(choices.data); setReceipts(listing.data.receipts);
       const receiving = receivingWarehouses(choices.data.locations);
       if (receiving.length === 1) setForm((current) => current.receivingLocationId ? current :
         { ...current, receivingLocationId: String(receiving[0]._id) });
     }).catch((failure) => setError(failure.message));
-  }, [user?._id, user?.id]);
+  }, [loading, user?._id, user?.id]);
 
   useEffect(() => {
-    if (view !== 'list') return undefined;
+    if (view !== 'list' || loading || !user) return undefined;
     const timer = window.setTimeout(() => loadReceipts(filters).catch((failure) => setError(failure.message)), 350);
     return () => window.clearTimeout(timer);
-  }, [view, filters.code, filters.supplierId, filters.status, filters.from, filters.to, filters.locationId]);
+  }, [view, loading, user?._id, user?.id, filters.code, filters.supplierId, filters.status, filters.from, filters.to, filters.locationId]);
 
   useEffect(() => {
     if (receipt?.status !== 'COMPLETED' || !labels.length || barcodeReady >= labels.length || barcodePollCount.current >= 12) return undefined;
@@ -152,10 +147,11 @@ export default function SupplierInboundPage() {
 
   const startReceipt = () => {
     const receiving = receivingWarehouses(options.locations);
-    setForm({ ...blankForm(), receivingLocationId: receiving.length === 1 ? String(receiving[0]._id) : '' });
+    const nextForm = { ...blankForm(), receivingLocationId: receiving.length === 1 ? String(receiving[0]._id) : '' };
+    setForm(nextForm); savedFormSignature.current = JSON.stringify(nextForm);
     setReceipt(null); setLabels([]); setBarcodeReady(0); setSelectedLabels([]);
     setDateText(displayDate(today())); setSupplierSearch(''); setMaterialSearch('');
-    setView('editor'); setError(''); setNotice(''); setAttemptedConfirm(false); confirmationKey.current = crypto.randomUUID();
+    setView('editor'); setError(''); setNotice(''); setAttemptedConfirm(false); setReviewed(false); confirmationKey.current = crypto.randomUUID();
     pendingConfirmation.current = null;
   };
 
@@ -167,17 +163,20 @@ export default function SupplierInboundPage() {
       setOptions((current) => ({ ...current, materials: [...current.materials,
         ...data.materials.filter((item) => !current.materials.some((known) => String(known._id) === String(item._id)))] }));
       setReceipt(saved);
-      setForm({ supplierId: String(saved.supplierId),
+      const availableMaterials = [...options.materials, ...data.materials];
+      const nextForm = { supplierId: String(saved.supplierId),
         receivedAt: saved.receivedAt?.slice(0, 10) || today(),
         receivingLocationId: String(saved.receivingLocationId || ''),
-        receiptLines: saved.receiptLines || [] });
+        receiptLines: (saved.receiptLines || []).map((line) => ({ ...line,
+          unitCost: line.unitCost ?? availableMaterials.find((item) => String(item._id) === String(line.rawMaterialId))?.unitCost ?? '' })) };
+      setForm(nextForm); savedFormSignature.current = JSON.stringify(nextForm);
       setDateText(displayDate(saved.receivedAt?.slice(0, 10) || today()));
       setSupplierSearch(supplierLabel(options.suppliers.find((item) => String(item._id) === String(saved.supplierId)) ||
         { supplierCode: '', supplierName: '' }));
       barcodePollCount.current = 0;
       if (saved.status === 'COMPLETED') await loadLabels(id);
       else { setLabels([]); setBarcodeReady(0); }
-      setSelectedLabels([]); setView('editor'); setAttemptedConfirm(false);
+      setSelectedLabels([]); setView('editor'); setAttemptedConfirm(false); setReviewed(false);
       confirmationKey.current = crypto.randomUUID();
       pendingConfirmation.current = null;
     } catch (failure) { setError(failure.message); }
@@ -189,6 +188,7 @@ export default function SupplierInboundPage() {
       : await api.create(form);
     setReceipt(result.data.receipt);
     setForm((current) => ({ ...current, receiptLines: result.data.receipt.receiptLines }));
+    savedFormSignature.current = JSON.stringify({ ...form, receiptLines: result.data.receipt.receiptLines });
     await loadReceipts().catch(() => {});
     return result.data.receipt;
   };
@@ -197,6 +197,12 @@ export default function SupplierInboundPage() {
     setBusy(true); setError(''); setNotice('');
     try { await task(); } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
+  };
+  const closeEditor = () => {
+    if (!locked && JSON.stringify(form) !== savedFormSignature.current &&
+      !window.confirm('Phiếu có thay đổi chưa lưu. Đóng phiếu?')) return;
+    setView('list');
+    loadReceipts().catch((failure) => setError(failure.message));
   };
 
   /** Derives stock totals from physical rolls or the single accessory quantity entry. */
@@ -275,6 +281,14 @@ export default function SupplierInboundPage() {
     totals.set(unit, total);
     return totals;
   }, new Map());
+  const moneyTotals = form.receiptLines.reduce((totals, line) => {
+    const cost = Number(line.unitCost ?? materials.get(String(line.rawMaterialId))?.unitCost);
+    if (!Number.isFinite(cost)) return totals;
+    totals.actual += number(line.actualQty) * cost;
+    totals.rejected += number(line.rejectedQty) * cost;
+    totals.accepted += number(line.acceptedQty) * cost;
+    return totals;
+  }, { actual: 0, rejected: 0, accepted: 0 });
   const headerIssues = [];
   const issuesByLine = new Map();
   if (!form.supplierId) headerIssues.push('Chọn nhà cung cấp ở phần Thông tin nhận hàng.');
@@ -289,6 +303,12 @@ export default function SupplierInboundPage() {
     const objects = material.materialType === 'FABRIC' ? line.rolls : line.lots;
     if (!validQuantity(line.actualQty, material.unit) || !validQuantity(line.rejectedQty, material.unit))
       issues.push('Số lượng không hợp lệ theo đơn vị ' + unitNames[material.unit] + '.');
+    const cost = Number(line.unitCost);
+    if (line.unitCost === '' || !Number.isFinite(cost) || cost < 0 || cost > 1e12 ||
+      Math.abs(cost * 100 - Math.round(cost * 100)) > 0.000001)
+      issues.push('Nhập đơn giá hợp lệ, tối đa hai chữ số thập phân.');
+    if (number(line.actualQty) > 0 && cost === 0 && (line.zeroCostReason?.trim().length || 0) < 2)
+      issues.push('Đơn giá 0 cần nêu lý do (ít nhất 2 ký tự).');
     if (number(line.rejectedQty) > number(line.actualQty)) issues.push('Số không đạt vượt số thực nhận.');
     if (number(line.actualQty) > 0 && number(line.pendingQty) > 0)
       issues.push('Chọn kết quả kiểm tra cho từng cây hoặc lô.');
@@ -327,7 +347,7 @@ export default function SupplierInboundPage() {
   const confirmationIssues = [...headerIssues, ...[...issuesByLine.values()].flat()];
   const confirmReceipt = () => {
     setAttemptedConfirm(true);
-    if (confirmationIssues.length) return;
+    if (confirmationIssues.length || !reviewed) return;
     run(async () => {
     let request = pendingConfirmation.current;
     if (!request || request.formSignature !== JSON.stringify(form)) {
@@ -353,152 +373,26 @@ export default function SupplierInboundPage() {
     });
   };
 
-  const listPageSize = 10;
-  const listPageCount = Math.max(1, Math.ceil(receipts.length / listPageSize));
-  const visiblePage = Math.min(listPage, listPageCount);
-  const visibleReceipts = receipts.slice((visiblePage - 1) * listPageSize, visiblePage * listPageSize);
-  const completedCount = receipts.filter((item) => item.status === 'COMPLETED').length;
-  const waitingCount = receipts.filter((item) => item.status === 'WAITING_QC').length;
-  const receiptMaterials = (item) => (item.receiptLines || []).map((line) =>
-    line.rawMaterialId?.materialName || materials.get(String(line.rawMaterialId))?.materialName).filter(Boolean);
-  const exportReceipts = () => {
-    const quote = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
-    const rows = [['Mã phiếu', 'Ngày nhận', 'Nhà cung cấp', 'Kho nhận', 'Nguyên phụ liệu', 'Người nhận', 'Trạng thái'],
-      ...receipts.map((item) => [item.ticketCode, displayDate(item.receivedAt?.slice(0, 10)),
-        item.supplierId?.supplierName, item.receivingLocationId?.locationCode,
-        receiptMaterials(item).join(', '), item.createdByManagerId?.fullName, statusText(item.status)])];
-    const file = new Blob(['\uFEFF', rows.map((row) => row.map(quote).join(',')).join('\r\n')],
-      { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(file);
-    const link = document.createElement('a');
-    link.href = url; link.download = 'phieu-nhap-nguyen-phu-lieu.csv'; link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-
+  if (loading) return <p className="material-message">Đang tải tài khoản…</p>;
+  if (!user) return <p className="material-message">Vui lòng <Link to="/login">đăng nhập</Link> để nhập nguyên phụ liệu.</p>;
   return <main className={'material-inbound-page' + (view === 'list' ? ' material-receipt-list-page' : '')}>
-    {view === 'list' ? <>
-      <nav className="material-list-breadcrumb" aria-label="Đường dẫn">
-        <Link to="/">TRANG CHỦ</Link><span>/</span><span>PHIẾU NHẬP KHO</span><span>/</span><strong>NGUYÊN PHỤ LIỆU</strong>
-      </nav>
-      <header className="material-list-hero">
-        <div className="material-list-hero-copy">
-          <p className="material-list-eyebrow"><span /> HỆ THỐNG VẬN HÀNH BOUTIQUE</p>
-          <h1>Phiếu nhập nguyên phụ liệu</h1>
-          <p>Quản lý lịch sử nhập kho các loại vải, kaki và phụ liệu may mặc cao cấp. Theo dõi trạng thái kiểm nhận và định giá tồn kho nguyên vật liệu đầu vào.</p>
-        </div>
-        <div className="material-list-hero-actions">
-          <button type="button" className="btn-ara-secondary" disabled={!receipts.length} onClick={exportReceipts}>
-            <Download size={16} /> Xuất báo cáo
-          </button>
-          <button type="button" className="btn-ara-primary" onClick={startReceipt}>
-            <CirclePlus size={18} /> Lập phiếu nhập
-          </button>
-        </div>
-      </header>
-      {error && <p className="material-message error" role="alert">{error}</p>}
-      <section className="material-list-filter-panel" aria-label="Bộ lọc phiếu nhập">
-        <label className="material-list-filter-search">TÌM KIẾM PHIẾU
-          <span className="material-list-search-box"><Search size={18} />
-            <input value={filters.code} onChange={(event) => changeFilter({ code: event.target.value })}
-              placeholder="Mã phiếu hoặc tên nguyên liệu..." /></span>
-        </label>
-        <label>NHÀ CUNG CẤP
-          <select value={filters.supplierId} onChange={(event) => changeFilter({ supplierId: event.target.value })}>
-            <option value="">Tất cả nhà cung cấp</option>
-            {options.suppliers.map((item) => <option key={item._id} value={item._id}>{item.supplierName}</option>)}
-          </select>
-        </label>
-        <label>TRẠNG THÁI
-          <select value={filters.status} onChange={(event) => changeFilter({ status: event.target.value })}>
-            <option value="">Tất cả trạng thái</option>
-            {['DRAFT', 'WAITING_QC', 'READY_TO_CONFIRM', 'COMPLETED', 'CANCELLED'].map((item) =>
-              <option key={item} value={item}>{statusText(item)}</option>)}
-          </select>
-        </label>
-        <button type="button" className={'material-list-date-button' + (showDateFilter ? ' active' : '')}
-          onClick={() => setShowDateFilter((current) => !current)} aria-expanded={showDateFilter}>
-          <Filter size={17} /> Lọc ngày
-        </button>
-        {showDateFilter && <div className="material-list-date-panel">
-          <label>Từ ngày<input type="date" value={filters.from}
-            onChange={(event) => changeFilter({ from: event.target.value })} /></label>
-          <label>Đến ngày<input type="date" value={filters.to}
-            onChange={(event) => changeFilter({ to: event.target.value })} /></label>
-          <label>Kho nhận<select value={filters.locationId}
-            onChange={(event) => changeFilter({ locationId: event.target.value })}>
-            <option value="">Tất cả kho</option>
-            {receivingWarehouses(options.locations).map((item) =>
-              <option key={item._id} value={item._id}>Khu {item.zoneCode}</option>)}
-          </select></label>
-          <button type="button" onClick={() => changeFilter({ from: '', to: '', locationId: '' })}>Xóa lọc ngày</button>
-        </div>}
-      </section>
-      <section className="material-list-table-card" aria-label="Danh sách phiếu nhập">
-        <div className="material-table-wrap"><table className="material-list-table">
-          <thead><tr><th>MÃ PHIẾU</th><th>NGÀY NHẬN</th><th>NHÀ CUNG CẤP</th>
-            <th>NGUYÊN PHỤ LIỆU</th><th>NGƯỜI NHẬN</th><th>TRẠNG THÁI</th><th>THAO TÁC</th></tr></thead>
-          <tbody>{visibleReceipts.map((item) => { const names = receiptMaterials(item);
-            const ownerName = item.createdByManagerId?.fullName || '—';
-            return <tr key={item._id}>
-              <td className="material-list-ticket">{item.ticketCode}</td>
-              <td className="material-list-date">{displayDate(item.receivedAt?.slice(0, 10))}</td>
-              <td><strong>{item.supplierId?.supplierName || '—'}</strong>
-                <small>{item.receivingLocationId?.locationCode || 'Chưa rõ kho nhận'}</small></td>
-              <td><div className="material-list-tags">{names.slice(0, 2).map((name, index) =>
-                <span key={index}>{name}</span>)}{names.length > 2 && <span>+{names.length - 2}</span>}
-                {!names.length && <span>Chưa có hàng</span>}</div></td>
-              <td><span className="material-list-person"><span className="material-list-avatar">
-                {ownerName === '—' ? '?' : ownerName.trim().slice(0, 1).toUpperCase()}</span>{ownerName}</span></td>
-              <td><span className={'material-list-status status-' + item.status?.toLowerCase()}>{statusText(item.status)}</span></td>
-              <td><div className="material-list-row-actions">
-                <button type="button" disabled={busy} onClick={() => openReceipt(item._id)}>Chi tiết / In</button>
-                <details className="material-list-row-menu"><summary aria-label={'Thêm thao tác phiếu ' + item.ticketCode}>
-                  <MoreVertical size={18} /></summary><button type="button" onClick={async () => {
-                    await navigator.clipboard.writeText(item.ticketCode);
-                    setNotice('Đã sao chép mã phiếu ' + item.ticketCode + '.');
-                  }}>Sao chép mã phiếu</button></details>
-              </div></td>
-            </tr>; })}</tbody>
-        </table></div>
-        {!receipts.length && <p className="material-list-empty">Không có phiếu nhập phù hợp với bộ lọc.</p>}
-        <footer className="material-list-pagination">
-          <span>Hiển thị {visibleReceipts.length} trên tổng số {receipts.length} phiếu nhập</span>
-          <div>{Array.from({ length: listPageCount }, (_, index) => index + 1).map((item) =>
-            <button type="button" key={item} className={item === visiblePage ? 'current' : ''}
-              onClick={() => setListPage(item)} aria-label={'Trang ' + item}>{item}</button>)}</div>
-        </footer>
-      </section>
-      <section className="material-list-stats" aria-label="Tóm tắt danh sách">
-        <article><span className="material-list-stat-icon gold"><Archive size={24} /></span>
-          <div><h2>Phiếu trong danh sách</h2><p>Số phiếu phù hợp bộ lọc hiện tại.</p>
-            <strong>{receipts.length} phiếu</strong></div></article>
-        <article><span className="material-list-stat-icon charcoal"><PackageCheck size={24} /></span>
-          <div><h2>Đã nhập kho</h2><p>Phiếu đã xác nhận, có thể in lại tem và cất hàng.</p>
-            <strong>{completedCount} phiếu</strong></div></article>
-        <article><span className="material-list-stat-icon muted"><ClipboardList size={24} /></span>
-          <div><h2>Phiếu chờ kiểm định</h2><p>Còn cây hoặc lô chưa có kết quả kiểm tra.</p>
-            <strong>{waitingCount} phiếu</strong></div></article>
-      </section>
-      <aside className="material-list-guide">
-        <div className="material-list-guide-icon"><Tag size={27} /></div>
-        <div><h2>Phân loại Nguyên phụ liệu (PNNL)</h2>
-          <p>Vải được ghi theo từng cây và chiều dài mét. Phụ liệu được ghi theo chiếc, cuộn, kg hoặc hộp. Mỗi phiếu có thể chứa nhiều loại và chỉ hàng đã kiểm tra, cất đúng vị trí mới sẵn sàng sử dụng.</p>
-          {showGuide && <p className="material-list-guide-steps">Chọn nhà cung cấp → thêm vật tư → nhập số lượng và kết quả kiểm tra → xác nhận phiếu → in tem và quét cất hàng.</p>}
-        </div>
-        <button type="button" onClick={() => setShowGuide((current) => !current)}>
-          {showGuide ? 'Thu gọn hướng dẫn' : 'Hướng dẫn nhập kho'}</button>
-      </aside>
-      <footer className="material-list-brand">ARAWMS OPERATIONS <span>·</span> ELEGANCE IN LOGISTICS &amp; PRECISION</footer>
-    </> : <>
-      <p className="product-muted"><Link to="/">Kho nguyên phụ liệu</Link> / <button type="button" className="material-back-link" onClick={() => { setView('list'); loadReceipts().catch((failure) => setError(failure.message)); }}>← Danh sách phiếu</button></p>
-      <div className="material-inbound-heading"><div><h1>Nhập nguyên phụ liệu</h1><p>Nhận hàng thực tế do nhà cung cấp giao.</p></div>
-        <span className="product-badge active">{statusText(receipt?.status)}</span></div>
+    {view === 'list' ? <MaterialReceiptList
+      receipts={receipts} options={options} filters={filters} onFilter={changeFilter}
+      onReset={() => { setFilters({ code: '', supplierId: '', from: '', to: '', status: '', locationId: '' }); setListPage(1); }}
+      onRefresh={() => run(async () => { await loadReceipts(); await loadOptions(); setNotice('Đã cập nhật danh sách phiếu.'); })}
+      onCreate={startReceipt} onOpen={openReceipt} page={listPage} onPage={setListPage}
+      busy={busy} error={error} notice={notice} /> : <div className="material-reference-overlay" role="dialog" aria-modal="true" aria-labelledby="material-receipt-title">
+      <div className="material-reference-sheet">
+      <div className="material-reference-sheet-head"><div className="material-inbound-heading"><div><h2 id="material-receipt-title">{receipt?.ticketCode || 'Nhập nguyên phụ liệu'}</h2><p>Nhập số lượng, đơn giá và vị trí dự kiến của lần nhận hàng này.</p></div>
+        <span className="material-ref-status">{statusText(receipt?.status)}</span></div>
+        <button type="button" className="material-reference-close" aria-label="Đóng phiếu" onClick={closeEditor}>×</button></div>
+      <div className="material-reference-sheet-content">
       {error && <p className="material-message error" role="alert">{error}</p>}
       {notice && <p className="material-message success" role="status">{notice}</p>}
       <fieldset disabled={busy} className="material-editor">
         {!locked && <>
           <section className="material-card">
-            <h2>Thông tin nhận hàng</h2>
+            <h3>1. Thông tin nhận hàng</h3>
             <div className="material-grid">
               <label style={fieldset}>Nhà cung cấp *
                 <input list="supplier-inbound-options" style={field} value={supplierSearch}
@@ -510,9 +404,9 @@ export default function SupplierInboundPage() {
                   <option key={item._id} value={supplierLabel(item)} />)}</datalist>
               </label>
               <label style={fieldset}>Ngày nhận *
-                <input style={field} inputMode="numeric" placeholder="dd/mm/yyyy" value={dateText}
-                  onChange={(event) => { const value = event.target.value; setDateText(value);
-                    setForm((current) => ({ ...current, receivedAt: parseDate(value) })); }} />
+                <input style={field} type="date" max={today()} value={form.receivedAt}
+                  onChange={(event) => { const value = event.target.value; setDateText(displayDate(value));
+                    setForm((current) => ({ ...current, receivedAt: value })); }} />
               </label>
               <label style={fieldset}>Kho nhận *
                 <select style={field} value={form.receivingLocationId} onChange={(event) =>
@@ -526,8 +420,8 @@ export default function SupplierInboundPage() {
             </div>
           </section>
           <section className="material-card">
-            <h2>Hàng nhập kho</h2>
-            <label style={fieldset}>Tìm và thêm nguyên phụ liệu
+            <h3>2. Nguyên phụ liệu thực nhận</h3>
+            <div className="material-reference-add-controls"><label style={fieldset}>Tìm và thêm nguyên phụ liệu
               <input list="material-inbound-options" style={field} value={materialSearch}
                 placeholder="Nhập mã hoặc tên, rồi chọn kết quả"
                 onChange={(event) => { const value = event.target.value; setMaterialSearch(value);
@@ -538,7 +432,7 @@ export default function SupplierInboundPage() {
                 <option key={item._id} value={materialLabel(item)} />)}</datalist>
             </label>
             <button type="button" className="btn-ara-secondary material-create-link"
-              onClick={() => setShowMaterialForm((current) => !current)}>+ Tạo nguyên phụ liệu mới</button>
+              onClick={() => setShowMaterialForm((current) => !current)}>+ Tạo nguyên phụ liệu mới</button></div>
             {showMaterialForm && <div className="material-line"><div className="material-grid">
               {[['materialCode', 'Mã'], ['materialName', 'Tên'], ['color', 'Màu'], ['widthCm', 'Khổ (cm)']].map(([key, label]) =>
                 <label key={key} style={fieldset}>{label}<input style={field} value={newMaterial[key]}
@@ -559,6 +453,9 @@ export default function SupplierInboundPage() {
                 {(newMaterial.materialType === 'FABRIC' ? ['METER'] :
                   ['KG', 'PIECE', 'SPOOL', 'BOX']).map((item) =>
                   <option key={item} value={item}>{unitNames[item]}</option>)}</select></label>
+              <label style={fieldset}>Đơn giá mặc định (₫/{unitShort[newMaterial.unit]})
+                <input type="number" min="0" step="0.01" style={field} value={newMaterial.unitCost}
+                  onChange={(event) => setNewMaterial({ ...newMaterial, unitCost: event.target.value })} /></label>
               {newMaterial.materialType === 'FABRIC' && <label><input type="checkbox"
                 checked={!!newMaterial.requiresWeightKg} onChange={(event) =>
                   setNewMaterial({ ...newMaterial, requiresWeightKg: event.target.checked })} /> Bắt buộc theo dõi cân nặng từng cây</label>}
@@ -577,8 +474,24 @@ export default function SupplierInboundPage() {
                 <div className="material-line-heading"><div><h3>{material.materialName}{material.color ? ' · ' + material.color : ''}</h3>
                   <small>{material.materialCode} · {fabric && material.widthCm ? 'Khổ ' + amount(number(material.widthCm) / 100) + ' m · ' : ''}{unitNames[material.unit]}</small></div>
                   <button type="button" className="btn-ara-secondary" aria-label={'Xóa ' + material.materialName}
-                    onClick={() => setForm((current) => ({ ...current,
-                      receiptLines: current.receiptLines.filter((_, row) => row !== index) }))}>Xóa hàng</button></div>
+                    onClick={() => {
+                      if (!window.confirm(`Xóa ${material.materialName} khỏi phiếu nhập?`)) return;
+                      setForm((current) => ({ ...current,
+                        receiptLines: current.receiptLines.filter((_, row) => row !== index) }));
+                    }}>Xóa hàng</button></div>
+                <div className="material-reference-line-summary">
+                  <div><span>Thực nhận</span><strong>{amount(line.actualQty)} {unitShort[material.unit]}</strong></div>
+                  <div><span>Không đạt</span><strong>{amount(line.rejectedQty)} {unitShort[material.unit]}</strong></div>
+                  <div><span>Nhập kho</span><strong className="material-reference-accepted">{amount(line.acceptedQty)} {unitShort[material.unit]}</strong></div>
+                  <label>Đơn giá nhập (₫/{unitShort[material.unit]}) *
+                    <input type="number" min="0" max="1000000000000" step="0.01" value={line.unitCost ?? ''}
+                      onChange={(event) => changeLine(index, { unitCost: event.target.value })} /></label>
+                  <div><span>Giá trị nhập kho</span><strong>{money(number(line.acceptedQty) * number(line.unitCost))}</strong></div>
+                </div>
+                {Number(line.unitCost) === 0 && <label style={fieldset}>Lý do đơn giá 0 *
+                  <input maxLength={300} value={line.zeroCostReason || ''}
+                    onChange={(event) => changeLine(index, { zeroCostReason: event.target.value })} /></label>}
+                <p className="material-reference-detail-heading">Vị trí / Chi tiết kiểm nhận</p>
                 {fabric ? <>
                   <div className="material-table-wrap"><table className="material-inline-table"><thead><tr>
                     <th>Cây</th><th>Chiều dài nhận (m)</th><th>Kết quả kiểm tra</th><th>Vị trí cất</th><th>Thao tác</th>
@@ -599,7 +512,11 @@ export default function SupplierInboundPage() {
                       value={roll.locationId} onChange={(value) => changeObject(index, 'rolls', objectIndex,
                         { locationId: value })} />{!roll.locationId && <small>Chưa chọn vị trí — xử lý sau</small>}</td>
                     <td><button type="button" className="btn-ara-secondary"
-                      onClick={() => changeLine(index, { rolls: line.rolls.filter((_, row) => row !== objectIndex) })}>Xóa</button></td>
+                      onClick={() => {
+                        if (window.confirm(`Xóa cây ${objectIndex + 1} khỏi phiếu nhập?`)) {
+                          changeLine(index, { rolls: line.rolls.filter((_, row) => row !== objectIndex) });
+                        }
+                      }}>Xóa</button></td>
                   </tr>)}</tbody></table></div>
                   {line.rolls.map((roll, objectIndex) => material.requiresWeightKg && <label key={roll.clientLineId}
                     style={fieldset}>Cân nặng cây {objectIndex + 1} (kg)
@@ -657,7 +574,11 @@ export default function SupplierInboundPage() {
                   {line.lots.map((lot, objectIndex) => <div key={lot.clientLineId} className="material-object">
                     <div className="material-line-heading"><strong>Lô {objectIndex + 1}</strong>
                       <button type="button" className="btn-ara-secondary"
-                        onClick={() => changeLine(index, { lots: line.lots.filter((_, row) => row !== objectIndex) })}>Xóa lô</button></div>
+                        onClick={() => {
+                          if (window.confirm(`Xóa lô ${objectIndex + 1} khỏi phiếu nhập?`)) {
+                            changeLine(index, { lots: line.lots.filter((_, row) => row !== objectIndex) });
+                          }
+                        }}>Xóa lô</button></div>
                     <div className="material-grid">
                       <label style={fieldset}>Số lượng nhận ({unitShort[material.unit]})
                         <input type="number" min="0" step={['METER', 'KG'].includes(material.unit) ? '.001' : '1'}
@@ -684,8 +605,12 @@ export default function SupplierInboundPage() {
                             { allocations: lot.allocations.map((item, row) => row === allocationIndex ?
                               { ...item, quantity: event.target.value } : item) })} />
                         <button type="button" className="btn-ara-secondary"
-                          onClick={() => changeObject(index, 'lots', objectIndex,
-                            { allocations: lot.allocations.filter((_, row) => row !== allocationIndex) })}>Xóa vị trí</button>
+                          onClick={() => {
+                            if (window.confirm('Xóa vị trí phân bổ này khỏi lô?')) {
+                              changeObject(index, 'lots', objectIndex,
+                                { allocations: lot.allocations.filter((_, row) => row !== allocationIndex) });
+                            }
+                          }}>Xóa vị trí</button>
                       </div>)}
                     {!lot.allocations?.some((item) => item.locationId) && <small>Chưa chọn vị trí — xử lý sau</small>}
                     <button type="button" className="btn-ara-secondary material-create-link"
@@ -700,6 +625,14 @@ export default function SupplierInboundPage() {
               </div>; })}
             {attemptedConfirm && headerIssues.length > 0 && <div className="material-message error" role="alert">
               <ul>{headerIssues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></div>}
+          </section>
+          <section className="material-reference-summary">
+            <div><h3>Tóm tắt nhập kho</h3>
+              <p>{[...totalsByUnit].map(([unit, total]) => `${amount(total.accepted)} ${unitShort[unit]}`).join(' · ') || 'Chưa có nguyên phụ liệu'}</p>
+              <small>Giá trị theo đơn giá của phiếu; chưa gồm thuế, chi phí hoặc thanh toán.</small></div>
+            <div className="material-reference-money"><p>Giá trị thực nhận <strong>{money(moneyTotals.actual)}</strong></p>
+              <p>Giá trị không đạt <strong>{money(moneyTotals.rejected)}</strong></p>
+              <p className="total">Giá trị nhập kho <strong>{money(moneyTotals.accepted)}</strong></p></div>
           </section>
         </>}
         {locked && <section className="material-card"><h2>{receipt?.status === 'COMPLETED' ? 'Phiếu đã xác nhận' : 'Phiếu đã hủy'}</h2>{receipt?.status === 'COMPLETED' && <p className="material-message success">Phiếu đã ghi nhận. In tem cho cây/lô và quét xác nhận cất hàng đạt; hàng lỗi theo dõi để xử lý hoặc trả nhà cung cấp.</p>}<div className="material-grid"><p><strong>Phiếu:</strong> {receipt?.ticketCode}</p><p><strong>NCC:</strong> {options.suppliers.find((item) => String(item._id) === form.supplierId)?.supplierName}</p><p><strong>Chứng từ:</strong> {form.supplierDeliveryCode || '—'}</p><p><strong>Ngày nhận:</strong> {displayDate(form.receivedAt)}</p><p><strong>Người giao:</strong> {form.handoverName}</p><p><strong>Người nhận:</strong> {user?.fullName}</p><p><strong>Kho:</strong> {options.locations.find((item) => String(item._id) === form.receivingLocationId)?.locationCode}</p><p><strong>Tệp đính kèm:</strong> {receipt?.receiptAttachments?.length || 0}</p></div>
@@ -718,12 +651,17 @@ export default function SupplierInboundPage() {
           </>}
         </section>}
       </fieldset>
+      </div>
       {!locked && <div className="material-actions">
+        <label className="material-reference-reviewed"><input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />
+          Tôi đã kiểm tra số lượng, đơn giá và phần không đạt.</label>
+        {attemptedConfirm && !reviewed && <span className="material-reference-review-error">Hãy kiểm tra và đánh dấu trước khi xác nhận.</span>}
+        <button type="button" className="btn-ara-secondary" onClick={closeEditor}>Đóng</button>
         <button type="button" className="btn-ara-secondary" disabled={busy}
           onClick={() => run(async () => { await saveDraft(); setNotice('Đã lưu nháp.'); })}>Lưu nháp</button>
         <button type="button" className="btn-ara-primary" disabled={busy}
           onClick={confirmReceipt}>Xác nhận nhập kho</button>
       </div>}
-    </>}
+      </div></div>}
   </main>;
 }

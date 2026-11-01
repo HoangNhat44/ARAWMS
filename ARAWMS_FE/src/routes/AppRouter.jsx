@@ -63,7 +63,7 @@ const AppRouter = () => {
       <Route path="/warehouse/raw-materials/inbound" element={<SupplierInboundPage />} />
       <Route path="/warehouse/layout" element={<WarehouseLayoutPage />} />
       <Route path="/warehouse/putaway" element={<WarehousePutawayPage />} />
-      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<Navigate to="/" replace />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

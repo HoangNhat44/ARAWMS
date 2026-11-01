@@ -38,3 +38,6 @@ dist-ssr
 
 # PDF files (unless needed for deployment)
 *.pdf
+
+# Design files (HTML prototypes and mockups in ARAWMS_FE root)
+/ARAWMS_FE/*.html

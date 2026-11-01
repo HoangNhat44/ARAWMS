@@ -21,6 +21,7 @@ export const productService = {
   createLocation: (values) => api.post('/products/locations', values),
   // Group product setup calls used by the configuration form.
   configure: (values) => api.post('/products/configuration/new', values),
+  syncCatalogOperation: (operation) => api.post('/products/configuration/sync', operation, { timeout: 12000 }),
   previewImport: (file) => api.post('/products/configuration/import/preview', file, {
     headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, timeout: 180000,
   }),
@@ -33,11 +34,11 @@ export const productService = {
   updateSkuPrice: (id, skuId, retailPrice) => api.patch(`/products/configuration/${id}/variants/${skuId}`, { retailPrice }),
   create: (values) => api.post('/products', values),
   // Preserve the file media type for backend validation and Cloudinary upload.
-  upload: (id, kind, file) => api.put(`/products/${id}/${kind}`, file, {
-    headers: { 'Content-Type': file.type },
+  upload: (id, kind, file, fileId, sha256) => api.put(`/products/${id}/${kind}`, file, {
+    headers: { 'Content-Type': file.type, ...(fileId ? { 'X-Catalog-File-Id': fileId, 'X-Content-SHA256': sha256 } : {}) },
     timeout: 180000,
   }),
-  uploadAdditionalImage: (id, file) => api.post(`/products/${id}/additional-image`, file, {
-    headers: { 'Content-Type': file.type }, timeout: 180000,
+  uploadAdditionalImage: (id, file, fileId, sha256) => api.post(`/products/${id}/additional-image`, file, {
+    headers: { 'Content-Type': file.type, ...(fileId ? { 'X-Catalog-File-Id': fileId, 'X-Content-SHA256': sha256 } : {}) }, timeout: 180000,
   }),
 };

@@ -16,11 +16,13 @@ export const printProductLabels = (labels, tab = window.open('', '_blank')) => {
   const articles = labels.map((label) => `<article>
     ${label.imageUrl ? `<img src="${escapeHtml(label.imageUrl)}" alt="${escapeHtml(label.barcode)}"/>` : code128Svg(label.barcode)}
     <strong>${escapeHtml(label.barcode)}</strong>
+    ${label.skuCode ? `<div class="product">${escapeHtml(label.productName || label.skuCode)}</div>
+    <div class="variant">${escapeHtml([label.skuCode, label.color, label.size].filter(Boolean).join(' · '))}</div>` : ''}
   </article>`).join('');
   tab.document.write(`<!doctype html><html lang="vi"><meta charset="utf-8"><title>Tem barcode sản phẩm</title>
     <style>body{font-family:Arial;margin:16px}main{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
     article{border:1px solid #bbb;padding:8px;break-inside:avoid;overflow:hidden;text-align:center}
-    article img,svg{display:block;width:100%;height:auto}button{margin-bottom:12px}
+    article img,svg{display:block;width:100%;height:auto}article .product{font-size:12px;margin-top:5px}article .variant{font-size:11px;margin-top:3px}button{margin-bottom:12px}
     @media print{button{display:none}body{margin:0}}</style><button onclick="print()">In tem</button><main>${articles}</main></html>`);
   tab.document.close();
 };

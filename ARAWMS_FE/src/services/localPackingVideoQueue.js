@@ -134,6 +134,11 @@ export const migrateLegacyVideos = async () => {
 /** Removes local files left behind by completed jobs. */
 export const cleanupCompletedFiles = async () => {
   for (const job of await listPendingVideos()) {
-    if (job.status === 'COMPLETED') await removeFile(job.filePath);
+    if (job.status !== 'COMPLETED') continue;
+    try { await removeFile(job.filePath); }
+    catch (error) {
+      // Completed uploads must not block scanning when browser storage is read-only.
+      if (!['NoModificationAllowedError', 'SecurityError'].includes(error.name)) throw error;
+    }
   }
 };

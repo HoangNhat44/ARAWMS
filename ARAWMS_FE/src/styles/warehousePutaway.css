@@ -1,17 +1,81 @@
-/* File: warehousePutaway.css | Author: Duy Anh | Date: 2026-10-28 | Description: Styles the staff putaway queue and focused barcode scan workflow. */
-.putaway-page{max-width:1080px;margin:0 auto;padding:28px 20px 60px;color:var(--ara-noir)}
-.putaway-page header{margin-bottom:22px}.putaway-page header small{color:var(--ara-gold);font-weight:700;letter-spacing:.1em}
-.putaway-page h1{margin:5px 0 8px}.putaway-page h2{margin:0}.putaway-page header p{color:var(--ara-text-muted)}
-.putaway-card{background:#fff;border:1px solid var(--ara-border);border-radius:14px;padding:24px;box-shadow:var(--ara-shadow-sm)}
-.putaway-heading{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:18px}
-.putaway-page button{border:1px solid var(--ara-border);background:#fff;border-radius:8px;padding:10px 15px;cursor:pointer;color:var(--ara-noir)}
-.putaway-page button:disabled{opacity:.5;cursor:not-allowed}.putaway-page input,.putaway-page textarea{width:100%;border:1px solid var(--ara-border);border-radius:8px;padding:12px;font:inherit}
-.putaway-task-list{display:grid;gap:12px;margin-top:18px}.putaway-task-list article{display:flex;align-items:center;gap:16px;border:1px solid var(--ara-border);border-radius:10px;padding:14px}
-.putaway-task-list img{width:60px;height:60px;object-fit:cover;border-radius:8px}.putaway-task-list article div{display:grid;gap:4px;flex:1}.putaway-task-list small{color:var(--ara-text-muted)}
-.putaway-task-list em{color:#8d5b14;font-style:normal}.putaway-progress{display:flex;gap:20px;flex-wrap:wrap;font-size:1.1rem;margin:18px 0}
-.putaway-location strong{font-size:1.25rem}.putaway-instruction{padding:16px;background:#f5f0e8;border-radius:8px;font-weight:600}
-.putaway-video{display:block;width:100%;max-width:650px;margin:16px 0;border-radius:10px}.putaway-video.hidden{display:none}
-.putaway-input-row{display:flex;gap:10px;margin:8px 0 15px}.putaway-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
-.putaway-shortage{display:grid;gap:10px;margin-top:16px}.putaway-shortage textarea{display:block;min-height:84px;margin-top:8px}
-.putaway-error,.putaway-notice{padding:13px 16px;border-radius:8px;margin:12px 0}.putaway-error{background:#fff0ed;color:#9b3023}.putaway-notice{background:#eef7ee;color:#21602a}
-@media(max-width:650px){.putaway-task-list article{align-items:flex-start;flex-wrap:wrap}.putaway-task-list article button{width:100%}.putaway-input-row{flex-direction:column}}
+/* File: warehousePutaway.css | Author: Duy Anh | Date: 2026-10-31 | Description: Styles the putaway queue and focused barcode scanning dialog. */
+.main-content:has(.putaway-page){width:100%;min-width:0;align-items:stretch}
+.putaway-page{width:100%;max-width:1760px;align-self:center;margin:0 auto;padding:32px 32px 72px;color:#1c1b1b;font-family:var(--font-sans);display:grid;gap:32px;min-width:0;scroll-margin-top:80px}
+.putaway-page *{box-sizing:border-box}.putaway-page h1,.putaway-page h2,.putaway-page h3,.putaway-page p{margin:0}
+.putaway-page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.putaway-eyebrow{display:block;color:#825500;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px}
+.putaway-page-head h1{font-family:var(--font-serif);font-size:clamp(30px,3vw,42px);font-weight:600;line-height:1.15;margin-bottom:8px}
+.putaway-page-head p,.putaway-section-title p,.putaway-modal-head p{color:#625b52;font-size:14px;line-height:1.5}
+.putaway-button{border:1px solid #d5c4b0;background:white;color:#2b251d;border-radius:9px;padding:10px 15px;min-height:42px;font:600 13px var(--font-sans);cursor:pointer;white-space:nowrap}
+.putaway-button:hover:not(:disabled){background:#f6f0e8}.putaway-button:disabled{opacity:.5;cursor:not-allowed}
+.putaway-button-primary{background:#825500;color:#fff;border-color:#825500}.putaway-button-primary:hover:not(:disabled){background:#694400;color:#fff}
+.putaway-button-muted{background:#eae7e1;border-color:transparent}.putaway-button-light{box-shadow:0 1px 8px #0000000a}
+.putaway-card{width:100%;background:#fff;border:1px solid #ece6dd;border-radius:16px;padding:24px;box-shadow:0 7px 24px #3d250008;min-width:0}
+.putaway-section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.putaway-section-title>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.putaway-section-title h2{font-family:var(--font-serif);font-size:23px;font-weight:600}
+.putaway-step{background:#f3e4cb;color:#825500;border-radius:8px;width:30px;height:30px;display:inline-grid;place-items:center;font-weight:700}
+.putaway-count{background:#ffead0;color:#754800;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700}
+.putaway-filterbar,.putaway-task-controls{background:#f6f3f2;border-radius:11px;padding:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;min-width:0}
+.putaway-search{display:flex;align-items:center;gap:8px;min-width:240px;flex:1;background:white;border-radius:8px;border:1px solid #e7e0d5;padding:0 12px}.putaway-search span{font-size:23px;color:#837564}
+.putaway-page input,.putaway-page select,.putaway-page textarea{font:inherit;border:1px solid #d5c4b0;border-radius:8px;background:white;color:#1c1b1b;padding:10px 12px;min-width:0}
+.putaway-search input{border:0;width:100%;height:40px;font-size:13px;outline:0}
+.putaway-task-controls select{min-width:190px;height:42px;font-size:13px}.putaway-tabs{display:flex;gap:4px;flex-wrap:wrap}
+.putaway-tabs button{border:0;background:transparent;color:#514536;border-radius:7px;padding:9px 12px;font:600 12px var(--font-sans);cursor:pointer}
+.putaway-tabs button.active{background:white;color:#1c1b1b;box-shadow:0 1px 4px #00000015}.putaway-tabs span{font-size:11px;color:#825500;margin-left:4px}
+.putaway-table-scroll{overflow-x:auto;max-width:100%}.putaway-table{border-collapse:collapse;width:100%;font-size:13px;min-width:650px}
+.putaway-task-table{min-width:1130px;table-layout:fixed}.putaway-task-table th:nth-child(1){width:34%}.putaway-task-table th:nth-child(2){width:12%}.putaway-task-table th:nth-child(3){width:15%}.putaway-task-table th:nth-child(4){width:10%}.putaway-task-table th:nth-child(5){width:11%}.putaway-task-table th:nth-child(6){width:18%}.putaway-table th{text-align:left;color:#6d6257;background:#faf8f5;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:13px 15px;white-space:nowrap}
+.putaway-table td{padding:16px 15px;border-bottom:1px solid #eee9e2;vertical-align:middle;color:#514536;overflow-wrap:anywhere}.putaway-table tr:last-child td{border-bottom:0}
+.putaway-table td strong{display:block;color:#1c1b1b;font-weight:700}.putaway-table td small{display:block;color:#837564;margin-top:4px;font-size:11px}
+.putaway-quantity{font-size:16px;font-weight:700;color:#825500}.putaway-product{display:flex;align-items:center;gap:12px;min-width:230px}
+.putaway-product img,.putaway-product-placeholder{width:54px;height:58px;flex:none;border-radius:8px;object-fit:cover;background:#f0eded}
+.putaway-product-placeholder{display:grid;place-items:center;color:#9a8873}.putaway-product>div{min-width:0}.putaway-product strong{line-height:1.4;overflow-wrap:anywhere}
+.putaway-mini-track{height:6px;min-width:70px;max-width:170px;border-radius:999px;background:#ebe5dc;overflow:hidden;margin:7px 0}
+.putaway-mini-track span{display:block;height:100%;background:#c28522;border-radius:inherit}
+.putaway-status{display:inline-block;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;white-space:nowrap}
+.putaway-status.new{background:#f0eded;color:#5f5850}.putaway-status.doing{background:#fff0da;color:#8a5500}.putaway-status.issue{background:#ffdad6;color:#a31d1d}
+.putaway-empty{text-align:center;padding:28px;color:#837564;font-size:13px}
+.putaway-toast{position:fixed;right:24px;bottom:24px;max-width:min(460px,calc(100vw - 32px));background:#176044;color:#fff;padding:13px 15px;border-radius:10px;box-shadow:0 12px 30px #0002;z-index:110;display:flex;align-items:center;gap:14px;font-size:13px}
+.putaway-toast-error{background:#aa2c26}.putaway-toast button{border:0;background:transparent;color:inherit;font-size:20px;cursor:pointer;margin-left:auto}
+.putaway-overlay{position:fixed;inset:0;z-index:80;background:#31303099;backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px}
+.putaway-modal{width:min(1100px,100%);max-height:min(94vh,960px);background:#fcf9f8;border-radius:17px;box-shadow:0 24px 80px #0003;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.putaway-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;background:#fff;padding:21px 26px;border-bottom:1px solid #e5e2e1}
+.putaway-modal-head h2{font-family:var(--font-serif);font-size:27px;margin-bottom:5px}.putaway-close{border:0;background:#f0eded;color:#514536;border-radius:8px;width:35px;height:35px;font-size:23px;cursor:pointer;flex:none}
+.putaway-modal-body{padding:23px 26px;overflow-y:auto;min-height:0}.putaway-modal-foot{border-top:1px solid #e5e2e1;background:#f6f3f2;padding:15px 26px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.putaway-modal-foot>div{display:flex;gap:8px;flex-wrap:wrap}.putaway-scan-overview{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(170px,.8fr) minmax(190px,.9fr);gap:10px;margin-bottom:15px}
+.putaway-scan-overview>div{background:white;border:1px solid #e8dfd1;border-radius:12px;padding:15px;min-width:0}
+.putaway-scan-product{display:flex;align-items:center;gap:14px}.putaway-scan-product img,.putaway-scan-product .putaway-product-placeholder{width:68px;height:74px;object-fit:cover;border-radius:8px;flex:none}
+.putaway-scan-product small,.putaway-scan-target small,.putaway-scan-progress small{display:block;font-size:10px;font-weight:700;letter-spacing:.07em;color:#837564;margin-bottom:6px}
+.putaway-scan-product h3{font-size:14px;line-height:1.4}.putaway-scan-product p,.putaway-scan-progress p{font-size:12px;color:#837564;margin-top:5px}
+.putaway-scan-target strong{display:block;font-size:17px;color:#825500;line-height:1.35}.putaway-scan-target>span{font-size:12px;color:#837564}
+.putaway-scan-progress strong{font-size:27px;line-height:1}.putaway-scan-progress strong span{font-size:12px;color:#6d6257}.putaway-scan-progress .putaway-mini-track{max-width:none}
+.putaway-steps{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:15px;font-size:12px}
+.putaway-steps span{padding:8px 11px;border:1px solid #e3d8c8;border-radius:8px;color:#837564;background:#f6f3f2;font-weight:600}
+.putaway-steps span.active{background:#ffead0;color:#754800;border-color:#f0ce99}.putaway-steps span.done{background:#e4f5ea;color:#006c4a;border-color:#c5e6d2}
+.putaway-steps button{margin-left:auto;border:0;background:none;color:#825500;text-decoration:underline;font:600 12px var(--font-sans);cursor:pointer}
+.putaway-scan-columns{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(245px,.8fr);gap:15px}.putaway-scan-left,.putaway-scan-right{min-width:0}
+.putaway-camera{height:225px;background:#313030;color:white;border-radius:12px;position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.putaway-camera video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.putaway-camera video.hidden{display:none}
+.putaway-camera-top{position:absolute;top:10px;left:12px;right:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;z-index:2}
+.putaway-camera-top span{font-size:10px;letter-spacing:.1em;font-weight:700}.putaway-camera-top .putaway-button{min-height:34px;padding:5px 9px;background:#ffffffed}
+.putaway-reticle{width:min(48%,200px);height:90px;border:2px solid #f4d6a2;border-radius:12px;box-shadow:0 0 0 999px #0000001c}
+.putaway-camera p{position:absolute;bottom:12px;left:12px;right:12px;text-align:center;font-size:11px;color:#f3f0ef;z-index:2}
+.putaway-scan-form{background:white;border:1px solid #e8dfd1;border-radius:11px;padding:14px;margin-top:12px}.putaway-scan-form label{display:block;font-size:12px;font-weight:700;margin-bottom:8px}
+.putaway-scan-form>div{display:flex;gap:8px}.putaway-scan-form input{flex:1;width:100%;font-size:13px}.putaway-scan-feedback,.putaway-retry{margin-top:11px;border-radius:9px;padding:12px 14px;background:#eaf5ee;color:#006c4a;font-size:12px;font-weight:600}
+.putaway-retry{background:#fff1dd;color:#795000}.putaway-retry .putaway-button{margin-top:8px}
+.putaway-scan-right{background:white;border:1px solid #e8dfd1;border-radius:11px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.putaway-log-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.putaway-log-head h3{font-size:13px}.putaway-log-head span{font-size:11px;color:#837564}
+.putaway-scan-feed{overflow-y:auto;min-height:115px;max-height:220px;display:grid;align-content:start;gap:7px}.putaway-scan-feed>p{font-size:12px;color:#837564;padding:14px 0}
+.putaway-scan-feed article{border:1px solid #eee7dd;border-radius:8px;padding:8px;display:grid;gap:2px}.putaway-scan-feed code{overflow-wrap:anywhere;font-size:11px}.putaway-scan-feed small{color:#837564}.putaway-scan-feed article span{color:#006c4a;font-size:10px;font-weight:700}
+.putaway-soft-note{background:#f7f3ed;border-radius:9px;padding:12px;font-size:11px;color:#514536}.putaway-soft-note p{margin-top:5px;line-height:1.5}
+.putaway-print-modal{width:min(760px,100%)}.putaway-print-modal .putaway-soft-note{display:block;margin-bottom:17px;font-size:12px}
+.putaway-check,.putaway-label-row{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;cursor:pointer}
+.putaway-check input,.putaway-label-row input{width:17px;height:17px;flex:none;accent-color:#825500}
+.putaway-label-list{display:grid;gap:6px;max-height:310px;overflow-y:auto;margin:13px 0 18px}
+.putaway-label-row{background:white;border:1px solid #e8dfd1;border-radius:9px;padding:8px 11px;min-width:0}
+.putaway-label-row span{display:grid;gap:3px;min-width:0}.putaway-label-row small{font-size:11px;color:#675b4d}.putaway-label-row code{font-size:12px;overflow-wrap:anywhere}.putaway-label-row img{margin-left:auto;width:70px;height:30px;object-fit:contain}
+.putaway-copies{display:grid;gap:7px;font-size:12px;font-weight:700}.putaway-copies input{width:120px}.putaway-copies select{width:100%;max-width:360px;padding:8px;border:1px solid #d8cfc2;border-radius:7px;background:white}
+.putaway-report{background:white;border:1px solid #e8dfd1;border-radius:11px;padding:16px;margin-top:15px;display:grid;gap:12px}.putaway-report h3{font-size:15px}.putaway-report label{display:grid;gap:7px;font-size:12px;font-weight:600}
+.putaway-report textarea{min-height:80px;resize:vertical}.putaway-report>div{display:flex;justify-content:flex-end;gap:8px}
+@media(max-width:850px){.putaway-scan-overview{grid-template-columns:1fr 1fr}.putaway-scan-product{grid-column:1/-1}.putaway-scan-columns{grid-template-columns:1fr}.putaway-scan-right{min-height:170px}.putaway-scan-feed{max-height:130px}}
+@media(min-width:601px) and (max-width:1023px){.putaway-page{padding-right:24px;padding-left:24px}}
+@media(max-width:600px){.putaway-page{padding:20px 16px 60px;gap:18px}.putaway-page-head{align-items:start}.putaway-page-head .putaway-button{width:100%}.putaway-card{padding:16px}.putaway-section-title h2{font-size:20px}.putaway-filterbar,.putaway-task-controls{align-items:stretch;flex-direction:column}.putaway-search{min-width:0}.putaway-task-controls select{width:100%}.putaway-overlay{padding:6px}.putaway-modal{max-height:98vh;border-radius:12px}.putaway-modal-head,.putaway-modal-body,.putaway-modal-foot{padding:15px}.putaway-modal-head h2{font-size:23px}.putaway-scan-overview{grid-template-columns:1fr}.putaway-scan-product{grid-column:auto}.putaway-scan-form>div{flex-direction:column}.putaway-modal-foot>div,.putaway-modal-foot .putaway-button{width:100%}.putaway-camera{height:200px}.putaway-toast{right:12px;bottom:12px}}

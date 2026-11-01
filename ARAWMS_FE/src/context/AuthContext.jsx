@@ -37,8 +37,14 @@ export const AuthProvider = ({ children }) => {
         if (!active || currentRequest !== request) return;
         // Axios can clear an expired token before this handler runs.
         if (token !== localStorage.getItem(STORAGE_KEYS.TOKEN)) return syncAuth();
-        console.error('Lỗi xác thực người dùng:', err);
-        logout();
+        if (err.status === 401 || err.status === 403) logout();
+        else {
+          // Keep the last verified identity for local drafts while the API is unreachable.
+          try {
+            const cached = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER) || 'null');
+            setUser(cached?.id || cached?._id ? cached : null);
+          } catch { setUser(null); }
+        }
       } finally {
         if (active && currentRequest === request) setLoading(false);
       }
@@ -53,7 +59,10 @@ export const AuthProvider = ({ children }) => {
       }
     };
     window.addEventListener('storage', onStorage);
-    return () => { active = false; window.removeEventListener('storage', onStorage); };
+    const onExpired = () => setUser(null);
+    window.addEventListener('arawms-auth-expired', onExpired);
+    return () => { active = false; window.removeEventListener('storage', onStorage);
+      window.removeEventListener('arawms-auth-expired', onExpired); };
   }, []);
 
   /** Persists the authenticated user and token for subsequent API requests. */
