@@ -4,6 +4,7 @@
  * Chức năng: UC-03, UC-04 - Tải hồ sơ và hiển thị các mục quản lý tài khoản
  * cá nhân.
  */
+import { WmsButton } from '../components/ui/WmsControls';
 
 import { useEffect, useState } from 'react';
 import { User, ArrowLeft } from 'lucide-react';
@@ -31,7 +32,7 @@ export default function AccountPage() {
   // UC-04: Cập nhật hồ sơ hiển thị sau khi BE lưu thành công.
   const saved = (updated) => { setProfile(updated); updateUser(updated); };
   if (error) return <div className="ara-account-page"><div role="alert" className="ara-alert ara-alert-error">{error}</div>
-    <button className="btn-ara-secondary" onClick={() => setAttempt(attempt + 1)}>Thử lại</button></div>;
+    <WmsButton className="btn-ara-secondary" onClick={() => setAttempt(attempt + 1)}>Thử lại</WmsButton></div>;
   if (!profile) return <LoadingSpinner message="Đang tải thông tin tài khoản..." />;
   return <div className="ara-account-page">
     <Link to="/" className="ara-text-button ara-google-action"><ArrowLeft size={16} /> Quay lại trang chủ</Link>

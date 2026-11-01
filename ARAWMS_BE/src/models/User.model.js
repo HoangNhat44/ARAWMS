@@ -36,6 +36,11 @@ const userSchema = new Schema(
     roleCode: { type: String, enum: ROLES, required: true, index: true },
     // GBR-01: ACTIVE được truy cập; INACTIVE và LOCKED đều bị từ chối.
     status: { type: String, enum: ['ACTIVE', 'INACTIVE', 'LOCKED'], default: 'ACTIVE', index: true },
+    // Nguyễn Ngọc Huy-HE171157, 30-10-2026: UC-07 đến UC-09 - Phiên bản thao tác quản trị nhân viên.
+    managementVersion: { type: Number, default: 0, min: 0 },
+    // UC-09: Quyền ngoại lệ theo DATA_DICTIONARY; không ghi đè vai trò hoặc cấp quyền Owner.
+    permissionOverrides: { type: [{ _id: false, code: { type: String, required: true },
+      granted: { type: Boolean, required: true }, by: { type: Schema.Types.ObjectId, ref: 'User' }, at: Date }], default: [] },
     isOnlineForChat: { type: Boolean, default: false, index: true },
     activeChatCount: { type: Number, default: 0 },
     avatarUrl: { type: String },

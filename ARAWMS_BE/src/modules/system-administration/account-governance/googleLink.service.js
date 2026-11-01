@@ -1,7 +1,8 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 22-10-2026
- * Chức năng: UC-04, UC-05; GBR-01, GBR-23 - Liên kết Google, hủy liên kết và
+ * Cập nhật chú thích: Nguyễn Ngọc Huy-HE171157, 30-10-2026 - UC-10/11 là nhật ký/truy vết; GBR-23 là video hàng trả.
+ * Chức năng: UC-04, UC-05; GBR-01, UC-10, UC-11 - Liên kết Google, hủy liên kết và
  * ghi nhật ký. Mọi vai trò đều được liên kết Google với tài khoản của mình.
  */
 
@@ -77,7 +78,7 @@ export const linkGoogle = async (req) => {
     throw error;
   }
   if (!user) throw httpError(409, 'Tài khoản hoặc phiên làm việc đã thay đổi. Vui lòng tải lại trang.');
-  // GBR-23: Ghi nhận email Google vừa liên kết để tra lại thao tác.
+  // UC-10, UC-11: Ghi nhận email Google vừa liên kết để tra lại thao tác.
   await recordAccountActivity(req, user, 'Account Governance', 'LINK_GOOGLE', {
     afterSnapshot: { googleEmail: identity.email },
   });
@@ -119,7 +120,7 @@ export const unlinkGoogle = async (req) => {
     userId: user._id, purpose: 'LINK',
     $or: [{ linkVersion: { $lte: version } }, { linkVersion: { $exists: false } }],
   });
-  // GBR-23: Ghi lại thao tác hủy Google, không ghi mật khẩu xác nhận.
+  // UC-10, UC-11: Ghi lại thao tác hủy Google, không ghi mật khẩu xác nhận.
   await recordAccountActivity(req, updated, 'Account Governance', 'UNLINK_GOOGLE', {
     beforeSnapshot: { googleEmail: user.googleEmail || '' },
   });

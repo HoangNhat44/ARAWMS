@@ -10,9 +10,7 @@ import authenticate from '../../../common/middlewares/authenticate.js';
 import { asyncHandler } from '../../../common/utils/httpError.js';
 import { validateLogin } from './auth.validation.js';
 import * as controller from './auth.controller.js';
-import * as googleController from './googleAuth.controller.js';
-import { googleRateLimit } from './googleRateLimit.js';
-import { validateGoogleCredential } from './googleAuth.validation.js';
+import googleLoginRoutes from '../../user-management/authentication/googleLogin.routes.js';
 import * as recovery from './passwordRecovery.controller.js';
 import { validateForgotPassword, validateResetPassword } from './passwordRecovery.validation.js';
 import { recoveryRateLimit } from './passwordRecovery.rateLimit.js';
@@ -25,9 +23,8 @@ router.post('/login', validateLogin, asyncHandler(controller.login));
 router.post('/forgot-password', recoveryRateLimit, validateForgotPassword, asyncHandler(recovery.forgot));
 router.post('/reset-password', recoveryRateLimit, validateResetPassword, asyncHandler(recovery.reset));
 // UC-05: Cung cấp cấu hình công khai và các bước xác thực Google.
-router.get('/google/config', googleController.config);
-router.post('/google/challenge', googleRateLimit, asyncHandler(googleController.challenge));
-router.post('/google/login', googleRateLimit, validateGoogleCredential('LOGIN'), asyncHandler(googleController.login));
+// Nguyễn Ngọc Huy-HE171157, 30-10-2026: UC-05 - Chuyển nhóm route theo feature, giữ nguyên URL và xử lý cũ.
+router.use('/google', googleLoginRoutes);
 // UC-02, UC-03: Kiểm tra phiên trước khi đăng xuất hoặc lấy hồ sơ.
 router.post('/logout', authenticate, asyncHandler(controller.logout));
 router.get('/me', authenticate, controller.getMe);

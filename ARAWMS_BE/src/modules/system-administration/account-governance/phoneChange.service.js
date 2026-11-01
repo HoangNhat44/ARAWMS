@@ -1,7 +1,8 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 22-10-2026
- * Chức năng: UC-04; GBR-01, GBR-23 - Xác nhận OTP trước khi lưu số điện thoại.
+ * Cập nhật chú thích: Nguyễn Ngọc Huy-HE171157, 30-10-2026 - UC-10/11 là nhật ký/truy vết; GBR-23 là video hàng trả.
+ * Chức năng: UC-04; GBR-01, UC-10, UC-11 - Xác nhận OTP trước khi lưu số điện thoại.
  */
 
 import { randomBytes, randomInt, createHmac, timingSafeEqual } from 'node:crypto';

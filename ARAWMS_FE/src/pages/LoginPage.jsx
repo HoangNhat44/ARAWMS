@@ -3,6 +3,7 @@
  * Ngày thực hiện: 22-10-2026
  * Chức năng: UC-01, UC-05 - Ghép phần giới thiệu và biểu mẫu đăng nhập.
  */
+import { WmsButton, WmsField, WmsInput } from '../components/ui/WmsControls';
 
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -14,71 +15,12 @@ import "../styles/accountAuth.css";
 import GoogleIdentityButton from "./GoogleIdentityButton";
 
 export function LoginBrandPanel() {
-  return <>
-{/* CỘT TRÁI: BRAND SHOWCASE & LOGO ARA */}
-        <div style={{
-          background: 'linear-gradient(145deg, #F5F0E8 0%, #EAE2D5 100%)',
-          padding: '3.5rem 2.5rem',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          borderRight: '1px solid var(--ara-border)',
-          position: 'relative',
-        }}>
-          <div>
-            {/* Logo ARA hình vuông bo tròn cao cấp */}
-            <div style={{
-              display: 'inline-flex',
-              padding: '0.85rem',
-              background: '#FFFFFF',
-              borderRadius: '16px',
-              border: '1px solid rgba(159, 131, 101, 0.25)',
-              boxShadow: 'var(--ara-shadow-sm)',
-              marginBottom: '2rem',
-            }}>
-              <img
-                src="/logo.png"
-                alt="ARA Atelier Logo"
-                style={{ height: '70px', width: 'auto', display: 'block' }}
-              />
-            </div>
-
-            <div style={{
-              display: 'inline-block',
-              padding: '0.35rem 0.85rem',
-              background: 'rgba(159, 131, 101, 0.15)',
-              color: 'var(--ara-gold-hover)',
-              borderRadius: 'var(--radius-full)',
-              fontSize: '0.78rem',
-              fontWeight: 700,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              marginBottom: '1rem',
-            }}>
-              Atelier & Warehouse Solution
-            </div>
-
-            <h1 style={{
-              fontSize: '2.5rem',
-              lineHeight: 1.15,
-              marginBottom: '1rem',
-              color: 'var(--ara-noir)',
-            }}>
-              Hệ thống Quản lý Kho & Xưởng May ARA
-            </h1>
-
-            <p style={{
-              color: 'var(--ara-text-muted)',
-              fontSize: '0.98rem',
-              lineHeight: 1.6,
-              marginBottom: '2rem',
-            }}>
-              Nền tảng kiểm soát nguyên phụ liệu, cây vải, đơn sản xuất và chuỗi cung ứng thời trang may mặc chính xác, tinh tế và đồng bộ thời gian thực.
-            </p>
-          </div>
-
-        </div>
-  </>;
+  return <section className="ara-login-brand" aria-label="Giới thiệu hệ thống">
+    <img src="/logo.png" alt="AraStore" />
+    <div><span className="ara-eyebrow">AraStore · Quản trị nội bộ</span><h2>Quản lý kho và xưởng may</h2></div>
+    <p>Theo dõi nguyên liệu, thành phẩm và vận hành tại một nơi. Thông tin được truy cập theo vai trò của bạn.</p>
+    <ul><li>Quản lý nguyên vật liệu và thành phẩm</li><li>Theo dõi sản xuất và kiểm kê kho</li><li>Kiểm soát tài khoản và quyền truy cập</li></ul>
+  </section>;
 }
 
 function LoginForm() {
@@ -128,35 +70,35 @@ function LoginForm() {
   return <div className="ara-login-form">
     <div className="ara-login-heading">
       <span className="ara-eyebrow">Cổng Đăng Nhập Nội Bộ</span>
-      <h2>Chào mừng trở lại</h2><p>Vui lòng nhập thông tin xác thực để truy cập hệ thống</p>
+      <h1>Đăng nhập hệ thống</h1><p>Vui lòng nhập thông tin xác thực để truy cập hệ thống</p>
     </div>
     {location.state?.message && <div role="status" className="ara-alert ara-alert-success">{location.state.message}</div>}
     {error && <div role="alert" className="ara-alert ara-alert-error"><AlertCircle size={18} /><span>{error}</span></div>}
-    {resetRequired && <button type="button" className="btn-ara-secondary ara-recovery-action" onClick={forgot}>Đặt lại mật khẩu qua email</button>}
+    {resetRequired && <WmsButton type="button" className="btn-ara-secondary ara-recovery-action" onClick={forgot}>Đặt lại mật khẩu qua email</WmsButton>}
     <form onSubmit={submit}>
-      <div className="form-group"><label className="form-label" htmlFor="usernameOrEmail">Mã nhân viên hoặc Email</label>
+      <div className="form-group"><WmsField required className="form-label" htmlFor="usernameOrEmail">Mã nhân viên hoặc Email</WmsField>
         <div className="input-wrapper"><User size={18} className="input-icon" />
-          <input id="usernameOrEmail" name="usernameOrEmail" className="form-input" placeholder="NV001 hoặc email của bạn"
+          <WmsInput id="usernameOrEmail" name="usernameOrEmail" className="form-input" placeholder="NV001 hoặc email của bạn"
             value={form.usernameOrEmail} onChange={change} autoComplete="username" maxLength={254} required disabled={busy} />
         </div>
       </div>
       <div className="form-group"><div className="ara-password-label">
-        <label className="form-label" htmlFor="password">Mật khẩu</label>
-        <button type="button" className="ara-text-button" disabled={busy} onClick={forgot}>Quên mật khẩu?</button>
+        <WmsField required className="form-label" htmlFor="password">Mật khẩu</WmsField>
+        <WmsButton type="button" className="ara-text-button" disabled={busy} onClick={forgot}>Quên mật khẩu?</WmsButton>
       </div>
         <div className="input-wrapper"><Lock size={18} className="input-icon" />
-          <input id="password" name="password" type={visible ? 'text' : 'password'} className="form-input ara-password-input"
+          <WmsInput id="password" name="password" type={visible ? 'text' : 'password'} className="form-input ara-password-input"
             placeholder="Nhập mật khẩu..." value={form.password} onChange={change} autoComplete="current-password" required disabled={busy} />
-          <button type="button" className="input-action-btn" onClick={() => setVisible(!visible)} aria-label={visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}>
+          <WmsButton type="button" className="input-action-btn" onClick={() => setVisible(!visible)} aria-label={visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}>
             {visible ? <EyeOff size={18} /> : <Eye size={18} />}
-          </button>
+          </WmsButton>
         </div>
       </div>
-      <label className="ara-remember"><input type="checkbox" checked={form.rememberMe} disabled={busy}
-        onChange={(event) => setForm({ ...form, rememberMe: event.target.checked })} />Ghi nhớ đăng nhập trên thiết bị này</label>
-      <button type="submit" className="btn-ara-primary ara-submit" disabled={busy}>
+      <WmsField className="ara-remember"><WmsInput type="checkbox" checked={form.rememberMe} disabled={busy}
+        onChange={(event) => setForm({ ...form, rememberMe: event.target.checked })} />Ghi nhớ đăng nhập trên thiết bị này</WmsField>
+      <WmsButton type="submit" className="btn-ara-primary ara-submit" disabled={busy}>
         {submitting ? 'Đang xác thực...' : <>Đăng nhập hệ thống <ArrowRight size={18} /></>}
-      </button>
+      </WmsButton>
     </form>
     <GoogleLogin rememberMe={form.rememberMe} disabled={submitting} onSuccess={authenticated} onBusyChange={setGoogleBusy} />
   </div>;
@@ -199,6 +141,6 @@ function GoogleLogin({ rememberMe, disabled, onSuccess, onBusyChange }) {
         onSuccess(response);
       }} />}
     {!error && config?.enabled && !challenge && <p role="status" className="ara-section-note">Đang chuẩn bị đăng nhập Google...</p>}
-    {error && <button type="button" className="ara-text-button" disabled={disabled} onClick={() => setAttempt(attempt + 1)}>Thử lại Google</button>}
+    {error && <WmsButton type="button" className="ara-text-button" disabled={disabled} onClick={() => setAttempt(attempt + 1)}>Thử lại Google</WmsButton>}
   </section>;
 }

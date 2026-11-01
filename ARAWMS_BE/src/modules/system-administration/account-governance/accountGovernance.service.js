@@ -1,7 +1,8 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 22-10-2026
- * Chức năng: UC-04; GBR-23 - Cập nhật hồ sơ, đổi mật khẩu và ghi lại thay
+ * Cập nhật chú thích: Nguyễn Ngọc Huy-HE171157, 30-10-2026 - UC-10/11 là nhật ký/truy vết; GBR-23 là video hàng trả.
+ * Chức năng: UC-04; UC-10, UC-11 - Cập nhật hồ sơ, đổi mật khẩu và ghi lại thay
  * đổi.
  */
 
@@ -25,7 +26,7 @@ export const updateProfile = async (req) => {
   }, { $set: profileInput }, { new: true, runValidators: true })
     .populate('roleId', 'roleName roleCode isActive isDeleted');
   if (!user) throw httpError(401, 'Phiên làm việc đã kết thúc. Vui lòng đăng nhập lại.');
-  // UC-04, GBR-23: Lưu họ tên và số điện thoại trước và sau khi sửa.
+  // UC-04, UC-10, UC-11: Lưu họ tên và số điện thoại trước và sau khi sửa.
   await recordAccountActivity(req, user, 'Account Governance', 'UPDATE_OWN_PROFILE', {
     beforeSnapshot: { fullName: req.user.fullName, phone: req.user.phone || '' },
     afterSnapshot: { fullName: user.fullName, phone: user.phone || '' },
@@ -52,6 +53,6 @@ export const changePassword = async (req) => {
     $unset: { passwordResetTokenHash: '', passwordResetExpiresAt: '', passwordResetRequestedAt: '' },
   });
   if (!result.modifiedCount) throw httpError(409, 'Tài khoản đã thay đổi. Vui lòng đăng nhập lại.');
-  // GBR-23: Ghi nhận đổi mật khẩu mà không lưu mật khẩu vào nhật ký.
+  // UC-10, UC-11: Ghi nhận đổi mật khẩu mà không lưu mật khẩu vào nhật ký.
   await recordAccountActivity(req, req.user, 'Account Governance', 'CHANGE_OWN_PASSWORD');
 };

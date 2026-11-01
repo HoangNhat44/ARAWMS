@@ -1,6 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 22-10-2026
+ * Cập nhật chú thích: Nguyễn Ngọc Huy-HE171157, 30-10-2026 - UC-10/11 là nhật ký/truy vết; GBR-23 là video hàng trả.
  * Chức năng: UC-01, UC-02; GBR-01, GBR-02 - Đăng nhập, đăng xuất và kiểm tra
  * trạng thái tài khoản.
  */
@@ -95,7 +96,7 @@ export const createSession = async (user, rememberMe, req, method = 'PASSWORD') 
     $push: { sessions: { $each: [{ sessionId, expiresAt }], $slice: -10 } },
   }, { new: true }).populate('roleId', 'roleName roleCode isActive isDeleted');
   if (!isActiveAccount(updated)) throw credentialsError();
-  // GBR-23: Ghi nhận tài khoản đã đăng nhập và cách đăng nhập.
+  // UC-10, UC-11: Ghi nhận tài khoản đã đăng nhập và cách đăng nhập.
   await recordAccountActivity(req, updated, 'Authentication', method === 'GOOGLE' ? 'GOOGLE_LOGIN' : 'LOGIN');
   return { user: accountProfile(updated), token, expiresAt };
 };

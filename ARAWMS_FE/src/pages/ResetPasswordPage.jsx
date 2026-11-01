@@ -4,6 +4,7 @@
  * Chức năng: Hỗ trợ UC-01, GBR-02 - Đọc mã khôi phục và mở biểu mẫu đặt mật
  * khẩu mới.
  */
+import { WmsField, WmsInput, WmsButton } from '../components/ui/WmsControls';
 
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -56,15 +57,15 @@ function ResetPasswordForm({ token }) {
     {error && <div role="alert" className="ara-alert ara-alert-error">{error}</div>}
     <form onSubmit={submit}>
       {[['newPassword', 'Mật khẩu mới'], ['confirmPassword', 'Xác nhận mật khẩu mới']].map(([name, label]) =>
-        <div className="form-group" key={name}><label className="form-label" htmlFor={name}>{label}</label>
-          <input id={name} className="form-input ara-plain-input" type={visible ? 'text' : 'password'} required minLength={8}
+        <div className="form-group" key={name}><WmsField required className="form-label" htmlFor={name}>{label}</WmsField>
+          <WmsInput id={name} className="form-input ara-plain-input" type={visible ? 'text' : 'password'} required minLength={8}
             autoComplete="new-password" disabled={busy} value={form[name]}
             onChange={(event) => { setForm({ ...form, [name]: event.target.value }); setError(''); }} />
         </div>)}
-      <button type="button" className="ara-text-button ara-password-toggle" disabled={busy} onClick={() => setVisible(!visible)}>
+      <WmsButton type="button" className="ara-text-button ara-password-toggle" disabled={busy} onClick={() => setVisible(!visible)}>
         {visible ? <EyeOff size={16} /> : <Eye size={16} />}{visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-      </button>
-      <button className="btn-ara-primary ara-submit" disabled={busy}>{busy ? 'Đang lưu...' : 'Lưu mật khẩu mới'}</button>
+      </WmsButton>
+      <WmsButton className="btn-ara-primary ara-submit" disabled={busy}>{busy ? 'Đang lưu...' : 'Lưu mật khẩu mới'}</WmsButton>
     </form>
   </>;
 }

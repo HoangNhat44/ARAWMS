@@ -1,24 +1,2 @@
-import React from 'react';
-
-const Footer = () => {
-  return (
-    <footer className="ara-footer">
-      <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <img src="/logo.png" alt="ARA" style={{ height: '24px', opacity: 0.8 }} />
-          <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, color: 'var(--ara-noir)', letterSpacing: '0.05em' }}>
-            ARA WMS
-          </span>
-        </div>
-        <p style={{ margin: 0 }}>
-          © {new Date().getFullYear()} ARA Atelier & Warehouse Management System. All rights reserved.
-        </p>
-        <div style={{ fontSize: '0.8rem', color: 'var(--ara-text-light)' }}>
-          Phiên bản 1.0.0 — Production Ready
-        </div>
-      </div>
-    </footer>
-  );
-};
-
-export default Footer;
+/* Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 30-10-2026 | Footer tối giản, không có thông tin trạng thái triển khai giả định. */
+export default function Footer(){return <footer className="ara-footer"><div className="ara-footer-content"><span>© {new Date().getFullYear()} AraStore</span><span>Hệ thống quản trị kho nội bộ</span></div></footer>;}

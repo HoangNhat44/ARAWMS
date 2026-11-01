@@ -3,6 +3,7 @@
  * Ngày thực hiện: 22-10-2026
  * Chức năng: Hỗ trợ UC-01, GBR-02 - Trang gửi yêu cầu Quên mật khẩu.
  */
+import { WmsField, WmsInput, WmsButton } from '../components/ui/WmsControls';
 
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -40,13 +41,13 @@ function ForgotPasswordForm() {
     {error && <div role="alert" className="ara-alert ara-alert-error">{error}</div>}
     {notice && <div role="status" className="ara-alert ara-alert-success">{notice}</div>}
     <form onSubmit={submit}>
-      <div className="form-group"><label className="form-label" htmlFor="recoveryIdentifier">Email hoặc mã nhân viên</label>
-        <input id="recoveryIdentifier" className="form-input ara-plain-input" autoComplete="username" required maxLength={254}
+      <div className="form-group"><WmsField required className="form-label" htmlFor="recoveryIdentifier">Email hoặc mã nhân viên</WmsField>
+        <WmsInput id="recoveryIdentifier" className="form-input ara-plain-input" autoComplete="username" required maxLength={254}
           value={identifier} disabled={busy} onChange={(event) => { setIdentifier(event.target.value); setError(''); }} />
       </div>
-      <button className="btn-ara-primary ara-submit" disabled={busy || cooldown > 0}>
+      <WmsButton className="btn-ara-primary ara-submit" disabled={busy || cooldown > 0}>
         {busy ? 'Đang gửi...' : cooldown > 0 ? 'Gửi lại sau ' + cooldown + ' giây' : 'Gửi liên kết đặt lại mật khẩu'}
-      </button>
+      </WmsButton>
     </form>
   </>;
 }

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { ENV } from '../config/env.js';
+import { runtimeGhnConfig } from '../modules/system-administration/system-settings/systemSettings.service.js';
 
 class GhnService {
   constructor(config = {}) {
@@ -194,5 +195,13 @@ class GhnService {
 }
 
 // Export singleton instance as well as the class
-export const ghnService = new GhnService();
+// Nguyễn Ngọc Huy-HE171157, 30-10-2026: OWNER-EXT-02 - Dùng cấu hình Owner vừa lưu cho yêu cầu tiếp theo.
+// Mỗi lần gọi tạo client riêng, tránh yêu cầu đồng thời dùng nhầm token hoặc shop của nhau.
+const runtimeClient = async () => new GhnService(await runtimeGhnConfig());
+export const ghnService = {
+  createOrder: async (...args) => (await runtimeClient()).createOrder(...args),
+  getOrderDetail: async (...args) => (await runtimeClient()).getOrderDetail(...args),
+  getShops: async (...args) => (await runtimeClient()).getShops(...args),
+  getWards: async (...args) => (await runtimeClient()).getWards(...args),
+};
 export default GhnService;

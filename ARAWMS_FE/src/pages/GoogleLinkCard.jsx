@@ -4,6 +4,7 @@
  * Chức năng: UC-04, UC-05 - Liên kết, hủy liên kết và đổi tài khoản Google
  * của người dùng.
  */
+import { WmsButton, WmsField, WmsInput } from '../components/ui/WmsControls';
 
 import { useEffect, useState } from 'react';
 import { Link2, Unlink, ArrowLeft } from 'lucide-react';
@@ -75,24 +76,24 @@ export default function GoogleLinkCard({ user, onSaved }) {
     {message && <div role="status" className="ara-alert ara-alert-success">{message}</div>}
     {user.googleLinked && <div className="ara-google-linked"><strong>Đã liên kết Google</strong><p>{user.googleEmail}</p></div>}
     {mode === 'idle' && <>
-      {user.googleLinked ? <button type="button" className="btn-ara-secondary ara-google-action"
+      {user.googleLinked ? <WmsButton type="button" className="btn-ara-secondary ara-google-action"
         onClick={() => { setUnlinking(true); setMode('password'); setError(''); setMessage(''); }}>
         <Unlink size={17} /> Hủy liên kết
-      </button> : <>
-        {config?.enabled && <button type="button" className="btn-ara-secondary ara-google-action"
-          onClick={() => { setUnlinking(false); setMode('password'); setError(''); setMessage(''); }}>Liên kết Google</button>}
+      </WmsButton> : <>
+        {config?.enabled && <WmsButton type="button" className="btn-ara-secondary ara-google-action"
+          onClick={() => { setUnlinking(false); setMode('password'); setError(''); setMessage(''); }}>Liên kết Google</WmsButton>}
         {config?.enabled === false && <p className="ara-section-note">Đăng nhập Google chưa được bật.</p>}
         {!config && !error && <p role="status" className="ara-section-note">Đang tải...</p>}
-        {!config && error && <button type="button" className="ara-text-button" onClick={() => { setError(''); setAttempt(value => value + 1); }}>Thử lại</button>}
+        {!config && error && <WmsButton type="button" className="ara-text-button" onClick={() => { setError(''); setAttempt(value => value + 1); }}>Thử lại</WmsButton>}
       </>}
     </>}
     {mode === 'password' && <form onSubmit={confirm}>
       <p className="ara-section-note">{unlinking ? 'Nhập mật khẩu để hủy liên kết và chọn Google khác.' : 'Nhập mật khẩu để xác nhận liên kết Google.'}</p>
-      <div className="form-group"><label className="form-label" htmlFor="googleLinkPassword">Mật khẩu hiện tại</label>
-        <input id="googleLinkPassword" type="password" className="form-input ara-plain-input" value={password} maxLength={72}
+      <div className="form-group"><WmsField required className="form-label" htmlFor="googleLinkPassword">Mật khẩu hiện tại</WmsField>
+        <WmsInput id="googleLinkPassword" type="password" className="form-input ara-plain-input" value={password} maxLength={72}
           onChange={event => { setPassword(event.target.value); setError(''); }} required autoComplete="current-password" disabled={busy} />
       </div>
-      <button className="btn-ara-primary" disabled={busy}>{busy ? 'Đang xử lý...' : unlinking ? 'Xác nhận hủy liên kết' : 'Chọn tài khoản Google'}</button>
+      <WmsButton className="btn-ara-primary" disabled={busy}>{busy ? 'Đang xử lý...' : unlinking ? 'Xác nhận hủy liên kết' : 'Chọn tài khoản Google'}</WmsButton>
     </form>}
     {mode === 'choose' && <>
       {challenge ? <>
@@ -103,11 +104,11 @@ export default function GoogleLinkCard({ user, onSaved }) {
             onSaved(response.data.user); back(); setMessage(response.message);
           }} />
       </> : managementToken && config?.enabled
-        ? <button type="button" className="btn-ara-secondary ara-google-action" disabled={busy} onClick={chooseAgain}>Chọn tài khoản Google khác</button>
+        ? <WmsButton type="button" className="btn-ara-secondary ara-google-action" disabled={busy} onClick={chooseAgain}>Chọn tài khoản Google khác</WmsButton>
         : <p className="ara-section-note">Đăng nhập Google chưa được bật.</p>}
     </>}
-    {mode !== 'idle' && <button type="button" className="ara-text-button ara-google-action" disabled={busy} onClick={back}>
+    {mode !== 'idle' && <WmsButton type="button" className="ara-text-button ara-google-action" disabled={busy} onClick={back}>
       <ArrowLeft size={16} /> Quay lại
-    </button>}
+    </WmsButton>}
   </section>;
 }

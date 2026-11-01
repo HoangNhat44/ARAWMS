@@ -34,7 +34,7 @@ export const authenticate = asyncHandler(async (req, res, next) => {
   const user = await User.findOne({
     _id: payload.sub, ...activeAccountFilter,
     sessions: { $elemMatch: { sessionId: payload.sid, expiresAt: { $gt: new Date() } } },
-  }).populate('roleId', 'roleName roleCode isActive isDeleted');
+  }).populate('roleId', 'roleName roleCode isActive isDeleted permissions');
   /*
    * GBR-01: Chặn tài khoản hoặc role đã bị vô hiệu hóa, kể cả khi đăng nhập từ
    * trước.

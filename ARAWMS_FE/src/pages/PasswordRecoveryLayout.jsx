@@ -14,7 +14,7 @@ export default function PasswordRecoveryLayout({ title, description, children })
     <LoginBrandPanel />
     <div className="ara-login-form">
       <div className="ara-login-heading"><span className="ara-eyebrow">Khôi phục tài khoản</span>
-        <h2>{title}</h2><p>{description}</p>
+        <h1>{title}</h1><p>{description}</p>
       </div>
       {children}
       <Link className="ara-text-button ara-recovery-back" to="/login">Quay lại đăng nhập</Link>

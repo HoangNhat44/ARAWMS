@@ -4,6 +4,7 @@
  * Chức năng: UC-03, UC-04 - Hiển thị hồ sơ và gửi thay đổi họ tên, số điện
  * thoại.
  */
+import { WmsField, WmsInput, WmsButton } from '../components/ui/WmsControls';
 
 import { useEffect, useRef, useState } from "react";
 import { Save } from "lucide-react";
@@ -101,12 +102,12 @@ export default function ProfileForm({ user, onSaved }) {
         setForm({ fullName: user.fullName, phone: user.phone || '' }); setNotice(null);
       }
     }}>
-      <div className="form-group"><label className="form-label" htmlFor="fullName">Họ và tên</label>
-        <input className="form-input ara-plain-input" id="fullName" autoComplete="name" maxLength={100} required disabled={busy || Boolean(challenge)}
+      <div className="form-group"><WmsField required className="form-label" htmlFor="fullName">Họ và tên</WmsField>
+        <WmsInput className="form-input ara-plain-input" id="fullName" autoComplete="name" maxLength={100} required disabled={busy || Boolean(challenge)}
           value={form.fullName} onChange={event => change('fullName', event.target.value)} />
       </div>
-      <div className="form-group"><label className="form-label" htmlFor="phone">Số điện thoại</label>
-        <input className="form-input ara-plain-input" id="phone" type="tel" autoComplete="tel" minLength={10} maxLength={10} required
+      <div className="form-group"><WmsField required className="form-label" htmlFor="phone">Số điện thoại</WmsField>
+        <WmsInput className="form-input ara-plain-input" id="phone" type="tel" autoComplete="tel" minLength={10} maxLength={10} required
           pattern="0[0-9]{9}" title="Số điện thoại gồm đúng 10 chữ số và bắt đầu bằng số 0."
           placeholder="0912345678" disabled={busy || Boolean(challenge)}
           value={form.phone} onChange={event => change('phone', event.target.value)} />
@@ -117,7 +118,7 @@ export default function ProfileForm({ user, onSaved }) {
         <div><dt>Vai trò</dt><dd>{user.roleName}</dd></div>
         <div><dt>Đăng nhập gần nhất</dt><dd>{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString('vi-VN') : 'Chưa có thông tin'}</dd></div>
       </dl>
-      {!challenge && <button className="btn-ara-primary" disabled={busy}><Save size={17} />{busy ? 'Đang lưu...' : 'Lưu thay đổi'}</button>}
+      {!challenge && <WmsButton className="btn-ara-primary" disabled={busy}><Save size={17} />{busy ? 'Đang lưu...' : 'Lưu thay đổi'}</WmsButton>}
     </form>
     {challenge && <PhoneOtpConfirmation challenge={challenge} otp={otp} onOtpChange={setOtp} busy={busy} expired={expired}
       cooldown={cooldown} onConfirm={confirm} onResend={resend}
@@ -130,18 +131,18 @@ function PhoneOtpConfirmation({ challenge, otp, onOtpChange, busy, expired, cool
     <p className="ara-section-note">Nhập OTP gửi tới {challenge.email} để lưu thay đổi số điện thoại thành {challenge.phone}. Mã có hiệu lực 5 phút.</p>
     {expired && <p role="alert" className="ara-section-note">OTP đã hết hạn. Hãy gửi mã mới.</p>}
     <form onSubmit={onConfirm}>
-      <div className="form-group"><label className="form-label" htmlFor="phoneOtp">Mã OTP</label>
-        <input id="phoneOtp" className="form-input ara-plain-input" inputMode="numeric" autoComplete="one-time-code"
+      <div className="form-group"><WmsField required className="form-label" htmlFor="phoneOtp">Mã OTP</WmsField>
+        <WmsInput id="phoneOtp" className="form-input ara-plain-input" inputMode="numeric" autoComplete="one-time-code"
           maxLength={6} pattern="[0-9]{6}" required autoFocus disabled={busy || expired}
           value={otp} onChange={event => onOtpChange(event.target.value.replace(/\D/g, '').slice(0, 6))} />
       </div>
-      <button className="btn-ara-primary" disabled={busy || expired || otp.length !== 6}>{busy ? 'Đang xác nhận...' : 'Xác nhận lưu thay đổi'}</button>
+      <WmsButton className="btn-ara-primary" disabled={busy || expired || otp.length !== 6}>{busy ? 'Đang xác nhận...' : 'Xác nhận lưu thay đổi'}</WmsButton>
     </form>
     <div className="ara-otp-actions">
-      <button type="button" className="ara-text-button" disabled={busy || cooldown > 0} onClick={onResend}>
+      <WmsButton type="button" className="ara-text-button" disabled={busy || cooldown > 0} onClick={onResend}>
         {cooldown > 0 ? `Gửi lại sau ${cooldown} giây` : 'Gửi lại OTP'}
-      </button>
-      <button type="button" className="ara-text-button" disabled={busy} onClick={onCancel}>Sửa lại thông tin</button>
+      </WmsButton>
+      <WmsButton type="button" className="ara-text-button" disabled={busy} onClick={onCancel}>Sửa lại thông tin</WmsButton>
     </div>
   </div>;
 }

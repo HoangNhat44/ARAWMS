@@ -3,6 +3,7 @@
  * Ngày thực hiện: 22-10-2026
  * Chức năng: UC-04 - Kiểm tra mật khẩu hiện tại và gửi yêu cầu đổi mật khẩu.
  */
+import { WmsField, WmsInput, WmsButton } from '../components/ui/WmsControls';
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -45,17 +46,17 @@ export default function ChangePasswordForm() {
     {error && <div role="alert" className="ara-alert ara-alert-error">{error}</div>}
     <form onSubmit={submit}>
       {fields.map(([name, label]) => <div className="form-group" key={name}>
-        <label className="form-label" htmlFor={name}>{label}</label>
+        <WmsField required className="form-label" htmlFor={name}>{label}</WmsField>
         <div className="input-wrapper"><Lock size={18} className="input-icon" />
-          <input id={name} type={visible ? 'text' : 'password'} className="form-input ara-password-input" required disabled={busy}
+          <WmsInput id={name} type={visible ? 'text' : 'password'} className="form-input ara-password-input" required disabled={busy}
             minLength={name === 'currentPassword' ? undefined : 8} autoComplete={name === 'currentPassword' ? 'current-password' : 'new-password'}
             value={form[name]} onChange={(e) => { setError(''); setForm({ ...form, [name]: e.target.value }); }} />
         </div>
       </div>)}
-      <button className="ara-text-button ara-password-toggle" type="button" onClick={() => setVisible(!visible)}>
+      <WmsButton className="ara-text-button ara-password-toggle" type="button" onClick={() => setVisible(!visible)}>
         {visible ? <EyeOff size={16} /> : <Eye size={16} />}{visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-      </button>
-      <button className="btn-ara-primary" disabled={busy}><Lock size={17} />{busy ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}</button>
+      </WmsButton>
+      <WmsButton className="btn-ara-primary" disabled={busy}><Lock size={17} />{busy ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}</WmsButton>
     </form>
   </section>;
 }

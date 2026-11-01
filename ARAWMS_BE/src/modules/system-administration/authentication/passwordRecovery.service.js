@@ -1,6 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 22-10-2026
+ * Cập nhật chú thích: Nguyễn Ngọc Huy-HE171157, 30-10-2026 - UC-10/11 là nhật ký/truy vết; GBR-23 là video hàng trả.
  * Chức năng: Hỗ trợ UC-01; GBR-01, GBR-02 - Khôi phục mật khẩu qua email đã
  * đăng ký.
  */
@@ -97,7 +98,7 @@ export const resetPassword = async ({ token, newPassword }, req) => {
   }, { runValidators: true });
   if (!result.modifiedCount) throw invalidLink();
   /*
-   * GBR-23: Ghi lại thao tác đặt lại mật khẩu, không ghi mật khẩu hoặc mã khôi
+   * UC-10, UC-11: Ghi lại thao tác đặt lại mật khẩu, không ghi mật khẩu hoặc mã khôi
    * phục.
    */
   await recordAccountActivity(req, user, 'Authentication', 'RESET_PASSWORD');
