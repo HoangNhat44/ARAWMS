@@ -54,8 +54,8 @@ const Navbar = () => {
           {user && (
             <>
               <li>
-                <Link to="/seller/chat" style={{ fontWeight: 600, color: 'var(--ara-gold)' }}>
-                  Bán hàng (Seller)
+                <Link to="/seller/chat" style={{ fontWeight: 600}}>
+                  Hội Thoại & Bán Hàng
                 </Link>
               </li>
               <li>

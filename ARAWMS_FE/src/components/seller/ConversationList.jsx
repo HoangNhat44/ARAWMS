@@ -50,7 +50,7 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
   return (
     <div className="d-flex flex-column h-100 bg-white">
       {/* Search Header */}
-      <div className="p-2 border-bottom" style={{ borderColor: '#E3D9CD' }}>
+      <div className="p-2 border-bottom" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
         <InputGroup size="sm" className="ara-search-capsule">
           <InputGroup.Text><Icon name="search" /></InputGroup.Text>
           <Form.Control
@@ -62,7 +62,7 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
       </div>
 
       {/* Quick Tag Pills Bar - dùng allTags từ DB */}
-      <div className="d-flex flex-wrap gap-1 p-2 border-bottom" style={{ borderColor: '#E3D9CD' }}>
+      <div className="d-flex flex-wrap gap-1 p-2 border-bottom" style={{ borderColor: 'var(--wms-border, #C8B9A6)', backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)' }}>
         <button
           type="button"
           className={`ara-status-pill-btn ${!activeFilterTag ? 'active' : ''}`}
@@ -110,20 +110,23 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
                   onClick={() => onSelect(conv)}
                   className="d-flex gap-2 py-3"
                   style={{
-                    backgroundColor: isSelected ? '#FAF7F2' : 'transparent',
-                    borderLeft: isSelected ? '4px solid #9F8365' : '4px solid transparent',
-                    color: '#1C1A17',
-                    borderColor: '#EDE6DC',
-                    transition: 'all 0.15s ease',
+                    backgroundColor: isSelected ? 'var(--wms-primary-subtle, #EFE6DA)' : 'transparent',
+                    borderLeft: isSelected ? '4px solid var(--wms-accent, #8A6A46)' : '4px solid transparent',
+                    color: 'var(--wms-text-primary, #141210)',
+                    borderColor: 'var(--wms-border, #C8B9A6)',
+                    transition: 'all 0.12s ease',
                   }}
                 >
                   {/* Avatar Icon */}
                   <div className="position-relative">
-                    <Avatar name={customer?.fullName} size={42} />
+                    <Avatar name={customer?.fullName} size={40} />
                     {conv.unreadCount > 0 && !isSelected && (
-                      <Badge pill bg="danger" className="position-absolute top-0 start-100 translate-middle border border-white">
+                      <span
+                        className="position-absolute top-0 start-100 translate-middle badge rounded-pill"
+                        style={{ backgroundColor: '#A62626', color: '#FFFFFF', fontSize: '10px' }}
+                      >
                         {conv.unreadCount}
-                      </Badge>
+                      </span>
                     )}
                   </div>
 
@@ -131,19 +134,24 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
                   <div className="flex-grow-1 overflow-hidden">
                     <div className="d-flex align-items-center justify-content-between mb-1">
                       <div className="d-flex align-items-center gap-1 overflow-hidden me-1">
-                        <span className="fw-bold text-truncate small">{customer?.fullName || 'Khách chưa đặt tên'}</span>
+                        <span className="fw-bold text-truncate small" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+                          {customer?.fullName || 'Khách chưa đặt tên'}
+                        </span>
                         {conv.pageName && (
-                          <Badge
-                            bg={conv.pageName === 'Learnmate' ? 'info' : 'primary'}
-                            className="px-1 py-0 flex-shrink-0"
-                            style={{ fontSize: '10px' }}
-                            pill
+                          <span
+                            className="badge rounded-pill px-1.5 py-0.5 flex-shrink-0"
+                            style={{
+                              backgroundColor: 'var(--wms-primary-subtle, #EFE6DA)',
+                              color: 'var(--wms-accent-hover, #6E5233)',
+                              border: '1px solid var(--wms-border, #C8B9A6)',
+                              fontSize: '10px',
+                            }}
                           >
                             {conv.pageName}
-                          </Badge>
+                          </span>
                         )}
                       </div>
-                      <span className="text-secondary small flex-shrink-0 ms-1">
+                      <span className="small flex-shrink-0 ms-1" style={{ color: 'var(--wms-secondary, #574F46)', fontSize: '11px' }}>
                         {conv.lastMessageAt
                           ? new Date(conv.lastMessageAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
                           : ''}
@@ -151,7 +159,7 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
                     </div>
 
                     {/* Last Message Preview */}
-                    <p className="text-secondary small mb-1 text-truncate">
+                    <p className="small mb-1 text-truncate" style={{ color: 'var(--wms-secondary, #574F46)' }}>
                       {conv.lastMessagePreview || 'Bắt đầu cuộc trò chuyện...'}
                     </p>
 
@@ -159,10 +167,31 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
                     {conv.tags && conv.tags.length > 0 && (
                       <div className="d-flex flex-wrap gap-1">
                         {conv.tags.slice(0, 2).map((tg, idx) => (
-                          <Badge key={idx} bg="warning-subtle" text="warning-emphasis">{tg}</Badge>
+                          <span
+                            key={idx}
+                            className="badge rounded px-1.5 py-0.5"
+                            style={{
+                              backgroundColor: '#FEF0C7',
+                              color: '#9A5B06',
+                              border: '1px solid #F5B95F',
+                              fontSize: '10.5px',
+                            }}
+                          >
+                            {tg}
+                          </span>
                         ))}
                         {conv.tags.length > 2 && (
-                          <Badge bg="warning-subtle" text="warning-emphasis">+{conv.tags.length - 2}</Badge>
+                          <span
+                            className="badge rounded px-1.5 py-0.5"
+                            style={{
+                              backgroundColor: '#FEF0C7',
+                              color: '#9A5B06',
+                              border: '1px solid #F5B95F',
+                              fontSize: '10.5px',
+                            }}
+                          >
+                            +{conv.tags.length - 2}
+                          </span>
                         )}
                       </div>
                     )}

@@ -359,13 +359,13 @@ const SellerChatPage = () => {
   return (
     <div
       ref={containerRef}
-      className="d-flex flex-column"
-      style={{ height: 'calc(100dvh - 70px)', minHeight: 480, overflow: 'hidden', backgroundColor: '#FAF7F2' }}
+      className="d-flex flex-column h-100 w-100 seller-workspace"
+      style={{ height: 'calc(100dvh - 64px)', overflow: 'hidden', backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}
     >
-      {/* ===== Header Bar (Atelier Noir & Champagne Gold) ===== */}
+      {/* ===== Header Bar (Enterprise Solid Surface) ===== */}
       <div className="ara-seller-header px-3 py-2 d-flex align-items-center justify-content-between flex-shrink-0">
         <Stack direction="horizontal" gap={2} className="align-items-center">
-          <span className="fw-bold fs-6 text-white" style={{ letterSpacing: '0.02em' }}>
+          <span className="fw-bold fs-6" style={{ color: 'var(--wms-text-primary, #141210)', letterSpacing: '0.01em' }}>
             Hội Thoại & Bán Hàng
           </span>
         </Stack>
@@ -373,7 +373,7 @@ const SellerChatPage = () => {
         <Stack direction="horizontal" gap={2}>
           <Button
             size="sm"
-            className="btn-ara-header-gold d-flex align-items-center gap-1"
+            className="btn-wms-accent d-flex align-items-center gap-1"
             onClick={() => {
               setActiveTab('order');
               setQuickOrderModalOpen(true);
@@ -383,7 +383,7 @@ const SellerChatPage = () => {
           </Button>
           <Button
             size="sm"
-            className="btn-ara-header-ghost d-flex align-items-center gap-1"
+            className="btn-wms-default d-flex align-items-center gap-1"
             onClick={() => fetchAllData()}
             title="Đồng bộ hội thoại"
           >
@@ -393,10 +393,10 @@ const SellerChatPage = () => {
       </div>
 
       {/* ===== Responsive Workspace Layout Container ===== */}
-      <div className="d-flex flex-grow-1 overflow-hidden p-1 p-md-2 gap-0" style={{ backgroundColor: '#FAF7F2' }}>
+      <div className="d-flex flex-grow-1 overflow-hidden p-1 p-md-2 gap-0" style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
         <div
-          className="d-flex flex-grow-1 border rounded-3 bg-white shadow-sm overflow-hidden"
-          style={{ borderColor: '#E3D9CD' }}
+          className="d-flex flex-grow-1 border rounded bg-white overflow-hidden"
+          style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
         >
           {/* ===== PANE 1: Conversation List ===== */}
           {(!isMobile || mobileView === 'list') && (
@@ -475,13 +475,16 @@ const SellerChatPage = () => {
         style={{ width: isMobile ? '100%' : 420, maxWidth: '100vw' }}
       >
         <Offcanvas.Header closeButton className="py-2 px-3">
-          <Offcanvas.Title className="fs-6 fw-bold text-white d-flex align-items-center gap-2">
+          <Offcanvas.Title className="fs-6 fw-bold d-flex align-items-center gap-2" style={{ color: 'var(--wms-text-primary, #141210)' }}>
             <Icon name="person-badge" />
-            <span>Tác Nghiệp Bán Hàng</span>
+            <span>Chốt Đơn & Khách Hàng</span>
             {selectedConversation?.customerId?.fullName && (
-              <Badge bg="warning" text="dark" pill className="small text-truncate" style={{ maxWidth: 160 }}>
+              <span
+                className="small text-truncate px-2 py-0.5 rounded fw-semibold"
+                style={{ backgroundColor: '#FEF0C7', color: '#9A5B06', border: '1px solid #F5B95F', maxWidth: 160 }}
+              >
                 {selectedConversation.customerId.fullName}
-              </Badge>
+              </span>
             )}
           </Offcanvas.Title>
         </Offcanvas.Header>
