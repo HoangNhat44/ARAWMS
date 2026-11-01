@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { LogOut, User as UserIcon, LogIn, Shield } from 'lucide-react';
+import { LogOut, User as UserIcon, LogIn } from 'lucide-react';
 
 const Navbar = () => {
   const { user, logout } = useAuth();
@@ -32,6 +32,9 @@ const Navbar = () => {
         <ul className="ara-nav-links">
           <li>
             <Link to="/">Trang chủ</Link>
+          </li>
+          <li>
+            <Link to="/accountant">Phân hệ Kế toán</Link>
           </li>
           {user ? (
             <>

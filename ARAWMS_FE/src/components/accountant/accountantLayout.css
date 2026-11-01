@@ -1,0 +1,1294 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* ==========================================================================
+   ARASTORE – ENTERPRISE WMS UI/UX DESIGN SYSTEM (ACCOUNTANT WORKSPACE)
+   High-Contrast Projector-Ready ARAWMS Palette (Deep Noir, Bronze Gold & Warm Stone)
+   + Enterprise UX Standards, WCAG 2.2 AA & 4px Spacing Scale
+   ========================================================================== */
+
+:root {
+  /* 4.2 Color Palette (High-Contrast Projector-Ready ARAWMS Brand Colors) */
+  --wms-primary: #141210;
+  --wms-primary-hover: #24201C;
+  --wms-accent: #8A6A46;
+  --wms-accent-light: #D4B48C;
+  --wms-accent-hover: #6E5233;
+  --wms-primary-subtle: #EFE6DA;
+  --wms-secondary: #574F46;
+
+  /* Background & Surface (Deeper Warm Stone & Crisp Borders for Projectors) */
+  --wms-bg-app: #E8DFD3;
+  --wms-bg-surface: #FFFFFF;
+  --wms-bg-subtle: #F3EDE4;
+  --wms-bg-muted: #DDD2C4;
+  --wms-border: #C8B9A6;
+  --wms-border-strong: #AE9C86;
+
+  /* Text Colors (High Contrast) */
+  --wms-text-primary: #141210;
+  --wms-text-body: #26221E;
+  --wms-text-secondary: #574F46;
+  --wms-text-light: #786E63;
+  --wms-text-inverse: #FAF7F2;
+
+  /* Semantic Colors (Rich & Saturated for Slide Projection) */
+  --wms-success: #1E6B47;
+  --wms-success-bg: #E3F5EC;
+  --wms-success-border: #86CFA8;
+
+  --wms-warning: #B45309;
+  --wms-warning-text: #9A5B06;
+  --wms-warning-bg: #FEF0C7;
+  --wms-warning-border: #F5B95F;
+
+  --wms-danger: #A62626;
+  --wms-danger-bg: #FCE4E4;
+  --wms-danger-border: #EDA1A1;
+
+  --wms-info: #6E5233;
+  --wms-info-bg: #EFE6DA;
+  --wms-info-border: #C8B9A6;
+
+  /* 4.3 Typography */
+  --wms-font-family: 'Inter', var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  --wms-font-page-title: 24px;
+  --wms-font-section-title: 18px;
+  --wms-font-body: 14px;
+  --wms-font-table: 13px;
+  --wms-font-caption: 12px;
+
+  /* 4.5 Spacing Scale (4px increments) */
+  --wms-space-1: 4px;
+  --wms-space-2: 8px;
+  --wms-space-3: 12px;
+  --wms-space-4: 16px;
+  --wms-space-6: 24px;
+  --wms-space-8: 32px;
+
+  /* Radius & Elevation */
+  --wms-radius-sm: 4px;
+  --wms-radius-md: 6px;
+  --wms-radius-lg: 8px;
+  --wms-shadow-card: 0 2px 10px rgba(20, 18, 16, 0.08);
+}
+
+/* Hide public marketing Navbar/Footer when inside Enterprise WMS Layout */
+body:has(.ara-accountant-shell) .ara-navbar,
+body:has(.ara-accountant-shell) .ara-footer {
+  display: none;
+}
+
+/* Base Shell */
+.ara-accountant-shell {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  background-color: var(--wms-bg-app);
+  color: var(--wms-text-body);
+  font-family: var(--wms-font-family);
+  font-size: var(--wms-font-body);
+  line-height: 1.5;
+}
+
+.ara-accountant-shell h1,
+.ara-accountant-shell h2,
+.ara-accountant-shell h3,
+.ara-accountant-shell h4 {
+  font-family: var(--wms-font-family);
+  color: var(--wms-text-primary);
+  letter-spacing: normal;
+  margin: 0;
+}
+
+/* Keyboard Accessibility Focus State (WCAG 2.2 AA) */
+.ara-accountant-shell a:focus-visible,
+.ara-accountant-shell button:focus-visible,
+.ara-accountant-shell input:focus-visible,
+.ara-accountant-shell select:focus-visible {
+  outline: 2px solid var(--wms-accent);
+  outline-offset: 2px;
+}
+
+/* ==================== 4.4 SIDEBAR (PRIMARY NAVIGATION) ==================== */
+.ara-acc-sidebar {
+  width: 264px;
+  min-width: 264px;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  background-color: var(--wms-primary);
+  color: var(--wms-text-inverse);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--wms-primary-hover);
+  transition: width 0.2s ease, min-width 0.2s ease;
+  z-index: 40;
+  user-select: none;
+}
+
+.ara-acc-sidebar.collapsed {
+  width: 72px;
+  min-width: 72px;
+}
+
+.ara-acc-sidebar-brand {
+  height: 64px;
+  padding: 0 var(--wms-space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.ara-acc-brand-link {
+  display: flex;
+  align-items: center;
+  gap: var(--wms-space-3);
+  text-decoration: none;
+  color: var(--wms-text-inverse);
+  overflow: hidden;
+}
+
+.ara-acc-brand-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--wms-radius-md);
+  object-fit: contain;
+  background-color: var(--wms-bg-subtle);
+  padding: 2px;
+  flex-shrink: 0;
+}
+
+.ara-acc-brand-meta {
+  display: flex;
+  flex-direction: column;
+  white-space: nowrap;
+}
+
+.ara-acc-brand-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #FFFFFF;
+  line-height: 1.2;
+}
+
+.ara-acc-brand-subtitle {
+  font-size: var(--wms-font-caption);
+  color: var(--wms-accent-light);
+  font-weight: 600;
+}
+
+.ara-acc-collapse-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--wms-accent-light);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--wms-radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ara-acc-collapse-btn:hover {
+  background: var(--wms-accent);
+  border-color: var(--wms-accent-light);
+  color: #FFFFFF;
+}
+
+/* Sidebar Navigation */
+.ara-acc-sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--wms-space-4) var(--wms-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wms-space-4);
+}
+
+.ara-acc-sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.ara-acc-sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.24);
+  border-radius: var(--wms-radius-sm);
+}
+
+.ara-acc-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wms-space-1);
+}
+
+.ara-acc-nav-group-title {
+  font-size: var(--wms-font-caption);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--wms-accent-light);
+  padding: 0 var(--wms-space-3);
+  margin-bottom: var(--wms-space-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ara-acc-nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wms-space-2);
+  padding: var(--wms-space-2) var(--wms-space-3);
+  min-height: 40px;
+  border-radius: var(--wms-radius-md);
+  text-decoration: none;
+  color: #EAE3DC;
+  font-size: var(--wms-font-body);
+  font-weight: 500;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.ara-acc-nav-item:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #FFFFFF;
+}
+
+.ara-acc-nav-item.active {
+  background-color: var(--wms-accent);
+  color: #FFFFFF;
+  border-color: var(--wms-accent-light);
+  font-weight: 600;
+}
+
+.ara-acc-nav-item-left {
+  display: flex;
+  align-items: center;
+  gap: var(--wms-space-3);
+  min-width: 0;
+}
+
+.ara-acc-nav-icon {
+  flex-shrink: 0;
+  color: var(--wms-accent-light);
+}
+
+.ara-acc-nav-item.active .ara-acc-nav-icon {
+  color: #FFFFFF;
+}
+
+.ara-acc-nav-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ara-acc-nav-uc-badge {
+  font-size: var(--wms-font-caption);
+  font-weight: 600;
+  padding: 2px var(--wms-space-2);
+  border-radius: var(--wms-radius-sm);
+  background: rgba(255, 255, 255, 0.14);
+  color: #FFFFFF;
+  flex-shrink: 0;
+}
+
+.ara-acc-nav-item.active .ara-acc-nav-uc-badge {
+  background: rgba(20, 18, 16, 0.35);
+  color: #FFFFFF;
+}
+
+/* Sidebar Footer */
+.ara-acc-sidebar-footer {
+  padding: var(--wms-space-3);
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.ara-acc-back-home-link {
+  display: flex;
+  align-items: center;
+  gap: var(--wms-space-3);
+  padding: var(--wms-space-2) var(--wms-space-3);
+  min-height: 40px;
+  border-radius: var(--wms-radius-md);
+  text-decoration: none;
+  font-size: var(--wms-font-body);
+  font-weight: 500;
+  color: #EAE3DC;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.ara-acc-back-home-link:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
+}
+
+/* ==================== 4.4 HEADER & MAIN CONTENT ==================== */
+.ara-acc-main-wrapper {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ara-acc-header {
+  height: 64px;
+  background-color: var(--wms-bg-subtle);
+  border-bottom: 1px solid var(--wms-border);
+  padding: 0 var(--wms-space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wms-space-4);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.ara-acc-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ara-acc-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--wms-space-1);
+  font-size: var(--wms-font-caption);
+  color: var(--wms-secondary);
+  font-weight: 600;
+}
+
+.ara-acc-header-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--wms-space-2);
+}
+
+.ara-acc-header-title {
+  font-size: var(--wms-font-section-title);
+  font-weight: 700;
+  color: var(--wms-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ara-acc-header-uc-pill {
+  font-size: var(--wms-font-caption);
+  font-weight: 600;
+  padding: 2px var(--wms-space-2);
+  border-radius: var(--wms-radius-sm);
+  background-color: var(--wms-primary-subtle);
+  color: var(--wms-accent-hover);
+  border: 1px solid var(--wms-border);
+}
+
+.ara-acc-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--wms-space-3);
+}
+
+.ara-acc-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.ara-acc-search-icon {
+  position: absolute;
+  left: var(--wms-space-3);
+  color: var(--wms-secondary);
+  pointer-events: none;
+}
+
+.ara-acc-search-input {
+  width: 240px;
+  height: 36px;
+  padding: 0 var(--wms-space-3) 0 var(--wms-space-8);
+  border-radius: var(--wms-radius-md);
+  border: 1px solid var(--wms-border-strong);
+  background-color: var(--wms-bg-surface);
+  font-family: var(--wms-font-family);
+  font-size: var(--wms-font-body);
+  color: var(--wms-text-primary);
+}
+
+.ara-acc-search-input::placeholder {
+  color: var(--wms-text-light);
+}
+
+.ara-acc-search-input:focus {
+  border-color: var(--wms-accent);
+}
+
+.ara-acc-icon-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--wms-radius-md);
+  border: 1px solid var(--wms-border-strong);
+  background-color: var(--wms-bg-surface);
+  color: var(--wms-text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.ara-acc-icon-btn:hover {
+  border-color: var(--wms-accent);
+  color: var(--wms-accent-hover);
+  background-color: var(--wms-primary-subtle);
+}
+
+.ara-acc-notif-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--wms-danger);
+}
+
+.ara-acc-user-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--wms-space-2);
+  padding: var(--wms-space-1) var(--wms-space-3);
+  height: 36px;
+  border-radius: var(--wms-radius-md);
+  background-color: var(--wms-bg-surface);
+  border: 1px solid var(--wms-border-strong);
+}
+
+.ara-acc-user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--wms-radius-sm);
+  background-color: var(--wms-primary);
+  color: var(--wms-accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: var(--wms-font-caption);
+}
+
+.ara-acc-user-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.ara-acc-user-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--wms-text-primary);
+}
+
+.ara-acc-user-role {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--wms-accent-hover);
+}
+
+/* Main Content Container */
+.ara-acc-content {
+  flex: 1;
+  padding: var(--wms-space-6);
+  max-width: 1440px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ==================== 5. REUSABLE ENTERPRISE COMPONENTS (ANT DESIGN CONVENTIONS) ==================== */
+
+/* Page Header Block */
+.wms-page-header {
+  background-color: var(--wms-bg-surface);
+  border: 1px solid var(--wms-border);
+  border-radius: var(--wms-radius-lg);
+  padding: var(--wms-space-6);
+  margin-bottom: var(--wms-space-6);
+  box-shadow: var(--wms-shadow-card);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--wms-space-4);
+  flex-wrap: wrap;
+}
+
+.wms-page-title {
+  font-size: var(--wms-font-page-title);
+  font-weight: 700;
+  color: var(--wms-text-primary);
+  margin-bottom: var(--wms-space-1);
+}
+
+.wms-page-subtitle {
+  font-size: var(--wms-font-body);
+  color: var(--wms-secondary);
+  font-weight: 500;
+}
+
+/* Cards & Grids */
+.wms-grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--wms-space-4);
+}
+
+.wms-card {
+  background-color: var(--wms-bg-surface);
+  border: 1px solid var(--wms-border);
+  border-radius: var(--wms-radius-lg);
+  padding: var(--wms-space-4) var(--wms-space-6);
+  box-shadow: var(--wms-shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wms-space-3);
+}
+
+.wms-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--wms-space-2);
+  border-bottom: 1px solid var(--wms-border);
+}
+
+.wms-section-title {
+  font-size: var(--wms-font-section-title);
+  font-weight: 700;
+  color: var(--wms-text-primary);
+}
+
+/* Navigation Module Links Inside Overview */
+.wms-module-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--wms-space-2) var(--wms-space-3);
+  border-radius: var(--wms-radius-md);
+  border: 1px solid var(--wms-border);
+  background-color: var(--wms-bg-subtle);
+  text-decoration: none;
+  color: var(--wms-text-primary);
+  font-size: var(--wms-font-body);
+  font-weight: 600;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.wms-module-link:hover {
+  border-color: var(--wms-accent);
+  background-color: var(--wms-primary-subtle);
+  color: var(--wms-text-primary);
+}
+
+.wms-module-link-left {
+  display: flex;
+  align-items: center;
+  gap: var(--wms-space-2);
+}
+
+.wms-module-link-icon {
+  color: var(--wms-accent);
+  flex-shrink: 0;
+}
+
+.wms-module-link-right {
+  display: flex;
+  align-items: center;
+  gap: var(--wms-space-2);
+}
+
+/* Ant Design Button Variants (Section 5) */
+.wms-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wms-space-2);
+  height: 36px;
+  padding: 0 var(--wms-space-4);
+  border-radius: var(--wms-radius-md);
+  font-family: var(--wms-font-family);
+  font-size: var(--wms-font-body);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.wms-btn-primary {
+  background-color: var(--wms-primary);
+  border: 1px solid var(--wms-primary);
+  color: #FFFFFF;
+}
+
+.wms-btn-primary:hover {
+  background-color: var(--wms-primary-hover);
+  border-color: var(--wms-primary-hover);
+}
+
+.wms-btn-default {
+  background-color: var(--wms-bg-surface);
+  border: 1px solid var(--wms-border-strong);
+  color: var(--wms-text-primary);
+}
+
+.wms-btn-default:hover {
+  border-color: var(--wms-accent);
+  color: var(--wms-accent-hover);
+  background-color: var(--wms-bg-subtle);
+}
+
+.wms-btn-dashed {
+  background-color: var(--wms-bg-surface);
+  border: 1px dashed var(--wms-border-strong);
+  color: var(--wms-text-primary);
+}
+
+.wms-btn-dashed:hover {
+  border-color: var(--wms-accent);
+  color: var(--wms-accent-hover);
+}
+
+.wms-btn-danger {
+  background-color: var(--wms-danger);
+  border: 1px solid var(--wms-danger);
+  color: #FFFFFF;
+}
+
+.wms-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* 6. Inventory & Operational Status Badges (Always text + semantic color) */
+.wms-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wms-space-1);
+  padding: 2px var(--wms-space-2);
+  border-radius: var(--wms-radius-sm);
+  font-size: var(--wms-font-caption);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.wms-status-available,
+.wms-status-completed {
+  background-color: var(--wms-success-bg);
+  color: var(--wms-success);
+  border: 1px solid var(--wms-success-border);
+}
+
+.wms-status-reserved,
+.wms-status-processing {
+  background-color: var(--wms-primary-subtle);
+  color: var(--wms-accent-hover);
+  border: 1px solid var(--wms-border);
+}
+
+.wms-status-pending {
+  background-color: var(--wms-warning-bg);
+  color: var(--wms-warning-text);
+  border: 1px solid var(--wms-warning-border);
+}
+
+.wms-status-rejected,
+.wms-status-damaged {
+  background-color: var(--wms-danger-bg);
+  color: var(--wms-danger);
+  border: 1px solid var(--wms-danger-border);
+}
+
+.wms-status-out-of-stock {
+  background-color: var(--wms-bg-muted);
+  color: var(--wms-secondary);
+  border: 1px solid var(--wms-border-strong);
+}
+
+/* Empty / Placeholder Info Box */
+.wms-empty-notice {
+  background-color: var(--wms-bg-subtle);
+  border: 1px solid var(--wms-border);
+  color: var(--wms-text-body);
+  padding: var(--wms-space-4);
+  border-radius: var(--wms-radius-md);
+  font-size: var(--wms-font-body);
+}
+
+/* ==================== 7. KPI SUMMARY STRIP ==================== */
+.wms-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--wms-space-4);
+  margin-bottom: var(--wms-space-6);
+}
+
+.wms-kpi-card {
+  background-color: var(--wms-bg-surface);
+  border: 1px solid var(--wms-border);
+  border-radius: var(--wms-radius-lg);
+  padding: var(--wms-space-4);
+  box-shadow: var(--wms-shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wms-space-1);
+}
+
+.wms-kpi-label {
+  font-size: var(--wms-font-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--wms-secondary);
+}
+
+.wms-kpi-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--wms-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wms-kpi-meta {
+  font-size: var(--wms-font-caption);
+  color: var(--wms-secondary);
+  font-weight: 500;
+}
+
+/* ==================== 8. TOOLBAR, TABS & FILTERS ==================== */
+.wms-tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--wms-space-2);
+  border-bottom: 2px solid var(--wms-border);
+  margin-bottom: var(--wms-space-6);
+  flex-wrap: wrap;
+}
+
+.wms-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wms-space-2);
+  padding: var(--wms-space-3) var(--wms-space-4);
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  font-family: var(--wms-font-family);
+  font-size: var(--wms-font-body);
+  font-weight: 600;
+  color: var(--wms-secondary);
+  cursor: pointer;
+}
+
+.wms-tab-btn:hover {
+  color: var(--wms-text-primary);
+}
+
+.wms-tab-btn.active {
+  color: var(--wms-text-primary);
+  border-bottom-color: var(--wms-accent);
+  background-color: var(--wms-bg-surface);
+  border-radius: var(--wms-radius-md) var(--wms-radius-md) 0 0;
+}
+
+.wms-filter-bar {
+  background-color: var(--wms-bg-surface);
+  border: 1px solid var(--wms-border);
+  border-radius: var(--wms-radius-lg);
+  padding: var(--wms-space-4);
+  margin-bottom: var(--wms-space-4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--wms-space-4);
+  flex-wrap: wrap;
+}
+
+.wms-filter-group {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--wms-space-3);
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.wms-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wms-space-1);
+  min-width: 180px;
+}
+
+.wms-filter-field.search-wide {
+  min-width: 280px;
+  flex: 1;
+}
+
+/* ==================== 9. ENTERPRISE FORMS ==================== */
+.wms-form-section {
+  background-color: var(--wms-bg-surface);
+  border: 1px solid var(--wms-border);
+  border-radius: var(--wms-radius-lg);
+  padding: var(--wms-space-6);
+  margin-bottom: var(--wms-space-6);
+  box-shadow: var(--wms-shadow-card);
+}
+
+.wms-form-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wms-space-3);
+  padding-bottom: var(--wms-space-3);
+  margin-bottom: var(--wms-space-4);
+  border-bottom: 1px solid var(--wms-border);
+}
+
+.wms-form-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--wms-text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--wms-space-2);
+}
+
+.wms-form-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--wms-space-4);
+}
+
+.wms-form-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--wms-space-4);
+}
+
+.wms-form-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--wms-space-3);
+}
+
+.wms-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wms-space-1);
+  min-width: 0;
+}
+
+.wms-field-span-2 {
+  grid-column: span 2;
+}
+
+.wms-field-span-full {
+  grid-column: 1 / -1;
+}
+
+.wms-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wms-text-primary);
+}
+
+.wms-required {
+  color: var(--wms-danger);
+  margin-left: 2px;
+}
+
+.wms-input,
+.wms-select,
+.wms-textarea {
+  width: 100%;
+  min-height: 36px;
+  padding: var(--wms-space-2) var(--wms-space-3);
+  border-radius: var(--wms-radius-md);
+  border: 1px solid var(--wms-border-strong);
+  background-color: var(--wms-bg-surface);
+  font-family: var(--wms-font-family);
+  font-size: var(--wms-font-body);
+  color: var(--wms-text-primary);
+}
+
+.wms-textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.wms-input:focus,
+.wms-select:focus,
+.wms-textarea:focus {
+  border-color: var(--wms-accent);
+  background-color: #FFFFFF;
+}
+
+.wms-input:disabled,
+.wms-select:disabled {
+  background-color: var(--wms-bg-muted);
+  color: var(--wms-secondary);
+  cursor: not-allowed;
+}
+
+.wms-helper-text {
+  font-size: var(--wms-font-caption);
+  color: var(--wms-secondary);
+}
+
+/* Form Validation & Error Styles */
+.wms-field.has-error .wms-input,
+.wms-field.has-error .wms-select,
+.wms-field.has-error .wms-textarea,
+.wms-input.is-invalid,
+.wms-select.is-invalid {
+  border-color: var(--wms-danger) !important;
+  background-color: var(--wms-danger-bg) !important;
+}
+
+.wms-field.has-error .wms-input:focus,
+.wms-field.has-error .wms-select:focus,
+.wms-field.has-error .wms-textarea:focus {
+  outline-color: var(--wms-danger);
+  box-shadow: 0 0 0 2px rgba(166, 38, 38, 0.2);
+}
+
+.wms-field-error-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--wms-danger);
+  line-height: 1.3;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ==================== 10. ENTERPRISE DATA TABLES ==================== */
+.wms-table-card {
+  background-color: var(--wms-bg-surface);
+  border: 1px solid var(--wms-border);
+  border-radius: var(--wms-radius-lg);
+  box-shadow: var(--wms-shadow-card);
+  overflow: hidden;
+}
+
+.wms-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.wms-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--wms-font-table);
+}
+
+.wms-table th {
+  background-color: var(--wms-bg-subtle);
+  color: var(--wms-text-primary);
+  font-weight: 700;
+  text-align: left;
+  padding: var(--wms-space-3) var(--wms-space-4);
+  border-bottom: 2px solid var(--wms-border);
+  white-space: nowrap;
+}
+
+.wms-table td {
+  padding: var(--wms-space-3) var(--wms-space-4);
+  border-bottom: 1px solid var(--wms-border);
+  color: var(--wms-text-body);
+  vertical-align: top;
+}
+
+.wms-table tbody tr:hover {
+  background-color: var(--wms-bg-subtle);
+}
+
+.wms-td-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.wms-code-pill {
+  display: inline-block;
+  font-family: var(--wms-font-family);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 2px var(--wms-space-2);
+  border-radius: var(--wms-radius-sm);
+  background-color: var(--wms-bg-subtle);
+  border: 1px solid var(--wms-border);
+  color: var(--wms-text-primary);
+}
+
+.wms-row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wms-space-2);
+  flex-wrap: wrap;
+}
+
+.wms-btn-sm {
+  height: 30px;
+  padding: 0 var(--wms-space-3);
+  font-size: 12px;
+}
+
+/* ==================== 11. CONTRACT MATERIAL SPEC LINE ITEM CARD ==================== */
+.wms-material-line-card {
+  background-color: var(--wms-bg-subtle);
+  border: 1px solid var(--wms-border);
+  border-radius: var(--wms-radius-md);
+  padding: var(--wms-space-4);
+  margin-bottom: var(--wms-space-3);
+}
+
+.wms-material-line-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--wms-space-3);
+  padding-bottom: var(--wms-space-2);
+  border-bottom: 1px dashed var(--wms-border-strong);
+}
+
+.wms-material-line-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--wms-text-primary);
+}
+
+.wms-summary-box {
+  background-color: var(--wms-bg-subtle);
+  border: 1px solid var(--wms-border-strong);
+  border-radius: var(--wms-radius-md);
+  padding: var(--wms-space-4);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--wms-space-4);
+  margin-top: var(--wms-space-4);
+}
+
+.wms-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wms-summary-label {
+  font-size: var(--wms-font-caption);
+  color: var(--wms-secondary);
+  font-weight: 600;
+}
+
+.wms-summary-val {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--wms-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wms-summary-val.highlight {
+  color: var(--wms-accent-hover);
+}
+
+/* ==================== 12. MODALS & LEGAL CONTRACT DOCUMENT VIEW ==================== */
+.wms-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(20, 18, 16, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--wms-space-4);
+  z-index: 100;
+  backdrop-filter: blur(2px);
+}
+
+.wms-modal-dialog,
+form.wms-modal-dialog {
+  background-color: var(--wms-bg-surface);
+  border: 1px solid var(--wms-border-strong);
+  border-radius: var(--wms-radius-lg);
+  width: 100%;
+  max-width: 840px;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 40px rgba(20, 18, 16, 0.35);
+  overflow: hidden;
+  margin: auto;
+}
+
+.wms-modal-dialog.wide,
+form.wms-modal-dialog.wide {
+  max-width: 1060px;
+}
+
+.wms-modal-dialog > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wms-modal-header {
+  padding: var(--wms-space-4) var(--wms-space-6);
+  border-bottom: 1px solid var(--wms-border);
+  background-color: var(--wms-bg-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.wms-modal-title {
+  font-size: var(--wms-font-section-title);
+  font-weight: 700;
+  color: var(--wms-text-primary);
+}
+
+.wms-modal-body {
+  padding: var(--wms-space-6);
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.wms-modal-footer {
+  padding: var(--wms-space-4) var(--wms-space-6);
+  border-top: 1px solid var(--wms-border);
+  background-color: var(--wms-bg-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--wms-space-3);
+  flex-shrink: 0;
+}
+
+/* Alerts / Feedback Banner */
+.wms-feedback-banner {
+  padding: var(--wms-space-3) var(--wms-space-4);
+  border-radius: var(--wms-radius-md);
+  margin-bottom: var(--wms-space-4);
+  font-size: var(--wms-font-body);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wms-feedback-banner.success {
+  background-color: var(--wms-success-bg);
+  color: var(--wms-success);
+  border: 1px solid var(--wms-success-border);
+}
+
+.wms-feedback-banner.error {
+  background-color: var(--wms-danger-bg);
+  color: var(--wms-danger);
+  border: 1px solid var(--wms-danger-border);
+}
+
+/* Legal Garment Contract Document Preview */
+.wms-legal-doc {
+  background-color: #FFFFFF;
+  border: 1px solid var(--wms-border-strong);
+  padding: var(--wms-space-8);
+  color: var(--wms-text-primary);
+  line-height: 1.65;
+}
+
+.wms-legal-header {
+  text-align: center;
+  margin-bottom: var(--wms-space-6);
+  padding-bottom: var(--wms-space-4);
+  border-bottom: 2px solid var(--wms-text-primary);
+}
+
+.wms-legal-nation {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.wms-legal-motto {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: var(--wms-space-3);
+}
+
+.wms-legal-title {
+  font-size: 20px;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-top: var(--wms-space-2);
+}
+
+.wms-legal-section {
+  margin-bottom: var(--wms-space-4);
+}
+
+.wms-legal-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: var(--wms-space-2);
+  color: var(--wms-text-primary);
+}
+
+.wms-legal-signatures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--wms-space-4);
+  margin-top: var(--wms-space-8);
+  text-align: center;
+}
+
+/* Responsive (Section 8) */
+@media (max-width: 960px) {
+  .ara-acc-search-box {
+    display: none;
+  }
+  .ara-acc-content {
+    padding: var(--wms-space-4);
+  }
+  .ara-acc-header {
+    padding: 0 var(--wms-space-4);
+  }
+  .wms-legal-signatures {
+    grid-template-columns: 1fr;
+  }
+  .wms-form-grid-3,
+  .wms-form-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .wms-form-grid-2,
+  .wms-form-grid-3,
+  .wms-form-grid-4 {
+    grid-template-columns: 1fr;
+  }
+  .wms-field-span-2 {
+    grid-column: 1 / -1;
+  }
+}
