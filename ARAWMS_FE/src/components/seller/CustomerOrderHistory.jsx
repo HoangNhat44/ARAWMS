@@ -13,10 +13,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Card, Badge, Button, Alert, Stack } from 'react-bootstrap';
+import { Card, Button, Alert, Stack } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
 import { SkeletonOrderHistoryCard } from '../common/Skeleton';
-import { Icon, EmptyState, formatVnd, ORDER_STATUS_VARIANT } from './SellerUi';
+import { Icon, EmptyState, formatVnd, ORDER_STATUS_CLASS } from './SellerUi';
 
 /**
  * Nhãn + icon hiển thị cho từng trạng thái đơn trong lịch sử mua hàng.
@@ -68,11 +68,11 @@ const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail }) => {
 
   const getOrderStatusBadge = (status) => {
     const meta = HISTORY_STATUS_META[status];
-    const variant = ORDER_STATUS_VARIANT[status] || 'secondary';
+    const badgeClass = ORDER_STATUS_CLASS[status] || 'ara-badge-secondary';
     return (
-      <Badge bg={`${variant}-subtle`} text={`${variant}-emphasis`} className="d-inline-flex align-items-center gap-1">
+      <span className={`ara-badge ${badgeClass} d-inline-flex align-items-center gap-1`}>
         {meta && <Icon name={meta.icon} />} {meta ? meta.label : status}
-      </Badge>
+      </span>
     );
   };
 
@@ -94,40 +94,59 @@ const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail }) => {
 
       {!loading &&
         orders.map((ord) => (
-          <Card key={ord._id || ord.id} className="shadow-sm">
+          <Card
+            key={ord._id || ord.id}
+            className="shadow-sm"
+            style={{
+              border: '1px solid var(--wms-border, #C8B9A6)',
+              borderRadius: '6px',
+              backgroundColor: 'var(--wms-bg-surface, #FFFFFF)'
+            }}
+          >
             <Card.Body className="pb-2">
               <div className="d-flex align-items-center justify-content-between mb-2">
-                <span className="font-monospace fw-bold">{ord.orderCode}</span>
+                <span className="font-monospace fw-bold" style={{ color: 'var(--wms-primary, #141210)' }}>
+                  {ord.orderCode}
+                </span>
                 {getOrderStatusBadge(ord.status)}
               </div>
 
               {/* Items summary */}
-              <div className="text-secondary">
+              <div style={{ color: 'var(--wms-text-secondary, #574F46)' }}>
                 {ord.items?.map((it, idx) => (
                   <div key={idx} className="d-flex justify-content-between">
-                    <span><strong>{it.orderedQty}x</strong> {it.skuCode}</span>
-                    <span>{formatVnd(it.subtotalAmount)}</span>
+                    <span><strong style={{ color: 'var(--wms-primary, #141210)' }}>{it.orderedQty}x</strong> {it.skuCode}</span>
+                    <span className="fw-medium">{formatVnd(it.subtotalAmount)}</span>
                   </div>
                 ))}
               </div>
             </Card.Body>
 
             {/* Total and Action */}
-            <Card.Footer className="bg-white d-flex align-items-center justify-content-between">
+            <Card.Footer
+              className="d-flex align-items-center justify-content-between"
+              style={{
+                backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)',
+                borderTop: '1px solid var(--wms-border, #C8B9A6)',
+                padding: '8px 12px'
+              }}
+            >
               <div>
-                <span className="text-secondary">Tổng: </span>
-                <span className="fw-bold text-warning-emphasis">{formatVnd(ord.financialSummary?.totalOrderAmount)}</span>
+                <span style={{ color: 'var(--wms-text-secondary, #574F46)' }}>Tổng: </span>
+                <span className="fw-bold" style={{ color: 'var(--wms-accent, #8A6A46)', fontSize: '0.95rem' }}>
+                  {formatVnd(ord.financialSummary?.totalOrderAmount)}
+                </span>
               </div>
               <Stack direction="horizontal" gap={1}>
                 {/* Xem chi tiết và đổi trạng thái */}
                 {onViewDetail && (
-                  <Button size="sm" variant="outline-secondary" onClick={() => onViewDetail(ord)}>
+                  <Button size="sm" className="btn-wms-default" onClick={() => onViewDetail(ord)}>
                     <Icon name="eye" className="me-1" />Chi tiết
                   </Button>
                 )}
                 {/* RMA Button (UC-82) */}
                 {['DELIVERED', 'COMPLETED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
-                  <Button size="sm" variant="outline-warning" onClick={() => onRequestRma && onRequestRma(ord)}>
+                  <Button size="sm" className="btn-wms-accent" onClick={() => onRequestRma && onRequestRma(ord)}>
                     <Icon name="arrow-counterclockwise" className="me-1" />Đổi/Trả
                   </Button>
                 )}

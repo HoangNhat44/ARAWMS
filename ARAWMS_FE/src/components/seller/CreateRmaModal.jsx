@@ -86,81 +86,78 @@ const CreateRmaModal = ({ isOpen, onClose, order, onRmaCreated }) => {
 
   return (
     <Modal show={isOpen} onHide={onClose} centered size="lg" fullscreen="sm-down" scrollable>
-      <Modal.Header closeButton className="bg-warning-subtle">
-        <Modal.Title as="h5" className="d-flex align-items-center gap-2">
-          <Icon name="arrow-counterclockwise" className="text-warning-emphasis" />
+      <Modal.Header closeButton style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderBottom: '1px solid var(--wms-border, #C8B9A6)' }}>
+        <Modal.Title as="h5" className="d-flex align-items-center gap-2 fw-bold" style={{ color: 'var(--wms-primary, #141210)' }}>
+          <Icon name="arrow-counterclockwise" style={{ color: 'var(--wms-accent, #8A6A46)' }} />
           Tạo Yêu Cầu Đổi / Trả Hàng (UC-82 RMA)
         </Modal.Title>
       </Modal.Header>
 
-      <Modal.Body className="bg-body-tertiary">
+      <Modal.Body style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
         {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
 
         {successRma ? (
           <div className="text-center py-4">
-            <Icon name="check-circle-fill" className="text-success display-4 d-block mb-3" />
-            <h4 className="fw-bold">Đã Tạo Phiếu RMA Thành Công!</h4>
-            <p className="text-secondary small">
-              Mã RMA: <strong className="font-monospace text-body fs-6">{successRma.rmaCode}</strong>
+            <Icon name="check-circle-fill" style={{ color: 'var(--wms-success, #1E6B47)' }} className="display-4 d-block mb-3" />
+            <h4 className="fw-bold" style={{ color: 'var(--wms-primary, #141210)' }}>Đã Tạo Phiếu RMA Thành Công!</h4>
+            <p className="small" style={{ color: 'var(--wms-text-secondary, #574F46)' }}>
+              Mã RMA: <strong className="font-monospace fs-6" style={{ color: 'var(--wms-primary, #141210)' }}>{successRma.rmaCode}</strong>
             </p>
-            <Alert variant="light" className="text-start small border">
-              <Alert.Heading as="div" className="fw-bold fs-6 d-flex align-items-center gap-1">
-                <Icon name="info-circle" className="text-warning-emphasis" /> Lưu ý quy trình hoàn trả:
+            <Alert variant="light" className="text-start small" style={{ border: '1px solid var(--wms-border, #C8B9A6)', backgroundColor: 'var(--wms-bg-surface, #FFFFFF)' }}>
+              <Alert.Heading as="div" className="fw-bold fs-6 d-flex align-items-center gap-1" style={{ color: 'var(--wms-accent, #8A6A46)' }}>
+                <Icon name="info-circle" /> Lưu ý quy trình hoàn trả:
               </Alert.Heading>
               Phiếu RMA đang ở trạng thái <strong>REQUESTED</strong>. Nhân viên kho sẽ quét mã vận đơn hoàn và kiểm đếm trước khi tái nhập kho hoàn tất.
             </Alert>
-            <Button variant="dark" onClick={onClose}>Đóng cửa sổ</Button>
+            <Button className="btn-wms-primary" onClick={onClose}>Đóng cửa sổ</Button>
           </div>
         ) : (
           <Form id="rma-form" onSubmit={handleSubmit} className="d-flex flex-column gap-3 small">
             {/* Original Order Info */}
-            <Card body>
+            <Card body style={{ border: '1px solid var(--wms-border, #C8B9A6)', borderRadius: '6px', backgroundColor: 'var(--wms-bg-surface, #FFFFFF)' }}>
               <div className="d-flex justify-content-between mb-1">
-                <span className="text-secondary">Đơn hàng gốc:</span>
-                <span className="font-monospace fw-bold">{order.orderCode}</span>
+                <span style={{ color: 'var(--wms-text-secondary, #574F46)' }}>Đơn hàng gốc:</span>
+                <span className="font-monospace fw-bold" style={{ color: 'var(--wms-primary, #141210)' }}>{order.orderCode}</span>
               </div>
               <div className="d-flex justify-content-between">
-                <span className="text-secondary">Người nhận:</span>
-                <span className="fw-semibold">{order.shippingRecipient?.name} ({order.shippingRecipient?.phone})</span>
+                <span style={{ color: 'var(--wms-text-secondary, #574F46)' }}>Người nhận:</span>
+                <span className="fw-semibold" style={{ color: 'var(--wms-primary, #141210)' }}>{order.shippingRecipient?.name} ({order.shippingRecipient?.phone})</span>
               </div>
             </Card>
 
             {/* Return Type Selection */}
-            <Card body>
-              <Form.Label className="fw-bold">Loại yêu cầu</Form.Label>
+            <Card body style={{ border: '1px solid var(--wms-border, #C8B9A6)', borderRadius: '6px', backgroundColor: 'var(--wms-bg-surface, #FFFFFF)' }}>
+              <Form.Label className="fw-bold mb-2" style={{ color: 'var(--wms-primary, #141210)' }}>Loại yêu cầu</Form.Label>
               <ButtonGroup className="w-100">
                 {RETURN_TYPES.map((t) => (
-                  <ToggleButton
+                  <Button
                     key={t.value}
-                    id={`rma-type-${t.value}`}
-                    type="radio"
                     size="sm"
-                    name="rma-return-type"
-                    value={t.value}
-                    variant={returnType === t.value ? 'dark' : 'outline-secondary'}
-                    checked={returnType === t.value}
-                    onChange={(e) => setReturnType(e.currentTarget.value)}
+                    className={returnType === t.value ? 'btn-wms-primary' : 'btn-wms-default'}
+                    onClick={() => setReturnType(t.value)}
                   >
                     {t.label}
-                  </ToggleButton>
+                  </Button>
                 ))}
               </ButtonGroup>
             </Card>
 
             {/* Select Return Items */}
-            <Card>
-              <Card.Header className="bg-white fw-bold">Chọn sản phẩm cần đổi/trả</Card.Header>
+            <Card style={{ border: '1px solid var(--wms-border, #C8B9A6)', borderRadius: '6px', backgroundColor: 'var(--wms-bg-surface, #FFFFFF)', overflow: 'hidden' }}>
+              <Card.Header className="fw-bold" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderBottom: '1px solid var(--wms-border, #C8B9A6)', color: 'var(--wms-primary, #141210)' }}>
+                Chọn sản phẩm cần đổi/trả
+              </Card.Header>
               <ListGroup variant="flush" className="overflow-auto" style={{ maxHeight: 180 }}>
                 {order.items?.map((it, idx) => (
-                  <ListGroup.Item key={idx} className="d-flex align-items-center justify-content-between gap-2">
+                  <ListGroup.Item key={idx} className="d-flex align-items-center justify-content-between gap-2" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
                     <div>
-                      <div className="fw-bold">{it.skuCode}</div>
-                      <div className="text-secondary">
+                      <div className="fw-bold" style={{ color: 'var(--wms-primary, #141210)' }}>{it.skuCode}</div>
+                      <div style={{ color: 'var(--wms-text-secondary, #574F46)' }}>
                         Đã mua: <strong>{it.orderedQty}</strong> cái | Đơn giá: {formatVnd(it.unitSalePrice)}
                       </div>
                     </div>
                     <div className="d-flex align-items-center gap-2">
-                      <span className="text-secondary">Số lượng hoàn:</span>
+                      <span style={{ color: 'var(--wms-text-secondary, #574F46)' }}>Số lượng hoàn:</span>
                       <Form.Control
                         type="number"
                         size="sm"
@@ -169,7 +166,7 @@ const CreateRmaModal = ({ isOpen, onClose, order, onRmaCreated }) => {
                         value={selectedItems[it.skuId] || 0}
                         onChange={(e) => handleQtyChange(it.skuId, e.target.value)}
                         className="text-center"
-                        style={{ width: 64 }}
+                        style={{ width: 64, borderColor: 'var(--wms-border, #C8B9A6)' }}
                       />
                     </div>
                   </ListGroup.Item>
@@ -178,18 +175,19 @@ const CreateRmaModal = ({ isOpen, onClose, order, onRmaCreated }) => {
             </Card>
 
             {/* Reason & Waybill */}
-            <Card body>
+            <Card body style={{ border: '1px solid var(--wms-border, #C8B9A6)', borderRadius: '6px', backgroundColor: 'var(--wms-bg-surface, #FFFFFF)' }}>
               <Form.Group className="mb-2" controlId="rma-waybill">
-                <Form.Label className="fw-bold">Mã vận đơn chiều gửi về (Return Waybill Code)</Form.Label>
+                <Form.Label className="fw-bold" style={{ color: 'var(--wms-primary, #141210)' }}>Mã vận đơn chiều gửi về (Return Waybill Code)</Form.Label>
                 <Form.Control
                   size="sm"
                   placeholder="VD: GHN-RETURN-102938..."
                   value={returnWaybillCode}
                   onChange={(e) => setReturnWaybillCode(e.target.value)}
+                  style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
                 />
               </Form.Group>
               <Form.Group controlId="rma-reason">
-                <Form.Label className="fw-bold">Lý do đổi trả của khách hàng</Form.Label>
+                <Form.Label className="fw-bold" style={{ color: 'var(--wms-primary, #141210)' }}>Lý do đổi trả của khách hàng</Form.Label>
                 <Form.Control
                   as="textarea"
                   rows={2}
@@ -197,6 +195,7 @@ const CreateRmaModal = ({ isOpen, onClose, order, onRmaCreated }) => {
                   placeholder="VD: Khách mặc không vừa size L, muốn đổi sang size XL hoặc áo bị sút chỉ..."
                   value={reasonDescription}
                   onChange={(e) => setReasonDescription(e.target.value)}
+                  style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
                   required
                 />
               </Form.Group>
@@ -206,9 +205,9 @@ const CreateRmaModal = ({ isOpen, onClose, order, onRmaCreated }) => {
       </Modal.Body>
 
       {!successRma && (
-        <Modal.Footer>
-          <Button size="sm" variant="outline-secondary" onClick={onClose}>Hủy bỏ</Button>
-          <Button size="sm" variant="dark" type="submit" form="rma-form" disabled={loading}>
+        <Modal.Footer style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderTop: '1px solid var(--wms-border, #C8B9A6)' }}>
+          <Button size="sm" className="btn-wms-default" onClick={onClose}>Hủy bỏ</Button>
+          <Button size="sm" className="btn-wms-primary" type="submit" form="rma-form" disabled={loading}>
             {loading ? <><Spinner animation="border" size="sm" className="me-1" />Đang tạo...</> : 'Tạo Phiếu RMA'}
           </Button>
         </Modal.Footer>

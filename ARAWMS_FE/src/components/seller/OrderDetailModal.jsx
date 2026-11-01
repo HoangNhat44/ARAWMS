@@ -36,8 +36,17 @@ const ORDER_STATUSES = [
 
 /** Tiêu đề nhỏ cho từng khối thông tin trong modal. */
 const SectionTitle = ({ icon, children, right }) => (
-  <Card.Header className="bg-white d-flex align-items-center justify-content-between small fw-bold text-uppercase text-warning-emphasis">
-    <span className="d-flex align-items-center gap-2"><Icon name={icon} /> {children}</span>
+  <Card.Header
+    className="d-flex align-items-center justify-content-between small fw-bold text-uppercase"
+    style={{
+      backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)',
+      color: 'var(--wms-text-primary, #141210)',
+      borderBottom: '1px solid var(--wms-border, #C8B9A6)',
+    }}
+  >
+    <span className="d-flex align-items-center gap-2">
+      <Icon name={icon} style={{ color: 'var(--wms-accent, #8A6A46)' }} /> {children}
+    </span>
     {right}
   </Card.Header>
 );
@@ -312,28 +321,42 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
     <>
       <Modal show={isOpen} onHide={onClose} centered size="lg" fullscreen="sm-down" scrollable>
         {/* Header */}
-        <Modal.Header closeButton closeVariant="white" className="bg-dark text-white">
+        <Modal.Header closeButton style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
           <Stack direction="horizontal" gap={3}>
-            <Icon name="bag" className="fs-4 text-warning" />
+            <Icon name="bag" className="fs-4" style={{ color: 'var(--wms-accent, #8A6A46)' }} />
             <div>
               <Stack direction="horizontal" gap={2} className="align-items-center">
-                <Modal.Title as="span" className="font-monospace fw-bold fs-5">
+                <Modal.Title as="span" className="font-monospace fw-bold fs-5" style={{ color: 'var(--wms-text-primary, #141210)' }}>
                   #{order.orderCode || order._id?.slice(-6)}
                 </Modal.Title>
-                <Badge pill bg={ORDER_STATUS_VARIANT[status] || 'secondary'}>
+                <span
+                  className="badge rounded px-2 py-0.5"
+                  style={
+                    status === 'DELIVERED' || status === 'COMPLETED'
+                      ? { backgroundColor: '#E3F5EC', color: '#1E6B47', border: '1px solid #86CFA8', fontSize: '12px' }
+                      : status === 'PENDING'
+                      ? { backgroundColor: '#FEF0C7', color: '#9A5B06', border: '1px solid #F5B95F', fontSize: '12px' }
+                      : status === 'CANCELLED'
+                      ? { backgroundColor: '#FCE4E4', color: '#A62626', border: '1px solid #EDA1A1', fontSize: '12px' }
+                      : { backgroundColor: '#EFE6DA', color: '#6E5233', border: '1px solid #C8B9A6', fontSize: '12px' }
+                  }
+                >
                   {currentStatusObj.label || status}
-                </Badge>
+                </span>
                 {order.orderType === 'POS_DIRECT' && (
-                  <Badge bg="success" className="d-flex align-items-center gap-1">
+                  <span
+                    className="badge rounded px-2 py-0.5 d-flex align-items-center gap-1"
+                    style={{ backgroundColor: '#E3F5EC', color: '#1E6B47', border: '1px solid #86CFA8', fontSize: '11px' }}
+                  >
                     <Icon name="shop" /> Bán tại quầy POS
-                  </Badge>
+                  </span>
                 )}
               </Stack>
               {order.createdAt && (
-                <div className="small text-white-50 d-flex align-items-center gap-1 mt-1">
+                <div className="small d-flex align-items-center gap-1 mt-1" style={{ color: 'var(--wms-secondary, #574F46)' }}>
                   <Icon name="calendar3" /> Đặt lúc: {formatDate(order.createdAt)}
                   {order.confirmedAt && (
-                    <span className="ms-2 text-warning">
+                    <span className="ms-2" style={{ color: 'var(--wms-accent, #8A6A46)' }}>
                       • Chốt lúc: {formatDate(order.confirmedAt)}
                     </span>
                   )}
@@ -344,27 +367,26 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
         </Modal.Header>
 
         {/* Body */}
-        <Modal.Body className="bg-body-tertiary d-flex flex-column gap-3">
+        <Modal.Body className="d-flex flex-column gap-3" style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
           {error && <Alert variant="danger" className="py-2 small mb-0">{error}</Alert>}
 
           {/* Thanh công cụ xác nhận hai chiều & Sandbox dành cho đơn PENDING */}
           {isPending && (
-            <Card className="border-warning bg-warning bg-opacity-10 shadow-sm">
+            <Card className="shadow-sm" style={{ backgroundColor: '#FEF0C7', border: '1px solid #F5B95F' }}>
               <Card.Body className="py-2 px-3">
                 <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <div className="small">
-                    <strong className="text-warning-emphasis d-flex align-items-center gap-1">
-                      <Icon name="chat-dots" /> Luồng Xác Nhận Hai Chiều (4.4.2):
+                    <strong className="d-flex align-items-center gap-1" style={{ color: '#9A5B06' }}>
+                      <Icon name="chat-dots" /> Luồng Xác Nhận Hai Chiều:
                     </strong>
-                    <span className="text-secondary">
+                    <span style={{ color: '#574F46' }}>
                       Gửi phiếu hóa đơn vào Messenger để khách phản hồi "OK" hoặc xác nhận tại đây.
                     </span>
                   </div>
                   <Stack direction="horizontal" gap={2} className="flex-wrap">
                     <Button
                       size="sm"
-                      variant="outline-dark"
-                      className="d-flex align-items-center gap-1"
+                      className="btn-wms-default d-flex align-items-center gap-1"
                       disabled={actionLoading}
                       onClick={handleSendConfirmationReceipt}
                       title="Gửi bảng tóm tắt đơn hàng kèm nút xác nhận vào khung chat Messenger của khách"
@@ -373,8 +395,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
                     </Button>
                     <Button
                       size="sm"
-                      variant="warning"
-                      className="fw-bold d-flex align-items-center gap-1"
+                      className="btn-wms-accent d-flex align-items-center gap-1"
                       disabled={actionLoading}
                       onClick={handleManualConfirm}
                     >
@@ -382,8 +403,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
                     </Button>
                     <Button
                       size="sm"
-                      variant="outline-primary"
-                      className="d-flex align-items-center gap-1"
+                      className="btn-wms-dashed d-flex align-items-center gap-1"
                       disabled={actionLoading}
                       onClick={handleSimulateCustomerConfirm}
                       title="Giả lập khách hàng nhắn 'OK chốt đơn' để test tự động giữ chỗ kho"
@@ -592,20 +612,19 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
         </Modal.Body>
 
         {/* Footer */}
-        <Modal.Footer className="justify-content-between">
+        <Modal.Footer className="justify-content-between" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
           <div className="text-secondary small">
             Mã giao dịch: <span className="font-monospace text-body">{order._id}</span>
           </div>
           <Stack direction="horizontal" gap={2}>
-            <Button variant="outline-secondary" size="sm" onClick={onClose}>
+            <Button size="sm" className="btn-wms-default" onClick={onClose}>
               Đóng
             </Button>
             {/* [BR: GBR-14] Cho phép tạo yêu cầu RMA nếu đơn đã hoàn thành hoặc đã giao */}
             {onOpenRma && ['DELIVERED', 'COMPLETED'].includes(status) && (
               <Button
-                variant="warning"
                 size="sm"
-                className="fw-bold d-flex align-items-center gap-1"
+                className="btn-wms-accent d-flex align-items-center gap-1"
                 onClick={() => { onClose(); onOpenRma(order); }}
               >
                 <Icon name="arrow-counterclockwise" /> Tạo Đổi / Trả Hàng (RMA)

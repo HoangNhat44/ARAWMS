@@ -311,20 +311,20 @@ const SellerOrdersPage = () => {
   };
 
   return (
-    <div className="d-flex flex-column h-100" style={{ backgroundColor: '#FAF7F2' }}>
-      {/* ── Top Header Navigation Bar (Atelier Noir & Champagne Gold) ─── */}
+    <div className="d-flex flex-column h-100 seller-workspace" style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
+      {/* ── Top Header Navigation Bar (Enterprise Solid Surface) ─── */}
       <div className="ara-seller-header px-2 px-md-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
         <Stack direction="horizontal" gap={2} className="align-items-center">
           <Button
             size="sm"
             onClick={() => navigate('/seller/chat')}
-            className="btn-ara-header-ghost d-flex align-items-center gap-1"
+            className="btn-wms-default d-flex align-items-center gap-1"
           >
             <Icon name="arrow-left" /> <span className="d-none d-sm-inline">Về Chat</span>
           </Button>
-          <div className="vr opacity-25 d-none d-sm-block" style={{ height: 22, backgroundColor: '#9F8365' }} />
+          <div className="vr opacity-25 d-none d-sm-block" style={{ height: 22, backgroundColor: 'var(--wms-border-strong, #AE9C86)' }} />
           <div className="d-flex align-items-center gap-2">
-            <span className="fw-bold fs-6 text-white text-nowrap" style={{ letterSpacing: '0.02em' }}>
+            <span className="fw-bold fs-6 text-nowrap" style={{ color: 'var(--wms-text-primary, #141210)', letterSpacing: '0.01em' }}>
               Quản Lý Đơn Hàng
             </span>
           </div>
@@ -334,7 +334,7 @@ const SellerOrdersPage = () => {
         <Stack direction="horizontal" gap={1} className="order-2 order-md-3">
           <Button
             size="sm"
-            className="btn-ara-header-ghost d-flex align-items-center gap-1 px-2"
+            className="btn-wms-default d-flex align-items-center gap-1 px-2"
             onClick={fetchOrders}
             title="Đồng bộ danh sách đơn"
           >
@@ -342,7 +342,7 @@ const SellerOrdersPage = () => {
           </Button>
           <Button
             size="sm"
-            className="btn-ara-header-ghost d-flex align-items-center gap-1 px-2"
+            className="btn-wms-default d-flex align-items-center gap-1 px-2"
             onClick={() => handleExportOrders(filteredOrders, `don-hang-ara-${channelFilter.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`)}
             title="Xuất file toàn bộ danh sách đơn hàng đang hiển thị"
           >
@@ -350,7 +350,7 @@ const SellerOrdersPage = () => {
           </Button>
           <Button
             size="sm"
-            className="btn-ara-header-gold d-flex align-items-center gap-1 px-2 px-sm-3"
+            className="btn-wms-accent d-flex align-items-center gap-1 px-2 px-sm-3"
             onClick={() => setCreateOrderModalOpen(true)}
             title="Tạo đơn hàng mới (Popup Pancake)"
           >
@@ -375,7 +375,7 @@ const SellerOrdersPage = () => {
       {/* ── Channel Tabs Bar & Sub Tabs (Segmented Control) ─── */}
       <div
         className="px-2 px-md-3 py-2 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2 overflow-x-auto"
-        style={{ backgroundColor: '#FAF7F2', borderColor: '#E3D9CD' }}
+        style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}
       >
         <div className="ara-segmented-group text-nowrap flex-shrink-0">
           <button
@@ -618,7 +618,7 @@ const SellerOrdersPage = () => {
                     </td>
 
                     {/* Tổng tiền */}
-                    <td className="text-end fw-bold" style={{ color: '#9F8365', fontSize: '0.88rem' }}>
+                    <td className="text-end fw-bold" style={{ color: 'var(--wms-text-primary, #141210)', fontSize: '0.88rem' }}>
                       {formatVnd(totalAmount)}
                     </td>
 
@@ -641,7 +641,7 @@ const SellerOrdersPage = () => {
                           size="sm"
                           variant="light"
                           className="py-0 px-2 border"
-                          style={{ borderColor: '#E3D9CD' }}
+                          style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
                           onClick={() => handleOpenDetail(ord)}
                           title="Xem chi tiết & đổi trạng thái"
                         >
@@ -652,7 +652,7 @@ const SellerOrdersPage = () => {
                             size="sm"
                             variant="light"
                             className="py-0 px-2 border"
-                            style={{ borderColor: '#E3D9CD' }}
+                            style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
                             onClick={() => handleOpenRma(ord)}
                             title="Tạo yêu cầu Đổi / Trả (RMA)"
                           >
@@ -670,15 +670,15 @@ const SellerOrdersPage = () => {
       </div>
 
       {/* 2. Mobile Cards Stream (< md, < 768px) */}
-      <div className="d-md-none flex-grow-1 overflow-auto p-2" style={{ backgroundColor: '#FAF7F2' }}>
+      <div className="d-md-none flex-grow-1 overflow-auto p-2" style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
         {loading ? (
           [1, 2, 3, 4].map((i) => (
-            <div key={i} className="mb-2 p-3 bg-white border rounded-3 shadow-sm">
+            <div key={i} className="mb-2 p-3 bg-white border rounded shadow-sm" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
               <SkeletonOrderRow />
             </div>
           ))
         ) : filteredOrders.length === 0 ? (
-          <div className="text-center py-5 bg-white rounded-3 border">
+          <div className="text-center py-5 bg-white rounded border" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
             <EmptyState icon="bag" title="Không tìm thấy đơn hàng nào phù hợp bộ lọc" />
           </div>
         ) : (
@@ -697,9 +697,9 @@ const SellerOrdersPage = () => {
             return (
               <div
                 key={id}
-                className={`ara-mobile-order-card bg-white border rounded-3 p-3 mb-2 shadow-sm ${isSelected ? 'border-primary' : ''}`}
+                className={`ara-mobile-order-card bg-white border rounded p-3 mb-2 shadow-sm ${isSelected ? 'border-primary' : ''}`}
+                style={{ borderColor: 'var(--wms-border, #C8B9A6)', cursor: 'pointer' }}
                 onClick={() => handleOpenDetail(ord)}
-                style={{ cursor: 'pointer' }}
               >
                 {/* Header: Checkbox, Order Code, Channel badge, Status badge */}
                 <div className="d-flex align-items-center justify-content-between mb-2">
@@ -716,8 +716,9 @@ const SellerOrdersPage = () => {
                     <span
                       className="badge rounded-pill fw-normal"
                       style={{
-                        backgroundColor: ord.orderType === 'POS_DIRECT' ? '#F3F4F6' : '#EFF6FF',
-                        color: ord.orderType === 'POS_DIRECT' ? '#4B5563' : '#1D4ED8',
+                        backgroundColor: ord.orderType === 'POS_DIRECT' ? '#F3EDE4' : '#EFE6DA',
+                        color: ord.orderType === 'POS_DIRECT' ? '#574F46' : '#6E5233',
+                        border: '1px solid #C8B9A6',
                         fontSize: '11px',
                       }}
                     >
@@ -750,7 +751,7 @@ const SellerOrdersPage = () => {
                 </div>
 
                 {/* Product items snippet */}
-                <div className="p-2 rounded mb-2 text-secondary small" style={{ backgroundColor: '#F8F6F2' }}>
+                <div className="p-2 rounded mb-2 text-secondary small" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', border: '1px solid var(--wms-border, #C8B9A6)' }}>
                   <div className="d-flex align-items-center justify-content-between">
                     <span className="text-truncate fw-medium text-dark" style={{ maxWidth: '75%' }}>
                       {firstItem.skuId?.styleName || firstItem.styleName || firstItem.skuCode || 'Sản phẩm'}
@@ -763,23 +764,23 @@ const SellerOrdersPage = () => {
                     </div>
                   )}
                   {waybill && (
-                    <div className="mt-1 font-monospace" style={{ fontSize: '11px', color: '#0369A1' }}>
+                    <div className="mt-1 font-monospace" style={{ fontSize: '11px', color: '#6E5233' }}>
                       Mã vận đơn: <strong>{waybill}</strong>
                     </div>
                   )}
                 </div>
 
                 {/* Total COD & Actions */}
-                <div className="d-flex align-items-center justify-content-between pt-2 border-top">
+                <div className="d-flex align-items-center justify-content-between pt-2 border-top" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
                   <div>
                     <div className="text-secondary" style={{ fontSize: '11px' }}>Tổng tiền (COD)</div>
-                    <div className="fw-bold fs-6" style={{ color: '#9F8365' }}>{formatVnd(totalAmount)}</div>
+                    <div className="fw-bold fs-6" style={{ color: 'var(--wms-text-primary, #141210)' }}>{formatVnd(totalAmount)}</div>
                   </div>
                   <div className="d-flex align-items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <Button
                       size="sm"
                       variant="outline-dark"
-                      className="px-3 py-1"
+                      className="px-3 py-1 btn-wms-default"
                       onClick={() => handleOpenDetail(ord)}
                     >
                       Chi tiết
@@ -787,8 +788,7 @@ const SellerOrdersPage = () => {
                     {['DELIVERED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
                       <Button
                         size="sm"
-                        variant="outline-warning"
-                        className="px-2 py-1"
+                        className="px-2 py-1 btn-wms-accent"
                         onClick={() => handleOpenRma(ord)}
                         title="Đổi/Trả"
                       >
@@ -806,7 +806,7 @@ const SellerOrdersPage = () => {
       {/* ── Footer status bar ─── */}
       <div
         className="border-top px-3 py-2 small d-flex align-items-center justify-content-between"
-        style={{ backgroundColor: '#FAF7F2', borderColor: '#E3D9CD', color: '#7E766D' }}
+        style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)', color: 'var(--wms-secondary, #574F46)' }}
       >
         <div>
           Tổng số: <strong className="text-dark">{filteredOrders.length}</strong> đơn hàng · Đã chọn <strong className="text-dark">{selectedIds.length}</strong> đơn
@@ -816,7 +816,7 @@ const SellerOrdersPage = () => {
       {/* ── Thanh thao tác nổi khi tích chọn Checkbox hàng loạt ─── */}
       {selectedIds.length > 0 && (
         <div className="ara-floating-toolbar">
-          <span className="badge px-2 py-1" style={{ backgroundColor: '#9F8365', color: '#FFFFFF' }}>
+          <span className="badge px-2 py-1" style={{ backgroundColor: 'var(--wms-accent, #8A6A46)', color: '#FFFFFF' }}>
             Đã chọn {selectedIds.length} đơn
           </span>
           <button

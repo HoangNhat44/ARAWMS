@@ -134,22 +134,28 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
   return (
     <div className="d-flex flex-column h-100 small">
       {/* Customer Header Card */}
-      <Card className="mb-3 bg-body-tertiary">
+      <Card className="mb-3" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', border: '1px solid var(--wms-border, #C8B9A6)' }}>
         <Card.Body>
           <div className="d-flex align-items-center justify-content-between">
             <Stack direction="horizontal" gap={2}>
               <Avatar name={customer.fullName} size={40} />
               <div>
-                <div className="fw-bold">{customer.fullName}</div>
+                <div className="fw-bold" style={{ color: 'var(--wms-text-primary, #141210)' }}>{customer.fullName}</div>
                 <Stack direction="horizontal" gap={1}>
-                  <Badge bg="warning-subtle" text="warning-emphasis">{customer.customerCode || 'CHƯA_CÓ_MÃ'}</Badge>
-                  {customer.facebookPsid && <Badge bg="primary-subtle" text="primary-emphasis">Facebook Linked</Badge>}
+                  <span className="badge rounded px-1.5 py-0.5" style={{ backgroundColor: '#FEF0C7', color: '#9A5B06', border: '1px solid #F5B95F', fontSize: '10px' }}>
+                    {customer.customerCode || 'CHƯA_CÓ_MÃ'}
+                  </span>
+                  {customer.facebookPsid && (
+                    <span className="badge rounded px-1.5 py-0.5" style={{ backgroundColor: 'var(--wms-primary-subtle, #EFE6DA)', color: 'var(--wms-accent-hover, #6E5233)', border: '1px solid var(--wms-border, #C8B9A6)', fontSize: '10px' }}>
+                      Facebook Linked
+                    </span>
+                  )}
                 </Stack>
               </div>
             </Stack>
             <Button
               size="sm"
-              variant="outline-secondary"
+              className="btn-wms-default"
               onClick={() => setIsEditing(!isEditing)}
               title={isEditing ? 'Hủy sửa' : 'Chỉnh sửa hồ sơ'}
             >
@@ -160,15 +166,15 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
           {/* Quick Customer Metrics */}
           <Row className="g-2 mt-2 text-center">
             <Col xs={6}>
-              <Card body className="py-0">
-                <div className="text-secondary">Tổng đơn hàng</div>
-                <div className="fw-bold">{customer.totalOrders || 0} đơn</div>
+              <Card body className="py-2" style={{ backgroundColor: '#FFFFFF', border: '1px solid var(--wms-border, #C8B9A6)' }}>
+                <div style={{ color: 'var(--wms-secondary, #574F46)' }}>Tổng đơn hàng</div>
+                <div className="fw-bold fs-6" style={{ color: 'var(--wms-text-primary, #141210)' }}>{customer.totalOrders || 0} đơn</div>
               </Card>
             </Col>
             <Col xs={6}>
-              <Card body className="py-0">
-                <div className="text-secondary">Tổng chi tiêu</div>
-                <div className="fw-bold text-warning-emphasis">{formatVnd(customer.totalSpent)}</div>
+              <Card body className="py-2" style={{ backgroundColor: '#FFFFFF', border: '1px solid var(--wms-border, #C8B9A6)' }}>
+                <div style={{ color: 'var(--wms-secondary, #574F46)' }}>Tổng chi tiêu</div>
+                <div className="fw-bold fs-6" style={{ color: 'var(--wms-text-primary, #141210)' }}>{formatVnd(customer.totalSpent)}</div>
               </Card>
             </Col>
           </Row>
@@ -186,44 +192,48 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
         {isEditing ? (
           <Form onSubmit={handleSave} className="d-flex flex-column gap-2">
             <Form.Group controlId="crm-fullName">
-              <Form.Label className="small text-secondary mb-1">Họ và tên</Form.Label>
-              <Form.Control size="sm" value={formData.fullName} onChange={setField('fullName')} required />
+              <Form.Label className="small mb-1" style={{ color: 'var(--wms-text-primary, #141210)', fontWeight: 600 }}>Họ và tên</Form.Label>
+              <Form.Control size="sm" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }} value={formData.fullName} onChange={setField('fullName')} required />
             </Form.Group>
 
             <Form.Group controlId="crm-phone">
-              <Form.Label className="small text-secondary mb-1">Số điện thoại</Form.Label>
-              <Form.Control size="sm" value={formData.phone} onChange={setField('phone')} />
+              <Form.Label className="small mb-1" style={{ color: 'var(--wms-text-primary, #141210)', fontWeight: 600 }}>Số điện thoại</Form.Label>
+              <Form.Control size="sm" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }} value={formData.phone} onChange={setField('phone')} />
             </Form.Group>
 
             <Form.Group controlId="crm-email">
-              <Form.Label className="small text-secondary mb-1">Email</Form.Label>
-              <Form.Control size="sm" type="email" value={formData.email} onChange={setField('email')} />
+              <Form.Label className="small mb-1" style={{ color: 'var(--wms-text-primary, #141210)', fontWeight: 600 }}>Email</Form.Label>
+              <Form.Control size="sm" type="email" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }} value={formData.email} onChange={setField('email')} />
             </Form.Group>
 
             <Form.Group controlId="crm-address">
-              <Form.Label className="small text-secondary mb-1">Địa chỉ nhận hàng</Form.Label>
-              <Form.Control size="sm" as="textarea" rows={2} value={formData.fullAddress} onChange={setField('fullAddress')} />
+              <Form.Label className="small mb-1" style={{ color: 'var(--wms-text-primary, #141210)', fontWeight: 600 }}>Địa chỉ nhận hàng</Form.Label>
+              <Form.Control size="sm" as="textarea" rows={2} style={{ borderColor: 'var(--wms-border, #C8B9A6)' }} value={formData.fullAddress} onChange={setField('fullAddress')} />
             </Form.Group>
 
             <Form.Group controlId="crm-tag">
-              <Form.Label className="small text-secondary mb-1">Thẻ phân loại (Tags)</Form.Label>
+              <Form.Label className="small mb-1" style={{ color: 'var(--wms-text-primary, #141210)', fontWeight: 600 }}>Thẻ phân loại (Tags)</Form.Label>
               <InputGroup size="sm" className="mb-2">
-                <Form.Control placeholder="Thêm tag..." value={formData.tagInput} onChange={setField('tagInput')} />
-                <Button variant="outline-secondary" onClick={handleAddTag}><Icon name="plus-lg" /></Button>
+                <Form.Control placeholder="Thêm tag..." style={{ borderColor: 'var(--wms-border, #C8B9A6)' }} value={formData.tagInput} onChange={setField('tagInput')} />
+                <Button className="btn-wms-default" onClick={handleAddTag}><Icon name="plus-lg" /></Button>
               </InputGroup>
               <div className="d-flex flex-wrap gap-1">
                 {tags.map((t) => (
-                  <Badge key={t} bg="warning-subtle" text="warning-emphasis" className="d-inline-flex align-items-center gap-1">
+                  <span
+                    key={t}
+                    className="badge rounded px-2 py-1 d-inline-flex align-items-center gap-1"
+                    style={{ backgroundColor: '#FEF0C7', color: '#9A5B06', border: '1px solid #F5B95F', fontSize: '11px' }}
+                  >
                     {t}
                     <CloseButton style={{ fontSize: '0.5rem' }} onClick={() => handleRemoveTag(t)} aria-label={`Xóa thẻ ${t}`} />
-                  </Badge>
+                  </span>
                 ))}
               </div>
             </Form.Group>
 
             <div className="d-flex justify-content-end gap-2 pt-2">
-              <Button size="sm" variant="outline-secondary" onClick={() => setIsEditing(false)}>Hủy</Button>
-              <Button size="sm" variant="dark" type="submit" disabled={saving}>
+              <Button size="sm" className="btn-wms-default" onClick={() => setIsEditing(false)}>Hủy</Button>
+              <Button size="sm" className="btn-wms-primary" type="submit" disabled={saving}>
                 <Icon name="save" className="me-1" />{saving ? 'Đang lưu...' : 'Lưu thay đổi'}
               </Button>
             </div>
@@ -239,18 +249,24 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
               <div className="d-flex flex-wrap gap-1 mt-1">
                 {customer.tags && customer.tags.length > 0 ? (
                   customer.tags.map((t) => (
-                    <Badge key={t} bg="warning-subtle" text="warning-emphasis">{t}</Badge>
+                    <span
+                      key={t}
+                      className="badge rounded px-2 py-0.5"
+                      style={{ backgroundColor: '#FEF0C7', color: '#9A5B06', border: '1px solid #F5B95F', fontSize: '11px' }}
+                    >
+                      {t}
+                    </span>
                   ))
                 ) : (
-                  <span className="text-secondary fst-italic fw-normal">Chưa gắn thẻ</span>
+                  <span className="fst-italic fw-normal" style={{ color: 'var(--wms-secondary, #574F46)' }}>Chưa gắn thẻ</span>
                 )}
               </div>
             </InfoRow>
 
             {/* UC-75: Lịch sử tương tác */}
-            <div className="pt-3 border-top">
-              <div className="d-flex align-items-center gap-1 fw-bold mb-2">
-                <Icon name="clock-history" className="text-warning-emphasis" />
+            <div className="pt-3 border-top" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
+              <div className="d-flex align-items-center gap-1 fw-bold mb-2" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+                <Icon name="clock-history" style={{ color: 'var(--wms-accent, #8A6A46)' }} />
                 Lịch sử tương tác (UC-75)
               </div>
 
@@ -260,16 +276,16 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
                   <SkeletonBlock height="52px" borderRadius="8px" />
                 </Stack>
               ) : interactionHistory.length === 0 ? (
-                <div className="text-secondary fst-italic">Chưa có phiên chat trước đây</div>
+                <div className="fst-italic" style={{ color: 'var(--wms-secondary, #574F46)' }}>Chưa có phiên chat trước đây</div>
               ) : (
-                <ListGroup className="overflow-auto" style={{ maxHeight: 180 }}>
+                <ListGroup className="overflow-auto" style={{ maxHeight: 180, border: '1px solid var(--wms-border, #C8B9A6)', borderRadius: '6px' }}>
                   {interactionHistory.map((h) => (
-                    <ListGroup.Item key={h.conversationId} className="bg-body-tertiary">
-                      <div className="d-flex justify-content-between text-secondary small">
+                    <ListGroup.Item key={h.conversationId} style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
+                      <div className="d-flex justify-content-between small" style={{ color: 'var(--wms-secondary, #574F46)' }}>
                         <span>Trực bởi: <strong>{h.assignedSeller?.fullName || 'Hệ thống'}</strong></span>
                         <span>{new Date(h.lastMessageAt || h.createdAt).toLocaleDateString('vi-VN')}</span>
                       </div>
-                      <div className="mt-1 fst-italic text-truncate">
+                      <div className="mt-1 fst-italic text-truncate" style={{ color: 'var(--wms-text-body, #26221E)' }}>
                         "{h.lastMessagePreview || 'Không có tin nhắn'}"
                       </div>
                     </ListGroup.Item>
