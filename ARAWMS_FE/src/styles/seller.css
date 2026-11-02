@@ -655,4 +655,42 @@ body:has(.seller-workspace),
   .ara-pane-splitter {
     display: none !important;
   }
+  .ara-segmented-group {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+  .ara-segmented-group::-webkit-scrollbar {
+    display: none !important;
+  }
+  .ara-status-pills-container {
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+  .ara-status-pills-container::-webkit-scrollbar {
+    display: none !important;
+  }
+  .ara-floating-toolbar {
+    bottom: 12px !important;
+    width: calc(100% - 20px) !important;
+    max-width: 440px !important;
+    padding: 6px 12px !important;
+    gap: 6px !important;
+    justify-content: space-between !important;
+    font-size: 0.75rem !important;
+  }
+  .ara-floating-toolbar .btn {
+    padding: 4px 8px !important;
+    font-size: 0.72rem !important;
+  }
+  .ara-mobile-order-card {
+    padding: 0.75rem !important;
+  }
+  .ara-workspace-nav .nav-link {
+    padding: 5px 8px !important;
+    font-size: 0.78rem !important;
+  }
 }

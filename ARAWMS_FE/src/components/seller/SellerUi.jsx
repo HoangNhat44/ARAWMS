@@ -49,6 +49,8 @@ export const ORDER_STATUS_CLASS = {
   DELIVERED: 'ara-badge-delivered',
   COMPLETED: 'ara-badge-completed',
   RETURN_REQUESTED: 'ara-badge-return',
+  PARTIALLY_RETURNED: 'ara-badge-return',
+  EXCHANGE_REQUESTED: 'ara-badge-handed',
   CANCELLED: 'ara-badge-cancelled',
   RETURNED: 'ara-badge-returned',
 };

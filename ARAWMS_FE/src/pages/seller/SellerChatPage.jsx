@@ -311,59 +311,100 @@ const SellerChatPage = () => {
     { id: 'history', icon: 'clock-history', label: 'Đơn cũ' },
   ];
 
-  const renderPane3Content = () => (
-    <div className="d-flex flex-column h-100 bg-white">
-      {/* Tab Nav - Dùng ara-workspace-nav chuẩn luxury workspace */}
-      <Nav className="ara-workspace-nav flex-shrink-0" activeKey={activeTab}>
-        {TABS.map((tab) => (
-          <Nav.Item key={tab.id} className="flex-fill">
-            <Nav.Link
-              eventKey={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className="d-flex align-items-center justify-content-center gap-1"
-            >
-              <Icon name={tab.icon} />
-              <span>{tab.label}</span>
-            </Nav.Link>
-          </Nav.Item>
-        ))}
-      </Nav>
+  const renderPane3Content = () => {
+    const cust = selectedConversation?.customerId;
+    return (
+      <div className="d-flex flex-column h-100 bg-white">
+        {/* Customer Mini Summary Ribbon (Mentor 4.3.1: Thông tin chính dễ quan sát, không phải lật tab) */}
+        {cust && (
+          <div className="p-2 border-bottom bg-light d-flex align-items-center justify-content-between flex-shrink-0">
+            <div className="d-flex align-items-center gap-2 overflow-hidden">
+              <div
+                className="rounded-circle bg-dark text-warning d-flex align-items-center justify-content-center fw-bold"
+                style={{ width: 32, height: 32, fontSize: 13, flexShrink: 0 }}
+              >
+                {(cust.fullName || 'K').charAt(0).toUpperCase()}
+              </div>
+              <div className="text-truncate">
+                <div className="fw-bold text-dark text-truncate" style={{ fontSize: '0.82rem' }}>
+                  {cust.fullName || 'Khách hàng'}
+                </div>
+                <div className="text-muted" style={{ fontSize: '0.72rem' }}>
+                  {cust.phone || 'Chưa có SĐT'} {cust.tier ? `· ${cust.tier}` : ''}
+                </div>
+              </div>
+            </div>
 
-      {/* Tab Content */}
-      <div className="flex-grow-1 overflow-auto p-2 p-md-3 bg-white">
-        {activeTab === 'crm' && (
-          <CustomerProfilePanel
-            customer={selectedConversation?.customerId}
-            conversationId={selectedConversation?._id}
-            onCustomerUpdated={handleCustomerUpdated}
-          />
+            <div className="d-flex gap-1 flex-shrink-0">
+              <Button
+                size="sm"
+                variant="outline-dark"
+                className="py-0 px-2 small d-flex align-items-center gap-1"
+                style={{ fontSize: '0.72rem' }}
+                onClick={() => {
+                  setSelectedOrderForRma(null);
+                  setRmaModalOpen(true);
+                }}
+                title="Tạo phiếu Đổi / Trả hàng"
+              >
+                <Icon name="arrow-counterclockwise" /> Đổi/Trả
+              </Button>
+            </div>
+          </div>
         )}
-        {activeTab === 'order' && (
-          <QuickOrderPanel
-            customer={selectedConversation?.customerId}
-            conversationId={selectedConversation?._id}
-            onOrderCreated={() => setActiveTab('history')}
-          />
-        )}
-        {activeTab === 'history' && (
-          <CustomerOrderHistory
-            customerId={selectedConversation?.customerId?._id}
-            onRequestRma={handleOpenRma}
-            onViewDetail={handleOpenOrderDetail}
-          />
-        )}
+
+        {/* Tab Nav - Dùng ara-workspace-nav chuẩn luxury workspace */}
+        <Nav className="ara-workspace-nav flex-shrink-0" activeKey={activeTab}>
+          {TABS.map((tab) => (
+            <Nav.Item key={tab.id} className="flex-fill">
+              <Nav.Link
+                eventKey={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className="d-flex align-items-center justify-content-center gap-1"
+              >
+                <Icon name={tab.icon} />
+                <span>{tab.label}</span>
+              </Nav.Link>
+            </Nav.Item>
+          ))}
+        </Nav>
+
+        {/* Tab Content */}
+        <div className="flex-grow-1 overflow-auto p-2 p-md-3 bg-white">
+          {activeTab === 'crm' && (
+            <CustomerProfilePanel
+              customer={selectedConversation?.customerId}
+              conversationId={selectedConversation?._id}
+              onCustomerUpdated={handleCustomerUpdated}
+            />
+          )}
+          {activeTab === 'order' && (
+            <QuickOrderPanel
+              customer={selectedConversation?.customerId}
+              conversationId={selectedConversation?._id}
+              onOrderCreated={() => setActiveTab('history')}
+            />
+          )}
+          {activeTab === 'history' && (
+            <CustomerOrderHistory
+              customerId={selectedConversation?.customerId?._id}
+              onRequestRma={handleOpenRma}
+              onViewDetail={handleOpenOrderDetail}
+            />
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div
       ref={containerRef}
       className="d-flex flex-column h-100 w-100 seller-workspace"
-      style={{ height: 'calc(100dvh - 64px)', overflow: 'hidden', backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}
+      style={{ height: 'calc(100vh - 52px)', overflow: 'hidden', backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}
     >
       {/* ===== Header Bar (Enterprise Solid Surface) ===== */}
-      <div className="ara-seller-header px-3 py-2 d-flex align-items-center justify-content-between flex-shrink-0">
+      <div className={`ara-seller-header px-3 py-2 ${isMobile && mobileView === 'chat' ? 'd-none' : 'd-flex'} align-items-center justify-content-between flex-shrink-0`}>
         <Stack direction="horizontal" gap={2} className="align-items-center">
           <span className="fw-bold fs-6" style={{ color: 'var(--wms-text-primary, #141210)', letterSpacing: '0.01em' }}>
             Hội Thoại & Bán Hàng
@@ -381,21 +422,13 @@ const SellerChatPage = () => {
           >
             <Icon name="plus-lg" /> <span className="d-none d-sm-inline">Tạo đơn nhanh</span><span className="d-sm-none">Tạo đơn</span>
           </Button>
-          <Button
-            size="sm"
-            className="btn-wms-default d-flex align-items-center gap-1"
-            onClick={() => fetchAllData()}
-            title="Đồng bộ hội thoại"
-          >
-            <Icon name="arrow-clockwise" /> <span className="d-none d-sm-inline">Đồng bộ</span>
-          </Button>
         </Stack>
       </div>
 
       {/* ===== Responsive Workspace Layout Container ===== */}
-      <div className="d-flex flex-grow-1 overflow-hidden p-1 p-md-2 gap-0" style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
+      <div className="d-flex flex-grow-1 overflow-hidden p-0 p-md-2 gap-0" style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
         <div
-          className="d-flex flex-grow-1 border rounded bg-white overflow-hidden"
+          className="d-flex flex-grow-1 border-0 border-md rounded-0 rounded-md bg-white overflow-hidden"
           style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
         >
           {/* ===== PANE 1: Conversation List ===== */}

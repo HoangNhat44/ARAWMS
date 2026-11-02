@@ -171,7 +171,6 @@ const ChatBox = ({
   // Tệp đính kèm người bán chọn gửi
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [previewImage, setPreviewImage] = useState(null); // Modal phóng to ảnh
-  const [simulating, setSimulating] = useState(false); // Giả lập Sandbox confirm
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -373,32 +372,6 @@ const ChatBox = ({
 
   const customer = conversation.customerId;
 
-  /** Sandbox Simulator: Giả lập khách hàng nhắn 'OK chốt đơn' (Phase 2 & 3) */
-  const handleSimulateCustomerConfirm = async () => {
-    const custId = customer?._id || customer?.id;
-    if (!custId) {
-      showWarning('Không tìm thấy thông tin khách hàng', 'Sandbox Simulator');
-      return;
-    }
-    try {
-      setSimulating(true);
-      const res = await sellerService.getOrderList({ customerId: custId, status: 'PENDING', limit: 1 });
-      const pendingOrders = res.data?.items || [];
-      if (pendingOrders.length === 0) {
-        showWarning('Khách hàng này hiện chưa có đơn nào ở trạng thái "Chờ xác nhận" (PENDING). Vui lòng tạo đơn trước!', 'Sandbox Simulator');
-        return;
-      }
-      const target = pendingOrders[0];
-      const simRes = await sellerService.simulateCustomerConfirm(target._id);
-      if (simRes.success) {
-        showSuccess(`🤖 [Sandbox] Đã giả lập khách xác nhận đơn #${target.orderCode} -> Tự động chuyển CONFIRMED_RESERVED & Giữ kho!`, 'Giả lập thành công');
-      }
-    } catch (err) {
-      showError(err.message || 'Lỗi khi giả lập xác nhận', 'Sandbox Error');
-    } finally {
-      setSimulating(false);
-    }
-  };
 
   /** Popover tạo tag mới (thay cho form inline tự định vị). */
   const newTagPopover = (
@@ -434,30 +407,29 @@ const ChatBox = ({
     <div className="d-flex flex-column h-100 position-relative">
       {/* ===== Chat Top Header ===== */}
       <div
-        className="d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-bottom"
+        className="d-flex align-items-center justify-content-between gap-1 gap-sm-2 px-2 px-sm-3 py-2 border-bottom flex-shrink-0"
         style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}
       >
-        <Stack direction="horizontal" gap={2} className="align-items-center overflow-hidden">
+        <Stack direction="horizontal" gap={2} className="align-items-center overflow-hidden flex-grow-1">
           {/* Nút quay lại danh sách trên mobile */}
           {onBackToList && (
             <Button
               size="sm"
               variant="light"
-              className="d-md-none border me-1 px-2 py-1 rounded d-flex align-items-center gap-1 text-secondary btn-wms-default"
+              className="d-md-none border me-1 px-2 py-1 rounded d-flex align-items-center gap-1 text-secondary btn-wms-default flex-shrink-0"
               onClick={onBackToList}
               title="Quay lại danh sách hội thoại"
             >
               <Icon name="chevron-left" />
-              <span className="small d-none d-sm-inline">Hội thoại</span>
             </Button>
           )}
 
-          <Avatar name={customer?.fullName} size={36} />
-          <div className="overflow-hidden">
-            <Stack direction="horizontal" gap={1} className="flex-wrap align-items-center">
-              <h5 className="fw-bold mb-0 fs-6 text-truncate" style={{ maxWidth: 160, color: 'var(--wms-text-primary, #141210)' }}>
+          <Avatar name={customer?.fullName} size={32} />
+          <div className="overflow-hidden flex-grow-1" style={{ minWidth: 0 }}>
+            <div className="d-flex align-items-center gap-1 text-truncate">
+              <span className="fw-bold text-truncate" style={{ fontSize: '0.85rem', color: 'var(--wms-text-primary, #141210)', maxWidth: 140 }}>
                 {customer?.fullName || 'Khách hàng'}
-              </h5>
+              </span>
               <span
                 className="badge rounded px-1.5 py-0.5 d-none d-sm-inline-block small"
                 style={{ backgroundColor: 'var(--wms-primary-subtle, #EFE6DA)', color: 'var(--wms-accent-hover, #6E5233)', border: '1px solid var(--wms-border, #C8B9A6)', fontSize: '10px' }}
@@ -466,13 +438,13 @@ const ChatBox = ({
               </span>
               {conversation?.pageName && (
                 <span
-                  className="badge rounded px-1.5 py-0.5 small"
+                  className="badge rounded px-1.5 py-0.5 small d-none d-md-inline-block"
                   style={{ backgroundColor: '#F3EDE4', color: '#141210', border: '1px solid #C8B9A6', fontSize: '10px' }}
                 >
                   {conversation.pageName}
                 </span>
               )}
-            </Stack>
+            </div>
             <div className="text-secondary small text-truncate" style={{ fontSize: '11px', color: 'var(--wms-secondary, #574F46)' }}>
               Mã: <strong style={{ color: 'var(--wms-text-primary, #141210)' }}>{customer?.customerCode || 'N/A'}</strong>
               {customer?.phone && (
@@ -483,19 +455,21 @@ const ChatBox = ({
         </Stack>
 
         {/* Action Buttons: Toggle Right Panel (Chốt đơn) */}
-        <Stack direction="horizontal" gap={1} className="align-items-center flex-shrink-0">
+        <div className="flex-shrink-0 ms-1">
           {onToggleRightPanel && (
             <Button
               size="sm"
-              className={`d-flex align-items-center gap-1 text-nowrap px-3 py-1 ms-3 ${isRightPanelOpen ? 'btn-wms-primary' : 'btn-wms-default'}`}
+              className={`d-flex align-items-center gap-1 text-nowrap px-2 px-sm-3 py-1 ${isRightPanelOpen ? 'btn-wms-primary' : 'btn-wms-default'}`}
               onClick={onToggleRightPanel}
               title={isRightPanelOpen ? 'Ẩn bảng chốt đơn' : 'Hiện bảng chốt đơn'}
+              style={{ fontSize: '0.78rem' }}
             >
-              <Icon name="layout-sidebar-reverse" className="me-1" />
-              <span>{isRightPanelOpen ? 'Ẩn chốt đơn' : 'Chốt đơn'}</span>
+              <Icon name="layout-sidebar-reverse" />
+              <span className="d-none d-sm-inline">{isRightPanelOpen ? 'Ẩn chốt đơn' : 'Chốt đơn'}</span>
+              <span className="d-sm-none">{isRightPanelOpen ? 'Ẩn' : 'Chốt đơn'}</span>
             </Button>
           )}
-        </Stack>
+        </div>
       </div>
 
       {/* ===== Pancake-style Quick Tag Bar ===== */}
@@ -504,9 +478,9 @@ const ChatBox = ({
         style={{
           backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)',
           borderBottom: '1px solid var(--wms-border, #C8B9A6)',
-          padding: '10px 16px',
-          gap: '8px',
-          maxHeight: '115px',
+          padding: '6px 12px',
+          gap: '6px',
+          maxHeight: '68px',
           overflowY: 'auto',
         }}
       >
