@@ -13,16 +13,18 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Container, Row, Col, Table, Badge, Button, ButtonGroup, Form,
   InputGroup, Stack, Card, Alert, Spinner,
 } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../hooks/useAuth';
 import CreateRmaModal from '../../components/seller/CreateRmaModal';
 import OrderDetailModal from '../../components/seller/OrderDetailModal';
 import QuickOrderModal from '../../components/seller/QuickOrderModal';
+import MarketplaceOrderImportModal from '../../components/seller/MarketplaceOrderImportModal';
 import { SkeletonOrderRow } from '../../components/common/Skeleton';
 import { Icon, Avatar, formatVnd, ORDER_STATUS_VARIANT, ORDER_STATUS_CLASS, EmptyState } from '../../components/seller/SellerUi';
 
@@ -55,8 +57,10 @@ const PANCAKE_STATUSES = [
   { key: 'PACKED',              label: 'Đang đóng hàng',   countKey: 'PACKED' },
   { key: 'HANDED_OVER_CARRIER', label: 'Đã gửi hàng',      countKey: 'HANDED_OVER_CARRIER' },
   { key: 'DELIVERED',           label: 'Đã nhận',          countKey: 'DELIVERED' },
-  { key: 'COMPLETED',           label: 'Hoàn thành / POS', countKey: 'COMPLETED' },
+  { key: 'EXCHANGE_REQUESTED',  label: 'Đang đổi hàng',    countKey: 'EXCHANGE_REQUESTED' },
+  { key: 'PARTIALLY_RETURNED',  label: 'Trả 1 phần',       countKey: 'PARTIALLY_RETURNED' },
   { key: 'RETURN_REQUESTED',    label: 'Đang hoàn',        countKey: 'RETURN_REQUESTED' },
+  { key: 'COMPLETED',           label: 'Hoàn thành / POS', countKey: 'COMPLETED' },
   { key: 'CANCELLED',           label: 'Đã hủy',           countKey: 'CANCELLED' },
   { key: 'RETURNED',            label: 'Đã trả hàng',      countKey: 'RETURNED' },
 ];
@@ -96,15 +100,17 @@ const renderDateTimeCell = (dateStr) => {
  */
 const SellerOrdersPage = () => {
   const navigate = useNavigate();
-  const { showSuccess, showInfo } = useToast();
+  const location = useLocation();
+  const { user } = useAuth();
+  const { showSuccess, showInfo, showWarning } = useToast();
 
   // State dữ liệu và bộ lọc
   const [orders, setOrders] = useState([]);
   const [statusCounts, setStatusCounts] = useState({});
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
-  const [channelFilter, setChannelFilter] = useState('ALL'); // 'ALL' | 'POS' | 'ONLINE'
-  const [subTab, setSubTab] = useState('ORDERS'); // 'ORDERS' | 'NEED_ACTION' | 'RETURNS'
+  const [channelFilter, setChannelFilter] = useState('ALL'); // 'ALL' | 'SHOPEE' | 'TIKTOK' | 'FACEBOOK' | 'POS' | 'EXCEL_IMPORT'
+  const [subTab, setSubTab] = useState('ORDERS'); // 'ORDERS' | 'IMPORT_PENDING' | 'NEED_ACTION' | 'RETURNS'
   const [search, setSearch] = useState('');
 
   // Selection
@@ -116,10 +122,24 @@ const SellerOrdersPage = () => {
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState(null);
   const [rmaModalOpen, setRmaModalOpen] = useState(false);
   const [selectedOrderForRma, setSelectedOrderForRma] = useState(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+
+  // Nhận diện tab từ URL query parameter (ví dụ từ Sidebar click)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab === 'marketplace_import') {
+      setSubTab('IMPORT_PENDING');
+      setImportModalOpen(true);
+    } else if (tab === 'rma_returns') {
+      setSubTab('RETURNS');
+      setStatusFilter('RETURN_REQUESTED');
+    }
+  }, [location.search]);
 
   useEffect(() => {
     fetchOrders();
-  }, [statusFilter]);
+  }, [statusFilter, channelFilter, subTab]);
 
   /**
    * Gọi API lấy danh sách đơn hàng kèm tổng đếm từng trạng thái
@@ -129,6 +149,8 @@ const SellerOrdersPage = () => {
       setLoading(true);
       const res = await sellerService.getOrderList({
         status: statusFilter || undefined,
+        channel: channelFilter !== 'ALL' ? channelFilter : undefined,
+        importStatus: subTab === 'IMPORT_PENDING' ? 'PENDING_WAREHOUSE_APPROVAL' : undefined,
         search: search.trim() || undefined,
         limit: 100,
       });
@@ -146,12 +168,32 @@ const SellerOrdersPage = () => {
   };
 
   /**
-   * Lọc theo kênh (Online / Bán tại quầy)
+   * Kho duyệt đơn hàng import trực tiếp
+   */
+  const handleWarehouseApprove = async (orderId) => {
+    try {
+      const res = await sellerService.warehouseApproveOrder(orderId);
+      if (res.success) {
+        showSuccess(`Đã duyệt đơn ${res.data?.orderCode}! Tồn kho đã được giữ chỗ.`, 'Duyệt thành công');
+        fetchOrders();
+      }
+    } catch (err) {
+      showWarning(err.response?.data?.message || err.message || 'Lỗi khi duyệt đơn');
+    }
+  };
+
+  /**
+   * Lọc theo kênh (Đa kênh: Shopee, TikTok, Facebook, POS, Excel)
    */
   const filteredOrders = useMemo(() => {
     return orders.filter((ord) => {
-      if (channelFilter === 'POS') return ord.orderType === 'POS_DIRECT' || ord.channel === 'POS_OFFLINE';
-      if (channelFilter === 'ONLINE') return ord.orderType !== 'POS_DIRECT' && ord.channel !== 'POS_OFFLINE';
+      if (channelFilter === 'POS') {
+        return ord.orderType === 'POS_DIRECT' || ord.channel === 'POS_OFFLINE';
+      }
+      if (channelFilter === 'SHOPEE') return ord.channel === 'SHOPEE';
+      if (channelFilter === 'TIKTOK') return ord.channel === 'TIKTOK';
+      if (channelFilter === 'FACEBOOK') return ord.channel === 'FACEBOOK' || ord.channel === 'FACEBOOK_MESSENGER';
+      if (channelFilter === 'EXCEL_IMPORT') return ord.channel === 'EXCEL_IMPORT' || ord.importStatus !== 'NONE';
       return true;
     });
   }, [orders, channelFilter]);
@@ -330,27 +372,48 @@ const SellerOrdersPage = () => {
           </div>
         </Stack>
 
-        {/* Action Buttons Top Right: Row 1 on mobile */}
-        <Stack direction="horizontal" gap={1} className="order-2 order-md-3">
+        {/* Action Buttons Top Right */}
+        <Stack direction="horizontal" gap={1} className="order-2 order-md-3 flex-wrap ms-auto">
           <Button
             size="sm"
-            className="btn-wms-default d-flex align-items-center gap-1 px-2"
+            className="btn-wms-default d-flex align-items-center gap-1 px-2 py-1"
             onClick={fetchOrders}
             title="Đồng bộ danh sách đơn"
           >
             <Icon name="arrow-clockwise" /> <span className="d-none d-md-inline">Đồng bộ</span>
           </Button>
+
           <Button
             size="sm"
-            className="btn-wms-default d-flex align-items-center gap-1 px-2"
+            variant="warning"
+            className="d-flex align-items-center gap-1 px-2 px-sm-3 py-1 fw-bold text-dark shadow-sm"
+            onClick={() => setImportModalOpen(true)}
+            title="Import đơn hàng từ Shopee, TikTok Shop và File Excel"
+          >
+            <Icon name="cloud-arrow-up" /> <span className="d-none d-sm-inline">Import Sàn / Excel</span><span className="d-sm-none">Import</span>
+          </Button>
+
+          <Button
+            size="sm"
+            className="btn-wms-default d-flex align-items-center gap-1 px-2 py-1"
+            onClick={() => { setSelectedOrderForRma(null); setRmaModalOpen(true); }}
+            title="Tạo phiếu đổi trả hàng (RMA)"
+          >
+            <Icon name="arrow-counterclockwise" /> <span className="d-none d-md-inline">Đổi / Trả</span>
+          </Button>
+
+          <Button
+            size="sm"
+            className="btn-wms-default d-flex align-items-center gap-1 px-2 py-1"
             onClick={() => handleExportOrders(filteredOrders, `don-hang-ara-${channelFilter.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`)}
             title="Xuất file toàn bộ danh sách đơn hàng đang hiển thị"
           >
             <Icon name="download" /> <span className="d-none d-md-inline">Xuất</span><span className="d-none d-sm-inline">({filteredOrders.length})</span>
           </Button>
+
           <Button
             size="sm"
-            className="btn-wms-accent d-flex align-items-center gap-1 px-2 px-sm-3"
+            className="btn-wms-accent d-flex align-items-center gap-1 px-2 px-sm-3 py-1"
             onClick={() => setCreateOrderModalOpen(true)}
             title="Tạo đơn hàng mới (Popup Pancake)"
           >
@@ -359,11 +422,11 @@ const SellerOrdersPage = () => {
         </Stack>
 
         {/* Search input: Full width on mobile (order-3), middle on desktop (order-md-2) */}
-        <div className="order-3 order-md-2 flex-grow-1 w-100 w-md-auto mx-0 mx-md-2 my-1 my-md-0" style={{ maxWidth: 460 }}>
+        <div className="order-3 order-md-2 flex-grow-1 w-100 w-md-auto mx-0 mx-md-2 my-1 my-md-0" style={{ maxWidth: 420 }}>
           <InputGroup size="sm" className="ara-search-capsule">
             <InputGroup.Text><Icon name="search" /></InputGroup.Text>
             <Form.Control
-              placeholder="Tìm theo mã đơn, SĐT, tên khách, SKU..."
+              placeholder="Tìm theo mã đơn, SĐT, tên khách, mã sàn, SKU..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') fetchOrders(); }}
@@ -372,11 +435,12 @@ const SellerOrdersPage = () => {
         </div>
       </div>
 
-      {/* ── Channel Tabs Bar & Sub Tabs (Segmented Control) ─── */}
+      {/* ── Channel Tabs Bar & Sub Tabs (Multi-Channel Support - Mentor 4.3.3) ─── */}
       <div
         className="px-2 px-md-3 py-2 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2 overflow-x-auto"
         style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}
       >
+        {/* Đa kênh: Tất cả / Shopee / TikTok / FB / POS / Excel */}
         <div className="ara-segmented-group text-nowrap flex-shrink-0">
           <button
             type="button"
@@ -387,6 +451,27 @@ const SellerOrdersPage = () => {
           </button>
           <button
             type="button"
+            className={`ara-segmented-btn ${channelFilter === 'SHOPEE' ? 'active' : ''}`}
+            onClick={() => setChannelFilter('SHOPEE')}
+          >
+            <span style={{ color: '#EE4D2D', fontWeight: 700 }}>●</span> Shopee Mall
+          </button>
+          <button
+            type="button"
+            className={`ara-segmented-btn ${channelFilter === 'TIKTOK' ? 'active' : ''}`}
+            onClick={() => setChannelFilter('TIKTOK')}
+          >
+            <span style={{ color: '#000000', fontWeight: 700 }}>●</span> TikTok Shop
+          </button>
+          <button
+            type="button"
+            className={`ara-segmented-btn ${channelFilter === 'FACEBOOK' ? 'active' : ''}`}
+            onClick={() => setChannelFilter('FACEBOOK')}
+          >
+            <span style={{ color: '#1877F2', fontWeight: 700 }}>●</span> FB Fanpages
+          </button>
+          <button
+            type="button"
             className={`ara-segmented-btn ${channelFilter === 'POS' ? 'active' : ''}`}
             onClick={() => setChannelFilter('POS')}
           >
@@ -394,21 +479,30 @@ const SellerOrdersPage = () => {
           </button>
           <button
             type="button"
-            className={`ara-segmented-btn ${channelFilter === 'ONLINE' ? 'active' : ''}`}
-            onClick={() => setChannelFilter('ONLINE')}
+            className={`ara-segmented-btn ${channelFilter === 'EXCEL_IMPORT' ? 'active' : ''}`}
+            onClick={() => setChannelFilter('EXCEL_IMPORT')}
           >
-            Online (Messenger)
+            Import Excel
           </button>
         </div>
 
-        {/* Sub-tabs: Đơn hàng / Cần xử lý / Đơn đã hoàn */}
+        {/* Sub-tabs: Đơn hàng / Chờ kho duyệt TMĐT / Cần xử lý / Đơn đã hoàn */}
         <div className="ara-segmented-group text-nowrap flex-shrink-0">
           <button
             type="button"
             className={`ara-segmented-btn ${subTab === 'ORDERS' ? 'active' : ''}`}
-            onClick={() => setSubTab('ORDERS')}
+            onClick={() => { setSubTab('ORDERS'); setStatusFilter(''); }}
           >
             Tất cả đơn
+          </button>
+          <button
+            type="button"
+            className={`ara-segmented-btn ${subTab === 'IMPORT_PENDING' ? 'active' : ''}`}
+            onClick={() => { setSubTab('IMPORT_PENDING'); setStatusFilter('PENDING'); }}
+            title="Đơn hàng import từ Shopee / TikTok đang chờ Warehouse duyệt"
+          >
+            <i className="bi bi-hourglass-split text-primary me-1"></i>
+            Chờ kho duyệt (TMĐT)
           </button>
           <button
             type="button"
@@ -424,7 +518,7 @@ const SellerOrdersPage = () => {
             onClick={() => { setSubTab('RETURNS'); setStatusFilter('RETURN_REQUESTED'); }}
           >
             <i className="bi bi-arrow-counterclockwise text-danger me-1"></i>
-            Đơn đã hoàn
+            Đổi / Trả hàng
           </button>
         </div>
       </div>
@@ -526,14 +620,35 @@ const SellerOrdersPage = () => {
                       />
                     </td>
 
-                    {/* ID */}
+                    {/* ID & Kênh Nguồn */}
                     <td>
-                      <div className="ara-code-badge">
-                        <Icon
-                          name={ord.orderType === 'POS_DIRECT' ? 'shop' : 'facebook'}
-                          style={{ color: ord.orderType === 'POS_DIRECT' ? '#7E766D' : '#1877F2' }}
-                        />
-                        <span>{ord.orderCode || id.slice(-6)}</span>
+                      <div className="d-flex flex-column gap-1">
+                        <div className="ara-code-badge">
+                          <Icon
+                            name={
+                              ord.channel === 'SHOPEE' ? 'bag-fill' :
+                              ord.channel === 'TIKTOK' ? 'play-btn-fill' :
+                              ord.orderType === 'POS_DIRECT' ? 'shop' : 'facebook'
+                            }
+                            style={{
+                              color:
+                                ord.channel === 'SHOPEE' ? '#EE4D2D' :
+                                ord.channel === 'TIKTOK' ? '#111827' :
+                                ord.orderType === 'POS_DIRECT' ? '#7E766D' : '#1877F2',
+                            }}
+                          />
+                          <span className="fw-bold">{ord.orderCode || id.slice(-6)}</span>
+                        </div>
+                        {ord.sourceDetails?.sourceName && (
+                          <span className="badge rounded-pill bg-light text-secondary border text-truncate text-start" style={{ maxWidth: 140, fontSize: '0.65rem' }}>
+                            {ord.sourceDetails.sourceName}
+                          </span>
+                        )}
+                        {ord.sourceDetails?.externalOrderCode && (
+                          <span className="font-monospace text-primary text-truncate" style={{ maxWidth: 140, fontSize: '0.68rem' }}>
+                            Mã sàn: {ord.sourceDetails.externalOrderCode}
+                          </span>
+                        )}
                       </div>
                     </td>
 
@@ -632,6 +747,28 @@ const SellerOrdersPage = () => {
                     {/* Trạng thái */}
                     <td className="text-center">
                       {renderStatusBadge(ord.status)}
+                      {ord.importStatus === 'PENDING_WAREHOUSE_APPROVAL' && (
+                        <div className="mt-1 d-flex flex-column align-items-center gap-1">
+                          <Badge bg="warning" text="dark" style={{ fontSize: '0.65rem' }}>
+                            Chờ Kho Duyệt (TMĐT)
+                          </Badge>
+                          {(user?.roles?.includes('WAREHOUSE_STAFF') || user?.roles?.includes('WAREHOUSE_MANAGER') || user?.roles?.includes('OWNER')) && (
+                            <Button
+                              size="sm"
+                              variant="success"
+                              className="py-0 px-2 fw-bold text-nowrap shadow-sm"
+                              style={{ fontSize: '0.68rem' }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleWarehouseApprove(ord._id || ord.id);
+                              }}
+                              title="Warehouse phê duyệt đơn và giữ chỗ tồn kho"
+                            >
+                              <Icon name="check-lg" /> Duyệt đơn
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </td>
 
                     {/* Thao tác */}
@@ -712,21 +849,41 @@ const SellerOrdersPage = () => {
                         aria-label={`Chọn đơn ${ord.orderCode || id}`}
                       />
                     </span>
-                    <span className="fw-bold text-dark fs-6 font-monospace">#{ord.orderCode || id.slice(-6)}</span>
+                    <span className="fw-bold text-dark fs-6 font-monospace">#{ord.orderCode || id.slice(-8).toUpperCase()}</span>
                     <span
                       className="badge rounded-pill fw-normal"
                       style={{
-                        backgroundColor: ord.orderType === 'POS_DIRECT' ? '#F3EDE4' : '#EFE6DA',
-                        color: ord.orderType === 'POS_DIRECT' ? '#574F46' : '#6E5233',
+                        backgroundColor:
+                          ord.channel === 'SHOPEE' ? '#FFF7ED' :
+                          ord.channel === 'TIKTOK' ? '#F3F4F6' :
+                          ord.orderType === 'POS_DIRECT' ? '#F3EDE4' : '#EFE6DA',
+                        color:
+                          ord.channel === 'SHOPEE' ? '#C2410C' :
+                          ord.channel === 'TIKTOK' ? '#111827' :
+                          ord.orderType === 'POS_DIRECT' ? '#574F46' : '#6E5233',
                         border: '1px solid #C8B9A6',
                         fontSize: '11px',
                       }}
                     >
-                      <Icon name={ord.orderType === 'POS_DIRECT' ? 'shop' : 'facebook'} className="me-1" />
-                      {ord.orderType === 'POS_DIRECT' ? 'POS' : 'Messenger'}
+                      <Icon
+                        name={
+                          ord.channel === 'SHOPEE' ? 'bag-fill' :
+                          ord.channel === 'TIKTOK' ? 'play-btn-fill' :
+                          ord.orderType === 'POS_DIRECT' ? 'shop' : 'facebook'
+                        }
+                        className="me-1"
+                      />
+                      {ord.channel === 'SHOPEE' ? 'Shopee' : ord.channel === 'TIKTOK' ? 'TikTok' : ord.orderType === 'POS_DIRECT' ? 'POS' : 'Messenger'}
                     </span>
                   </div>
-                  {renderStatusBadge(ord.status)}
+                  <div className="d-flex flex-column align-items-end gap-1">
+                    {renderStatusBadge(ord.status)}
+                    {ord.importStatus === 'PENDING_WAREHOUSE_APPROVAL' && (
+                      <span className="badge bg-warning text-dark border" style={{ fontSize: '10px' }}>
+                        Chờ kho duyệt
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Customer, Phone & Telco */}
@@ -763,6 +920,11 @@ const SellerOrdersPage = () => {
                       + và {ord.items.length - 1} sản phẩm khác
                     </div>
                   )}
+                  {ord.sourceDetails?.externalOrderCode && (
+                    <div className="mt-1 font-monospace text-primary" style={{ fontSize: '11px' }}>
+                      Mã sàn: <strong>{ord.sourceDetails.externalOrderCode}</strong>
+                    </div>
+                  )}
                   {waybill && (
                     <div className="mt-1 font-monospace" style={{ fontSize: '11px', color: '#6E5233' }}>
                       Mã vận đơn: <strong>{waybill}</strong>
@@ -771,16 +933,28 @@ const SellerOrdersPage = () => {
                 </div>
 
                 {/* Total COD & Actions */}
-                <div className="d-flex align-items-center justify-content-between pt-2 border-top" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
+                <div className="d-flex flex-wrap align-items-center justify-content-between pt-2 border-top gap-2" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
                   <div>
                     <div className="text-secondary" style={{ fontSize: '11px' }}>Tổng tiền (COD)</div>
                     <div className="fw-bold fs-6" style={{ color: 'var(--wms-text-primary, #141210)' }}>{formatVnd(totalAmount)}</div>
                   </div>
-                  <div className="d-flex align-items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <div className="d-flex align-items-center gap-1 ms-auto" onClick={(e) => e.stopPropagation()}>
+                    {ord.importStatus === 'PENDING_WAREHOUSE_APPROVAL' &&
+                      (user?.roles?.includes('WAREHOUSE_STAFF') || user?.roles?.includes('WAREHOUSE_MANAGER') || user?.roles?.includes('OWNER')) && (
+                        <Button
+                          size="sm"
+                          variant="success"
+                          className="px-2 py-1 fw-bold shadow-sm"
+                          style={{ fontSize: '12px' }}
+                          onClick={() => handleWarehouseApprove(ord._id || ord.id)}
+                        >
+                          <Icon name="check-lg" /> Duyệt
+                        </Button>
+                      )}
                     <Button
                       size="sm"
                       variant="outline-dark"
-                      className="px-3 py-1 btn-wms-default"
+                      className="px-2 px-sm-3 py-1 btn-wms-default"
                       onClick={() => handleOpenDetail(ord)}
                     >
                       Chi tiết
@@ -875,6 +1049,17 @@ const SellerOrdersPage = () => {
         onRmaCreated={() => {
           showSuccess('Phiếu RMA đã được tạo thành công!', 'Tạo RMA');
           setRmaModalOpen(false);
+          fetchOrders();
+        }}
+      />
+
+      {/* ── Modal Import Đơn Hàng Shopee, TikTok & Excel (Mentor 4.3.3) ─── */}
+      <MarketplaceOrderImportModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onImportSuccess={() => {
+          showSuccess('Đã import đơn hàng từ sàn thành công! Đang chờ kho duyệt.', 'Import TMĐT');
+          setImportModalOpen(false);
           fetchOrders();
         }}
       />

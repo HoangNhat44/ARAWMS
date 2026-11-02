@@ -791,6 +791,28 @@ export const getOrderList = async (filters, user) => {
 
   if (filters.customerId) baseQuery.customerId = new mongoose.Types.ObjectId(filters.customerId);
 
+  // Lọc theo Kênh / Nguồn đơn hàng (Shopee, TikTok, Facebook, POS...)
+  if (filters.channel && filters.channel !== 'ALL') {
+    if (filters.channel === 'POS') {
+      baseQuery.$or = [{ orderType: 'POS_DIRECT' }, { channel: 'POS_OFFLINE' }];
+    } else if (filters.channel === 'ONLINE') {
+      baseQuery.channel = { $nin: ['POS_OFFLINE'] };
+      baseQuery.orderType = { $ne: 'POS_DIRECT' };
+    } else {
+      baseQuery.channel = filters.channel;
+    }
+  }
+
+  // Lọc theo Nguồn cụ thể (ID Fanpage / TikTok Shop / Shopee Mall)
+  if (filters.sourceId && filters.sourceId !== 'ALL') {
+    baseQuery['sourceDetails.sourceId'] = filters.sourceId;
+  }
+
+  // Lọc theo Trạng thái duyệt của Kho đối với đơn import
+  if (filters.importStatus && filters.importStatus !== 'ALL') {
+    baseQuery.importStatus = filters.importStatus;
+  }
+
   if (filters.fromDate || filters.toDate) {
     baseQuery.createdAt = {};
     if (filters.fromDate) baseQuery.createdAt.$gte = new Date(filters.fromDate);
@@ -801,11 +823,13 @@ export const getOrderList = async (filters, user) => {
     }
   }
 
-  // 2. Tìm kiếm theo mã đơn / tên / SĐT người nhận / mã SKU
+  // 2. Tìm kiếm theo mã đơn / tên / SĐT người nhận / mã SKU / mã đơn sàn
   if (search && search.trim()) {
     const re = new RegExp(escapeRegex(search.trim()), 'i');
     baseQuery.$or = [
       { orderCode: re },
+      { 'sourceDetails.externalOrderCode': re },
+      { 'sourceDetails.sourceName': re },
       { 'shippingRecipient.name': re },
       { 'shippingRecipient.phone': re },
       { 'items.skuCode': re },

@@ -229,6 +229,8 @@ export const sendCustomerMessage = async (conversationId, { messageText, attachm
 
   const customer = conversation.customerId;
   let fbMessageId = null;
+  let deliveryStatus = 'DELIVERED';
+  let deliveryError = null;
 
   const pageToken = ENV.FB.getPageToken(conversation.pageId);
 
@@ -259,10 +261,21 @@ export const sendCustomerMessage = async (conversationId, { messageText, attachm
 
       if (fbResponse.data && fbResponse.data.message_id) {
         fbMessageId = fbResponse.data.message_id;
+        deliveryStatus = 'DELIVERED';
       }
     } catch (fbErr) {
-      console.warn('⚠️ [Facebook Send API Warning]:', fbErr.response?.data?.error?.message || fbErr.message);
+      const errData = fbErr.response?.data?.error || {};
+      console.warn('⚠️ [Facebook Send API Warning]:', errData.message || fbErr.message);
+      if (errData.code === 10 || errData.error_subcode === 2018278) {
+        deliveryStatus = 'FAILED_24H_EXPIRED';
+        deliveryError = 'Tin nhắn gửi ngoài khoảng thời gian cho phép 24h của Meta.';
+      } else {
+        deliveryStatus = 'FAILED_META_ERROR';
+        deliveryError = errData.message || fbErr.message;
+      }
     }
+  } else {
+    deliveryStatus = 'NOT_CONNECTED';
   }
 
   const newMessage = await ChatMessage.create({
@@ -273,6 +286,8 @@ export const sendCustomerMessage = async (conversationId, { messageText, attachm
     messageText,
     attachments,
     referencedSkuId: referencedSkuId || null,
+    deliveryStatus,
+    deliveryError,
     sentAt: new Date(),
   });
 
@@ -366,7 +381,12 @@ export const sendCustomerAttachments = async (conversationId, files = [], messag
       });
       fbMessageId = fbMessageId || fbRes.data?.message_id || null;
     } catch (fbErr) {
-      console.warn('⚠️ [Facebook Send API - attachment]:', fbErr.response?.data?.error?.message || fbErr.message);
+      const errData = fbErr.response?.data?.error || {};
+      console.warn('⚠️ [Facebook Send API - attachment]:', errData.message || fbErr.message);
+      if (errData.code === 10 || errData.error_subcode === 2018278) {
+        deliveryStatus = 'FAILED_24H_EXPIRED';
+        deliveryError = 'Tin nhắn gửi ngoài khoảng thời gian cho phép 24h của Meta.';
+      }
     }
   }
 
@@ -378,6 +398,8 @@ export const sendCustomerAttachments = async (conversationId, files = [], messag
     senderSellerId: user._id,
     messageText: messageText || undefined,
     attachments,
+    deliveryStatus: canPushToFacebook ? (deliveryStatus || 'DELIVERED') : 'NOT_CONNECTED',
+    deliveryError,
     sentAt: new Date(),
   });
 

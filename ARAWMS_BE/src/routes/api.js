@@ -11,6 +11,7 @@ import inventoryWidgetRoutes from '../modules/conversational-commerce/inventory-
 
 // 2. Major Feature: Order Fulfillment
 import orderManagementRoutes from '../modules/order-fulfillment/order-management/orderManagement.routes.js';
+import marketplaceOrderImportRoutes from '../modules/order-fulfillment/marketplace-order-import/marketplaceOrderImport.routes.js';
 
 // 3. Major Feature: Reverse Logistics
 import returnMerchandiseAuthorizationRoutes from '../modules/reverse-logistics/return-merchandise-authorization/returnMerchandiseAuthorization.routes.js';
@@ -56,6 +57,7 @@ router.use('/conversations', chatInterfaceRoutes); // Base chat routes
 // MAJOR FEATURE 2: ORDER FULFILLMENT
 // ====================================================================
 // Sub Feature: Order Management (UC-78, UC-79, UC-80, UC-81)
+router.use('/orders/marketplace', marketplaceOrderImportRoutes);
 router.use('/orders', orderManagementRoutes);
 
 // ====================================================================

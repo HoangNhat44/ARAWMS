@@ -36,6 +36,11 @@ export const initSocket = (httpServer) => {
       socket.join('seller_workspace');
     });
 
+    // 1b. Tham gia phòng chung Warehouse Workspace để nhận thông báo Đổi/Trả RMA và duyệt đơn
+    socket.on('join_warehouse_workspace', () => {
+      socket.join('warehouse_workspace');
+    });
+
     // 2. Tham gia phòng riêng của cuộc hội thoại để stream tin nhắn
     socket.on('join_conversation', (conversationId) => {
       if (conversationId) {
@@ -103,10 +108,28 @@ export const emitConversationRead = (conversationId) => {
   io.to(`conversation:${conversationId}`).emit('conversation_read', { conversationId });
 };
 
+/**
+ * Phát sự kiện thông báo Đổi / Trả hàng (RMA) mới tới Warehouse và Seller
+ */
+export const emitRmaAlert = (rmaData) => {
+  if (!io) return;
+  io.emit('new_rma_alert', rmaData);
+};
+
+/**
+ * Phát sự kiện thông báo có đơn hàng mới từ sàn TMĐT (Shopee/TikTok) hoặc Excel
+ */
+export const emitMarketplaceOrdersImported = (data) => {
+  if (!io) return;
+  io.emit('marketplace_orders_imported', data);
+};
+
 export default {
   initSocket,
   getIO,
   emitNewMessage,
   emitConversationUpdated,
   emitConversationRead,
+  emitRmaAlert,
+  emitMarketplaceOrdersImported,
 };

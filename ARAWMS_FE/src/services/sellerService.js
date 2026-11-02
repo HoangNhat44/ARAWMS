@@ -57,6 +57,16 @@ export const sellerService = {
   getRmaById: (id) => api.get(`/returns/rma/${id}`),
   createReturnRequest: (data) => api.post('/returns/rma', data),
   createExchangeOrder: (rmaId, data) => api.post(`/returns/rma/${rmaId}/create-exchange-order`, data),
+
+  // === MARKETPLACE IMPORT & PROCESS (Mentor Feedback 4.3.3) ===
+  getMarketplaceChannels: () => api.get('/orders/marketplace/channels'),
+  downloadExcelTemplate: (channel) => api.get('/orders/marketplace/template', { params: { channel }, responseType: 'blob' }),
+  previewExcelImport: (formData) => api.post('/orders/marketplace/preview-excel', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  processImportOrders: (data) => api.post('/orders/marketplace/process-orders', data),
+  warehouseApproveOrder: (id) => api.post(`/orders/marketplace/${id}/warehouse-approve`),
+  warehouseApproveOrdersBulk: (orderIds) => api.post('/orders/marketplace/warehouse-approve-bulk', { orderIds }),
 };
 
 export default sellerService;

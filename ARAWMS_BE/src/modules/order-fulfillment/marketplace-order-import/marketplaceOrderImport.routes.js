@@ -1,0 +1,68 @@
+/**
+ * ============================================================================
+ * @title        : Marketplace Order Import Routes
+ * @author       : AraStore Backend Team
+ * @createdDate  : 2026-11-02
+ * @description  : Định tuyến các API phục vụ import đơn hàng sàn Shopee/TikTok/Excel
+ *                 và quy trình phê duyệt kho.
+ * ============================================================================
+ */
+
+import express from 'express';
+import multer from 'multer';
+import {
+  getSalesChannels,
+  previewExcelImport,
+  processImportOrders,
+  approveImportedOrder,
+  approveImportedOrdersBulk,
+  downloadExcelTemplate,
+} from './marketplaceOrderImport.controller.js';
+import { authenticate } from '../../../common/middlewares/authenticate.js';
+import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
+
+const router = express.Router();
+
+router.use(authenticate);
+
+// 1. Lấy danh sách kênh bán hàng đa nguồn
+router.get('/channels', getSalesChannels);
+
+// 2. Tải file template Excel mẫu
+router.get('/template', downloadExcelTemplate);
+
+// 3. Seller upload và preview file Excel trước khi xử lý
+router.post(
+  '/preview-excel',
+  authorizeRole('SELLER', 'OWNER'),
+  upload.single('file'),
+  previewExcelImport
+);
+
+// 4. Seller thực hiện "Xử lý đơn" (Tạo các đơn hàng vào hệ thống)
+router.post(
+  '/process-orders',
+  authorizeRole('SELLER', 'OWNER'),
+  processImportOrders
+);
+
+// 5. Warehouse duyệt 1 đơn hàng import
+router.post(
+  '/:id/warehouse-approve',
+  authorizeRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'OWNER'),
+  approveImportedOrder
+);
+
+// 6. Warehouse duyệt hàng loạt đơn hàng import
+router.post(
+  '/warehouse-approve-bulk',
+  authorizeRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'OWNER'),
+  approveImportedOrdersBulk
+);
+
+export default router;
