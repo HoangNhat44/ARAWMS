@@ -283,7 +283,7 @@ const QuickOrderModal = ({
   const dropdownList = searchQuery.trim() ? searchResults : availableSkus;
 
   return (
-    <Modal show={isOpen} onHide={onClose} centered size="lg" fullscreen="sm-down" backdrop="static" scrollable>
+    <Modal show={isOpen} onHide={onClose} centered size="lg" fullscreen="md-down" backdrop="static" scrollable>
       {/* Header */}
       <Modal.Header closeButton style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
         <Modal.Title as="h5" className="d-flex align-items-center gap-2" style={{ color: 'var(--wms-text-primary, #141210)' }}>

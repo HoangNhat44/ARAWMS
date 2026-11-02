@@ -5,7 +5,7 @@
  * @createdDate  : 2026-10-27
  * @lastModified : 2026-10-29
  * @description  : Modal xem chi tiết đơn hàng, chỉnh sửa sản phẩm/số lượng khi PENDING,
- *                 khóa cứng khi đã chốt đơn, gửi phiếu xác nhận tự động, giả lập Sandbox
+ *                 khóa cứng khi đã chốt đơn, gửi phiếu xác nhận tự động
  *                 và kiểm soát điều kiện hủy đơn kèm lý do bắt buộc.
  * @module       : Order Fulfillment / Direct Order Management
  * @layer        : Front-end
@@ -213,26 +213,6 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
     }
   };
 
-  /**
-   * Sandbox Simulator: Giả lập khách nhắn "OK chốt đơn" (Phase 3)
-   */
-  const handleSimulateCustomerConfirm = async () => {
-    try {
-      setActionLoading(true);
-      const orderId = order._id || order.id;
-      const res = await sellerService.simulateCustomerConfirm(orderId);
-      if (res.success) {
-        setStatus('CONFIRMED_RESERVED');
-        const updated = res.order || { ...order, status: 'CONFIRMED_RESERVED' };
-        if (onStatusUpdated) onStatusUpdated(updated);
-        showSuccess('🤖 [Sandbox] Giả lập khách gửi tin nhắn: "OK chốt đơn" -> Đơn đã được tự động xác nhận và giữ chỗ kho!', 'Simulator thành công');
-      }
-    } catch (err) {
-      showError(err.message || 'Lỗi giả lập xác nhận', 'Sandbox Error');
-    } finally {
-      setActionLoading(false);
-    }
-  };
 
   /**
    * Thực hiện gọi API cập nhật trạng thái
@@ -319,7 +299,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
 
   return (
     <>
-      <Modal show={isOpen} onHide={onClose} centered size="lg" fullscreen="sm-down" scrollable>
+      <Modal show={isOpen} onHide={onClose} centered size="lg" fullscreen="md-down" scrollable>
         {/* Header */}
         <Modal.Header closeButton style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
           <Stack direction="horizontal" gap={3}>
@@ -327,7 +307,9 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
             <div>
               <Stack direction="horizontal" gap={2} className="align-items-center">
                 <Modal.Title as="span" className="font-monospace fw-bold fs-5" style={{ color: 'var(--wms-text-primary, #141210)' }}>
-                  #{order.orderCode || order._id?.slice(-6)}
+                  {order.orderCode
+                    ? (order.orderCode.startsWith('#') ? order.orderCode : `#${order.orderCode}`)
+                    : (order._id ? `#${String(order._id).slice(-8).toUpperCase()}` : 'CHI TIẾT ĐƠN HÀNG')}
                 </Modal.Title>
                 <span
                   className="badge rounded px-2 py-0.5"
@@ -370,7 +352,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
         <Modal.Body className="d-flex flex-column gap-3" style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
           {error && <Alert variant="danger" className="py-2 small mb-0">{error}</Alert>}
 
-          {/* Thanh công cụ xác nhận hai chiều & Sandbox dành cho đơn PENDING */}
+          {/* Thanh công cụ xác nhận hai chiều dành cho đơn PENDING */}
           {isPending && (
             <Card className="shadow-sm" style={{ backgroundColor: '#FEF0C7', border: '1px solid #F5B95F' }}>
               <Card.Body className="py-2 px-3">
@@ -400,15 +382,6 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
                       onClick={handleManualConfirm}
                     >
                       <Icon name="check-circle" /> Khách đã xác nhận (Chốt đơn)
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="btn-wms-dashed d-flex align-items-center gap-1"
-                      disabled={actionLoading}
-                      onClick={handleSimulateCustomerConfirm}
-                      title="Giả lập khách hàng nhắn 'OK chốt đơn' để test tự động giữ chỗ kho"
-                    >
-                      <Icon name="robot" /> Giả lập khách nhắn "OK"
                     </Button>
                   </Stack>
                 </div>
@@ -613,8 +586,23 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
 
         {/* Footer */}
         <Modal.Footer className="justify-content-between" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
-          <div className="text-secondary small">
-            Mã giao dịch: <span className="font-monospace text-body">{order._id}</span>
+          <div className="text-secondary small d-flex flex-wrap align-items-center gap-2">
+            <span>
+              Mã đơn hàng:{' '}
+              <span className="font-monospace fw-bold text-dark">
+                {order.orderCode || (order._id ? `#${String(order._id).slice(-8).toUpperCase()}` : '—')}
+              </span>
+            </span>
+            {order.sourceDetails?.externalOrderCode && (
+              <span className="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace">
+                Mã sàn: {order.sourceDetails.externalOrderCode}
+              </span>
+            )}
+            {order.warehouseFulfillment?.waybillCode && (
+              <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle font-monospace">
+                Vận đơn: {order.warehouseFulfillment.waybillCode}
+              </span>
+            )}
           </div>
           <Stack direction="horizontal" gap={2}>
             <Button size="sm" className="btn-wms-default" onClick={onClose}>
