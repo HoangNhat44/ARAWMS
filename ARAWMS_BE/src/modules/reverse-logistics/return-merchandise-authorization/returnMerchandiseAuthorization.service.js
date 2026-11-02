@@ -16,6 +16,7 @@ import ReturnRequest from '../../../models/ReturnRequest.model.js';
 import SalesOrder from '../../../models/SalesOrder.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
+import { emitRmaAlert } from '../../../config/socket.js';
 
 /**
  * Ghi SystemLog kiểm toán
@@ -46,7 +47,7 @@ const recordSystemLog = async ({ actor, majorFeature, subFeature, action, target
  * UC-82: Tiếp nhận phản hồi và tạo yêu cầu đổi/trả hàng (Create Merchandise Return Request - RMA)
  */
 export const createReturnRequest = async (rmaData, user, req) => {
-  const { originalOrderId, returnType, returnWaybillCode, returnItems, reasonDescription } = rmaData;
+  const { originalOrderId, returnType, returnWaybillCode, returnItems, reasonDescription, refundBanking } = rmaData;
 
   const originalOrder = await SalesOrder.findById(originalOrderId);
   if (!originalOrder) {
@@ -59,6 +60,12 @@ export const createReturnRequest = async (rmaData, user, req) => {
 
   const inspectedItems = [];
   let calculatedReturnedValue = 0;
+  let totalOrderQty = 0;
+  let totalReturnedQty = 0;
+
+  for (const item of originalOrder.items || []) {
+    totalOrderQty += Number(item.orderedQty) || 0;
+  }
 
   for (const rItem of returnItems) {
     const orderItem = originalOrder.items.find((item) => String(item.skuId) === String(rItem.skuId));
@@ -72,6 +79,7 @@ export const createReturnRequest = async (rmaData, user, req) => {
     }
 
     calculatedReturnedValue += retQty * orderItem.unitSalePrice;
+    totalReturnedQty += retQty;
 
     inspectedItems.push({
       skuId: orderItem.skuId,
@@ -91,6 +99,8 @@ export const createReturnRequest = async (rmaData, user, req) => {
     createdBySellerId: user._id,
     returnType: returnType || 'RETURN_FOR_REFUND',
     returnWaybillCode: returnWaybillCode || '',
+    reasonDescription: reasonDescription || '',
+    refundBanking: refundBanking || {},
     status: 'REQUESTED',
     warehouseInspection: {
       items: inspectedItems,
@@ -105,8 +115,26 @@ export const createReturnRequest = async (rmaData, user, req) => {
     },
   });
 
-  originalOrder.status = 'RETURN_REQUESTED';
+  // Thống nhất trạng thái đơn hàng gốc sau khi đổi/trả (Mentor Feedback 4.3.2)
+  const isFullReturn = totalReturnedQty >= totalOrderQty;
+  if (returnType === 'EXCHANGE_PRODUCT') {
+    originalOrder.status = 'EXCHANGE_REQUESTED';
+  } else {
+    originalOrder.status = isFullReturn ? 'RETURN_REQUESTED' : 'PARTIALLY_RETURNED';
+  }
+  originalOrder.linkedReturnRequestId = newRma._id;
   await originalOrder.save();
+
+  // Phát thông báo Realtime tự động gửi đến Kho (Warehouse) qua Socket.io
+  emitRmaAlert({
+    rmaCode: newRma.rmaCode,
+    originalOrderCode: originalOrder.orderCode,
+    returnType: newRma.returnType,
+    itemsCount: inspectedItems.length,
+    reasonDescription: reasonDescription || 'Không có ghi chú',
+    message: `Đơn ${originalOrder.orderCode} vừa tạo phiếu ${newRma.returnType === 'EXCHANGE_PRODUCT' ? 'đổi hàng' : 'trả hàng'} (${newRma.rmaCode})`,
+    createdAt: new Date(),
+  });
 
   await recordSystemLog({
     actor: user,

@@ -29,6 +29,12 @@ const returnRequestSchema = new Schema(
     createdBySellerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     returnType: { type: String, enum: ['RETURN_FOR_REFUND', 'EXCHANGE_PRODUCT'], required: true },
     returnWaybillCode: { type: String, index: true },
+    reasonDescription: { type: String, trim: true },
+    refundBanking: {
+      bankName: { type: String, trim: true },
+      accountNumber: { type: String, trim: true },
+      accountHolder: { type: String, trim: true },
+    },
     status: {
       type: String,
       enum: ['REQUESTED', 'UNBOXED_INSPECTED', 'ACCOUNTANT_APPROVED', 'COMPLETED', 'REJECTED'],
