@@ -8,8 +8,6 @@ yarn-error.log*
 node_modules
 dist
 dist-ssr
-ARAWMS_FE/test-results/
-ARAWMS_FE/playwright-report/
 *.local
 .vscode/*
 !.vscode/extensions.json

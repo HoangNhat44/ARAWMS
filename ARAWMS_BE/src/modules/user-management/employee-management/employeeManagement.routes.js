@@ -15,4 +15,7 @@ router.post('/', asyncHandler(controller.create));
 router.patch('/:id/lock', asyncHandler(controller.lock));
 // Cập nhật trạng thái khóa của nhân viên trong nhóm quản lý nhân viên; lỗi xử lý được chuyển về bộ xử lý lỗi chung.
 router.patch('/:id/unlock', asyncHandler(controller.unlock));
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: GBR-01 - Chỉ chủ cửa hàng được dừng/khôi phục hoạt động của nhân viên.
+router.patch('/:id/deactivate', asyncHandler(controller.deactivate));
+router.patch('/:id/reactivate', asyncHandler(controller.reactivate));
 export default router;

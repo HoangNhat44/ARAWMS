@@ -12,3 +12,6 @@ export const create = async (req, res) => res.status(201).json({ success: true, 
 export const lock = async (req, res) => res.json({ success: true, message: 'Đã khóa tài khoản và thu hồi các phiên đăng nhập.', data: await service.changeEmployeeStatus(req, 'LOCKED') });
 // UC-08, GBR-02: Trả kết quả mở khóa; vẫn giữ yêu cầu đặt lại mật khẩu nếu có.
 export const unlock = async (req, res) => res.json({ success: true, message: 'Đã mở khóa. Nhân viên cần đăng nhập lại.', data: await service.changeEmployeeStatus(req, 'ACTIVE') });
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: GBR-01 - Ngừng hoạt động/cho làm việc lại đều thu hồi phiên, ghi nhật ký và giữ yêu cầu đổi mật khẩu.
+export const deactivate = async (req, res) => res.json({ success: true, message: 'Đã ngừng hoạt động tài khoản nhân viên.', data: await service.changeEmployeeStatus(req, 'INACTIVE') });
+export const reactivate = async (req, res) => res.json({ success: true, message: 'Đã cho tài khoản hoạt động lại. Nhân viên cần đăng nhập lại.', data: await service.changeEmployeeStatus(req, 'ACTIVE', true) });

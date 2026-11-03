@@ -1,4 +1,6 @@
 import express from 'express';
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13/19, phản hồi 1–7; GBR-01 - Báo cáo và kế hoạch có xác thực.
+import operationsReportRoutes from '../modules/managerial-financial-analytics/operations-report/operationsReport.routes.js';
 import ghnRoutes from './ghn.routes.js';
 import authRoutes from '../modules/system-administration/authentication/auth.routes.js';
 import accountRoutes from '../modules/system-administration/account-governance/accountGovernance.routes.js';
@@ -17,6 +19,7 @@ import settingsRoutes from '../modules/system-administration/system-settings/sys
 import stockAdjustmentRoutes from '../modules/inventory-auditing/stock-adjustment/stockAdjustment.routes.js';
 
 const router = express.Router();
+router.use('/owner/operations-report', operationsReportRoutes);
 router.use('/auth', authRoutes);
 router.use('/accounts', accountRoutes);
 // Nguyễn Ngọc Huy-HE171157, 30-10-2026: UC Owner - Route theo đúng Major Feature/Sub Feature.

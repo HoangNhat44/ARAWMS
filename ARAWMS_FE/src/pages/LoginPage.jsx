@@ -1,3 +1,4 @@
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-01/04/06 - Nhãn và hướng dẫn tiếng Việt phổ thông.
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 22-10-2026
@@ -74,9 +75,9 @@ function LoginForm() {
     </div>
     {location.state?.message && <div role="status" className="ara-alert ara-alert-success">{location.state.message}</div>}
     {error && <div role="alert" className="ara-alert ara-alert-error"><AlertCircle size={18} /><span>{error}</span></div>}
-    {resetRequired && <WmsButton type="button" className="btn-ara-secondary ara-recovery-action" onClick={forgot}>Đặt lại mật khẩu qua email</WmsButton>}
+    {resetRequired && <WmsButton type="button" className="btn-ara-secondary ara-recovery-action" onClick={forgot}>Đặt lại mật khẩu qua thư điện tử</WmsButton>}
     <form onSubmit={submit}>
-      <div className="form-group"><WmsField required className="form-label" htmlFor="usernameOrEmail">Mã nhân viên hoặc Email</WmsField>
+      <div className="form-group"><WmsField required className="form-label" htmlFor="usernameOrEmail">Mã nhân viên hoặc thư điện tử</WmsField>
         <div className="input-wrapper"><User size={18} className="input-icon" />
           <WmsInput id="usernameOrEmail" name="usernameOrEmail" className="form-input" placeholder="NV001 hoặc email của bạn"
             value={form.usernameOrEmail} onChange={change} autoComplete="username" maxLength={254} required disabled={busy} />
@@ -134,7 +135,7 @@ function GoogleLogin({ rememberMe, disabled, onSuccess, onBusyChange }) {
   return <section className="ara-google-login" aria-label="Đăng nhập bằng Google">
     <div className="ara-auth-divider"><span>Hoặc đăng nhập bằng Google</span></div>
     {error && <div role="alert" className="ara-alert ara-alert-error">{error}</div>}
-    {config?.enabled === false && <p className="ara-section-note">Google chưa được cấu hình. Bạn có thể đăng nhập bằng email hoặc mã nhân viên và mật khẩu.</p>}
+    {config?.enabled === false && <p className="ara-section-note">Google chưa được cấu hình. Bạn có thể đăng nhập bằng thư điện tử hoặc mã nhân viên và mật khẩu.</p>}
     {challenge && <GoogleIdentityButton challenge={challenge} disabled={disabled} onError={failed} onBusyChange={onBusyChange}
       onCredential={async (input) => {
         const response = await authService.googleLogin({ ...input, rememberMe });

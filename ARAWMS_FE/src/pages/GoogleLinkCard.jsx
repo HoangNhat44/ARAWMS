@@ -1,3 +1,4 @@
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Thống nhất nhãn hiển thị bằng tiếng Việt phổ thông.
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 22-10-2026
@@ -71,7 +72,7 @@ export default function GoogleLinkCard({ user, onSaved }) {
   };
   return <section className="ara-account-card">
     <h2><Link2 size={21} /> Liên kết Google</h2>
-    <p className="ara-section-note">Email Google sau khi liên kết sẽ là email đăng nhập, nhận thư đặt lại mật khẩu và OTP đổi số điện thoại.</p>
+    <p className="ara-section-note">Địa chỉ thư điện tử Google sau khi liên kết sẽ là địa chỉ thư điện tử đăng nhập, nhận thư đặt lại mật khẩu và mã xác nhận đổi số điện thoại.</p>
     {error && <div role="alert" className="ara-alert ara-alert-error">{error}</div>}
     {message && <div role="status" className="ara-alert ara-alert-success">{message}</div>}
     {user.googleLinked && <div className="ara-google-linked"><strong>Đã liên kết Google</strong><p>{user.googleEmail}</p></div>}

@@ -20,7 +20,8 @@ export const wmsTheme = {
     colorTextQuaternary: palette.light, colorTextDescription: palette.secondary, colorTextPlaceholder: palette.light,
     colorBgLayout: palette.background, colorBgContainer: palette.surface, colorBorder: palette.border, colorBorderSecondary: palette.border,
     colorLink: palette.accentHover, colorLinkHover: palette.primary, colorFillAlter: palette.header,
-    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', fontSize: 14,
+    // Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi giao diện - Chữ nội dung 16px, giữ chung kích thước điều khiển.
+    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', fontSize: 16,
     fontSizeHeading1: 28, fontSizeHeading2: 20, fontSizeHeading3: 18, fontSizeHeading4: 16,
     controlHeight: 44, controlHeightSM: 36, borderRadius: 8, borderRadiusLG: 12, padding: 16, margin: 16,
     lineHeight: 1.6, motion: false,
@@ -30,7 +31,7 @@ export const wmsTheme = {
     Menu: { darkItemBg: palette.primary, darkSubMenuItemBg: palette.primary, darkItemColor: palette.accentLight,
       darkItemSelectedBg: palette.accent, darkItemSelectedColor: '#FFFFFF', darkGroupTitleColor: palette.accentLight,
       darkItemHoverBg: palette.primaryHover, itemHeight: 44, itemMarginBlock: 4 },
-    Table: { headerBg: palette.header, headerColor: palette.secondary, borderColor: palette.border, rowHoverBg: palette.subtle, fontSize: 14, cellPaddingBlock: 12, cellPaddingInline: 16 },
+    Table: { headerBg: palette.header, headerColor: palette.secondary, borderColor: palette.border, rowHoverBg: palette.subtle, fontSize: 16, cellPaddingBlock: 12, cellPaddingInline: 16 },
     Button: { defaultBorderColor: palette.borderStrong, primaryShadow: 'none', defaultShadow: 'none', dangerShadow: 'none', fontWeight: 600 },
     Input: { activeBorderColor: palette.accent, hoverBorderColor: palette.accent },
     Select: { activeBorderColor: palette.accent, hoverBorderColor: palette.accent },

@@ -1,3 +1,4 @@
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Thống nhất nhãn hiển thị bằng tiếng Việt phổ thông.
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
@@ -15,7 +16,7 @@ export const ownerService = {
   employeeAction: (id, action, body) => api.patch(`/owner/employees/${id}/${action}`, body),
   // UC-09: Lưu phần quyền cấp/thu hồi riêng thay vì thay toàn bộ vai trò.
   assignPermissions: (id, body) => api.patch(`/owner/employee-permissions/${id}`, body),
-  // UC-18: Xác nhận đã xem báo cáo Manager và gửi ghi chú của Owner.
+  // UC-18: Xác nhận đã xem báo cáo quản lý kho và gửi ghi chú của Owner.
   reviewReport: (id, comment) => api.patch(`/owner/manager-reports/${id}/review`, { comment }),
   // OWNER-EXT-01: Đổi vai trò, khác với cấp/thu hồi quyền riêng ở UC-09.
   assignRole: (id, body) => api.patch(`/owner/employee-roles/${id}`, body),

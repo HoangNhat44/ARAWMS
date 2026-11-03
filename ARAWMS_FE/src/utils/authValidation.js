@@ -1,3 +1,4 @@
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-01/04/06 - Nhãn và hướng dẫn tiếng Việt phổ thông.
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 22-10-2026
@@ -6,7 +7,7 @@
  */
 
 export const identifierError = (value) => {
-  if (typeof value !== 'string') return 'Nhập email hoặc mã nhân viên hợp lệ.';
+  if (typeof value !== 'string') return 'Nhập địa chỉ thư điện tử hoặc mã nhân viên hợp lệ.';
   const identifier = value.trim();
   const email = identifier.length <= 254
     && /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/i.test(identifier)

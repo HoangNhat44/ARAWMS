@@ -10,7 +10,8 @@ const rawMaterialSchema = new Schema(
     materialType: { type: String, enum: ['FABRIC', 'AUXILIARY'], required: true, index: true },
     category: {
       type: String,
-      enum: ['FABRIC_ROLL', 'BUTTON', 'THREAD', 'ZIPPER', 'CARE_LABEL', 'PACKAGING_BAG'],
+      // Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 7 - Kim, phấn, bút đánh dấu và phụ kiện có đơn vị riêng.
+      enum: ['FABRIC_ROLL', 'BUTTON', 'THREAD', 'ZIPPER', 'CARE_LABEL', 'PACKAGING_BAG', 'NEEDLE', 'CHALK', 'MARKER', 'ACCESSORY'],
       required: true,
     },
     unit: { type: String, enum: ['METER', 'KG', 'PIECE', 'SPOOL', 'BOX'], required: true },

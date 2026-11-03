@@ -1,3 +1,4 @@
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Thống nhất nhãn hiển thị bằng tiếng Việt phổ thông.
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 22-10-2026
@@ -53,8 +54,8 @@ export default function ProfileForm({ user, onSaved }) {
     if (!phone) return setNotice({ ok: false, text: 'Số điện thoại là bắt buộc, phải gồm đúng 10 chữ số và bắt đầu bằng số 0.' });
     const phoneChanged = phone !== (normalizePhone(user.phone || '') || user.phone || '');
     if (phoneChanged && !phone) return setNotice({ ok: false, text: 'Vui lòng nhập số điện thoại mới.' });
-    if (phoneChanged && !user.emailVerified) return setNotice({ ok: false, text: 'Liên kết Google để xác nhận email trước khi đổi số điện thoại.' });
-    if (phoneChanged && cooldown) return setNotice({ ok: false, text: `Vui lòng đợi ${cooldown} giây trước khi gửi OTP mới.` });
+    if (phoneChanged && !user.emailVerified) return setNotice({ ok: false, text: 'Liên kết Google để xác nhận địa chỉ thư điện tử trước khi đổi số điện thoại.' });
+    if (phoneChanged && cooldown) return setNotice({ ok: false, text: `Vui lòng đợi ${cooldown} giây trước khi gửi mã xác nhận mới.` });
     setBusy(true); setNotice(null);
     try {
       const fullName = normalizeFullName(form.fullName);
@@ -74,7 +75,7 @@ export default function ProfileForm({ user, onSaved }) {
   const confirm = async (event) => {
     event.preventDefault();
     if (busy || !challenge || expired) return;
-    if (!/^\d{6}$/.test(otp)) return setNotice({ ok: false, text: 'OTP phải gồm đúng 6 chữ số.' });
+    if (!/^\d{6}$/.test(otp)) return setNotice({ ok: false, text: 'Mã xác nhận phải gồm đúng 6 chữ số.' });
     setBusy(true); setNotice(null);
     try {
       const response = await accountService.confirmPhoneOtp({ challengeId: challenge.challengeId, otp });
@@ -114,7 +115,7 @@ export default function ProfileForm({ user, onSaved }) {
       </div>
       <dl className="ara-account-details">
         <div><dt>Mã nhân viên</dt><dd>{user.employeeCode}</dd></div>
-        <div><dt>Email đăng nhập</dt><dd>{user.email}</dd></div>
+        <div><dt>Thư điện tử đăng nhập</dt><dd>{user.email}</dd></div>
         <div><dt>Vai trò</dt><dd>{user.roleName}</dd></div>
         <div><dt>Đăng nhập gần nhất</dt><dd>{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString('vi-VN') : 'Chưa có thông tin'}</dd></div>
       </dl>
@@ -128,10 +129,10 @@ export default function ProfileForm({ user, onSaved }) {
 
 function PhoneOtpConfirmation({ challenge, otp, onOtpChange, busy, expired, cooldown, onConfirm, onResend, onCancel }) {
   return <div className="ara-phone-otp">
-    <p className="ara-section-note">Nhập OTP gửi tới {challenge.email} để lưu thay đổi số điện thoại thành {challenge.phone}. Mã có hiệu lực 5 phút.</p>
-    {expired && <p role="alert" className="ara-section-note">OTP đã hết hạn. Hãy gửi mã mới.</p>}
+    <p className="ara-section-note">Nhập mã xác nhận gửi tới {challenge.email} để lưu thay đổi số điện thoại thành {challenge.phone}. Mã có hiệu lực 5 phút.</p>
+    {expired && <p role="alert" className="ara-section-note">Mã xác nhận đã hết hạn. Hãy gửi mã mới.</p>}
     <form onSubmit={onConfirm}>
-      <div className="form-group"><WmsField required className="form-label" htmlFor="phoneOtp">Mã OTP</WmsField>
+      <div className="form-group"><WmsField required className="form-label" htmlFor="phoneOtp">Mã xác nhận</WmsField>
         <WmsInput id="phoneOtp" className="form-input ara-plain-input" inputMode="numeric" autoComplete="one-time-code"
           maxLength={6} pattern="[0-9]{6}" required autoFocus disabled={busy || expired}
           value={otp} onChange={event => onOtpChange(event.target.value.replace(/\D/g, '').slice(0, 6))} />
@@ -140,7 +141,7 @@ function PhoneOtpConfirmation({ challenge, otp, onOtpChange, busy, expired, cool
     </form>
     <div className="ara-otp-actions">
       <WmsButton type="button" className="ara-text-button" disabled={busy || cooldown > 0} onClick={onResend}>
-        {cooldown > 0 ? `Gửi lại sau ${cooldown} giây` : 'Gửi lại OTP'}
+        {cooldown > 0 ? `Gửi lại sau ${cooldown} giây` : 'Gửi lại mã xác nhận'}
       </WmsButton>
       <WmsButton type="button" className="ara-text-button" disabled={busy} onClick={onCancel}>Sửa lại thông tin</WmsButton>
     </div>

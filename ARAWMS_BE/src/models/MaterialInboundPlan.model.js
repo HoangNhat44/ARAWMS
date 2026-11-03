@@ -22,6 +22,10 @@ const materialInboundPlanSchema = new Schema(
     scheduledDeliveryDate: { type: Date, required: true, index: true },
     status: { type: String, enum: PLAN_STATUS, default: 'SCHEDULED', index: true },
     createdByAccountantId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    // Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 3/6 - Phân công nhận nguyên liệu độc lập với người mua hàng.
+    assignedReceiverId: { type: Schema.Types.ObjectId, ref: 'User' },
+    assignedBuyerId: { type: Schema.Types.ObjectId, ref: 'User' },
+    assignmentRevision: { type: Number, default: 0, min: 0 },
     expectedItems: [expectedItemSchema],
     technicianVerification: {
       verifiedByTechId: { type: Schema.Types.ObjectId, ref: 'User' },

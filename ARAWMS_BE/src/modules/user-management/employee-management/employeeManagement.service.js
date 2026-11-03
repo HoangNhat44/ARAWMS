@@ -63,7 +63,7 @@ export const createEmployee = async (req) => {
 };
 
 // UC-07/08: Dùng chung quy trình khóa/mở khóa nhưng kiểm tra đúng trạng thái ban đầu của từng thao tác.
-export const changeEmployeeStatus = async (req, status) => {
+export const changeEmployeeStatus = async (req, status, fromInactive = false) => {
   objectId(req.params.id);
   const input = validateEmployeeAction(req.body);
   return ownerTransaction(async (session) => {
@@ -71,8 +71,10 @@ export const changeEmployeeStatus = async (req, status) => {
     if (!user) throw httpError(404, 'Không tìm thấy tài khoản nhân viên.');
     // Từ chối bản dữ liệu cũ để hai lần quản trị không ghi đè kết quả của nhau.
     if ((user.managementVersion || 0) !== input.expectedVersion) throw httpError(409, 'Tài khoản đã thay đổi. Vui lòng tải lại.');
-    if (user.status !== (status === 'LOCKED' ? 'ACTIVE' : 'LOCKED')) throw httpError(409, 'Trạng thái hiện tại không cho phép thao tác này.');
-    if (status === 'ACTIVE' && !await Role.exists({ _id: user.roleId, roleCode: user.roleCode, isActive: true, isDeleted: { $ne: true } }).session(session)) throw httpError(409, 'Vai trò đã vô hiệu hóa; cần gán vai trò hợp lệ trước khi mở khóa.');
+    // Nguyễn Ngọc Huy-HE171157, 2-11-2026: GBR-01 - Ngừng làm việc khác khóa tạm thời; mỗi thao tác có trạng thái nguồn rõ ràng.
+    const allowed = status === 'INACTIVE' ? ['ACTIVE', 'LOCKED'] : status === 'LOCKED' ? ['ACTIVE'] : [fromInactive ? 'INACTIVE' : 'LOCKED'];
+    if (!allowed.includes(user.status)) throw httpError(409, 'Trạng thái hiện tại không cho phép thao tác này.');
+    if (status === 'ACTIVE' && !await Role.exists({ _id: user.roleId, roleCode: user.roleCode, isActive: true, isDeleted: { $ne: true } }).session(session)) throw httpError(409, 'Vị trí công việc đã ngừng sử dụng. Cần quản trị viên kiểm tra trước khi cho đăng nhập lại.');
     // Lưu thông tin trước thay đổi để Owner có thể xem và truy vết sau này.
     const before = employeeProfile(user);
     user.status = status;
@@ -83,7 +85,8 @@ export const changeEmployeeStatus = async (req, status) => {
     // GBR-02: Mở khóa quản trị không xóa yêu cầu đặt lại mật khẩu do sai 5 lần.
     await user.save({ session });
     const after = employeeProfile(user);
-    await ownerAudit(req, session, 'User Management', 'Employee Management', status === 'LOCKED' ? 'LOCK_EMPLOYEE' : 'UNLOCK_EMPLOYEE',
+    const action = status === 'INACTIVE' ? 'DEACTIVATE_EMPLOYEE' : fromInactive ? 'REACTIVATE_EMPLOYEE' : status === 'LOCKED' ? 'LOCK_EMPLOYEE' : 'UNLOCK_EMPLOYEE';
+    await ownerAudit(req, session, 'User Management', 'Employee Management', action,
       { collection: 'users', id: user._id, code: user.employeeCode }, before, { ...after, reason: input.reason });
     return after;
   });

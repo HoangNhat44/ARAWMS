@@ -1,3 +1,4 @@
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Thống nhất nhãn hiển thị bằng tiếng Việt phổ thông.
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 22-10-2026
@@ -42,7 +43,7 @@ api.interceptors.response.use(
       clearAuth();
       window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     }
-    const message = error.response?.data?.message || 'Có lỗi kết nối đến Server';
+    const message = error.response?.data?.message || 'Có lỗi kết nối đến máy chủ';
     return Promise.reject(Object.assign(new Error(message), {
       status: error.response?.status, code: error.response?.data?.details?.code,
     }));

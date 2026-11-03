@@ -21,6 +21,8 @@ export const readQuery = (query, { fields = ['code', 'name'], statuses = [], ext
 };
 // Chỉ giữ HTTP/HTTPS không nhúng tài khoản; trả chuỗi rỗng nếu link sai hoặc có thể chạy mã.
 export const safeUrl = (value) => {
+  // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-20 - Chỉ cho ảnh mẫu tĩnh cùng ứng dụng, chặn đường dẫn ngoài và đi ngược thư mục.
+  if (typeof value === 'string' && /^\/demo\/[a-z0-9-]+\.(svg|png|webp|jpg)$/.test(value)) return value;
   try { const url = new URL(value); return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : ''; }
   catch { return ''; }
 };

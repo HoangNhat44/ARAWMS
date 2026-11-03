@@ -53,3 +53,51 @@
 @media(max-width:575px){.owner-header-context .ant-breadcrumb{max-width:160px;font-size:12px;}.owner-header-context{gap:4px;}.owner-filters>.wms-form-item{flex-basis:100%;}.owner-filters>button{flex:1 1 100%;}.owner-metrics{gap:12px;}.owner-metric .ant-card-body{padding:16px;}.owner-metric .ant-statistic-content{font-size:20px;}.owner-page-context{font-size:12px;}.owner-pagination{justify-content:center;}.owner-chart{padding:16px;}.owner-bar-row{grid-template-columns:1fr 100px;}.owner-bar-track{grid-column:1;grid-row:auto;}.owner-bar-row>span{grid-column:1;}.owner-bar-row>strong{grid-column:2;grid-row:span 2;}.owner-actions{gap:8px;}.owner-record-card .owner-actions .ant-btn{flex:1 1 auto;}.owner-sample-images{grid-template-columns:repeat(2,minmax(0,1fr));}.owner-sample-images img{height:180px;}}
 @media(max-width:359px){.owner-metrics{grid-template-columns:1fr;}.owner-header-context .ant-breadcrumb{max-width:124px;}.owner-main{padding:16px 12px;}.owner-record-card{grid-template-columns:1fr;}}
 .owner-main .owner-metric .ant-statistic .ant-statistic-title{color:var(--wms-secondary);font-size:13px;}.owner-header .ant-breadcrumb .ant-breadcrumb-link>a{color:var(--wms-secondary);}
+/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Biểu đồ cột, bố cục rộng, thao tác máy tính bảng ít biểu tượng và không chuyển động. */
+.operations-columns{display:flex;gap:24px;align-items:flex-end;overflow-x:auto;padding:24px 8px 8px;min-height:280px;}
+.operations-column{flex:1 0 120px;max-width:220px;text-align:center;display:flex;flex-direction:column;gap:12px;font-size:13px;}
+.operations-column strong{font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
+.operations-column-track{height:170px;display:flex;align-items:flex-end;justify-content:center;border-bottom:1px solid #b8c8bf;background:#f5f8f6;}
+.operations-column-track>div{width:56%;min-height:1px;}.operations-column-track>.negative{background:#b74444!important;align-self:flex-start;}
+.owner-header-context>a{font-size:14px;white-space:nowrap;}.owner-content-panel>.owner-content-panel{margin-block:20px;}
+@media(min-width:768px) and (max-width:1199px){.owner-shell .ant-menu-item-icon,.owner-shell .owner-status svg{display:none!important;}.owner-shell *{animation:none!important;transition:none!important;}.owner-main{max-width:none;}.owner-table .ant-table-cell{padding:16px 12px;}}
+@media(max-width:767px){.owner-header-context>a{font-size:12px;}.owner-header-context{gap:8px;}.operations-column{flex-basis:110px;}.operations-columns{gap:12px;}}
+@media(prefers-reduced-motion:reduce){.owner-shell *{animation:none!important;transition:none!important;}}
+/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Giữ đủ mục điều hướng trên điện thoại nhỏ bằng cách cho thanh trên xuống dòng. */
+@media(max-width:359px){.owner-header{height:auto;min-height:92px;flex-wrap:wrap;gap:4px;padding:8px 12px;}.owner-header-context{flex:1 1 100%;justify-content:space-between;}.owner-header-actions{margin-left:auto;}.owner-header-context>a{font-size:12px;}.owner-content-panel{padding:16px;}}
+/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Tên chức năng dài xuống dòng để hiển thị đầy đủ trên thanh điều hướng. */
+.owner-sider:not(.ant-layout-sider-collapsed) .ant-menu-item,.owner-nav-drawer .ant-menu-item{height:auto;min-height:48px;line-height:1.5;padding-block:12px;}
+.owner-sider:not(.ant-layout-sider-collapsed) .ant-menu-title-content,.owner-nav-drawer .ant-menu-title-content{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.5;}
+/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13 - Biểu đồ tĩnh, trục rõ đơn vị, cuộn ngang được trên máy tính bảng và điện thoại. */
+.owner-chart-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-bottom:20px;}.owner-chart-heading .wms-form-item{min-width:220px;max-width:360px;}.owner-chart-scroll{max-width:100%;overflow-x:auto;outline-offset:4px;}.owner-series-svg{width:100%;height:340px;display:block;}.owner-series-svg text,.owner-donut-layout svg text{font:13px Inter,sans-serif;fill:#37453c;}.owner-chart-legend{display:flex;flex-wrap:wrap;gap:16px;margin:12px 0;}.owner-chart-legend>span{display:flex;align-items:center;gap:8px;font-size:13px;}.owner-chart-legend i,.owner-share-legend i{display:inline-block;width:14px;height:14px;flex-shrink:0;border-radius:2px;}.owner-horizontal-chart{display:grid;gap:20px;}.owner-horizontal-chart>div{display:grid;grid-template-columns:minmax(130px,1fr) minmax(70px,2fr) minmax(100px,1fr);align-items:center;gap:16px;font-size:13px;}.owner-horizontal-track{height:22px;background:#f0f4f1;}.owner-horizontal-track>div{height:100%;}.owner-horizontal-chart strong{text-align:right;overflow-wrap:anywhere;}.owner-donut-layout{display:flex;flex-wrap:wrap;align-items:center;gap:28px;}.owner-donut-layout svg{width:260px;max-width:100%;flex:0 1 260px;}.owner-share-legend{list-style:none;padding:0;margin:0;display:grid;gap:16px;flex:1 1 230px;}.owner-share-legend li{display:flex;align-items:flex-start;gap:10px;font-size:13px;}.owner-annual-analytics{display:flex;flex-direction:column;gap:20px;}.owner-annual-analytics summary{cursor:pointer;min-height:44px;display:flex;align-items:center;text-decoration:underline;}.owner-annual-analytics .owner-filters{padding:16px;}
+@media(max-width:767px){.owner-chart-heading .wms-form-item{width:100%;max-width:none;}.owner-horizontal-chart>div{grid-template-columns:1fr 110px;gap:8px;}.owner-horizontal-chart>div>span{grid-column:1/-1;}.owner-horizontal-chart strong{font-size:12px;}.owner-chart-heading{gap:12px;}.owner-chart-scroll{width:100%;}}
+/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi giao diện - Header cố định 72px, chữ lớn hơn, bỏ dòng phụ khỏi báo cáo. */
+html{scrollbar-gutter:stable;}
+.owner-shell{font-size:16px;}
+.owner-shell .owner-header{height:72px;min-height:72px;max-height:72px;position:sticky;top:0;flex-wrap:nowrap;gap:16px;padding:12px 24px;}
+.owner-shell .owner-header-context{flex:1 1 auto;justify-content:flex-start;gap:12px;}
+.owner-shell .owner-header-actions{flex:0 0 auto;gap:12px;margin-left:0;}
+.owner-header-brand{font-size:20px;font-weight:600;line-height:1;white-space:nowrap;}
+.owner-shell .owner-main{gap:24px;}
+.owner-shell .owner-eyebrow{display:none;}
+.owner-shell .owner-page-heading h1{font-size:30px;}
+.owner-shell .owner-page-heading p{font-size:16px;}
+.owner-shell .owner-table .ant-table-thead>tr>th,.owner-shell .owner-table .ant-table-tbody>tr>td{font-size:16px;}
+.owner-shell .owner-metric .ant-statistic .ant-statistic-title{font-size:16px;line-height:1.6;}
+.owner-shell .owner-metric .ant-statistic-content{font-size:28px;}
+.owner-shell .ant-menu-item,.owner-nav-drawer .ant-menu-item{font-size:16px;}
+.owner-shell .ant-menu-item-group-title,.owner-nav-drawer .ant-menu-item-group-title{font-size:14px;}
+.owner-shell .ant-form-item-label>label,.owner-shell .ant-select,.owner-shell .ant-btn,.owner-shell .ant-input,.owner-shell .ant-picker-input>input{font-size:16px;}
+.owner-shell .owner-status,.owner-shell .owner-record-card dt,.owner-shell .owner-detail dt{font-size:15px;}
+.owner-shell .owner-record-card dd{font-size:16px;}
+.owner-shell .owner-chart-legend>span,.owner-shell .owner-share-legend li,.owner-shell .owner-horizontal-chart>div{font-size:16px;}
+.owner-shell .owner-series-svg text,.owner-shell .owner-donut-layout svg text{font-size:15px;}
+.owner-shell .owner-series-svg .owner-axis-title{font-size:16px;font-weight:600;}
+.owner-shell .owner-chart-heading{gap:16px;margin-bottom:16px;}
+.owner-shell .owner-chart-heading .wms-form-item{max-width:400px;}
+.owner-chart-results{display:flex;flex-direction:column;gap:20px;}
+@media(max-width:767px){.owner-shell .owner-header{padding:12px 16px;gap:8px;}.owner-shell .owner-header-actions{gap:4px;}.owner-header-brand{font-size:18px;}.owner-shell .owner-page-heading h1{font-size:26px;}.owner-shell .owner-metric .ant-statistic-content{font-size:24px;}.owner-shell .owner-chart-heading .wms-form-item{min-width:0;max-width:none;width:100%;}.owner-shell .owner-chart-heading{display:block;}.owner-shell .owner-chart-heading h2{margin-bottom:16px;}}
+/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: Chỉ giữ hướng dẫn nghiệp vụ cần thiết ở cỡ dễ đọc. */
+.owner-shell .owner-method{font-size:15px;}
+.owner-shell .owner-profile-button strong{font-size:15px;}
+.owner-shell .owner-profile-button small{font-size:14px;}

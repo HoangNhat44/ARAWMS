@@ -18,6 +18,8 @@ const returnInspectionItemSchema = new Schema(
 const returnRequestSchema = new Schema(
   {
     rmaCode: { type: String, required: true, unique: true, uppercase: true, index: true },
+    // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-13 - Nguyên nhân hoàn phục vụ phân tích, không suy đoán từ trạng thái.
+    reasonCode: { type: String, enum: ['CUSTOMER_REFUSED', 'INVALID_ORDER', 'PRODUCT_DEFECT', 'OTHER', 'UNKNOWN'], default: 'UNKNOWN' },
     originalOrderId: { type: Schema.Types.ObjectId, ref: 'SalesOrder', required: true, index: true },
     customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: true },
     createdBySellerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },

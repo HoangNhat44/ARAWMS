@@ -17,15 +17,15 @@ import NotFoundPage from '../pages/NotFoundPage';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 const OwnerLayout = lazy(() => import('../pages/Owner/OwnerLayout'));
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13/19 và phản hồi 1–8 - Ưu tiên kho, nhập hàng và sản xuất.
+const OperationsPage = lazy(() => import('../pages/Owner/OperationsPage'));
 const EmployeesPage = lazy(() => import('../pages/Owner/EmployeesPage'));
 const ActivityPage = lazy(() => import('../pages/Owner/ActivityPage'));
-const FinancialPage = lazy(() => import('../pages/Owner/FinancialPage'));
 const InventoryValuationPage = lazy(() => import('../pages/Owner/InventoryValuationPage'));
 const OwnerRecordsPage = lazy(() => import('../pages/Owner/OwnerRecordsPage'));
 const SystemSettingsPage = lazy(() => import('../pages/Owner/SystemSettingsPage'));
 const StockAdjustmentPage = lazy(() => import('../pages/Owner/StockAdjustmentPage'));
 const EmployeeCreatePage = lazy(() => import('../pages/Owner/EmployeeCreatePage'));
-const EmployeePermissionsPage = lazy(() => import('../pages/Owner/EmployeePermissionsPage'));
 const OwnerRecordDetailPage = lazy(() => import('../pages/Owner/OwnerRecordDetailPage'));
 const StockAdjustmentDetailPage = lazy(() => import('../pages/Owner/StockAdjustmentDetailPage'));
 
@@ -69,19 +69,26 @@ export default function AppRouter() {
     {/* Nguyễn Ngọc Huy-HE171157, 30-10-2026: UC-05 đến UC-20; GBR-01 - Toàn bộ trang Owner trong pages/Owner. */}
     <Route path="/owner" element={<ProtectedRoute><OwnerLayout /></ProtectedRoute>}>
       <Route index element={<Navigate to="dashboard" replace />} />
-      <Route path="dashboard" element={<FinancialPage key="dashboard" mode="dashboard" />} />
-      <Route path="bi" element={<FinancialPage key="bi" mode="bi" />} />
-      <Route path="profit" element={<FinancialPage key="profit" mode="profit" />} />
-      <Route path="cash-flow" element={<FinancialPage key="cash" mode="cash" />} />
+      <Route path="dashboard" element={<OperationsPage key="dashboard" />} />
+      <Route path="bi" element={<OperationsPage key="bi" mode="bi" />} />
+      <Route path="profit" element={<Navigate to="/owner/bi" replace />} />
+      <Route path="purchases" element={<OperationsPage key="purchases" mode="purchases" />} />
+      <Route path="tasks" element={<OperationsPage key="tasks" mode="tasks" />} />
+      <Route path="payables" element={<OperationsPage key="payables" mode="payables" />} />
+      <Route path="material-stocktakes" element={<OperationsPage key="material-stocktakes" mode="stocktakes" warehouse="RAW_MATERIAL" />} />
+      <Route path="finished-stocktakes" element={<OperationsPage key="finished-stocktakes" mode="stocktakes" warehouse="FINISHED_GOODS" />} />
+      {/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi - Bỏ báo cáo thu chi; đường dẫn cũ quay về tổng quan. */}
+      <Route path="cash-flow" element={<Navigate to="/owner/dashboard" replace />} />
       <Route path="employees" element={<EmployeesPage />} />
       <Route path="employees/new" element={<EmployeeCreatePage />} />
-      <Route path="employees/:employeeId/permissions" element={<EmployeePermissionsPage />} />
+      {/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi - Tạm bỏ giao diện phân quyền, chỉ quản lý trạng thái tài khoản. */}
+      <Route path="employees/:employeeId/permissions" element={<Navigate to="/owner/employees" replace />} />
       <Route path="activity" element={<ActivityPage />} />
-      <Route path="material-valuation" element={<InventoryValuationPage key="materials" />} />
-      <Route path="asset-valuation" element={<InventoryValuationPage key="assets" assets />} />
+      <Route path="material-valuation" element={<OperationsPage key="materials" mode="inventory" />} />
+      <Route path="asset-valuation" element={<OperationsPage key="finished" mode="finished" />} />
       <Route path="manager-reports" element={<OwnerRecordsPage key="reports" mode="reports" />} />
       <Route path="manager-reports/:id" element={<OwnerRecordDetailPage key="report-detail" mode="reports" />} />
-      <Route path="production" element={<OwnerRecordsPage key="production" mode="production" />} />
+      <Route path="production" element={<OperationsPage key="production" mode="production" />} />
       <Route path="production/:id" element={<OwnerRecordDetailPage key="production-detail" mode="production" />} />
       <Route path="samples" element={<OwnerRecordsPage key="samples" mode="samples" />} />
       <Route path="samples/:id" element={<OwnerRecordDetailPage key="sample-detail" mode="samples" />} />

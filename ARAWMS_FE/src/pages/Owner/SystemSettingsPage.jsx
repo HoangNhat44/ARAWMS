@@ -1,3 +1,4 @@
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Nhãn nghiệp vụ tiếng Việt.
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
@@ -11,7 +12,7 @@ import { useOwnerQuery } from '../../hooks/useOwnerQuery';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
 import { ownerService } from '../../services/ownerService';
 import { ResourceState, Notice, Table, Pagination, Modal, quantity, labels } from './OwnerUI';
-const sections = { api: 'Tích hợp API', fabric: 'Ngưỡng vải dư', inventory: 'Ngưỡng tồn kho', returns: 'Chính sách đổi trả' };
+const sections = { api: 'Kết nối dịch vụ', fabric: 'Ngưỡng vải dư', inventory: 'Ngưỡng tồn kho', returns: 'Chính sách đổi trả' };
 export default function SystemSettingsPage({ section = 'api' }) {
   const resource = useOwnerResource('system-settings'); const [success, setSuccess] = useState(''); const navigate = useNavigate();
   const screens = Grid.useBreakpoint();
@@ -49,15 +50,15 @@ function SettingsForm({ section, data, onDone }) {
   };
   return <form className="owner-form owner-settings" onSubmit={submit}><h2>{sections[section]}</h2><Notice error={error} />
     {section === 'api' && <>
-      <WmsField className="owner-checkbox"><WmsInput type="checkbox" checked={form.ghnEnabled} disabled={saving} onChange={(e) => setForm({ ...form, ghnEnabled: e.target.checked })} />Bật tích hợp GHN</WmsField>
-      {numeric('ghnShopId', 'GHN Shop ID', 1, 2147483647)}
-      <WmsField>Facebook Page ID<WmsInput maxLength={40} pattern="[0-9]*" disabled={saving} value={form.facebookPageId} onChange={(e) => setForm({ ...form, facebookPageId: e.target.value })} /></WmsField>
-      {[["ghnToken", 'GHN Token'], ['facebookVerifyToken', 'Facebook Verify Token'], ['facebookPageAccessToken', 'Facebook Page Access Token']].map(([key, title]) => <div key={key}><WmsField>{title} · {data.integrations[`${key}Configured`] ? 'Đã cấu hình' : 'Chưa cấu hình'}<WmsInput type="password" autoComplete="new-password" maxLength={4096} disabled={saving || resetKeys[key]} value={form[key]} placeholder="Để trống để giữ khóa cũ" onChange={(e) => setForm({ ...form, [key]: e.target.value })} /></WmsField>
-        <WmsField className="owner-checkbox"><WmsInput type="checkbox" checked={Boolean(resetKeys[key])} disabled={saving} onChange={(e) => setResetKeys({ ...resetKeys, [key]: e.target.checked })} />Bỏ khóa đã lưu trong DB, dùng khóa môi trường nếu có</WmsField></div>)}
-      <p className="owner-method">Cấu hình GHN mới được dùng cho yêu cầu tiếp theo. Bỏ khóa DB không xóa khóa đã cấu hình trên máy chủ.</p></>}
+      <WmsField className="owner-checkbox"><WmsInput type="checkbox" checked={form.ghnEnabled} disabled={saving} onChange={(e) => setForm({ ...form, ghnEnabled: e.target.checked })} />Bật kết nối Giao Hàng Nhanh</WmsField>
+      {numeric('ghnShopId', 'Mã cửa hàng Giao Hàng Nhanh', 1, 2147483647)}
+      <WmsField>Mã trang Facebook<WmsInput maxLength={40} pattern="[0-9]*" disabled={saving} value={form.facebookPageId} onChange={(e) => setForm({ ...form, facebookPageId: e.target.value })} /></WmsField>
+      {[["ghnToken", 'Khóa kết nối Giao Hàng Nhanh'], ['facebookVerifyToken', 'Mã xác minh Facebook'], ['facebookPageAccessToken', 'Khóa truy cập trang Facebook']].map(([key, title]) => <div key={key}><WmsField>{title} · {data.integrations[`${key}Configured`] ? 'Đã cấu hình' : 'Chưa cấu hình'}<WmsInput type="password" autoComplete="new-password" maxLength={4096} disabled={saving || resetKeys[key]} value={form[key]} placeholder="Để trống để giữ khóa cũ" onChange={(e) => setForm({ ...form, [key]: e.target.value })} /></WmsField>
+        <WmsField className="owner-checkbox"><WmsInput type="checkbox" checked={Boolean(resetKeys[key])} disabled={saving} onChange={(e) => setResetKeys({ ...resetKeys, [key]: e.target.checked })} />Bỏ khóa đã lưu trong cơ sở dữ liệu, dùng khóa môi trường nếu có</WmsField></div>)}
+      <p className="owner-method">Cài đặt Giao Hàng Nhanh mới được dùng cho yêu cầu tiếp theo. Bỏ khóa đã lưu không xóa khóa đã cấu hình trên máy chủ.</p></>}
     {section === 'fabric' && <>{numeric('defaultFabricLeftoverThresholdMeters', 'Chiều dài tối thiểu thu hồi (mét)', 0.01, 10000, '0.01')}<p>Vải dư từ ngưỡng này trở lên phải thu hồi với mã cuộn mới; dưới ngưỡng được phân loại phế liệu. Mặc định 2 mét.</p></>}
-    {section === 'inventory' && <><div className="owner-form-grid">{numeric('defaultFifoAgingAlertDays', 'Ngày cảnh báo tồn lâu mặc định', 1, 3650)}{numeric('minorStocktakeVarianceLimitQty', 'Giới hạn chênh lệch nhỏ theo số lượng', 0, 1e9, 'any')}{numeric('minorStocktakeVarianceLimitValue', 'Giới hạn chênh lệch nhỏ theo giá trị (VND)', 0, 1e12, 'any')}</div><p>Vượt một trong hai ngưỡng hoặc có kế hoạch xử lý hàng tồn lâu thì phải chuyển Owner duyệt. Ngưỡng an toàn của từng mặt hàng được sửa ở bảng bên dưới.</p></>}
-    {section === 'returns' && <><p>Lỗi khách chịu phụ phí 10% giá trị hàng và phí vận chuyển nếu có. Lỗi sản xuất/giao sai hoàn 100% giá trị hàng, không khấu trừ phụ phí hoặc phí ship.</p>
+    {section === 'inventory' && <><div className="owner-form-grid">{numeric('defaultFifoAgingAlertDays', 'Ngày cảnh báo tồn lâu mặc định', 1, 3650)}{numeric('minorStocktakeVarianceLimitQty', 'Giới hạn chênh lệch nhỏ theo số lượng', 0, 1e9, 'any')}{numeric('minorStocktakeVarianceLimitValue', 'Giới hạn chênh lệch nhỏ theo giá trị (đồng)', 0, 1e12, 'any')}</div><p>Vượt một trong hai ngưỡng hoặc có kế hoạch xử lý hàng tồn lâu thì phải chuyển chủ cửa hàng duyệt. Ngưỡng an toàn của từng mặt hàng được sửa ở bảng bên dưới.</p></>}
+    {section === 'returns' && <><p>Lỗi khách chịu phụ phí 10% giá trị hàng và phí vận chuyển nếu có. Lỗi sản xuất/giao sai hoàn 100% giá trị hàng, không khấu trừ phụ phí hoặc phí vận chuyển.</p>
       <WmsField>Phụ phí lỗi khách (%)<WmsInput readOnly type="number" value={10} /></WmsField><WmsField>Nội dung bổ sung chính sách<WmsTextArea maxLength={2000} disabled={saving} value={form.returnPolicyNotes} onChange={(e) => setForm({ ...form, returnPolicyNotes: e.target.value })} /></WmsField></>}
     <WmsButton className="btn-ara-primary" disabled={saving}>{saving ? 'Đang lưu…' : 'Lưu nhóm cấu hình'}</WmsButton></form>;
 }

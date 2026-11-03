@@ -1,3 +1,4 @@
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-01/04/06 - Nhãn và hướng dẫn tiếng Việt phổ thông.
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 22-10-2026
@@ -41,7 +42,7 @@ function ForgotPasswordForm() {
     {error && <div role="alert" className="ara-alert ara-alert-error">{error}</div>}
     {notice && <div role="status" className="ara-alert ara-alert-success">{notice}</div>}
     <form onSubmit={submit}>
-      <div className="form-group"><WmsField required className="form-label" htmlFor="recoveryIdentifier">Email hoặc mã nhân viên</WmsField>
+      <div className="form-group"><WmsField required className="form-label" htmlFor="recoveryIdentifier">Thư điện tử hoặc mã nhân viên</WmsField>
         <WmsInput id="recoveryIdentifier" className="form-input ara-plain-input" autoComplete="username" required maxLength={254}
           value={identifier} disabled={busy} onChange={(event) => { setIdentifier(event.target.value); setError(''); }} />
       </div>
@@ -53,7 +54,7 @@ function ForgotPasswordForm() {
 }
 
 export default function ForgotPasswordPage() {
-  return <PasswordRecoveryLayout title="Quên mật khẩu" description="Nhập email hoặc mã nhân viên. Chúng tôi sẽ gửi liên kết đặt lại mật khẩu tới email đã đăng ký.">
+  return <PasswordRecoveryLayout title="Quên mật khẩu" description="Nhập địa chỉ thư điện tử hoặc mã nhân viên. Chúng tôi sẽ gửi liên kết đặt lại mật khẩu tới địa chỉ thư điện tử đã đăng ký.">
     <ForgotPasswordForm />
   </PasswordRecoveryLayout>;
 }

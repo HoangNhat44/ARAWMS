@@ -1,3 +1,4 @@
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-01/04/06 - Nhãn và hướng dẫn tiếng Việt phổ thông.
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
@@ -8,7 +9,7 @@ import { fullNameError } from './accountValidation';
 export const employeeError = (form) => {
   if (!/^[A-Z0-9][A-Z0-9_-]{1,29}$/i.test(form.employeeCode.trim())) return 'Mã nhân viên cần 2–30 chữ cái, số, gạch nối hoặc gạch dưới.';
   const nameError = fullNameError(form.fullName); if (nameError) return nameError;
-  if (form.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return 'Email không hợp lệ.';
+  if (form.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return 'Địa chỉ thư điện tử không hợp lệ.';
   if (form.phone && !/^0\d{9}$/.test(form.phone)) return 'Số điện thoại cần 10 chữ số, bắt đầu bằng 0.';
   if (!form.roleCode || form.roleCode === 'OWNER') return 'Cần chọn vai trò nhân viên.';
   // Đếm byte UTF-8 thay vì chỉ đếm ký tự để mật khẩu có dấu không vượt giới hạn bcrypt.
