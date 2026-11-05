@@ -13,12 +13,14 @@ import Product from '../../../models/Product.model.js';
 import Sku from '../../../models/Sku.model.js';
 import InventoryTransaction from '../../../models/InventoryTransaction.model.js';
 import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
 import { configureProductCloudinary, productMediaOptions } from '../../../common/services/productMediaStorage.js';
 import bulkStockRoutes from './bulkStock.routes.js';
 import productConfigurationRoutes from './productConfiguration.routes.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
+import { authenticate } from '../../../common/middlewares/authenticate.js';
 
 const router = express.Router();
 const media = {
@@ -27,14 +29,11 @@ const media = {
   'additional-image': { types: ['image/jpeg', 'image/png', 'image/webp'], limit: 10 * 1024 * 1024, field: 'additionalImageUrls' },
 };
 
-// Direct URL testing uses one operator identity for product actions.
+// Existing warehouse screens still use the direct-URL operator until their auth migration.
 router.use((req, res, next) => {
   req.user = {
-    _id: '507f1f77bcf86cd799439011',
-    username: 'test',
-    fullName: 'Test User',
-    roles: ['OWNER', 'ADMIN'],
-    warehouseIds: []
+    _id: '507f1f77bcf86cd799439011', username: 'test', fullName: 'Test User',
+    roles: ['OWNER', 'ADMIN'], warehouseIds: [],
   };
   next();
 });
@@ -81,15 +80,28 @@ router.get('/', async (req, res, next) => {
   try {
     const products = await Product.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean();
     const skus = await Sku.find({ productId: { $in: products.map((item) => item._id) }, isDeleted: { $ne: true } }).lean();
+    const batches = await FinishedGoodsBatch.find({ skuId: { $in: skus.map((sku) => sku._id) },
+      currentOnHandQty: { $gt: 0 }, isDefectQuarantine: false, isDeleted: { $ne: true } })
+      .select('skuId locationId currentOnHandQty reservedPickQty').lean();
+    const locations = await WarehouseLocation.find({ _id: { $in: batches.map((batch) => batch.locationId) },
+      warehouseType: 'FINISHED_GOODS', status: { $in: ['ACTIVE', 'FULL'] }, isFrozenForStocktake: false,
+      isSystemUnplaced: { $ne: true }, isDeleted: { $ne: true } }).select('_id').lean();
+    const usableLocations = new Set(locations.map((location) => String(location._id)));
+    const pickableBySku = new Map();
+    for (const batch of batches) if (usableLocations.has(String(batch.locationId))) {
+      const key = String(batch.skuId);
+      pickableBySku.set(key, (pickableBySku.get(key) || 0) + Math.max(0, batch.currentOnHandQty - (batch.reservedPickQty || 0)));
+    }
     const byProduct = new Map();
     for (const sku of skus) {
       const key = String(sku.productId);
       if (!byProduct.has(key)) byProduct.set(key, []);
       byProduct.get(key).push({
         id: String(sku._id), skuCode: sku.skuCode, color: sku.color, size: sku.size,
-        isActive: sku.isActive, retailPrice: sku.retailPrice,
+        isActive: sku.isActive, retailPrice: sku.retailPrice, unitCogs: sku.unitCogs || 0,
         onHandQty: sku.onHandQty || 0, reservedQty: sku.reservedQty || 0,
         availableQty: (sku.onHandQty || 0) - (sku.reservedQty || 0),
+        pickableQty: pickableBySku.get(String(sku._id)) || 0,
       });
     }
     return sendSuccess(res, 'Danh sách kho thành phẩm', { products: products.map((product) => {
@@ -155,10 +167,11 @@ router.post('/:id/stock', async (req, res, next) => {
         transactionType: direction === 'IN' ? 'MANUAL_INBOUND' : 'MANUAL_OUTBOUND',
         referenceModel: 'Sku', referenceId: sku._id,
         quantityChange: delta, onHandBefore: before, onHandAfter: updated.onHandQty,
-        unitCostSnapshot: sku.unitCogs || 0, performedByUserId: req.user._id,
+        unitCostSnapshot: sku.unitCogs || 0, totalValueSnapshot: quantity * (sku.unitCogs || 0), performedByUserId: req.user._id,
         note: String(note || '').trim(),
       }], { session });
-      result = { skuId: String(sku._id), skuCode: sku.skuCode, onHandQty: updated.onHandQty };
+      result = { skuId: String(sku._id), skuCode: sku.skuCode, onHandQty: updated.onHandQty,
+        unitCostSnapshot: sku.unitCogs || 0, outboundValueSnapshot: quantity * (sku.unitCogs || 0) };
     });
     return sendSuccess(res, direction === 'IN' ? 'Đã nhập kho' : 'Đã xuất kho', result);
   } catch (error) {
@@ -202,15 +215,30 @@ const uploadProductMedia = async (req, res, next) => {
   if (!config.types.includes(mimeType)) return sendError(res, 'Định dạng tệp không được hỗ trợ', { code: 'UNSUPPORTED_MEDIA_TYPE' }, 415);
   if (!mongoose.isValidObjectId(req.params.id)) return sendError(res, 'Mã sản phẩm không hợp lệ', { code: 'INVALID_PRODUCT_ID' }, 400);
   if (Number(req.headers['content-length']) > config.limit) return sendError(res, 'Tệp vượt quá dung lượng cho phép', { code: 'FILE_TOO_LARGE' }, 413);
+  const mediaOperationId = String(req.headers['x-catalog-file-id'] || '');
+  const expectedHash = String(req.headers['x-content-sha256'] || '');
+  if (mediaOperationId && (!/^[a-zA-Z0-9_-]{16,100}$/.test(mediaOperationId) || !/^[a-f0-9]{64}$/.test(expectedHash))) {
+    return sendError(res, 'Mã tệp đồng bộ không hợp lệ', { code: 'INVALID_MEDIA_OPERATION' }, 400);
+  }
 
   try {
     const product = await Product.findById(req.params.id);
     if (!product) return sendError(res, 'Không tìm thấy sản phẩm', { code: 'PRODUCT_NOT_FOUND' }, 404);
+    const existingMedia = product.mediaOperations?.find((item) => item.operationId === mediaOperationId &&
+      String(item.ownerUserId) === String(req.user._id));
+    if (mediaOperationId && existingMedia) {
+      if (existingMedia.sha256 !== expectedHash || existingMedia.kind !== req.params.kind) {
+        return sendError(res, 'Mã tệp đã dùng cho nội dung khác', { code: 'MEDIA_OPERATION_CONFLICT' }, 409);
+      }
+      return sendSuccess(res, 'Tệp đã được lưu', { product });
+    }
     configureProductCloudinary();
     let bytes = 0;
+    const fileHash = mediaOperationId ? createHash('sha256') : null;
     const limiter = new Transform({
       transform(chunk, encoding, callback) {
         bytes += chunk.length;
+        fileHash?.update(chunk);
         callback(bytes > config.limit ? Object.assign(new Error('FILE_TOO_LARGE'), { status: 413 }) : null, chunk);
       },
     });
@@ -219,8 +247,9 @@ const uploadProductMedia = async (req, res, next) => {
     uploaded.catch(() => {});
     const options = {
       ...productMediaOptions(product.productCode, req.params.kind,
-        req.params.kind === 'additional-image' ? `extra_${randomUUID()}` : ''),
-      overwrite: req.params.kind !== 'additional-image',
+        mediaOperationId ? `catalog_${req.user._id}_${mediaOperationId}_${expectedHash.slice(0, 16)}`
+          : req.params.kind === 'additional-image' ? `extra_${randomUUID()}` : ''),
+      overwrite: !mediaOperationId && req.params.kind !== 'additional-image',
       ...(req.params.kind === 'video' ? { chunk_size: 6 * 1024 * 1024 } : {}),
     };
     // Chunked uploads emit intermediate callbacks; save metadata only after the final result.
@@ -233,6 +262,9 @@ const uploadProductMedia = async (req, res, next) => {
       : cloudinary.uploader.upload_stream(options, onUploaded);
     await pipeline(req, limiter, upload);
     if (!bytes) return sendError(res, 'Tệp rỗng', { code: 'EMPTY_FILE' }, 400);
+    if (fileHash && fileHash.digest('hex') !== expectedHash) {
+      return sendError(res, 'Nội dung tệp không khớp thao tác đồng bộ', { code: 'MEDIA_HASH_MISMATCH' }, 409);
+    }
     const result = await uploaded;
     if (!result?.secure_url || !result?.public_id) throw new Error('Cloudinary không trả về URL tệp');
     if (req.params.kind === 'additional-image') product.additionalImageUrls.push(result.secure_url);
@@ -240,15 +272,39 @@ const uploadProductMedia = async (req, res, next) => {
       product[config.field] = result.secure_url;
       product[config.publicIdField] = result.public_id;
     }
+    if (mediaOperationId) product.mediaOperations.push({ ownerUserId: req.user._id, operationId: mediaOperationId,
+      sha256: expectedHash, kind: req.params.kind, url: result.secure_url });
     await product.save();
     return sendSuccess(res, 'Đã lưu tệp sản phẩm', { product });
   } catch (error) {
+    if (mediaOperationId && error.name === 'VersionError') {
+      const current = await Product.findById(req.params.id);
+      const prior = current?.mediaOperations?.find((item) => item.operationId === mediaOperationId &&
+        String(item.ownerUserId) === String(req.user._id));
+      if (prior && prior.sha256 === expectedHash && prior.kind === req.params.kind) {
+        return sendSuccess(res, 'Tệp đã được lưu', { product: current });
+      }
+      if (prior) return sendError(res, 'Mã tệp đã dùng cho nội dung khác', { code: 'MEDIA_OPERATION_CONFLICT' }, 409);
+    }
     if (error.status === 413) return sendError(res, 'Tệp vượt quá dung lượng cho phép', { code: 'FILE_TOO_LARGE' }, 413);
     if (error.status === 503) return sendError(res, error.message, { code: error.code }, 503);
     next(error);
   }
 };
-router.put('/:id/:kind(image|video)', uploadProductMedia);
-router.post('/:id/:kind(additional-image)', uploadProductMedia);
+const authenticateCatalogFile = (req, res, next) => {
+  if (!req.headers['x-catalog-file-id']) return next();
+  // Match the catalog sync endpoint for direct-URL testing without opening this path in production.
+  if (process.env.NODE_ENV !== 'production' && !req.headers.authorization && req.user) {
+    return req.user.roles?.some((role) => ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'].includes(role))
+      ? next() : sendError(res, 'Tài khoản không có quyền quản lý ảnh sản phẩm', { code: 'FORBIDDEN' }, 403);
+  }
+  return authenticate(req, res, (error) => {
+    if (error) return next(error);
+    return req.user.roles?.some((role) => ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'].includes(role))
+      ? next() : sendError(res, 'Tài khoản không có quyền quản lý ảnh sản phẩm', { code: 'FORBIDDEN' }, 403);
+  });
+};
+router.put('/:id/:kind(image|video)', authenticateCatalogFile, uploadProductMedia);
+router.post('/:id/:kind(additional-image)', authenticateCatalogFile, uploadProductMedia);
 
 export default router;

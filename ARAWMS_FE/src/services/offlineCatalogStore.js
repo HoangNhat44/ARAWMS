@@ -5,8 +5,8 @@
  * Description: Persists account-scoped catalog drafts, operations, files, and ID mappings in IndexedDB.
  */
 const DB_NAME = 'arawms-offline-catalog';
-const DB_VERSION = 1;
-const STORES = ['drafts', 'operations', 'files', 'mappings', 'catalog'];
+const DB_VERSION = 2;
+const STORES = ['drafts', 'operations', 'files', 'mappings', 'catalog', 'migrationBackups'];
 
 const openDatabase = () => new Promise((resolve, reject) => {
   if (!globalThis.indexedDB) return reject(new Error('Trình duyệt không hỗ trợ lưu dữ liệu ngoại tuyến.'));
@@ -61,4 +61,33 @@ export const offlineCatalogStore = {
     const records = await transact(store, 'readonly', (objectStore) => objectStore.getAll(range));
     return records.map((record) => record.value);
   },
+};
+
+// Preserve the pre-migration records before normalizing legacy queue flags. A failed backup
+// leaves the original records untouched so the migration can safely be attempted again.
+export const migrateOfflineCatalogQueue = async (ownerId) => {
+  const operations = await offlineCatalogStore.list('operations', ownerId);
+  const legacy = operations.filter((item) => !item.status || ['PENDING', 'SYNCING', 'REVIEW'].includes(item.status) ||
+    (item.status === 'DONE' && (item.lastError || item.errorCode || item.activeError || item.nextRetryAt)));
+  if (!legacy.length) return;
+  const backupKey = `queue-v2-${ownerId}`;
+  const existingBackup = await offlineCatalogStore.get('migrationBackups', ownerId, backupKey);
+  if (!existingBackup) {
+    const files = await offlineCatalogStore.list('files', ownerId);
+    await offlineCatalogStore.put('migrationBackups', ownerId, backupKey, {
+      createdAt: Date.now(), operations: structuredClone(operations), files: structuredClone(files),
+    });
+  }
+  for (const item of legacy) {
+    let status = item.status;
+    if (status === 'PENDING') status = item.retryCount > 0 ? 'RETRY_WAIT' : 'QUEUED';
+    else if (status === 'SYNCING') status = item.serverResult ? 'QUEUED' : 'RETRY_WAIT';
+    else if (status === 'REVIEW') status = 'NEEDS_ACTION';
+    else if (['DONE', 'DISCARDED', 'SUPERSEDED'].includes(status)) status = item.status;
+    else status = 'NEEDS_ACTION';
+    const migrated = { ...item, status, attempts: item.attempts ?? item.retryCount ?? 0,
+      updatedAt: item.updatedAt || Date.now() };
+    if (status === 'DONE') { delete migrated.lastError; delete migrated.errorCode; delete migrated.nextRetryAt; }
+    await offlineCatalogStore.put('operations', ownerId, item.operationId, migrated);
+  }
 };

@@ -9,10 +9,12 @@ import { BrowserRouter } from 'react-router-dom';
 import AppRouter from './routes/AppRouter';
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
+import QuickNav from './components/common/QuickNav';
 import PackingUploadRunner from './components/PackingUploadRunner';
 import { AuthProvider } from './context/AuthContext';
 import CatalogSyncRunner from './components/CatalogSyncRunner';
 import FinishedGoodsSyncRunner from './components/FinishedGoodsSyncRunner';
+import RealtimeBridge from './components/RealtimeBridge';
 
 /** Keeps pending packing recordings uploading across direct URL navigation. */
 function App() {
@@ -26,6 +28,8 @@ function App() {
       <PackingUploadRunner />
       <CatalogSyncRunner />
       <FinishedGoodsSyncRunner />
+      <RealtimeBridge />
+      <QuickNav />
       <div className="app-container">
         <Navbar />
         <main className="main-content">

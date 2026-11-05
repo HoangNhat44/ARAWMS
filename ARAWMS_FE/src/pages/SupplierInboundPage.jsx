@@ -6,11 +6,17 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import MaterialReceiptList from '../components/MaterialReceiptList';
+import MaterialDeliveryPlanList from '../components/MaterialDeliveryPlanList';
+import DirectMaterialReceiptModal from '../components/DirectMaterialReceiptModal';
 import { useAuth } from '../hooks/useAuth';
 import { materialInboundService as api } from '../services/materialInboundService';
 import '../styles/materialInbound.css';
 import '../styles/materialInboundReference.css';
+
+// Mock user for testing (NO AUTH REQUIRED)
+const mockUser = { _id: '507f1f77bcf86cd799439011', username: 'test', fullName: 'Test User', roles: ['OWNER', 'WAREHOUSE_MANAGER'] };
+const offlineKey = (planId, batchId) => `arawms-material-receipt-draft:${mockUser._id}:${planId}:${batchId}`;
+const optionCacheKey = `arawms-material-receipt-options:${mockUser._id}`;
 
 const field = { width: '100%', padding: '.65rem .75rem', border: '1px solid var(--ara-border)', borderRadius: 8,
   background: '#fff', color: 'var(--ara-noir)', font: 'inherit' };
@@ -18,7 +24,6 @@ const fieldset = { display: 'grid', gap: '.35rem', minWidth: 0 };
 const number = (value) => Number(value) || 0;
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
 const amount = (value) => Number(number(value).toFixed(3)).toLocaleString('vi-VN');
-const money = (value) => Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + ' ₫';
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const displayDate = (iso) => iso?.split('-').reverse().join('/') || '';
 const parseDate = (value) => {
@@ -34,29 +39,24 @@ const validQuantity = (value, unit) => Number.isFinite(Number(value)) && Number(
   (['METER', 'KG'].includes(unit) ? Math.abs(Number(value) * 1000 - Math.round(Number(value) * 1000)) < 0.000001 : Number.isInteger(Number(value)));
 const supplierLabel = (item) => `${item.supplierCode} · ${item.supplierName}`;
 const materialLabel = (item) => `${item.materialCode} · ${item.materialName}${item.color ? ` · ${item.color}` : ''}`;
-const receivingWarehouses = (locations) => [...new Map(locations.filter((item) => item.warehouseType === 'RAW_MATERIAL')
+const receivingWarehouses = (locations) => [...new Map(locations.filter((item) =>
+  item.warehouseType === 'RAW_MATERIAL' && item.layoutBin === true)
   .map((item) => [item.zoneCode || item.locationCode, item])).values()];
-const blankForm = () => ({ supplierId: '', receivedAt: today(), receivingLocationId: '', receiptLines: [] });
-const blankLine = (material) => ({ rawMaterialId: String(material._id), unitCost: material.unitCost ?? '', zeroCostReason: '', actualQty: 0, acceptedQty: 0,
+const blankForm = () => ({ inboundPlanId: '', deliveryBatchId: '', draftKey: crypto.randomUUID(),
+  supplierId: '', receivedAt: '', receivingLocationId: '', receiptLines: [] });
+const blankLine = (material) => ({ rawMaterialId: String(material._id), unitCost: '', zeroCostReason: '', actualQty: 0, acceptedQty: 0,
   rejectedQty: 0, pendingQty: 0, defectReason: '', inspectionConclusion: '',
   rolls: material.materialType === 'FABRIC' ? [{ clientLineId: crypto.randomUUID(),
     widthCm: material.widthCm || '', lengthMeters: '', quality: '', locationId: '' }] : [], lots: [] });
+const ensurePlannedFabricRow = (line, material) => material?.materialType === 'FABRIC' && !line.rolls?.length
+  ? { ...line, rolls: blankLine(material).rolls } : line;
 const statusText = (status) => ({ DRAFT: 'Nháp', WAITING_QC: 'Chờ kiểm tra', READY_TO_CONFIRM: 'Sẵn sàng xác nhận',
   COMPLETED: 'Đã xác nhận', CANCELLED: 'Đã hủy' })[status] || 'Chưa lưu';
-let initialRequests;
-const loadInitialData = (userId) => {
-  if (!initialRequests || initialRequests.userId !== userId) {
-    const promise = Promise.all([api.options(), api.receipts()]);
-    initialRequests = { userId, promise };
-    promise.finally(() => { if (initialRequests?.promise === promise) initialRequests = null; }).catch(() => {});
-  }
-  return initialRequests.promise;
-};
-
 /** Shows only usable bins and keeps defective stock in its quarantine area. */
 function LocationPicker({ locations, quality, unit, value, onChange }) {
   const allowed = locations.filter((item) => item.warehouseType ===
     (quality === 'REJECTED' ? 'DEFECT_QUARANTINE' : 'RAW_MATERIAL') &&
+    (quality === 'REJECTED' || item.layoutBin === true) &&
     (!item.capacityUnit || item.capacityUnit === unit) &&
     (number(item.maxCapacity) > number(item.currentOccupancy) + number(item.plannedReservedQty) ||
       String(item._id) === String(value)));
@@ -70,25 +70,23 @@ function LocationPicker({ locations, quality, unit, value, onChange }) {
 
 /** One screen keeps supplier receipt input, validation, and confirmation together. */
 export default function SupplierInboundPage() {
-  const { user, loading } = useAuth();
+  const { user: signedInUser } = useAuth();
+  const user = signedInUser || mockUser;
+  const loading = false;
   const [options, setOptions] = useState({ suppliers: [], materials: [], locations: [] });
-  const [receipts, setReceipts] = useState([]);
-  const [filters, setFilters] = useState({ code: '', supplierId: '', from: '', to: '', status: '', locationId: '' });
   const [view, setView] = useState('list');
-  const [listPage, setListPage] = useState(1);
+  const [directTarget, setDirectTarget] = useState(null);
+  const [directRefreshKey, setDirectRefreshKey] = useState(0);
   const [reviewed, setReviewed] = useState(false);
   const [form, setForm] = useState(blankForm);
-  const [dateText, setDateText] = useState(displayDate(today()));
+  const [dateText, setDateText] = useState('');
   const [receipt, setReceipt] = useState(null);
+  const [selectedPlan, setSelectedPlan] = useState(null);
   const [labels, setLabels] = useState([]);
   const [barcodeReady, setBarcodeReady] = useState(0);
   const [barcodePollTick, setBarcodePollTick] = useState(0);
   const [selectedLabels, setSelectedLabels] = useState([]);
-  const [materialSearch, setMaterialSearch] = useState('');
   const [supplierSearch, setSupplierSearch] = useState('');
-  const [showMaterialForm, setShowMaterialForm] = useState(false);
-  const [newMaterial, setNewMaterial] = useState({ materialCode: '', materialName: '', materialType: 'FABRIC',
-    category: 'FABRIC_ROLL', unit: 'METER', color: '', widthCm: '', unitCost: 0, requiresWeightKg: false });
   const [putaway, setPutaway] = useState({ objectBarcode: '', locationBarcode: '', quantity: '' });
   const [supplierReturn, setSupplierReturn] = useState({ objectBarcode: '', reason: '', handoverName: '' });
   const [busy, setBusy] = useState(false);
@@ -96,23 +94,21 @@ export default function SupplierInboundPage() {
   const [notice, setNotice] = useState('');
   const [attemptedConfirm, setAttemptedConfirm] = useState(false);
   const confirmationKey = useRef(crypto.randomUUID());
+  const lastSavedForm = useRef(null);
   const pendingConfirmation = useRef(null);
   const savedFormSignature = useRef('');
-  const listRequestSequence = useRef(0);
   const putawayKey = useRef(crypto.randomUUID());
   const barcodePollCount = useRef(0);
   const materials = new Map(options.materials.map((item) => [String(item._id), item]));
+  for (const batch of selectedPlan?.batches || []) for (const line of batch.lines) {
+    if (line.material) materials.set(String(line.rawMaterialId),
+      { ...line.material, _id: line.rawMaterialId });
+  }
   const locked = ['COMPLETED', 'CANCELLED'].includes(receipt?.status);
+  const plannedReceipt = Boolean(form.inboundPlanId && form.deliveryBatchId);
   const receiptId = receipt?._id || receipt?.id;
   useEffect(() => { setReviewed(false); }, [form]);
 
-  const loadOptions = async () => setOptions((await api.options()).data);
-  const loadReceipts = async (criteria = filters) => {
-    const request = ++listRequestSequence.current;
-    const listing = (await api.receipts(criteria)).data.receipts;
-    if (request === listRequestSequence.current) setReceipts(listing);
-  };
-  const changeFilter = (patch) => { setFilters((current) => ({ ...current, ...patch })); setListPage(1); };
   const loadLabels = async (id) => {
     const data = (await api.labels(id)).data;
     setLabels(data.labels);
@@ -122,19 +118,16 @@ export default function SupplierInboundPage() {
 
   useEffect(() => {
     if (loading || !user) return;
-    loadInitialData(String(user?._id || user?.id || '')).then(([choices, listing]) => {
-      setOptions(choices.data); setReceipts(listing.data.receipts);
+    api.options().then((choices) => {
+      setOptions(choices.data);
+      localStorage.setItem(optionCacheKey, JSON.stringify(choices.data));
       const receiving = receivingWarehouses(choices.data.locations);
       if (receiving.length === 1) setForm((current) => current.receivingLocationId ? current :
         { ...current, receivingLocationId: String(receiving[0]._id) });
-    }).catch((failure) => setError(failure.message));
+    }).catch((failure) => { try { const cached = JSON.parse(localStorage.getItem(optionCacheKey) || 'null');
+      if (cached) { setOptions(cached); setNotice('Đang dùng danh mục đã lưu trên thiết bị; cần mạng để xác nhận nhập kho.'); }
+      else setError(failure.message); } catch { setError(failure.message); } });
   }, [loading, user?._id, user?.id]);
-
-  useEffect(() => {
-    if (view !== 'list' || loading || !user) return undefined;
-    const timer = window.setTimeout(() => loadReceipts(filters).catch((failure) => setError(failure.message)), 350);
-    return () => window.clearTimeout(timer);
-  }, [view, loading, user?._id, user?.id, filters.code, filters.supplierId, filters.status, filters.from, filters.to, filters.locationId]);
 
   useEffect(() => {
     if (receipt?.status !== 'COMPLETED' || !labels.length || barcodeReady >= labels.length || barcodePollCount.current >= 12) return undefined;
@@ -145,14 +138,42 @@ export default function SupplierInboundPage() {
     return () => window.clearTimeout(timer);
   }, [receipt?._id, receipt?.id, receipt?.status, barcodeReady, labels.length, barcodePollTick]);
 
-  const startReceipt = () => {
-    const receiving = receivingWarehouses(options.locations);
-    const nextForm = { ...blankForm(), receivingLocationId: receiving.length === 1 ? String(receiving[0]._id) : '' };
+  const startReceipt = (plan, batch) => {
+    if (view === 'editor' && !locked && JSON.stringify(form) !== savedFormSignature.current &&
+      !window.confirm('Phiếu có thay đổi chưa lưu. Chuyển sang đợt giao khác?')) return;
+    const configuredLocations = receivingWarehouses(options.locations);
+    const activePlan = plan.needsSetup && configuredLocations.length === 1 ? { ...plan,
+      warehouse: configuredLocations[0], batches: plan.batches.map((entry) =>
+        ({ ...entry, id: entry.id || plan.id })) } : plan;
+    const activeBatch = activePlan.batches.find((entry) =>
+      entry.id === (batch.id || (plan.needsSetup ? plan.id : ''))) || batch;
+    const plannedLines = activeBatch.lines.map((line) => { const material = options.materials.find((item) =>
+      String(item._id) === String(line.rawMaterialId)) || { ...line.material, _id: line.rawMaterialId };
+      return { ...blankLine(material), deliveryBatchItemId: line.id }; });
+    let nextForm = { ...blankForm(), inboundPlanId: activePlan.id, deliveryBatchId: activeBatch.id,
+      supplierId: String(activePlan.supplier?._id || ''), receivingLocationId: String(activePlan.warehouse?._id || ''),
+      receiptLines: plannedLines };
+    let localReceipt = null;
+    let localOperation = null;
+    try { const local = JSON.parse(localStorage.getItem(offlineKey(activePlan.id, activeBatch.id)) ||
+      localStorage.getItem(offlineKey(activePlan.id, activePlan.id)) || 'null');
+      if (local?.form) { nextForm = { ...local.form, inboundPlanId: activePlan.id, deliveryBatchId: activeBatch.id,
+        supplierId: String(activePlan.supplier?._id || ''), receivingLocationId: String(activePlan.warehouse?._id || ''),
+        receiptLines: plannedLines.map((line) => ensurePlannedFabricRow({ ...line,
+          ...(local.form.receiptLines || []).find((saved) => String(saved.rawMaterialId) === String(line.rawMaterialId)),
+          rawMaterialId: line.rawMaterialId, deliveryBatchItemId: line.deliveryBatchItemId },
+        options.materials.find((item) => String(item._id) === String(line.rawMaterialId)) ||
+          activeBatch.lines.find((item) => String(item.rawMaterialId) === String(line.rawMaterialId))?.material)) };
+        localReceipt = local.receipt; localOperation = local; } } catch { /* Ignore a damaged local draft. */ }
+    setSelectedPlan(activePlan);
     setForm(nextForm); savedFormSignature.current = JSON.stringify(nextForm);
-    setReceipt(null); setLabels([]); setBarcodeReady(0); setSelectedLabels([]);
-    setDateText(displayDate(today())); setSupplierSearch(''); setMaterialSearch('');
-    setView('editor'); setError(''); setNotice(''); setAttemptedConfirm(false); setReviewed(false); confirmationKey.current = crypto.randomUUID();
-    pendingConfirmation.current = null;
+    setReceipt(localReceipt); setLabels([]); setBarcodeReady(0); setSelectedLabels([]);
+    setDateText(displayDate(nextForm.receivedAt)); setSupplierSearch(supplierLabel(plan.supplier || { supplierCode: '', supplierName: '' }));
+    setView('editor'); setError(''); setNotice(''); setAttemptedConfirm(false); setReviewed(false);
+    confirmationKey.current = localOperation?.confirmationKey || crypto.randomUUID();
+    lastSavedForm.current = localOperation?.pendingConfirmation ? nextForm : null;
+    if (localReceipt || localStorage.getItem(offlineKey(activePlan.id, activeBatch.id))) setNotice('Đã mở nháp trên thiết bị. Cần lưu lại và kiểm tra lượng còn thiếu khi có mạng.');
+    pendingConfirmation.current = localOperation?.pendingConfirmation || null;
   };
 
   const openReceipt = async (id) => {
@@ -160,15 +181,22 @@ export default function SupplierInboundPage() {
     try {
       const data = (await api.receipt(id)).data;
       const saved = data.receipt;
+      const linkedPlan = saved.inboundPlanId ? (await api.plan(saved.inboundPlanId)).data.plan : null;
+      setSelectedPlan(linkedPlan);
       setOptions((current) => ({ ...current, materials: [...current.materials,
         ...data.materials.filter((item) => !current.materials.some((known) => String(known._id) === String(item._id)))] }));
       setReceipt(saved);
       const availableMaterials = [...options.materials, ...data.materials];
-      const nextForm = { supplierId: String(saved.supplierId),
+      const nextForm = { inboundPlanId: String(saved.inboundPlanId || ''), deliveryBatchId: String(saved.deliveryBatchId || ''),
+        draftKey: saved.draftKey || crypto.randomUUID(),
+        supplierId: String(saved.supplierId), supplierDeliveryCode: saved.supplierDeliveryCode || '',
+        handoverName: saved.handoverName || '', receiptNote: saved.receiptNote || '',
+        replacementForTicketId: saved.replacementForTicketId || '',
         receivedAt: saved.receivedAt?.slice(0, 10) || today(),
         receivingLocationId: String(saved.receivingLocationId || ''),
-        receiptLines: (saved.receiptLines || []).map((line) => ({ ...line,
-          unitCost: line.unitCost ?? availableMaterials.find((item) => String(item._id) === String(line.rawMaterialId))?.unitCost ?? '' })) };
+        receiptLines: (saved.receiptLines || []).map((line) => ensurePlannedFabricRow({ ...line,
+          unitCost: line.unitCost ?? '' }, saved.deliveryBatchId ? availableMaterials.find((item) =>
+          String(item._id) === String(line.rawMaterialId)) : null)) };
       setForm(nextForm); savedFormSignature.current = JSON.stringify(nextForm);
       setDateText(displayDate(saved.receivedAt?.slice(0, 10) || today()));
       setSupplierSearch(supplierLabel(options.suppliers.find((item) => String(item._id) === String(saved.supplierId)) ||
@@ -176,21 +204,69 @@ export default function SupplierInboundPage() {
       barcodePollCount.current = 0;
       if (saved.status === 'COMPLETED') await loadLabels(id);
       else { setLabels([]); setBarcodeReady(0); }
-      setSelectedLabels([]); setView('editor'); setAttemptedConfirm(false); setReviewed(false);
+      setSelectedLabels([]); setView(saved.deliveryBatchId ? 'editor' : 'legacy-editor');
+      setAttemptedConfirm(false); setReviewed(false);
       confirmationKey.current = crypto.randomUUID();
+      lastSavedForm.current = null;
       pendingConfirmation.current = null;
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   };
 
   const saveDraft = async () => {
-    const result = receipt ? await api.update(receiptId, { ...form, expectedVersion: receipt.receiptVersion })
-      : await api.create(form);
-    setReceipt(result.data.receipt);
-    setForm((current) => ({ ...current, receiptLines: result.data.receipt.receiptLines }));
-    savedFormSignature.current = JSON.stringify({ ...form, receiptLines: result.data.receipt.receiptLines });
-    await loadReceipts().catch(() => {});
-    return result.data.receipt;
+    let draftForm = form;
+    try {
+      if (selectedPlan?.needsSetup) {
+        const configuredLocations = receivingWarehouses(options.locations);
+        if (configuredLocations.length !== 1) throw new Error('Kế hoạch cũ cần một vị trí nhận duy nhất trong sơ đồ kho đang công bố.');
+        const oldBatch = selectedPlan.batches.find((item) => item.id === form.deliveryBatchId);
+        let updated;
+        try { updated = (await api.setupLegacyPlan(selectedPlan.id, {
+          version: selectedPlan.version, warehouseLocationId: configuredLocations[0]._id,
+          expectedStart: oldBatch.expectedStart.slice(0, 10),
+          expectedEnd: oldBatch.expectedEnd.slice(0, 10),
+        })).data.plan; }
+        catch (failure) {
+          if (!['PLAN_ALREADY_SETUP', 'VERSION_CONFLICT'].includes(failure.code) && failure.status) throw failure;
+          updated = (await api.plan(selectedPlan.id)).data.plan;
+          if (updated.needsSetup) throw failure;
+        }
+        const newBatch = updated.batches[0];
+        draftForm = { ...form, deliveryBatchId: newBatch.id,
+          receivingLocationId: String(updated.warehouse._id),
+          receiptLines: form.receiptLines.map((line) => ({ ...line,
+            deliveryBatchItemId: newBatch.lines.find((item) =>
+              String(item.rawMaterialId) === String(line.rawMaterialId))?.id })) };
+        setSelectedPlan(updated); setForm(draftForm);
+        localStorage.removeItem(offlineKey(form.inboundPlanId, form.deliveryBatchId));
+      }
+      let result;
+      if (receipt) result = await api.update(receiptId, { ...draftForm, expectedVersion: receipt.receiptVersion });
+      else {
+        try { result = await api.create(draftForm); }
+        catch (failure) {
+          if (failure.code !== 'DRAFT_KEY_REUSED') throw failure;
+          const recovered = (await api.receiptByDraftKey(draftForm.draftKey)).data.receipt;
+          if (!['DRAFT', 'WAITING_QC', 'READY_TO_CONFIRM'].includes(recovered.status))
+            throw new Error('Phiếu đã được xử lý trên máy chủ. Mở lại từ lịch sử của đợt giao.');
+          result = await api.update(recovered._id, { ...draftForm, expectedVersion: recovered.receiptVersion });
+        }
+      }
+      setReceipt(result.data.receipt);
+      const savedForm = { ...draftForm, receiptLines: result.data.receipt.receiptLines };
+      setForm(savedForm); lastSavedForm.current = savedForm;
+      savedFormSignature.current = JSON.stringify(savedForm);
+      localStorage.removeItem(offlineKey(draftForm.inboundPlanId, draftForm.deliveryBatchId));
+      return result.data.receipt;
+    } catch (failure) {
+      if (!failure.status) { localStorage.setItem(offlineKey(draftForm.inboundPlanId, draftForm.deliveryBatchId),
+        JSON.stringify({ form: draftForm, receipt, confirmationKey: confirmationKey.current,
+          pendingConfirmation: pendingConfirmation.current }));
+        savedFormSignature.current = JSON.stringify(draftForm);
+        setNotice('Đã lưu nháp trên thiết bị. Chưa ghi vào máy chủ hoặc tăng tồn kho.');
+        return null; }
+      throw failure;
+    }
   };
 
   const run = async (task) => {
@@ -200,9 +276,9 @@ export default function SupplierInboundPage() {
   };
   const closeEditor = () => {
     if (!locked && JSON.stringify(form) !== savedFormSignature.current &&
-      !window.confirm('Phiếu có thay đổi chưa lưu. Đóng phiếu?')) return;
+      !window.confirm('Phiếu có thay đổi chưa lưu. Đóng phiếu?')) return false;
     setView('list');
-    loadReceipts().catch((failure) => setError(failure.message));
+    return true;
   };
 
   /** Derives stock totals from physical rolls or the single accessory quantity entry. */
@@ -266,11 +342,6 @@ export default function SupplierInboundPage() {
         allocations: [{ locationId: '', quantity: '' }] };
     changeLine(index, { [kind]: [...line[kind], object] });
   };
-  const addMaterial = (material) => {
-    if (!material || form.receiptLines.some((line) => String(line.rawMaterialId) === String(material._id))) return;
-    setForm((current) => ({ ...current, receiptLines: [...current.receiptLines, blankLine(material)] }));
-    setMaterialSearch('');
-  };
   const totalsByUnit = form.receiptLines.reduce((totals, line) => {
     const unit = materials.get(String(line.rawMaterialId))?.unit;
     if (!unit) return totals;
@@ -281,19 +352,12 @@ export default function SupplierInboundPage() {
     totals.set(unit, total);
     return totals;
   }, new Map());
-  const moneyTotals = form.receiptLines.reduce((totals, line) => {
-    const cost = Number(line.unitCost ?? materials.get(String(line.rawMaterialId))?.unitCost);
-    if (!Number.isFinite(cost)) return totals;
-    totals.actual += number(line.actualQty) * cost;
-    totals.rejected += number(line.rejectedQty) * cost;
-    totals.accepted += number(line.acceptedQty) * cost;
-    return totals;
-  }, { actual: 0, rejected: 0, accepted: 0 });
   const headerIssues = [];
   const issuesByLine = new Map();
-  if (!form.supplierId) headerIssues.push('Chọn nhà cung cấp ở phần Thông tin nhận hàng.');
+  if (!form.supplierId) headerIssues.push('Kế hoạch chưa có nhà cung cấp hợp lệ.');
+  if (!form.inboundPlanId || !form.deliveryBatchId) headerIssues.push('Chọn đúng kế hoạch và đợt giao trước khi nhận hàng.');
   if (!parseDate(dateText) || parseDate(dateText) > today()) headerIssues.push('Nhập ngày nhận hợp lệ theo dạng dd/mm/yyyy.');
-  if (!form.receivingLocationId) headerIssues.push('Chọn kho nhận ở phần Thông tin nhận hàng.');
+  if (!form.receivingLocationId) headerIssues.push('Kế hoạch chưa có vị trí nhận hợp lệ.');
   if (!form.receiptLines.some((line) => number(line.actualQty) > 0))
     headerIssues.push('Thêm ít nhất một nguyên phụ liệu và nhập số thực nhận lớn hơn 0.');
   for (const line of form.receiptLines) {
@@ -301,14 +365,13 @@ export default function SupplierInboundPage() {
     if (!material) continue;
     const issues = [];
     const objects = material.materialType === 'FABRIC' ? line.rolls : line.lots;
+    if (!number(line.actualQty) && !objects.length) continue;
+    const planned = selectedPlan?.batches.find((batch) => batch.id === form.deliveryBatchId)?.lines
+      .find((item) => String(item.rawMaterialId) === String(line.rawMaterialId));
+    if (planned && number(line.acceptedQty) > number(planned.remainingQty))
+      issues.push('Lượng đạt vượt phần còn thiếu của đợt giao.');
     if (!validQuantity(line.actualQty, material.unit) || !validQuantity(line.rejectedQty, material.unit))
       issues.push('Số lượng không hợp lệ theo đơn vị ' + unitNames[material.unit] + '.');
-    const cost = Number(line.unitCost);
-    if (line.unitCost === '' || !Number.isFinite(cost) || cost < 0 || cost > 1e12 ||
-      Math.abs(cost * 100 - Math.round(cost * 100)) > 0.000001)
-      issues.push('Nhập đơn giá hợp lệ, tối đa hai chữ số thập phân.');
-    if (number(line.actualQty) > 0 && cost === 0 && (line.zeroCostReason?.trim().length || 0) < 2)
-      issues.push('Đơn giá 0 cần nêu lý do (ít nhất 2 ký tự).');
     if (number(line.rejectedQty) > number(line.actualQty)) issues.push('Số không đạt vượt số thực nhận.');
     if (number(line.actualQty) > 0 && number(line.pendingQty) > 0)
       issues.push('Chọn kết quả kiểm tra cho từng cây hoặc lô.');
@@ -350,19 +413,27 @@ export default function SupplierInboundPage() {
     if (confirmationIssues.length || !reviewed) return;
     run(async () => {
     let request = pendingConfirmation.current;
+    let saved = receipt;
     if (!request || request.formSignature !== JSON.stringify(form)) {
-      const saved = await saveDraft();
+      saved = await saveDraft();
+      if (!saved) throw new Error('Chưa có kết nối máy chủ. Phiếu chỉ được lưu trên thiết bị và chưa thể xác nhận nhập kho.');
       if (saved.status !== 'READY_TO_CONFIRM') throw new Error('Phiếu chưa đủ điều kiện xác nhận. Hãy kiểm tra từng dòng.');
       request = { id: saved._id || saved.id, version: saved.receiptVersion,
-        formSignature: JSON.stringify({ ...form, receiptLines: saved.receiptLines }) };
+        formSignature: JSON.stringify(lastSavedForm.current || { ...form, receiptLines: saved.receiptLines }) };
       pendingConfirmation.current = request;
     }
+    if (!saved) saved = (await api.receipt(request.id)).data.receipt;
+    const confirmationForm = lastSavedForm.current || form;
     try {
+      localStorage.setItem(offlineKey(confirmationForm.inboundPlanId, confirmationForm.deliveryBatchId), JSON.stringify({ form: {
+        ...confirmationForm, receiptLines: saved.receiptLines },
+        receipt: saved, confirmationKey: confirmationKey.current, pendingConfirmation: request }));
       const confirmed = (await api.confirm(request.id, {
         expectedVersion: request.version, idempotencyKey: confirmationKey.current,
       })).data.receipt;
       pendingConfirmation.current = null;
       setReceipt(confirmed); barcodePollCount.current = 0;
+      localStorage.removeItem(offlineKey(confirmationForm.inboundPlanId, confirmationForm.deliveryBatchId));
       await loadLabels(confirmed._id || confirmed.id);
       setNotice('Đã xác nhận nhập kho. In tem và quét cất hàng đạt vào vị trí.');
     } catch (error) {
@@ -375,15 +446,9 @@ export default function SupplierInboundPage() {
 
   if (loading) return <p className="material-message">Đang tải tài khoản…</p>;
   if (!user) return <p className="material-message">Vui lòng <Link to="/login">đăng nhập</Link> để nhập nguyên phụ liệu.</p>;
-  return <main className={'material-inbound-page' + (view === 'list' ? ' material-receipt-list-page' : '')}>
-    {view === 'list' ? <MaterialReceiptList
-      receipts={receipts} options={options} filters={filters} onFilter={changeFilter}
-      onReset={() => { setFilters({ code: '', supplierId: '', from: '', to: '', status: '', locationId: '' }); setListPage(1); }}
-      onRefresh={() => run(async () => { await loadReceipts(); await loadOptions(); setNotice('Đã cập nhật danh sách phiếu.'); })}
-      onCreate={startReceipt} onOpen={openReceipt} page={listPage} onPage={setListPage}
-      busy={busy} error={error} notice={notice} /> : <div className="material-reference-overlay" role="dialog" aria-modal="true" aria-labelledby="material-receipt-title">
+  const editor = <div className="material-reference-overlay" role="group" aria-labelledby="material-receipt-title">
       <div className="material-reference-sheet">
-      <div className="material-reference-sheet-head"><div className="material-inbound-heading"><div><h2 id="material-receipt-title">{receipt?.ticketCode || 'Nhập nguyên phụ liệu'}</h2><p>Nhập số lượng, đơn giá và vị trí dự kiến của lần nhận hàng này.</p></div>
+      <div className="material-reference-sheet-head"><div className="material-inbound-heading"><div><h2 id="material-receipt-title">{receipt?.ticketCode || 'Nhập nguyên phụ liệu'}</h2><p>Nhập số lượng và vị trí dự kiến của lần nhận hàng này.</p></div>
         <span className="material-ref-status">{statusText(receipt?.status)}</span></div>
         <button type="button" className="material-reference-close" aria-label="Đóng phiếu" onClick={closeEditor}>×</button></div>
       <div className="material-reference-sheet-content">
@@ -394,77 +459,39 @@ export default function SupplierInboundPage() {
           <section className="material-card">
             <h3>1. Thông tin nhận hàng</h3>
             <div className="material-grid">
-              <label style={fieldset}>Nhà cung cấp *
-                <input list="supplier-inbound-options" style={field} value={supplierSearch}
-                  placeholder="Tìm mã hoặc tên nhà cung cấp"
-                  onChange={(event) => { const value = event.target.value; setSupplierSearch(value);
-                    const selected = options.suppliers.find((item) => supplierLabel(item) === value);
-                    setForm((current) => ({ ...current, supplierId: selected ? String(selected._id) : '' })); }} />
-                <datalist id="supplier-inbound-options">{options.suppliers.map((item) =>
-                  <option key={item._id} value={supplierLabel(item)} />)}</datalist>
-              </label>
-              <label style={fieldset}>Ngày nhận *
+              <label style={fieldset}>Kế hoạch<input style={field} readOnly value={selectedPlan?.planCode || '—'} /></label>
+              <label style={fieldset}>Đợt giao<input style={field} readOnly value={selectedPlan?.batches.find((batch) => batch.id === form.deliveryBatchId)?.batchCode || '—'} /></label>
+              <label style={fieldset}>Nhà cung cấp<input style={field} readOnly value={selectedPlan?.supplier ?
+                supplierLabel(selectedPlan.supplier) : supplierSearch} /></label>
+              <label style={fieldset}>Vị trí nhận<input style={field} readOnly value={selectedPlan?.warehouse ?
+                `${selectedPlan.warehouse.zoneCode} · ${selectedPlan.warehouse.locationCode}` : '—'} /></label>
+              <label style={fieldset}>Dự kiến nhận<input style={field} readOnly value={(() => { const batch = selectedPlan?.batches.find((item) => item.id === form.deliveryBatchId);
+                return batch ? `${displayDate(batch.expectedStart.slice(0, 10))} – ${displayDate(batch.expectedEnd.slice(0, 10))}` : '—'; })()} /></label>
+              <label style={fieldset}>Ngày hàng thực tế về *
                 <input style={field} type="date" max={today()} value={form.receivedAt}
                   onChange={(event) => { const value = event.target.value; setDateText(displayDate(value));
                     setForm((current) => ({ ...current, receivedAt: value })); }} />
               </label>
-              <label style={fieldset}>Kho nhận *
-                <select style={field} value={form.receivingLocationId} onChange={(event) =>
-                  setForm((current) => ({ ...current, receivingLocationId: event.target.value }))}>
-                  <option value="">Chọn kho nhận</option>{receivingWarehouses(options.locations).map((item) =>
-                    <option key={item._id} value={item._id}>Kho nguyên phụ liệu · Khu {item.zoneCode}</option>)}
-                  {form.receivingLocationId && !receivingWarehouses(options.locations).some((item) => String(item._id) === String(form.receivingLocationId)) &&
-                    <option value={form.receivingLocationId}>Kho đã chọn trên phiếu</option>}
-                </select>
-              </label>
+              <label style={fieldset}>Mã chứng từ giao của NCC<input style={field} maxLength={80}
+                value={form.supplierDeliveryCode || ''} onChange={(event) => setForm((current) =>
+                  ({ ...current, supplierDeliveryCode: event.target.value }))} /></label>
+              <label style={fieldset}>Người giao<input style={field} maxLength={120}
+                value={form.handoverName || ''} onChange={(event) => setForm((current) =>
+                  ({ ...current, handoverName: event.target.value }))} /></label>
+              <label style={fieldset}>Ghi chú nhận hàng<input style={field} maxLength={500}
+                value={form.receiptNote || ''} onChange={(event) => setForm((current) =>
+                  ({ ...current, receiptNote: event.target.value }))} /></label>
             </div>
+            {selectedPlan && <p className="product-muted">{(() => { const batch = selectedPlan.batches.find((item) => item.id === form.deliveryBatchId);
+              if (!batch || !form.receivedAt) return '';
+              const actual = Date.parse(form.receivedAt); const start = Date.parse(batch.expectedStart.slice(0, 10));
+              const end = Date.parse(batch.expectedEnd.slice(0, 10));
+              return actual < start ? `Nhận sớm ${Math.round((start - actual) / 86400000)} ngày` :
+                actual > end ? `Nhận trễ ${Math.round((actual - end) / 86400000)} ngày` : 'Đúng hạn'; })()}</p>}
           </section>
           <section className="material-card">
             <h3>2. Nguyên phụ liệu thực nhận</h3>
-            <div className="material-reference-add-controls"><label style={fieldset}>Tìm và thêm nguyên phụ liệu
-              <input list="material-inbound-options" style={field} value={materialSearch}
-                placeholder="Nhập mã hoặc tên, rồi chọn kết quả"
-                onChange={(event) => { const value = event.target.value; setMaterialSearch(value);
-                  const selected = options.materials.find((item) => materialLabel(item) === value);
-                  if (selected) addMaterial(selected); }} />
-              <datalist id="material-inbound-options">{options.materials.filter((item) =>
-                !form.receiptLines.some((line) => String(line.rawMaterialId) === String(item._id))).map((item) =>
-                <option key={item._id} value={materialLabel(item)} />)}</datalist>
-            </label>
-            <button type="button" className="btn-ara-secondary material-create-link"
-              onClick={() => setShowMaterialForm((current) => !current)}>+ Tạo nguyên phụ liệu mới</button></div>
-            {showMaterialForm && <div className="material-line"><div className="material-grid">
-              {[['materialCode', 'Mã'], ['materialName', 'Tên'], ['color', 'Màu'], ['widthCm', 'Khổ (cm)']].map(([key, label]) =>
-                <label key={key} style={fieldset}>{label}<input style={field} value={newMaterial[key]}
-                  onChange={(event) => setNewMaterial({ ...newMaterial, [key]: event.target.value })} /></label>)}
-              <label style={fieldset}>Loại<select style={field} value={newMaterial.materialType} onChange={(event) =>
-                setNewMaterial({ ...newMaterial, materialType: event.target.value,
-                  category: event.target.value === 'FABRIC' ? 'FABRIC_ROLL' : 'BUTTON',
-                  unit: event.target.value === 'FABRIC' ? 'METER' : 'PIECE' })}>
-                <option value="FABRIC">Vải</option><option value="AUXILIARY">Phụ liệu</option>
-              </select></label>
-              <label style={fieldset}>Danh mục<select style={field} value={newMaterial.category}
-                onChange={(event) => setNewMaterial({ ...newMaterial, category: event.target.value })}>
-                {(newMaterial.materialType === 'FABRIC' ? ['FABRIC_ROLL'] :
-                  ['BUTTON', 'THREAD', 'ZIPPER', 'CARE_LABEL', 'PACKAGING_BAG']).map((item) =>
-                  <option key={item}>{item}</option>)}</select></label>
-              <label style={fieldset}>Đơn vị<select style={field} value={newMaterial.unit}
-                onChange={(event) => setNewMaterial({ ...newMaterial, unit: event.target.value })}>
-                {(newMaterial.materialType === 'FABRIC' ? ['METER'] :
-                  ['KG', 'PIECE', 'SPOOL', 'BOX']).map((item) =>
-                  <option key={item} value={item}>{unitNames[item]}</option>)}</select></label>
-              <label style={fieldset}>Đơn giá mặc định (₫/{unitShort[newMaterial.unit]})
-                <input type="number" min="0" step="0.01" style={field} value={newMaterial.unitCost}
-                  onChange={(event) => setNewMaterial({ ...newMaterial, unitCost: event.target.value })} /></label>
-              {newMaterial.materialType === 'FABRIC' && <label><input type="checkbox"
-                checked={!!newMaterial.requiresWeightKg} onChange={(event) =>
-                  setNewMaterial({ ...newMaterial, requiresWeightKg: event.target.checked })} /> Bắt buộc theo dõi cân nặng từng cây</label>}
-            </div><button type="button" className="btn-ara-primary" onClick={() => run(async () => {
-              const created = (await api.createMaterial(newMaterial)).data.material;
-              setOptions((current) => ({ ...current, materials: [...current.materials, created] }));
-              addMaterial(created); setShowMaterialForm(false); setNotice('Đã tạo và thêm nguyên phụ liệu.');
-            })}>Lưu và thêm vào phiếu</button></div>}
-            {!form.receiptLines.length && <p className="product-muted">Chọn nguyên phụ liệu ở ô tìm kiếm để bắt đầu nhập.</p>}
+            {!form.receiptLines.length && <p className="product-muted">Đợt giao chưa có nguyên phụ liệu.</p>}
             {form.receiptLines.map((line, index) => { const material = materials.get(String(line.rawMaterialId));
               if (!material) return null;
               const fabric = material.materialType === 'FABRIC';
@@ -473,32 +500,24 @@ export default function SupplierInboundPage() {
               return <div className="material-line material-entry" key={line.rawMaterialId}>
                 <div className="material-line-heading"><div><h3>{material.materialName}{material.color ? ' · ' + material.color : ''}</h3>
                   <small>{material.materialCode} · {fabric && material.widthCm ? 'Khổ ' + amount(number(material.widthCm) / 100) + ' m · ' : ''}{unitNames[material.unit]}</small></div>
-                  <button type="button" className="btn-ara-secondary" aria-label={'Xóa ' + material.materialName}
-                    onClick={() => {
-                      if (!window.confirm(`Xóa ${material.materialName} khỏi phiếu nhập?`)) return;
-                      setForm((current) => ({ ...current,
-                        receiptLines: current.receiptLines.filter((_, row) => row !== index) }));
-                    }}>Xóa hàng</button></div>
+                  <span className="product-muted">Theo kế hoạch</span></div>
+                <p className="product-muted">Còn cần nhập đạt: {amount(selectedPlan?.batches.find((batch) => batch.id === form.deliveryBatchId)?.lines
+                  .find((item) => String(item.rawMaterialId) === String(line.rawMaterialId))?.remainingQty)} {unitShort[material.unit]}</p>
                 <div className="material-reference-line-summary">
                   <div><span>Thực nhận</span><strong>{amount(line.actualQty)} {unitShort[material.unit]}</strong></div>
                   <div><span>Không đạt</span><strong>{amount(line.rejectedQty)} {unitShort[material.unit]}</strong></div>
                   <div><span>Nhập kho</span><strong className="material-reference-accepted">{amount(line.acceptedQty)} {unitShort[material.unit]}</strong></div>
-                  <label>Đơn giá nhập (₫/{unitShort[material.unit]}) *
-                    <input type="number" min="0" max="1000000000000" step="0.01" value={line.unitCost ?? ''}
-                      onChange={(event) => changeLine(index, { unitCost: event.target.value })} /></label>
-                  <div><span>Giá trị nhập kho</span><strong>{money(number(line.acceptedQty) * number(line.unitCost))}</strong></div>
                 </div>
-                {Number(line.unitCost) === 0 && <label style={fieldset}>Lý do đơn giá 0 *
-                  <input maxLength={300} value={line.zeroCostReason || ''}
-                    onChange={(event) => changeLine(index, { zeroCostReason: event.target.value })} /></label>}
                 <p className="material-reference-detail-heading">Vị trí / Chi tiết kiểm nhận</p>
                 {fabric ? <>
                   <div className="material-table-wrap"><table className="material-inline-table"><thead><tr>
-                    <th>Cây</th><th>Chiều dài nhận (m)</th><th>Kết quả kiểm tra</th><th>Vị trí cất</th><th>Thao tác</th>
+                    <th>Nguyên vật liệu</th><th>Chiều dài nhận (m)</th><th>Kết quả kiểm tra</th><th>Vị trí cất</th>
+                    {(!plannedReceipt || line.rolls.length > 1) && <th>Thao tác</th>}
                   </tr></thead><tbody>{line.rolls.map((roll, objectIndex) => <tr key={roll.clientLineId}>
-                    <td>Cây {objectIndex + 1}</td>
+                    <td>{material.materialName}{material.color ? ` · ${material.color}` : ''}
+                      {line.rolls.length > 1 ? ` · cây ${objectIndex + 1}` : ''}</td>
                     <td><input type="number" min="0" step=".001" style={field} value={roll.lengthMeters ?? ''}
-                      aria-label={'Chiều dài nhận cây ' + (objectIndex + 1)}
+                      aria-label={`${material.materialName} · chiều dài nhận cây ${objectIndex + 1}`}
                       onChange={(event) => changeObject(index, 'rolls', objectIndex, { lengthMeters: event.target.value })} /></td>
                     <td><select style={field} value={roll.quality || ''} aria-label={'Kết quả cây ' + (objectIndex + 1)}
                       onChange={(event) => changeObject(index, 'rolls', objectIndex, { quality: event.target.value,
@@ -511,25 +530,25 @@ export default function SupplierInboundPage() {
                     <td><LocationPicker locations={options.locations} quality={roll.quality} unit={material.unit}
                       value={roll.locationId} onChange={(value) => changeObject(index, 'rolls', objectIndex,
                         { locationId: value })} />{!roll.locationId && <small>Chưa chọn vị trí — xử lý sau</small>}</td>
-                    <td><button type="button" className="btn-ara-secondary"
+                    {(!plannedReceipt || line.rolls.length > 1) && <td><button type="button" className="btn-ara-secondary"
                       onClick={() => {
                         if (window.confirm(`Xóa cây ${objectIndex + 1} khỏi phiếu nhập?`)) {
                           changeLine(index, { rolls: line.rolls.filter((_, row) => row !== objectIndex) });
                         }
-                      }}>Xóa</button></td>
+                      }}>Xóa</button></td>}
                   </tr>)}</tbody></table></div>
                   {line.rolls.map((roll, objectIndex) => material.requiresWeightKg && <label key={roll.clientLineId}
                     style={fieldset}>Cân nặng cây {objectIndex + 1} (kg)
                     <input type="number" min="0" step=".001" style={field} value={roll.weightKg ?? ''}
                       onChange={(event) => changeObject(index, 'rolls', objectIndex, { weightKg: event.target.value })} /></label>)}
                   <div className="material-import-controls">
-                    <button type="button" className="btn-ara-secondary" onClick={() => addObject(index, material)}>+ Thêm cây</button>
+                    {!plannedReceipt && <button type="button" className="btn-ara-secondary" onClick={() => addObject(index, material)}>+ Thêm cây</button>}
                     <button type="button" className="btn-ara-secondary"
                       onClick={() => changeLine(index, { rolls: line.rolls.map((roll) =>
                         ({ ...roll, quality: 'ACCEPTED', defectReason: '', locationId: roll.quality === 'REJECTED' ? '' : roll.locationId })) })}>
-                      Tất cả cây đều đạt</button>
+                      {plannedReceipt ? 'Đánh dấu đạt' : 'Tất cả cây đều đạt'}</button>
                   </div>
-                  <p><strong>{line.rolls.length} cây · Tổng nhận: {amount(line.actualQty)} m · Đạt: {amount(line.acceptedQty)} m · Không đạt: {amount(line.rejectedQty)} m</strong></p>
+                  <p><strong>{!plannedReceipt && `${line.rolls.length} cây · `}Tổng nhận: {amount(line.actualQty)} m · Đạt: {amount(line.acceptedQty)} m · Không đạt: {amount(line.rejectedQty)} m</strong></p>
                   {number(line.rejectedQty) > 0 && <p className="product-muted">Cây chỉ lỗi một phần: tách và ghi nhận theo nghiệp vụ kiểm nhận/điều chỉnh; hệ thống không tự tăng chiều dài hay coi cả cây đạt.</p>}
                 </> : simple ? <>
                   <div className="material-grid">
@@ -629,10 +648,7 @@ export default function SupplierInboundPage() {
           <section className="material-reference-summary">
             <div><h3>Tóm tắt nhập kho</h3>
               <p>{[...totalsByUnit].map(([unit, total]) => `${amount(total.accepted)} ${unitShort[unit]}`).join(' · ') || 'Chưa có nguyên phụ liệu'}</p>
-              <small>Giá trị theo đơn giá của phiếu; chưa gồm thuế, chi phí hoặc thanh toán.</small></div>
-            <div className="material-reference-money"><p>Giá trị thực nhận <strong>{money(moneyTotals.actual)}</strong></p>
-              <p>Giá trị không đạt <strong>{money(moneyTotals.rejected)}</strong></p>
-              <p className="total">Giá trị nhập kho <strong>{money(moneyTotals.accepted)}</strong></p></div>
+              </div>
           </section>
         </>}
         {locked && <section className="material-card"><h2>{receipt?.status === 'COMPLETED' ? 'Phiếu đã xác nhận' : 'Phiếu đã hủy'}</h2>{receipt?.status === 'COMPLETED' && <p className="material-message success">Phiếu đã ghi nhận. In tem cho cây/lô và quét xác nhận cất hàng đạt; hàng lỗi theo dõi để xử lý hoặc trả nhà cung cấp.</p>}<div className="material-grid"><p><strong>Phiếu:</strong> {receipt?.ticketCode}</p><p><strong>NCC:</strong> {options.suppliers.find((item) => String(item._id) === form.supplierId)?.supplierName}</p><p><strong>Chứng từ:</strong> {form.supplierDeliveryCode || '—'}</p><p><strong>Ngày nhận:</strong> {displayDate(form.receivedAt)}</p><p><strong>Người giao:</strong> {form.handoverName}</p><p><strong>Người nhận:</strong> {user?.fullName}</p><p><strong>Kho:</strong> {options.locations.find((item) => String(item._id) === form.receivingLocationId)?.locationCode}</p><p><strong>Tệp đính kèm:</strong> {receipt?.receiptAttachments?.length || 0}</p></div>
@@ -654,14 +670,32 @@ export default function SupplierInboundPage() {
       </div>
       {!locked && <div className="material-actions">
         <label className="material-reference-reviewed"><input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />
-          Tôi đã kiểm tra số lượng, đơn giá và phần không đạt.</label>
+          Tôi đã kiểm tra số lượng và phần không đạt.</label>
         {attemptedConfirm && !reviewed && <span className="material-reference-review-error">Hãy kiểm tra và đánh dấu trước khi xác nhận.</span>}
         <button type="button" className="btn-ara-secondary" onClick={closeEditor}>Đóng</button>
         <button type="button" className="btn-ara-secondary" disabled={busy}
-          onClick={() => run(async () => { await saveDraft(); setNotice('Đã lưu nháp.'); })}>Lưu nháp</button>
+          onClick={() => run(async () => { const saved = await saveDraft();
+            setNotice(saved ? 'Đã lưu nháp trên máy chủ. Chưa cộng tiến độ.' :
+              'Đã lưu nháp trên thiết bị. Cần mạng để lưu lên máy chủ và xác nhận.'); })}>Lưu nháp</button>
         <button type="button" className="btn-ara-primary" disabled={busy}
           onClick={confirmReceipt}>Xác nhận nhập kho</button>
       </div>}
-      </div></div>}
+      </div></div>;
+  return <main className="material-inbound-page material-receipt-list-page">
+    <MaterialDeliveryPlanList options={options} onReceive={startReceipt} onOpenReceipt={openReceipt}
+      receiptEditor={view === 'editor' ? editor : null} onCloseReceipt={closeEditor}
+      receiptRefreshKey={receipt?.status === 'COMPLETED' ? receipt.confirmedAt || receiptId : ''}
+      preparedPlan={selectedPlan} activeBatchId={form.deliveryBatchId} user={user}
+      directRefreshKey={directRefreshKey}
+      onDirectCreate={() => setDirectTarget({ kind: 'new', id: crypto.randomUUID() })}
+      onDirectOpen={setDirectTarget}
+      onMaterialCreated={(material) => setOptions((current) => ({ ...current,
+        materials: [...current.materials, { ...material, _id: material._id || material.id }] }))} />
+    {view === 'legacy-editor' && editor}
+    {directTarget && <DirectMaterialReceiptModal key={`${directTarget.kind}:${directTarget.id}`}
+      target={directTarget} options={options} user={user} onClose={() => setDirectTarget(null)}
+      onChanged={() => setDirectRefreshKey((value) => value + 1)}
+      onMaterialCreated={(material) => setOptions((current) => ({ ...current,
+        materials: [...current.materials, { ...material, _id: material._id || material.id }] }))} />}
   </main>;
 }

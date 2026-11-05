@@ -15,8 +15,11 @@ import WarehousePackingPage from '../pages/WarehousePackingPage';
 import ProductConfigurationPage from '../pages/ProductConfigurationPage';
 import FinishedGoodsPage from '../pages/FinishedGoodsPage';
 import SupplierInboundPage from '../pages/SupplierInboundPage';
+import MaterialOutboundPage from '../pages/MaterialOutboundPage';
 import WarehouseLayoutPage from '../pages/WarehouseLayoutPage';
 import WarehousePutawayPage from '../pages/WarehousePutawayPage';
+import StocktakePage from '../pages/StocktakePage';
+import ShippingPage from '../pages/ShippingPage';
 // import { useAuth } from '../hooks/useAuth';
 // import LoadingSpinner from '../components/common/LoadingSpinner';
 
@@ -61,8 +64,11 @@ const AppRouter = () => {
       <Route path="/warehouse/products/:id/edit" element={<ProductConfigurationPage />} />
       <Route path="/warehouse/finished-goods" element={<FinishedGoodsPage />} />
       <Route path="/warehouse/raw-materials/inbound" element={<SupplierInboundPage />} />
+      <Route path="/warehouse/raw-materials/outbound" element={<MaterialOutboundPage />} />
       <Route path="/warehouse/layout" element={<WarehouseLayoutPage />} />
       <Route path="/warehouse/putaway" element={<WarehousePutawayPage />} />
+      <Route path="/warehouse/stocktake" element={<StocktakePage />} />
+      <Route path="/warehouse/shipping" element={<ShippingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<Navigate to="/" replace />} />
       <Route path="*" element={<NotFoundPage />} />

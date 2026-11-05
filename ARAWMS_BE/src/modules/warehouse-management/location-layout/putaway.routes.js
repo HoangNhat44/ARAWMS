@@ -63,9 +63,14 @@ router.get('/receipts/:receiptId/labels', role('WAREHOUSE_STAFF'), handle(async 
     isSystemUnplaced: true, isDeleted: { $ne: true } }).select('_id').lean();
   const units = source ? await ProductUnit.find({ receivingDocumentId: req.params.receiptId,
     warehouseId: source._id, inventoryStatus: 'AVAILABLE' })
-    .select('barcode barcodeImageUrl').sort({ barcode: 1 }).lean() : [];
+    .select('barcode barcodeImageUrl skuId').sort({ barcode: 1 })
+    .populate({ path: 'skuId', select: 'skuCode color size productId',
+      populate: { path: 'productId', select: 'productName' } }).lean() : [];
   return sendSuccess(res, 'Tem của hàng còn chờ xếp', { labels: units.map((unit) => ({
     barcode: unit.barcode, imageUrl: unit.barcodeImageUrl || null,
+    skuId: String(unit.skuId?._id || ''), skuCode: unit.skuId?.skuCode || '',
+    productName: unit.skuId?.productId?.productName || '',
+    color: unit.skuId?.color || '', size: unit.skuId?.size || '',
   })), total: units.length });
 }));
 router.get('/tasks/:allocationId/:lineId', role('WAREHOUSE_STAFF'), handle(async (req, res) =>

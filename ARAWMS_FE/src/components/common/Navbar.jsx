@@ -16,6 +16,8 @@ const links = [
   ['/warehouse/finished-goods', 'Kho thành phẩm'],
   ['/warehouse/layout', 'Vị trí kho'],
   ['/warehouse/raw-materials/inbound', 'Nhập nguyên phụ liệu'],
+  ['/warehouse/raw-materials/outbound', 'Xuất nguyên phụ liệu'],
+  ['/warehouse/stocktake', 'Kiểm kê kho'],
 ];
 
 export default function Navbar() {

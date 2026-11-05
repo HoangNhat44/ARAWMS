@@ -25,6 +25,7 @@ export { default as ShippingCarrier } from './ShippingCarrier.model.js';
 // Materials & Products
 export { default as RawMaterial } from './RawMaterial.model.js';
 export { default as MaterialStockLot } from './MaterialStockLot.model.js';
+export { default as MaterialOutbound } from './MaterialOutbound.model.js';
 export { default as FabricRoll } from './FabricRoll.model.js';
 export { default as Product } from './Product.model.js';
 export { default as Sku } from './Sku.model.js';

@@ -7,11 +7,16 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import Product from '../../../models/Product.model.js';
 import Sku from '../../../models/Sku.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
+import CatalogOperation from '../../../models/CatalogOperation.model.js';
+import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
 import { parseProductWorkbook, findImportConflicts, saveImportedProducts } from './productExcelImport.js';
+import { copyProductMediaUrl, removeProductMedia } from '../../../common/services/productMediaStorage.js';
+import { publishRealtime } from '../../../common/services/realtime.js';
 
 const router = express.Router();
 const excelBody = express.raw({ type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream'], limit: '5mb' });
@@ -25,15 +30,21 @@ const respondToProductError = (error, res, next) => {
   if (error.code === 11000) return sendError(res, 'Mã sản phẩm hoặc biến thể đã tồn tại', { code: 'DUPLICATE_PRODUCT_OR_VARIANT' }, 409);
   next(error);
 };
+const authenticateCatalogRequest = (req, res, next) => {
+  // Direct-URL development uses the test user installed by the parent products router.
+  if (process.env.NODE_ENV !== 'production' && !req.headers.authorization && req.user) return next();
+  return authenticate(req, res, next);
+};
 
 /** Validates product name, sample code, category, base price, and draft/active status. */
-const parseProductCatalogInput = (body) => {
+const parseProductCatalogInput = (body, { allowMissingSampleCode = false } = {}) => {
   const productName = String(body?.productName || '').trim();
   const sampleCode = String(body?.sampleCode || '').trim().toUpperCase();
   const category = String(body?.category || '').trim();
   const description = String(body?.description || '').trim();
   const basePrice = Number(body?.basePrice);
-  if (!productName || productName.length > 200 || !/^[A-Z0-9_-]{2,64}$/.test(sampleCode) ||
+  if (!productName || productName.length > 200 ||
+      (!allowMissingSampleCode || sampleCode) && !/^[A-Z0-9_-]{2,64}$/.test(sampleCode) ||
       !category || category.length > 100 || description.length > 2000 ||
       body?.basePrice === '' || body?.basePrice == null || !Number.isFinite(basePrice) || basePrice < 0 ||
       !['DRAFT', 'ACTIVE'].includes(body?.status)) throw createProductRequestError('Thông tin sản phẩm không hợp lệ', 'INVALID_PRODUCT');
@@ -106,6 +117,194 @@ const importExcel = (preview) => async (req, res, next) => {
   }
 };
 
+/** Applies one immutable, account-scoped operation and commits its replay result with the catalog write. */
+router.post('/sync', authenticateCatalogRequest, (req, res, next) => req.user.roles?.some((role) =>
+  ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'].includes(role))
+  ? next() : sendError(res, 'Tài khoản không có quyền quản lý sản phẩm', { code: 'FORBIDDEN' }, 403), async (req, res, next) => {
+  const { operationId, operationType, payload, serverEntityId, baseVersion } = req.body || {};
+  if (!/^[a-zA-Z0-9_-]{16,80}$/.test(String(operationId || '')) || !payload || typeof payload !== 'object' ||
+      !['CREATE', 'UPDATE_PRODUCT', 'ADD_VARIANTS', 'UPDATE_SKU_PRICE', 'UPDATE_SKU', 'IMPORT_PRODUCT'].includes(operationType)) {
+    return sendError(res, 'Thao tác đồng bộ không hợp lệ', { code: 'INVALID_OPERATION' }, 400);
+  }
+  const ownerUserId = req.user._id;
+  const payloadHash = createHash('sha256').update(JSON.stringify({ operationType, payload, serverEntityId, baseVersion })).digest('hex');
+  const replay = async () => {
+    const saved = await CatalogOperation.findOne({ ownerUserId, operationId }).lean();
+    if (!saved) return false;
+    if (saved.payloadHash !== payloadHash) {
+      sendError(res, 'Mã thao tác đã dùng cho nội dung khác', { code: 'OPERATION_PAYLOAD_CONFLICT' }, 409);
+    } else sendSuccess(res, 'Đã đồng bộ', saved.result);
+    return true;
+  };
+  let session;
+  const uploadedAssets = [];
+  let importMedia = {};
+  let committed = false;
+  try {
+    if (await replay()) return;
+    let productCode;
+    let createInput;
+    if (operationType === 'CREATE') {
+      const catalog = parseProductCatalogInput(payload);
+      createInput = { catalog, variants: parseProductVariantInputs(payload.variants, catalog.basePrice) };
+      const year = new Date().getFullYear();
+      productCode = await CounterSequence.getNextSequence(`PRODUCT-${year}`, `SP-${year}`, 5);
+    }
+    if (operationType === 'IMPORT_PRODUCT') {
+      if (await Product.exists({ productCode: String(payload.productCode || '').toUpperCase() })) {
+        throw createProductRequestError('Mã sản phẩm đã tồn tại', 'DUPLICATE_PRODUCT_OR_VARIANT', 409);
+      }
+      for (const [field, kind, publicIdField] of [['imageUrl', 'image', 'imagePublicId'],
+        ['videoUrl', 'video', 'videoPublicId']]) {
+        const url = payload[field];
+        if (!url) continue;
+        if (typeof url !== 'string' || !/^https?:\/\//i.test(url) || url.length > 2000) {
+          throw createProductRequestError('URL ảnh/video không hợp lệ', 'INVALID_MEDIA_URL');
+        }
+        let asset;
+        try {
+          asset = await copyProductMediaUrl(url, String(payload.productCode), kind,
+            `catalog_${ownerUserId}_${operationId}`);
+        } catch (error) {
+          if ([400, 404, 422].includes(error.http_code || error.status)) {
+            throw createProductRequestError('Không tải được ảnh/video từ URL trong file Excel', 'MEDIA_URL_UNAVAILABLE', 422);
+          }
+          throw error;
+        }
+        uploadedAssets.push(asset);
+        importMedia[kind === 'image' ? 'thumbnailUrl' : 'videoUrl'] = asset.secure_url;
+        importMedia[publicIdField] = asset.public_id;
+      }
+    }
+    session = await mongoose.startSession();
+    let result;
+    await session.withTransaction(async () => {
+      if (operationType === 'CREATE') {
+        const [product] = await Product.create([{ ...createInput.catalog, productCode }], { session });
+        const skus = await createProductVariantSkus(product, createInput.variants, session);
+        result = { product, skus };
+      } else if (operationType === 'IMPORT_PRODUCT') {
+        const codePattern = /^[\p{L}\p{N}_-]{2,64}$/u;
+        if (!codePattern.test(payload.productCode || '') || !payload.productName || !payload.category ||
+            !payload.color || !Array.isArray(payload.variants) || !payload.variants.length || payload.variants.length > 100 ||
+            !Number.isFinite(Number(payload.basePrice)) || Number(payload.basePrice) < 0) {
+          throw createProductRequestError('Dòng import không hợp lệ', 'INVALID_IMPORT_PRODUCT');
+        }
+        const catalog = { productCode: payload.productCode, productName: payload.productName,
+          sampleCode: payload.productCode, category: payload.category, description: payload.description || '',
+          basePrice: Number(payload.basePrice), isActive: true };
+        const colorKey = normalizeColorKey(String(payload.color));
+        const seen = new Set();
+        const skusInput = payload.variants.map((item) => {
+          if (!codePattern.test(item.skuCode || '') || !sizes.has(item.size) ||
+              !Number.isFinite(Number(item.price)) || Number(item.price) < 0 ||
+              !Number.isSafeInteger(Number(item.threshold)) || Number(item.threshold) < 0 || seen.has(item.size)) {
+            throw createProductRequestError('SKU trong file không hợp lệ', 'INVALID_IMPORT_VARIANT');
+          }
+          seen.add(item.size);
+          return item;
+        });
+        const [product] = await Product.create([{ ...catalog, ...importMedia }], { session });
+        const skus = await Sku.create(skusInput.map((item) => ({ productId: product._id,
+          skuCode: item.skuCode, skuBarcode: item.barcode || `SKU-${item.skuCode}`,
+          styleName: product.productCode, color: payload.color, size: item.size,
+          retailPrice: Number(item.price), safetyStockThreshold: Number(item.threshold),
+          variantKey: `${product._id}:${colorKey}:${item.size}`, isActive: true })), { session, ordered: true });
+        result = { product, skus, rows: payload.rows || [] };
+      } else if (operationType === 'UPDATE_PRODUCT') {
+        if (!mongoose.isValidObjectId(serverEntityId)) throw createProductRequestError('Mã sản phẩm không hợp lệ', 'INVALID_PRODUCT_ID');
+        const current = await Product.findOne({ _id: serverEntityId, isDeleted: { $ne: true } }).session(session);
+        if (!current) throw createProductRequestError('Sản phẩm đã bị xóa', 'PRODUCT_NOT_FOUND', 404);
+        if (Number(baseVersion) !== (current.version ?? 0)) throw createProductRequestError('Sản phẩm đã được người khác thay đổi', 'VERSION_CONFLICT', 409);
+        const allowed = ['productName', 'sampleCode', 'category', 'description', 'basePrice', 'status'];
+        if (!Object.keys(payload).length || Object.keys(payload).some((key) => !allowed.includes(key))) {
+          throw createProductRequestError('Trường cập nhật không hợp lệ', 'INVALID_PRODUCT');
+        }
+        const preserveLegacySampleCode = !String(current.sampleCode || '').trim() && !String(payload.sampleCode || '').trim();
+        const catalog = parseProductCatalogInput({ ...current.toObject(), ...payload,
+          status: payload.status || (current.isActive ? 'ACTIVE' : 'DRAFT') }, { allowMissingSampleCode: preserveLegacySampleCode });
+        const changes = Object.fromEntries(Object.keys(payload)
+          .filter((key) => key !== 'status' && !(key === 'sampleCode' && preserveLegacySampleCode))
+          .map((key) => [key, catalog[key]]));
+        if ('status' in payload) changes.isActive = catalog.isActive;
+        const versionFilter = current.version == null ? { $exists: false } : current.version;
+        const product = await Product.findOneAndUpdate({ _id: current._id, version: versionFilter },
+          { $set: changes, $inc: { version: 1 } }, { new: true, runValidators: true, session });
+        if (!product) throw createProductRequestError('Sản phẩm đã được người khác thay đổi', 'VERSION_CONFLICT', 409);
+        if (!current.isActive && catalog.isActive) await Sku.updateMany({ productId: current._id, isDeleted: { $ne: true } },
+          { $set: { isActive: true } }, { session });
+        result = { product };
+      } else if (operationType === 'ADD_VARIANTS') {
+        if (!mongoose.isValidObjectId(serverEntityId)) throw createProductRequestError('Mã sản phẩm không hợp lệ', 'INVALID_PRODUCT_ID');
+        const product = await Product.findOne({ _id: serverEntityId, isDeleted: { $ne: true } }).session(session);
+        if (!product) throw createProductRequestError('Sản phẩm đã bị xóa', 'PRODUCT_NOT_FOUND', 404);
+        if (Number(baseVersion) !== (product.version ?? 0)) throw createProductRequestError('Sản phẩm đã được người khác thay đổi', 'VERSION_CONFLICT', 409);
+        const variants = parseProductVariantInputs(payload.variants, product.basePrice);
+        const existing = await Sku.find({ productId: product._id, isDeleted: { $ne: true } }).session(session);
+        const keys = new Set(existing.map((sku) => `${normalizeColorKey(sku.color)}:${sku.size}`));
+        if (variants.some((variant) => keys.has(variant.key))) throw createProductRequestError('Biến thể màu–size đã tồn tại', 'DUPLICATE_VARIANT', 409);
+        const skus = await createProductVariantSkus(product, variants, session);
+        const versionFilter = product.version == null ? { $exists: false } : product.version;
+        const changed = await Product.updateOne({ _id: product._id, version: versionFilter }, { $inc: { version: 1 } }, { session });
+        if (!changed.modifiedCount) throw createProductRequestError('Sản phẩm đã được người khác thay đổi', 'VERSION_CONFLICT', 409);
+        result = { productId: String(product._id), skus };
+      } else if (operationType === 'UPDATE_SKU') {
+        if (!mongoose.isValidObjectId(serverEntityId) || !mongoose.isValidObjectId(payload.skuId) ||
+            Object.keys(payload).some((key) => !['skuId', 'color', 'size', 'retailPrice'].includes(key))) {
+          throw createProductRequestError('Thông tin SKU không hợp lệ', 'INVALID_VARIANT');
+        }
+        const current = await Sku.findOne({ _id: payload.skuId, productId: serverEntityId, isDeleted: { $ne: true } }).session(session);
+        if (!current) throw createProductRequestError('SKU đã bị xóa', 'SKU_NOT_FOUND', 404);
+        if (Number(baseVersion) !== (current.version ?? 0)) throw createProductRequestError('SKU đã được người khác thay đổi', 'VERSION_CONFLICT', 409);
+        const color = String(payload.color ?? current.color).normalize('NFKC').trim().replace(/\s+/g, ' ');
+        const size = String(payload.size ?? current.size).toUpperCase();
+        const retailPrice = Number(payload.retailPrice ?? current.retailPrice);
+        if (!color || color.length > 80 || !sizes.has(size) || !Number.isFinite(retailPrice) || retailPrice < 0) {
+          throw createProductRequestError('Màu, size hoặc giá SKU không hợp lệ', 'INVALID_VARIANT');
+        }
+        if ((color !== current.color || size !== current.size) &&
+            (current.onHandQty || current.reservedQty || current.defectQuarantineQty)) {
+          throw createProductRequestError('SKU đã có tồn kho, không thể đổi màu hoặc size', 'SKU_HAS_STOCK', 409);
+        }
+        const versionFilter = current.version == null ? { $exists: false } : current.version;
+        const sku = await Sku.findOneAndUpdate({ _id: current._id, version: versionFilter },
+          { $set: { color, size, retailPrice, variantKey: `${current.productId}:${normalizeColorKey(color)}:${size}` },
+            $inc: { version: 1 } }, { new: true, runValidators: true, session });
+        if (!sku) throw createProductRequestError('SKU đã được người khác thay đổi', 'VERSION_CONFLICT', 409);
+        result = { sku };
+      } else {
+        if (!mongoose.isValidObjectId(serverEntityId) || !mongoose.isValidObjectId(payload.skuId) ||
+            payload.retailPrice === '' || !Number.isFinite(Number(payload.retailPrice)) || Number(payload.retailPrice) < 0) {
+          throw createProductRequestError('Giá SKU không hợp lệ', 'INVALID_SKU_PRICE');
+        }
+        const current = await Sku.findOne({ _id: payload.skuId, productId: serverEntityId, isDeleted: { $ne: true } }).session(session);
+        if (!current) throw createProductRequestError('SKU đã bị xóa', 'SKU_NOT_FOUND', 404);
+        if (Number(baseVersion) !== (current.version ?? 0)) throw createProductRequestError('SKU đã được người khác thay đổi', 'VERSION_CONFLICT', 409);
+        const versionFilter = current.version == null ? { $exists: false } : current.version;
+        const sku = await Sku.findOneAndUpdate({ _id: current._id, version: versionFilter },
+          { $set: { retailPrice: Number(payload.retailPrice) }, $inc: { version: 1 } },
+          { new: true, runValidators: true, session });
+        if (!sku) throw createProductRequestError('SKU đã được người khác thay đổi', 'VERSION_CONFLICT', 409);
+        result = { sku };
+      }
+      // Store the public JSON shape so replay has the same IDs and fields as the first response.
+      result = JSON.parse(JSON.stringify(result));
+      await CatalogOperation.create([{ ownerUserId, operationId, payloadHash, result }], { session });
+    });
+    committed = true;
+    if (operationType === 'UPDATE_PRODUCT' && Object.hasOwn(payload, 'description')) {
+      publishRealtime('catalog:product-updated', { productId: String(result.product._id), description: result.product.description,
+        version: result.product.version, changedFields: ['description'] });
+    }
+    return sendSuccess(res, 'Đã đồng bộ', result, ['CREATE', 'IMPORT_PRODUCT'].includes(operationType) ? 201 : 200);
+  } catch (error) {
+    if (error.code === 11000 && await replay()) return;
+    // Concurrent retries can share the deterministic Cloudinary public ID; do not delete their asset.
+    if (!committed && uploadedAssets.length && error.code !== 11000) await removeProductMedia(uploadedAssets);
+    respondToProductError(error, res, next);
+  } finally { if (session) await session.endSession(); }
+});
+
 router.post('/import/preview', excelBody, importExcel(true));
 router.post('/import', excelBody, importExcel(false));
 
@@ -166,11 +365,14 @@ router.patch('/:id', async (req, res, next) => {
       const current = await Product.findOne({ _id: req.params.id, isDeleted: { $ne: true } }).session(session);
       if (!current) throw createProductRequestError('Không tìm thấy sản phẩm', 'PRODUCT_NOT_FOUND', 404);
       product = await Product.findOneAndUpdate(
-        { _id: req.params.id, isDeleted: { $ne: true } }, { $set: catalog }, { new: true, runValidators: true, session }
+        { _id: req.params.id, isDeleted: { $ne: true } }, { $set: catalog, $inc: { version: 1 } }, { new: true, runValidators: true, session }
       );
       if (!current.isActive && catalog.isActive) {
         await Sku.updateMany({ productId: current._id, isDeleted: { $ne: true } }, { $set: { isActive: true } }, { session });
       }
+    });
+    if (Object.hasOwn(req.body || {}, 'description')) publishRealtime('catalog:product-updated', {
+      productId: String(product._id), description: product.description, version: product.version, changedFields: ['description'],
     });
     return sendSuccess(res, 'Đã cập nhật thông tin sản phẩm', { product });
   } catch (error) { respondToProductError(error, res, next); }
@@ -192,6 +394,7 @@ router.post('/:id/variants', async (req, res, next) => {
       const keys = new Set(existing.map((sku) => `${normalizeColorKey(sku.color)}:${sku.size}`));
       if (variants.some((variant) => keys.has(variant.key))) throw createProductRequestError('Biến thể màu–size đã tồn tại', 'DUPLICATE_VARIANT', 409);
       skus = await createProductVariantSkus(product, variants, session);
+      await Product.updateOne({ _id: product._id }, { $inc: { version: 1 } }, { session });
     });
     return sendSuccess(res, 'Đã thêm biến thể', { skus }, 201);
   } catch (error) { respondToProductError(error, res, next); }
@@ -208,7 +411,7 @@ router.patch('/:id/variants/:skuId', async (req, res, next) => {
   try {
     const sku = await Sku.findOneAndUpdate(
       { _id: req.params.skuId, productId: req.params.id, isDeleted: { $ne: true } },
-      { $set: { retailPrice: Number(req.body.retailPrice) } }, { new: true, runValidators: true }
+      { $set: { retailPrice: Number(req.body.retailPrice) }, $inc: { version: 1 } }, { new: true, runValidators: true }
     );
     if (!sku) return sendError(res, 'Không tìm thấy SKU', { code: 'SKU_NOT_FOUND' }, 404);
     return sendSuccess(res, 'Đã cập nhật giá SKU', { sku });

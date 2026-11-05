@@ -31,7 +31,7 @@ export default function FinishedGoodsOverview({ products, recentDocuments, owner
   const filtered = rows.filter(({ product, sku }) => {
     const query = search.trim().toLocaleLowerCase('vi');
     const text = [product.productCode, product.productName, product.sampleCode, product.category, sku?.skuCode, sku?.color, sku?.size].join(' ').toLocaleLowerCase('vi');
-    const available = sku ? Math.max(0, Number(sku.availableQty ?? Number(sku.onHandQty || 0) - Number(sku.reservedQty || 0))) : 0;
+    const available = sku ? Number(sku.pickableQty ?? 0) : 0;
     const matchesAvailability = !availability || (availability === 'available' ? available > 0 : available === 0);
     return (!query || text.includes(query)) && (!category || product.category === category) && matchesAvailability;
   });
@@ -41,7 +41,7 @@ export default function FinishedGoodsOverview({ products, recentDocuments, owner
   const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const total = products.reduce((sum, product) => sum + Number(product.onHandQty || 0), 0);
   const reserved = products.reduce((sum, product) => sum + Number(product.reservedQty || 0), 0);
-  const available = Math.max(0, total - reserved);
+  const available = rows.reduce((sum, { sku }) => sum + Number(sku?.pickableQty || 0), 0);
   const pendingRecent = recentDocuments.filter((document) => document.direction === 'IN')
     .reduce((sum, document) => sum + Number(document.pending || 0), 0);
   const selectedProduct = selected && products.find((product) => product.id === selected.productId);
@@ -75,7 +75,7 @@ export default function FinishedGoodsOverview({ products, recentDocuments, owner
   const exportCsv = () => {
     const cells = (values) => values.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',');
     const header = ['Mã sản phẩm', 'Tên sản phẩm', 'Mã SKU', 'Màu', 'Size', 'Danh mục', 'Tồn thực tế', 'Tạm giữ', 'Khả dụng'];
-    const body = filtered.map(({ product, sku }) => [product.productCode, product.productName, sku?.skuCode, sku?.color, sku?.size, product.category, sku?.onHandQty || 0, sku?.reservedQty || 0, sku ? Math.max(0, Number(sku.availableQty ?? Number(sku.onHandQty || 0) - Number(sku.reservedQty || 0))) : 0]);
+    const body = filtered.map(({ product, sku }) => [product.productCode, product.productName, sku?.skuCode, sku?.color, sku?.size, product.category, sku?.onHandQty || 0, sku?.reservedQty || 0, Number(sku?.pickableQty || 0)]);
     const url = URL.createObjectURL(new Blob(['\uFEFF' + [header, ...body].map(cells).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a');
     anchor.href = url; anchor.download = 'ton-kho-thanh-pham-theo-sku.csv'; anchor.click();
@@ -85,7 +85,7 @@ export default function FinishedGoodsOverview({ products, recentDocuments, owner
   return <>
     <section className="fg-metrics" aria-label="Tổng quan tồn kho thành phẩm">
       <div className="fg-metric"><span>Tồn thực tế</span><strong>{number(total)}</strong><small>Chiếc đã xác nhận nhập kho</small></div>
-      <div className="fg-metric fg-metric-available"><span>Khả dụng</span><strong>{number(available)}</strong><small>Tồn thực tế trừ lượng tạm giữ</small></div>
+      <div className="fg-metric fg-metric-available"><span>Khả dụng trên kệ</span><strong>{number(available)}</strong><small>Hàng ở vị trí có thể soạn, trừ lượng đã giữ</small></div>
       <div className="fg-metric fg-metric-pending"><span>Chờ xếp vào kệ</span><strong>{number(pendingRecent)}</strong><small>Trong {recentInbound.length} phiếu nhập gần đây</small></div>
     </section>
     <p className="fg-stock-note">Hàng không đạt không tăng tồn. Hàng đạt cần phân bổ đủ Kệ → Tầng → Ô trước khi xác nhận nhập; vị trí từng chiếc được tra cứu ở chức năng xếp kệ.</p>
@@ -95,7 +95,7 @@ export default function FinishedGoodsOverview({ products, recentDocuments, owner
         <label className="fg-search"><Search size={19} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Tìm tên sản phẩm, mã mẫu hoặc SKU" aria-label="Tìm tồn kho theo SKU" /></label>
         {filtersOpen && <div className="fg-filters"><label>Danh mục<select value={category} onChange={(event) => { setCategory(event.target.value); setPage(1); }}><option value="">Tất cả danh mục</option>{categories.map((name) => <option key={name} value={name}>{name}</option>)}</select></label><label>Khả dụng<select value={availability} onChange={(event) => { setAvailability(event.target.value); setPage(1); }}><option value="">Tất cả</option><option value="available">Còn khả dụng</option><option value="empty">Hết khả dụng</option></select></label><button type="button" onClick={() => { setSearch(''); setCategory(''); setAvailability(''); setPage(1); }}>Xóa bộ lọc</button></div>}
         {loading ? <p className="fg-empty">Đang tải tồn kho...</p> : filtered.length === 0 ? <p className="fg-empty">Không có SKU phù hợp. <Link to="/warehouse/products/new">Cấu hình sản phẩm</Link></p> : <div className="fg-table-scroll"><table className="fg-stock-table"><thead><tr><th>Sản phẩm / SKU</th><th>Tồn thực tế</th><th>Tạm giữ</th><th>Khả dụng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{visible.map(({ product, sku }) => {
-          const availableQty = sku ? Math.max(0, Number(sku.availableQty ?? Number(sku.onHandQty || 0) - Number(sku.reservedQty || 0))) : 0;
+          const availableQty = sku ? Number(sku.pickableQty || 0) : 0;
           return <tr key={`${product.id}:${sku?.id || 'no-sku'}`} className={selected?.productId === product.id && selected?.skuId === sku?.id ? 'selected' : ''}>
             <td data-label="Sản phẩm / SKU"><div className="fg-product-cell">{product.thumbnailUrl ? <img src={product.thumbnailUrl} alt="" /> : <span className="fg-product-placeholder"><Box size={20} /></span>}<div><strong>{product.productName}</strong><small>{product.productCode} · {sku ? `${sku.skuCode} · ${sku.color || '—'} / ${sku.size || '—'}` : 'Chưa có SKU'}</small></div></div></td>
             <td data-label="Tồn thực tế" className="fg-number">{number(sku?.onHandQty)}</td><td data-label="Tạm giữ" className="fg-number">{number(sku?.reservedQty)}</td><td data-label="Khả dụng" className="fg-number fg-available-number">{number(availableQty)}</td>

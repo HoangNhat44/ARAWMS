@@ -43,6 +43,25 @@ const positive = (value, max) =>
   Number(value) <= max;
 const barcodeFor = (code) =>
   `LOC-${code}-${randomBytes(6).toString("hex").toUpperCase()}`;
+const activeBinUsage = async (binIds, session = null) => {
+  if (!binIds.length) return false;
+  const [locations, unit, roll, lot, allocations] = await Promise.all([
+    WarehouseLocation.find({ _id: { $in: binIds } })
+      .select("currentOccupancy plannedReservedQty").session(session).lean(),
+    ProductUnit.exists({ warehouseId: { $in: binIds }, inventoryStatus: "AVAILABLE" }).session(session),
+    FabricRoll.exists({ locationId: { $in: binIds }, currentLengthMeters: { $gt: 0 } }).session(session),
+    MaterialStockLot.exists({ currentQty: { $gt: 0 },
+      allocations: { $elemMatch: { locationId: { $in: binIds }, putawayQty: { $gt: 0 } } } }).session(session),
+    PutawayAllocation.find({ status: "CONFIRMED", "lines.targetLocationId": { $in: binIds } })
+      .select("lines").session(session).lean(),
+  ]);
+  const idSet = new Set(binIds.map(id));
+  const pending = allocations.some((allocation) => allocation.lines.some((line) =>
+    idSet.has(id(line.targetLocationId)) &&
+    line.allocatedQuantity - (line.placedQuantity || 0) - (line.shortageQuantity || 0) > 0));
+  return locations.some((location) => (location.currentOccupancy || 0) > 0 ||
+    (location.plannedReservedQty || 0) > 0) || Boolean(unit || roll || lot || pending);
+};
 const audit = (user, action, target, before, after, session) =>
   SystemLog.create(
     [
@@ -156,12 +175,16 @@ export async function addRack(user, input) {
     .trim();
   const floors = Number(input.floors ?? 3);
   const binsPerFloor = Number(input.binsPerFloor ?? 1);
+  const capacityPerBin = Number(input.capacityPerBin ?? 0);
   const capacityUnit = zoneCode === "A" ? String(input.capacityUnit || "").toUpperCase() : "PIECE";
   if (
     !codePattern.test(rackCode) ||
     !positive(floors, 12) ||
     !positive(binsPerFloor, 20) ||
     floors * binsPerFloor > 120 ||
+    (zoneCode === "A" ? !Number.isFinite(capacityPerBin) || capacityPerBin > 100000000
+      : !Number.isSafeInteger(capacityPerBin)) ||
+    capacityPerBin < 0 ||
     (zoneCode === "A" && !rawCapacityUnits.includes(capacityUnit)) ||
     !layout.draft.zones.some(
       (zone) =>
@@ -170,7 +193,7 @@ export async function addRack(user, input) {
         zone.status === "ACTIVE",
     )
   ) {
-    fail("INVALID_RACK", "Kệ, khu hoặc số tầng/ô không hợp lệ", 400);
+    fail("INVALID_RACK", "Kệ, khu, số tầng/ô hoặc sức chứa mỗi ô không hợp lệ", 400);
   }
   if (
     layout.draft.racks.some(
@@ -204,7 +227,7 @@ export async function addRack(user, input) {
         barcode: barcodeFor(locationCode),
         floorNo,
         binNo,
-        capacity: 0,
+        capacity: capacityPerBin,
         capacityUnit,
         allowedSkuMode: "SINGLE",
         allowedSkuIds: [],
@@ -323,6 +346,9 @@ export async function removeDraftRack(user, rackId, version) {
     fail("VERSION_CONFLICT", "Bản nháp đã thay đổi");
   if (!layout.draft.racks.some((rack) => id(rack.id) === id(rackId)))
     fail("RACK_NOT_FOUND", "Không tìm thấy kệ", 404);
+  const activeBins = layout.active.bins.filter((bin) => id(bin.rackId) === id(rackId));
+  if (await activeBinUsage(activeBins.map((bin) => bin.id)))
+    fail("RACK_IN_USE", "Kệ còn hàng hoặc hàng chờ xếp. Hãy chuyển hàng sang kệ khác và xử lý phần chờ xếp trước khi xóa.");
   const draft = snap(layout.draft);
   draft.racks = draft.racks.filter((rack) => id(rack.id) !== id(rackId));
   draft.bins = draft.bins.filter((bin) => id(bin.rackId) !== id(rackId));
@@ -443,7 +469,6 @@ export async function validateSnapshot(draft, session) {
     .map((zone) => zone.code));
   const rackIds = new Set(draft.racks.map((rack) => id(rack.id)));
   const rackById = new Map(draft.racks.map((rack) => [id(rack.id), rack]));
-  const zoneByCode = new Map(draft.zones.map((zone) => [zone.code, zone]));
   for (const zone of draft.zones) {
     if (
       !codePattern.test(zone.code) ||
@@ -468,13 +493,6 @@ export async function validateSnapshot(draft, session) {
     errors.push("Mã kệ bị trùng trong khu");
   for (const bin of draft.bins) {
     const parentRack = rackById.get(id(bin.rackId));
-    if (
-      bin.status === "ACTIVE" &&
-      (parentRack?.status !== "ACTIVE" ||
-        zoneByCode.get(parentRack.zoneCode)?.status !== "ACTIVE")
-    ) {
-      errors.push(`Ô ${bin.locationCode} thuộc khu/kệ đã ngừng sử dụng`);
-    }
     if (
       !rackIds.has(id(bin.rackId)) ||
       !/^[A-Z0-9_-]+-T\d+-O\d+$/.test(bin.locationCode) ||
@@ -533,6 +551,11 @@ export async function validateSnapshot(draft, session) {
         line.allocatedQuantity - (line.placedQuantity || 0) - (line.shortageQuantity || 0));
       reservedByBin.set(binId, (reservedByBin.get(binId) || 0) + remaining);
     }
+  for (const rack of draft.racks.filter((item) => item.status === "INACTIVE")) {
+    const rackBinIds = draft.bins.filter((bin) => id(bin.rackId) === id(rack.id)).map((bin) => bin.id);
+    if (await activeBinUsage(rackBinIds, session))
+      errors.push(`Kệ ${rack.zoneCode}-${rack.code} còn hàng hoặc hàng chờ xếp. Hãy chuyển hàng sang kệ khác và xử lý phần chờ xếp trước khi ngừng dùng`);
+  }
   for (const bin of draft.bins) {
     const stored = byId.get(id(bin.id));
     const isRaw = rackById.get(id(bin.rackId))?.zoneCode === "A";
@@ -583,26 +606,8 @@ export async function validateDraft() {
   const keepIds = new Set(layout.draft.bins.map((bin) => id(bin.id)));
   const removed = layout.active.bins.filter((bin) => !keepIds.has(id(bin.id)));
   for (const bin of removed) {
-    const [stored, units, allocations, roll, lot] = await Promise.all([
-      WarehouseLocation.findById(bin.id)
-        .select("currentOccupancy plannedReservedQty")
-        .lean(),
-      ProductUnit.exists({ warehouseId: bin.id }),
-      PutawayAllocation.exists({
-        status: "CONFIRMED",
-        "lines.targetLocationId": bin.id,
-      }),
-      FabricRoll.exists({ locationId: bin.id }),
-      MaterialStockLot.exists({ "allocations.locationId": bin.id }),
-    ]);
-    if (
-      (stored?.currentOccupancy || 0) > 0 ||
-      (stored?.plannedReservedQty || 0) > 0 ||
-      units ||
-      allocations || roll || lot
-    ) {
-      errors.push(`Ô ${bin.locationCode} còn hàng hoặc phân bổ, không thể bỏ`);
-    }
+    if (await activeBinUsage([bin.id]))
+      errors.push(`Ô ${bin.locationCode} còn hàng hoặc hàng chờ xếp. Hãy chuyển hàng sang kệ khác trước khi xóa`);
   }
   const clashes = await WarehouseLocation.find({
     _id: { $nin: layout.draft.bins.map((bin) => bin.id) },
@@ -648,29 +653,15 @@ export async function publishDraft(user, version) {
       const oldById = new Map(
         layout.active.bins.map((item) => [id(item.id), item]),
       );
+      const zoneByCode = new Map(draft.zones.map((zone) => [zone.code, zone]));
       const keepIds = new Set(draft.bins.map((bin) => id(bin.id)));
       for (const old of layout.active.bins) {
         if (keepIds.has(id(old.id))) continue;
         const stored = await WarehouseLocation.findById(old.id).session(
           session,
         );
-        const [roll, lot] = await Promise.all([
-          FabricRoll.exists({ locationId: old.id }).session(session),
-          MaterialStockLot.exists({ "allocations.locationId": old.id }).session(session),
-        ]);
-        if (
-          stored &&
-          ((stored.currentOccupancy || 0) > 0 ||
-            (stored.plannedReservedQty || 0) > 0 ||
-            (await ProductUnit.exists({ warehouseId: old.id }).session(
-              session,
-            )) ||
-            (await PutawayAllocation.exists({
-              status: "CONFIRMED",
-              "lines.targetLocationId": old.id,
-            }).session(session)) || roll || lot)
-        )
-          fail("BIN_IN_USE", `Ô ${old.locationCode} còn hàng hoặc chỗ đã giữ`);
+        if (await activeBinUsage([old.id], session))
+          fail("BIN_IN_USE", `Ô ${old.locationCode} còn hàng hoặc hàng chờ xếp. Hãy chuyển hàng sang kệ khác trước khi xóa`);
         await WarehouseLocation.updateOne(
           { _id: old.id },
           {
@@ -697,6 +688,10 @@ export async function publishDraft(user, version) {
       }
       for (const bin of draft.bins) {
         const rack = draft.racks.find((item) => id(item.id) === id(bin.rackId));
+        // Keep each bin's configured state; the published location is unavailable
+        // whenever its parent rack or zone is inactive.
+        const effectiveStatus = rack.status === "ACTIVE" &&
+          zoneByCode.get(rack.zoneCode)?.status === "ACTIVE" ? bin.status : "INACTIVE";
         const old = await WarehouseLocation.findById(bin.id).session(session);
         if (old && id(old._id) !== id(bin.id))
           fail("BIN_CONFLICT", "ID ô không hợp lệ");
@@ -731,7 +726,7 @@ export async function publishDraft(user, version) {
               layoutBin: true,
               allowedSkuMode: bin.allowedSkuMode,
               allowedSkuIds: bin.allowedSkuIds,
-              status: bin.status,
+              status: effectiveStatus,
               layoutVersion: layout.activeVersion + 1,
               isDeleted: false,
               deletedAt: null,
@@ -751,7 +746,9 @@ export async function publishDraft(user, version) {
             status: item.status,
             barcode: item.barcode,
           };
-        if (JSON.stringify(config(before)) !== JSON.stringify(config(bin))) {
+        const beforeConfig = before && { ...config(before), effectiveStatus: old?.status };
+        const afterConfig = { ...config(bin), effectiveStatus };
+        if (JSON.stringify(beforeConfig) !== JSON.stringify(afterConfig)) {
           locationLogs.push({
             actorId: user._id,
             actorRole: user.roleCode,
@@ -761,8 +758,8 @@ export async function publishDraft(user, version) {
             targetCollection: "warehouse_locations",
             targetId: bin.id,
             targetCode: bin.locationCode,
-            beforeSnapshot: config(before),
-            afterSnapshot: config(bin),
+            beforeSnapshot: beforeConfig,
+            afterSnapshot: afterConfig,
           });
         }
       }

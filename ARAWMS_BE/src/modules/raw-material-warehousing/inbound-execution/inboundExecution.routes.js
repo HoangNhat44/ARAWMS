@@ -9,9 +9,10 @@ import express from 'express';
 // import { sendError } from '../../../common/utils/responseHandler.js';
 import {
   options, createLocation, createMaterial, plans, planDetails, receipts, receiptDetails, deliveryMatches,
-  createReceipt, updateReceipt, confirmReceipt, cancelReceipt, uploadReceiptAttachment,
+  createReceipt, updateReceipt, confirmReceipt, cancelReceipt, receiptByDraftKey, uploadReceiptAttachment,
   receiptLabels, syncReceiptBarcodes, rollTemplate, previewRolls, putaway,
   requestSupplierReturn, confirmSupplierReturn,
+  createPlan, setupLegacyPlan, closeBatch, cancelBatch, reviseBatch, reviseBatchItems,
 } from './inboundExecution.controller.js';
 
 const router = express.Router();
@@ -40,10 +41,17 @@ router.post('/roll-import/preview', express.raw({ type: 'application/vnd.openxml
 router.post('/locations', createLocation);
 router.post('/materials', createMaterial);
 router.get('/plans', plans);
+router.post('/plans', createPlan);
 router.get('/plans/:id', planDetails);
+router.post('/plans/:id/setup-legacy', setupLegacyPlan);
+router.post('/plans/:id/batches/:batchId/close-short', closeBatch);
+router.post('/plans/:id/batches/:batchId/cancel', cancelBatch);
+router.put('/plans/:id/batches/:batchId/window', reviseBatch);
+router.put('/plans/:id/batches/:batchId/items', reviseBatchItems);
 router.get('/receipts', receipts);
 router.get('/delivery-matches', deliveryMatches);
 router.post('/receipts', createReceipt);
+router.get('/receipts/by-draft-key/:key', receiptByDraftKey);
 router.get('/receipts/:id', receiptDetails);
 router.put('/receipts/:id', updateReceipt);
 router.post('/receipts/:id/attachments', express.raw({ type: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], limit: '6mb' }), uploadReceiptAttachment);

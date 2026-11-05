@@ -8,12 +8,14 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "migrate:sku-index": "node scripts/drop-obsolete-sku-index.mjs",
+    "migrate:catalog-offline-index": "node scripts/ensure-catalog-offline-indexes.mjs",
+    "check:catalog-offline-index": "node scripts/check-catalog-offline-indexes.mjs",
     "backfill:product-media": "node scripts/backfill-product-media.mjs",
-    "test": "jest --detectOpenHandles --forceExit",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "test:packing": "jest packingVerification.test.js",
-    "test:inbound": "jest finishedGoodsInbound.test.js"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --detectOpenHandles --forceExit",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "test:packing": "node --experimental-vm-modules node_modules/jest/bin/jest.js packingVerification.test.js",
+    "test:inbound": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.finishedGoodsInbound.config.cjs --runInBand"
   },
   "keywords": [
     "express",
@@ -34,11 +36,13 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.5.1",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "socket.io": "^4.8.4"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "jest": "^30.5.2",
+    "mongodb-memory-server": "^11.3.0",
     "nodemon": "^3.1.4",
     "supertest": "^7.3.1"
   }

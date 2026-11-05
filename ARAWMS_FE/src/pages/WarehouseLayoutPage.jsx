@@ -111,6 +111,13 @@ export default function WarehouseLayoutPage() {
   };
 
   useEffect(() => { load().catch((err) => setError(errorText(err))); }, []);
+  useEffect(() => {
+    const refresh = (event) => {
+      if (event.detail?.warehouseType === 'FINISHED_GOODS') load().catch((err) => setError(errorText(err)));
+    };
+    window.addEventListener('arawms-putaway-realtime', refresh);
+    return () => window.removeEventListener('arawms-putaway-realtime', refresh);
+  }, []);
 
   const selectRack = (rack) => {
     setAdding(false);

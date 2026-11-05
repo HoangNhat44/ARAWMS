@@ -4,9 +4,11 @@
  * Date: 2026-10-19
  * Description: Lists real sales orders and prints their packing QR labels.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { orderQrService } from '../services/orderQrService';
+import '../styles/orderQr.css';
+import '../styles/orderQrModal.css';
 // import { useAuth } from '../hooks/useAuth';
 
 // Mock user for testing
@@ -103,33 +105,6 @@ function OrderLabel({ card }) {
   </article>;
 }
 
-/** Shows the selected order's recipient, SKU lines, and packing video link. */
-function OrderDetail({ order }) {
-  if (!order) return null;
-  return (
-    <section style={panel}>
-      <h2>Đơn {order.orderCode}</h2>
-      <p>Trạng thái: {statusLabel(order.status)} · Người nhận: {order.recipientName || 'Chưa có'}</p>
-      {order.recipient && <p>Điện thoại: {order.recipient.phone}<br />Địa chỉ: {order.recipient.address}</p>}
-      <ul style={{ margin: '1rem 0 0 1.25rem' }}>
-        {order.items.map((item, index) => (
-          <li key={`${item.skuId || item.skuCode}-${index}`}>
-            {[item.name, item.color, item.size].filter(Boolean).join(' · ') || item.skuCode || item.skuId}
-            {' · '}SKU {item.skuCode || item.skuId} · Số lượng {item.quantity}
-          </li>
-        ))}
-      </ul>
-      {order.packagingVideoUrl && <p style={{ marginTop: '1rem', overflowWrap: 'anywhere' }}>
-        URL video đóng hàng: <code>{order.packagingVideoUrl}</code>
-      </p>}
-      {order.note && <p style={{ marginTop: '1rem' }}>Ghi chú: {order.note}</p>}
-      <p style={{ marginTop: '1rem', color: 'var(--ara-text-muted)' }}>
-        Barcode từng món sẽ được nhân viên kho gắn sau khi quét QR đơn.
-      </p>
-    </section>
-  );
-}
-
 /** Lists accessible orders and manages their packing QR labels.
  * Keeps search, selection, printing, and QR issuance in one page workflow. */
 export default function OrderQrPage() {
@@ -140,6 +115,13 @@ export default function OrderQrPage() {
   const [orders, setOrders] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const dialogRef = useRef(null);
+  const triggerRef = useRef(null);
+  const scrollYRef = useRef(0);
+  const detailRequestRef = useRef(0);
   const [search, setSearch] = useState('');
   const [packingFilter, setPackingFilter] = useState('all');
   const [qrCards, setQrCards] = useState({});
@@ -181,14 +163,43 @@ export default function OrderQrPage() {
   const cards = Object.values(qrCards);
   const activeCanIssue = orders.some((item) => item.id === activeOrder?.id && item.canIssueQr);
 
+  const closeOrderDetail = () => setDetailOpen(false);
+
+  useEffect(() => {
+    if (!detailOpen) return undefined;
+    scrollYRef.current = window.scrollY;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusables = () => [...(dialogRef.current?.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])') || [])];
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); closeOrderDetail(); return; }
+      if (event.key !== 'Tab') return;
+      const nodes = focusables();
+      if (!nodes.length) { event.preventDefault(); dialogRef.current?.focus(); return; }
+      const first = nodes[0]; const last = nodes[nodes.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    requestAnimationFrame(() => (dialogRef.current?.querySelector('.order-detail-close') || dialogRef.current)?.focus());
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      window.scrollTo(0, scrollYRef.current);
+      requestAnimationFrame(() => triggerRef.current?.focus());
+    };
+  }, [detailOpen]);
+
   /** Loads the selected order while preserving access checks on the server. */
-  const selectOrderById = async (id) => {
-    setBusy(true); setError(''); setMessage('');
+  const selectOrderById = async (id, event) => {
+    const requestNumber = ++detailRequestRef.current;
+    triggerRef.current = event?.currentTarget || document.activeElement;
+    setDetailOpen(true); setDetailLoading(true); setDetailError(''); setActiveOrder(null);
     try {
       const response = await orderQrService.lookupOrderByCode(id);
-      setActiveOrder(response.data.order);
-    } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
+      if (requestNumber === detailRequestRef.current) setActiveOrder(response.data.order);
+    } catch (err) { if (requestNumber === detailRequestRef.current) setDetailError(err.message); }
+    finally { if (requestNumber === detailRequestRef.current) setDetailLoading(false); }
   };
 
   /** Builds a printable card from the order and its issued QR value. */
@@ -273,18 +284,19 @@ export default function OrderQrPage() {
   };
 
   return (
-    <div style={{ width: 'min(100%, 1100px)', margin: '2rem auto', padding: '0 1rem', display: 'grid', gap: '1rem' }}>
-      <h1>{canConfirm ? 'Chốt đơn và cấp QR' : 'Xem, in đơn hàng và tạo QR'}</h1>
-      <p>Chọn đơn để xem chi tiết, in tem hoặc tạo QR. Có thể chọn nhiều đơn đủ điều kiện để tạo QR hàng loạt.</p>
+    <main className="order-qr-page">
+      <p className="order-qr-crumb"><Link to="/">Trang chủ</Link><span>/</span>Đơn hàng và QR</p>
+      <header className="order-qr-heading"><div><p className="order-qr-eyebrow">QUẢN LÝ ĐƠN HÀNG</p><h1>{canConfirm ? 'Chốt đơn và cấp QR' : 'Xem, in đơn hàng và tạo QR'}</h1><p>Kiểm tra đơn hàng, chốt nội dung và in tem QR phục vụ đóng hàng.</p></div><div className="order-qr-actions"><span className="order-qr-warehouse">Kho Tổng TP.HCM</span></div></header>
+      <p className="order-qr-description">Chọn đơn để xem chi tiết, in tem hoặc tạo QR. Có thể chọn nhiều đơn đủ điều kiện để tạo QR hàng loạt.</p>
       {error && <div role="alert" style={{ ...panel, color: 'var(--ara-error)', overflowWrap: 'anywhere' }}>
         {error}{error === unplacedStockMessage && <p style={{ margin: '.75rem 0 0' }}>
           <Link to="/warehouse/putaway">Mở danh sách hàng chờ xếp →</Link>
         </p>}
       </div>}
       {message && <div role="status" style={panel}>{message}</div>}
-      <section style={panel}>
-        <h2>Danh sách đơn hàng ({filteredOrders.length}/{orders.length})</h2>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem', margin: '1rem 0' }}>
+      <section className="order-qr-card">
+        <h2>Danh sách đơn hàng <small>({filteredOrders.length}/{orders.length})</small></h2>
+        <div className="order-qr-filters">
           <input aria-label="Tìm đơn hàng" value={search} onChange={(event) => setSearch(event.target.value)}
             placeholder="Tìm theo mã đơn, ID, người nhận hoặc trạng thái" style={{ flex: '1 1 300px', padding: '.7rem', border: '1px solid var(--ara-border)', borderRadius: 6 }} />
           <select aria-label="Lọc theo trạng thái đóng hàng" value={packingFilter} onChange={(event) => {
@@ -323,24 +335,28 @@ export default function OrderQrPage() {
               <td>{order.orderCode}</td>
               <td>{order.recipientName || '—'}</td><td>{order.itemCount}</td><td>{statusLabel(order.status)}</td>
               <td>{order.hasQr ? 'Đã cấp' : 'Chưa cấp'}</td>
-              <td><button className="btn-ara-secondary" type="button" disabled={busy} onClick={() => selectOrderById(order.id)}>Xem đơn</button></td>
+              <td><button className="btn-ara-secondary" type="button" disabled={busy} onClick={(event) => selectOrderById(order.id, event)}>Xem đơn</button></td>
             </tr>)}</tbody>
           </table>
           {!filteredOrders.length && <p style={{ padding: '1rem 0' }}>Không có đơn hàng phù hợp.</p>}
         </div>}
         <small>Đơn chờ chốt cần được chốt trước khi cấp QR. Đơn đã đóng xong hiển thị “Sẵn sàng vận chuyển”.</small>
       </section>
-      <OrderDetail order={activeOrder} />
-      {activeOrder && <section style={panel}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem' }}>
-          <button className="btn-ara-secondary" type="button" disabled={busy} onClick={queueOrderForPrinting}>Thêm đơn vào danh sách in</button>
-          {canConfirm && activeOrder.status === 'PENDING' && <button className="btn-ara-primary" type="button" disabled={busy} onClick={confirmActiveOrder}>Chốt đơn và tạo QR</button>}
-          {canIssue && activeCanIssue && <>
-            <button className="btn-ara-primary" type="button" disabled={busy} onClick={issueQrForActiveOrder}>Tạo / lấy QR đơn này</button>
-            <button className="btn-ara-secondary" type="button" disabled={busy} onClick={replaceActiveOrderQr}>Thu hồi và cấp QR mới</button>
-          </>}
-        </div>
-      </section>}
+      {detailOpen && <div className="order-detail-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeOrderDetail(); }}>
+        <section className="order-detail-modal" role="dialog" aria-modal="true" aria-labelledby="order-detail-title" tabIndex={-1} ref={dialogRef}>
+          <header className="order-detail-header"><div><h2 id="order-detail-title">Chi tiết đơn {activeOrder ? `#${activeOrder.orderCode}` : ''}</h2>{activeOrder && <span className={`order-detail-status status-${activeOrder.status.toLowerCase()}`}>{statusLabel(activeOrder.status)}</span>}</div><button className="order-detail-close" type="button" aria-label="Đóng chi tiết đơn" onClick={closeOrderDetail}>×</button></header>
+          <div className="order-detail-body" aria-live="polite">
+            {detailLoading && <p className="order-detail-state">Đang tải chi tiết đơn hàng…</p>}
+            {!detailLoading && detailError && <p className="order-detail-error" role="alert">{detailError}</p>}
+            {!detailLoading && activeOrder && <>
+              <section className="order-detail-recipient"><h3>Thông tin người nhận</h3><dl><div><dt>Người nhận</dt><dd>{activeOrder.recipient?.name || activeOrder.recipientName || '—'}</dd></div><div><dt>Điện thoại</dt><dd>{activeOrder.recipient?.phone || '—'}</dd></div><div><dt>Địa chỉ</dt><dd>{activeOrder.recipient?.address || '—'}</dd></div></dl>{activeOrder.note && <p className="order-detail-note"><strong>Ghi chú:</strong> {activeOrder.note}</p>}{activeOrder.packagingVideoUrl && <p className="order-detail-note"><strong>Video đóng hàng:</strong> <a href={activeOrder.packagingVideoUrl} target="_blank" rel="noreferrer">Mở video</a></p>}</section>
+              <section className="order-detail-products"><h3>Sản phẩm ({activeOrder.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)} chiếc)</h3><div className="order-detail-table-wrap"><table><thead><tr><th>Sản phẩm</th><th>Màu</th><th>Size</th><th>SKU</th><th>Số lượng</th></tr></thead><tbody>{activeOrder.items.map((item, index) => <tr key={`${item.skuId || item.skuCode}-${index}`}><td>{item.name || '—'}</td><td>{item.color || '—'}</td><td>{item.size || '—'}</td><td>{item.skuCode || item.skuId || '—'}</td><td>{item.quantity}</td></tr>)}</tbody></table></div></section>
+              <p className="order-detail-hint">Barcode từng món được nhân viên kho gắn sau khi quét QR đơn.</p>
+            </>}
+          </div>
+          <footer className="order-detail-footer"><button className="btn-ara-secondary" type="button" onClick={closeOrderDetail}>Đóng</button><div className="order-detail-actions">{activeOrder && <button className="btn-ara-secondary" type="button" disabled={busy} onClick={queueOrderForPrinting}>Thêm đơn vào danh sách in</button>}{canConfirm && activeOrder?.status === 'PENDING' && <button className="btn-ara-primary" type="button" disabled={busy} onClick={confirmActiveOrder}>Chốt đơn và tạo QR</button>}{canIssue && activeCanIssue && <><button className="btn-ara-primary" type="button" disabled={busy} onClick={issueQrForActiveOrder}>Tạo / lấy QR đơn này</button><button className="btn-ara-secondary" type="button" disabled={busy} onClick={replaceActiveOrderQr}>Thu hồi và cấp QR mới</button></>}</div></footer>
+        </section>
+      </div>}
       {cards.length > 0 && <section className="packing-qr-print" style={panel}>
         <div className="qr-gallery-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
           <h2>Đơn chờ in ({cards.length})</h2>
@@ -358,6 +374,6 @@ export default function OrderQrPage() {
         </div>
         <div className="order-print-labels">{cards.map((card) => <OrderLabel key={card.id} card={card} />)}</div>
       </section>}
-    </div>
+    </main>
   );
 }

@@ -2,60 +2,13 @@
  * File: bulkStock.routes.js
  * Author: Duy Anh
  * Date: 2026-10-22
- * Description: Quản lý nhập/xuất kho hàng loạt thành phẩm (Bulk Finished Goods Stock Management)
+ * Description: Quản lý nhập/xuất kho hàng loạt thành phẩm
  * 
- * CHỨC NĂNG CHÍNH:
- * ================
- * 1. Nhập kho hàng loạt từ xưởng sản xuất
- *    - Xử lý số lượng: xưởng bàn giao → thực nhận → đạt nhập kho → trả xưởng sửa
- *    - Tự động tạo barcode cho từng sản phẩm
- *    - Tạo batch và product units
- *    - Cập nhật tồn kho SKU
- * 
- * 2. Xuất kho hàng loạt
- *    - Giảm tồn kho
- *    - Ghi nhận transaction
- * 
- * 3. Quản lý barcode
- *    - Tạo ảnh barcode tự động
- *    - Upload lên Cloudinary
- *    - Sync lại ảnh bị thiếu
- * 
- * 4. Phân bổ vị trí kệ (Putaway Allocation)
- *    - Chỉ định ô kệ cho hàng mới nhập
- *    - Theo dõi tiến độ xếp hàng
- * 
- * API ENDPOINTS:
- * ==============
- * GET    /bin-options                      - Lấy danh sách ô kệ còn chỗ
- * GET    /documents                        - Danh sách phiếu nhập/xuất gần nhất
- * GET    /documents/pending-allocation     - Hàng chờ phân bổ vị trí
- * GET    /documents/:id                    - Chi tiết phiếu + tiến độ
- * GET    /documents/:id/barcodes           - Danh sách tem barcode
- * POST   /documents/:id/barcodes/sync      - Tạo lại ảnh barcode
- * POST   /documents/:id/allocations        - Xác nhận phân bổ vị trí
- * POST   /documents                        - Tạo phiếu nhập/xuất
- * 
- * LUỒNG NHẬP KHO:
- * ===============
- * 1. Xưởng bàn giao (expectedQty: 100)
- * 2. Nhận hàng thực tế (receivedQty: 95) - mất 5 cái
- * 3. Kiểm tra chất lượng:
- *    - Đạt chuẩn (quantity: 90)
- *    - Lỗi cần sửa (repairQty: 5)
- * 4. Tạo barcode cho 90 sản phẩm đạt
- * 5. Cập nhật tồn kho SKU +90
- * 6. Tạo batch và product units
- * 7. Upload ảnh barcode lên Cloudinary
- * 8. Phân bổ vào ô kệ (nếu có)
- * 
- * VALIDATION:
- * ===========
- * - expectedQty >= receivedQty >= quantity
- * - repairQty = receivedQty - quantity
- * - Kiểm tra sức chứa vị trí kho
- * - Kiểm tra SKU tồn tại và active
- * - Ngăn tạo trùng phiếu (idempotency key)
+ * Chức năng:
+ * - Nhập kho hàng loạt (tạo barcode tự động, batch, product units)
+ * - Xuất kho hàng loạt
+ * - Quản lý ảnh barcode (upload Cloudinary)
+ * - Phân bổ vị trí kệ
  */
 import express from 'express';
 import mongoose from 'mongoose';
@@ -71,34 +24,14 @@ import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js
 import { scheduleBarcodeImages } from '../../../common/services/barcodeImageStorage.js';
 import PutawayAllocation from '../../../models/PutawayAllocation.model.js';
 import { confirmReceiptAllocation, fingerprint, parseLines, remainingQuantity } from '../location-layout/allocation.service.js';
+import { publishRealtime } from '../../../common/services/realtime.js';
 
 const router = express.Router();
 
-/**
- * Tạo custom error object với status code
- * @param {string} message - Thông báo lỗi
- * @param {string} code - Mã lỗi (VD: INVALID_QUANTITY)
- * @param {number} status - HTTP status code (default: 400)
- * @returns {Error} Error object với code và status
- */
+/** Tạo error object với status code */
 const createBulkStockRequestError = (message, code, status = 400) => Object.assign(new Error(message), { code, status });
 
-/**
- * Kiểm tra số lượng nhập kho có hợp lệ không
- * 
- * LOGIC KIỂM TRA:
- * - Số xưởng bàn giao (expectedQty): 1-500 sản phẩm
- * - Số thực nhận (receivedQty): <= expectedQty
- * - Số đạt nhập kho (quantity): 0 đến receivedQty
- * - Số trả xưởng (repairQty): = receivedQty - quantity
- * 
- * VÍ DỤ HỢP LỆ:
- * expectedQty: 100, receivedQty: 95, quantity: 90, repairQty: 5
- * => Xưởng giao 100 → nhận được 95 → đạt 90 → sửa 5
- * 
- * @param {Object} item - Dòng sản phẩm trong phiếu
- * @returns {string|null} Thông báo lỗi hoặc null nếu hợp lệ
- */
+/** Validate số lượng nhập kho: expectedQty >= receivedQty >= quantity, repairQty = receivedQty - quantity */
 export const receivingQuantityError = (item) => {
   const expected = Number(item?.expectedQty);
   const received = Number(item?.receivedQty);
@@ -118,52 +51,43 @@ export const receivingQuantityError = (item) => {
   return null;
 };
 
-/**
- * Format response cho phiếu nhập kho
- * Chỉ trả về thông tin cần thiết, che giấu dữ liệu nội bộ
- * 
- * @param {Object} document - Document từ MongoDB
- * @returns {Object} Response object đã format
- */
+/** Mỗi sản phẩm đạt phải được chỉ định đủ số lượng vào ô kệ trước khi xác nhận nhập. */
+export const receiptAllocationError = (lines, allocations) => {
+  const acceptedBySku = new Map(lines.map((line) => [String(line.skuId), Number(line.quantity)]));
+  const allocatedBySku = new Map();
+  for (const line of allocations) {
+    const skuId = String(line.skuId || '');
+    const quantity = Number(line.allocatedQuantity);
+    if (!acceptedBySku.has(skuId) || !Number.isSafeInteger(quantity) || quantity < 1)
+      return { code: 'INVALID_ALLOCATION', message: 'Ô kệ hoặc số lượng phân bổ không hợp lệ' };
+    allocatedBySku.set(skuId, (allocatedBySku.get(skuId) || 0) + quantity);
+  }
+  for (const [skuId, accepted] of acceptedBySku) {
+    const allocated = allocatedBySku.get(skuId) || 0;
+    if (allocated > accepted)
+      return { code: 'ALLOCATION_EXCEEDS_ACCEPTED', message: 'Phân bổ vượt số lượng đạt của SKU' };
+    if (allocated < accepted)
+      return { code: 'ALLOCATION_INCOMPLETE', message: 'Cần chọn đủ ô kệ cho toàn bộ số lượng đạt nhập kho' };
+  }
+  return null;
+};
+
+/** Returns the committed document identity and issued unit barcodes for an idempotent retry. */
 const receiptResponse = (document) => ({ id: String(document._id), documentCode: document.documentCode,
   direction: document.direction, lineCount: document.items.length, totalQuantity: document.totalQuantity,
   items: document.direction === 'IN' ? document.items.map((item) => ({ skuId: String(item.skuId),
     barcodes: item.barcodes, expectedQty: item.expectedQty, receivedQty: item.receivedQty,
     acceptedQty: item.quantity, repairQty: item.repairQty, repairStatus: item.repairStatus })) : undefined });
 
-/**
- * Tạo hash SHA256 của nội dung phiếu nhập
- * Dùng để ngăn tạo trùng phiếu khi retry request
- * 
- * IDEMPOTENCY:
- * Nếu cùng confirmationKey + cùng hash => trả về phiếu cũ
- * Nếu cùng confirmationKey + khác hash => báo lỗi CONFIRMATION_REUSED
- * 
- * @param {Object} body - Request body
- * @returns {string} SHA256 hash (64 ký tự hex)
- */
-const inboundHash = (body) => createHash('sha256').update(JSON.stringify({
+/** Fingerprints the normalized inbound or outbound request bound to one confirmation key.
+ * Reusing that key with changed stock lines, bins, or notes must be rejected. */
+const confirmationPayloadHash = (body) => createHash('sha256').update(JSON.stringify({
   direction: body.direction, documentCode: String(body.documentCode || '').trim().toUpperCase(),
   note: String(body.note || '').trim(),
   items: body.items, allocations: body.allocations || [],
 })).digest('hex');
 
-/**
- * Tạo hoặc lấy vị trí ảo "FG-UNPLACED" để chứa hàng chưa xếp kệ
- * 
- * MỤC ĐÍCH:
- * - Khi nhập kho không chỉ định vị trí cụ thể
- * - Hàng được lưu vào vị trí ảo này
- * - Sau đó nhân viên kho sẽ xếp vào ô kệ thực
- * 
- * ĐẶC ĐIỂM:
- * - locationCode: "FG-UNPLACED"
- * - isSystemUnplaced: true (đánh dấu là vị trí hệ thống)
- * - maxCapacity: 1 tỷ (không giới hạn)
- * - layoutBin: false (không hiện trên sơ đồ kho)
- * 
- * @returns {Promise<Object>} WarehouseLocation document
- */
+/** Tạo/lấy vị trí ảo FG-UNPLACED để chứa hàng chưa xếp kệ */
 async function ensureUnplacedLocation() {
   const code = 'FG-UNPLACED';
   try {
@@ -178,23 +102,7 @@ async function ensureUnplacedLocation() {
   }
 }
 
-/**
- * GET /bin-options
- * 
- * Lấy danh sách ô kệ thành phẩm còn chỗ trống
- * 
- * QUERY PARAMS:
- * - skuIds: danh sách SKU ID cách nhau bởi dấu phẩy (tối đa 100)
- * 
- * RESPONSE:
- * - racks: tổng hợp theo từng kệ (capacity, actual, reserved, available)
- * - bins: chi tiết từng ô (locationCode, available space)
- * 
- * SỬ DỤNG:
- * - Hiển thị dropdown chọn vị trí khi nhập kho
- * - Hiển thị biểu đồ sức chứa kho
- * - Gợi ý vị trí xếp hàng
- */
+/** GET /bin-options - Lấy danh sách ô kệ còn chỗ trống */
 router.get('/bin-options', async (req, res, next) => {
   try {
     const skuIds = String(req.query.skuIds || '').split(',').filter(Boolean);
@@ -478,6 +386,8 @@ router.post('/documents/:id/allocations', async (req, res, next) => {
     await session.withTransaction(async () => {
       allocation = await confirmReceiptAllocation(req.user, req.params.id, lines, session, key);
     });
+    publishRealtime('warehouse-putaway:changed', { warehouseType: 'FINISHED_GOODS',
+      receiptId: req.params.id, allocationId: String(allocation._id), reason: 'ALLOCATION_CONFIRMED' });
     return sendSuccess(res, 'Đã giữ chỗ chờ xếp', { allocation }, 201);
   } catch (error) {
     if (error.code === 11000) {
@@ -586,6 +496,9 @@ router.post('/documents/:id/allocations', async (req, res, next) => {
  * RESPONSE:
  * - document: {id, documentCode, direction, lineCount, totalQuantity}
  * - items: [{skuId, barcodes[], expectedQty, receivedQty, acceptedQty, repairQty}]
+ *
+ * The confirmation key is required for both directions. A retry by the same actor with an
+ * identical payload returns the committed document instead of writing another stock transaction.
  */
 router.post('/documents', async (req, res, next) => {
   const direction = req.body?.direction;
@@ -601,13 +514,14 @@ router.post('/documents', async (req, res, next) => {
       `Dòng ${invalidLine + 1}: ${receivingQuantityError(items[invalidLine])}`,
       { code: 'INVALID_RECEIVING_QUANTITY' }, 400);
   }
-  if (direction === 'IN' && (!confirmationKey || confirmationKey.length > 100 || !Array.isArray(allocations)))
-    return sendError(res, 'Yêu cầu nhập kho không hợp lệ', { code: 'INVALID_CONFIRMATION' }, 400);
-  const confirmationHash = direction === 'IN' ? inboundHash(req.body) : null;
-  if (direction === 'IN') {
+  if (!confirmationKey || confirmationKey.length > 100 || (direction === 'IN' && !Array.isArray(allocations)))
+    return sendError(res, 'Yêu cầu xác nhận kho không hợp lệ', { code: 'INVALID_CONFIRMATION' }, 400);
+  const confirmationHash = confirmationPayloadHash(req.body);
+  // Resolve a previously committed attempt before checking mutable stock or bin capacity.
+  if (['IN', 'OUT'].includes(direction)) {
     const prior = await FinishedGoodsBulkDocument.findOne({ confirmationKey }).lean();
-    if (prior) return prior.confirmationHash === confirmationHash
-      ? sendSuccess(res, 'Phiếu nhập đã được xác nhận', { document: receiptResponse(prior) })
+    if (prior) return prior.confirmationHash === confirmationHash && String(prior.createdByUserId) === String(req.user._id)
+      ? sendSuccess(res, 'Phiếu kho đã được xác nhận', { document: receiptResponse(prior) })
       : sendError(res, 'Khóa xác nhận đã dùng cho nội dung khác', { code: 'CONFIRMATION_REUSED' }, 409);
   }
   if (!['IN', 'OUT'].includes(direction) || !/^[A-Z0-9._/-]{2,80}$/.test(documentCode) ||
@@ -687,7 +601,7 @@ router.post('/documents', async (req, res, next) => {
           referenceModel: 'FinishedGoodsBulkDocument', referenceId: documentId,
           ...(direction === 'IN' ? { locationId: location._id } : {}),
           quantityChange: delta, onHandBefore: before, onHandAfter: updated.onHandQty,
-          unitCostSnapshot: sku.unitCogs || 0, performedByUserId: req.user._id, note,
+          unitCostSnapshot: sku.unitCogs || 0, totalValueSnapshot: quantity * (sku.unitCogs || 0), performedByUserId: req.user._id, note,
         }], { session });
         let barcodes = [];
         if (direction === 'IN' && quantity > 0) {
@@ -718,23 +632,25 @@ router.post('/documents', async (req, res, next) => {
       [saved] = await FinishedGoodsBulkDocument.create([{
         _id: documentId, documentCode, direction, items: lines,
         ...(direction === 'IN' ? { locationId: location._id } : {}),
-        ...(direction === 'IN' ? { confirmationKey, confirmationHash } : {}),
+        // The document and inventory writes share a transaction and one immutable retry identity.
+        confirmationKey, confirmationHash,
         totalQuantity: lines.reduce((total, line) => total + line.quantity, 0),
         note, createdByUserId: req.user._id,
       }], { session });
-      if (direction === 'IN' && allocations.length) {
-        const acceptedBySku = new Map(lines.map((line) => [String(line.skuId), line.quantity]));
-        const requestedBySku = new Map();
-        for (const line of allocations) {
-          const skuId = String(line.skuId || '');
-          requestedBySku.set(skuId, (requestedBySku.get(skuId) || 0) + Number(line.allocatedQuantity));
-        }
-        for (const [skuId, quantity] of requestedBySku) if (!acceptedBySku.has(skuId) || quantity > acceptedBySku.get(skuId))
-          throw createBulkStockRequestError('Phân bổ vượt số lượng đạt của SKU', 'ALLOCATION_EXCEEDS_ACCEPTED');
-        await confirmReceiptAllocation(req.user, documentId, allocations, session);
+      if (direction === 'IN') {
+        const allocationError = receiptAllocationError(lines, allocations);
+        if (allocationError) throw createBulkStockRequestError(allocationError.message, allocationError.code);
+        if (allocations.length) await confirmReceiptAllocation(req.user, documentId, allocations, session);
       }
     });
-    if (direction === 'IN' && saved.totalQuantity > 0) scheduleBarcodeImages('FINISHED_GOODS', String(saved._id));
+    if (direction === 'IN' && saved.totalQuantity > 0) {
+      scheduleBarcodeImages('FINISHED_GOODS', String(saved._id));
+      publishRealtime('finished-goods:changed', { warehouseType: 'FINISHED_GOODS', direction,
+        documentId: String(saved._id), documentCode: saved.documentCode, totalQuantity: saved.totalQuantity,
+        skuIds: saved.items.map((item) => String(item.skuId)) });
+      if (allocations.length) publishRealtime('warehouse-putaway:changed', { warehouseType: 'FINISHED_GOODS',
+        receiptId: String(saved._id), documentCode: saved.documentCode, reason: 'RECEIPT_AND_ALLOCATION_CONFIRMED' });
+    }
     return sendSuccess(res, direction === 'IN' ? 'Đã nhập kho hàng loạt' : 'Đã xuất kho hàng loạt', {
       document: { id: String(saved._id), documentCode: saved.documentCode, direction: saved.direction,
         lineCount: saved.items.length, totalQuantity: saved.totalQuantity,
@@ -743,10 +659,11 @@ router.post('/documents', async (req, res, next) => {
           repairStatus: item.repairStatus })) : undefined },
     }, 201);
   } catch (error) {
-    if (error.code === 11000 && direction === 'IN') {
+    // A concurrent retry may race the unique index; return the first committed result only if it matches.
+    if (error.code === 11000) {
       const prior = await FinishedGoodsBulkDocument.findOne({ confirmationKey }).lean();
-      if (prior?.confirmationHash === confirmationHash)
-        return sendSuccess(res, 'Phiếu nhập đã được xác nhận', { document: receiptResponse(prior) });
+      if (prior?.confirmationHash === confirmationHash && String(prior.createdByUserId) === String(req.user._id))
+        return sendSuccess(res, 'Phiếu kho đã được xác nhận', { document: receiptResponse(prior) });
     }
     if (error.status) return sendError(res, error.message, { code: error.code }, error.status);
     if (error.code === 112 || error.hasErrorLabel?.('TransientTransactionError'))

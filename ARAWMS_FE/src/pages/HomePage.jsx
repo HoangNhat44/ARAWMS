@@ -112,6 +112,28 @@ const HomePage = () => {
         )}
       </div>
 
+      {/* Test Mode Alert */}
+      <div style={{
+        background: 'linear-gradient(135deg, #fff3cd 0%, #ffe8a1 100%)',
+        border: '2px solid #ffc107',
+        borderRadius: 'var(--radius-md)',
+        padding: '1.5rem 2rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '1rem',
+        boxShadow: '0 4px 12px rgba(255, 193, 7, 0.2)',
+      }}>
+        <Shield size={28} color="#856404" />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#856404', marginBottom: '0.3rem' }}>
+            🔓 TEST MODE - Authentication Disabled
+          </div>
+          <div style={{ fontSize: '0.92rem', color: '#856404' }}>
+            All pages can be accessed directly without login. Mock user is automatically applied for testing purposes.
+          </div>
+        </div>
+      </div>
+
       {/* Grid 3 Trụ cột chức năng */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
         {user?.roles?.includes('WAREHOUSE_MANAGER') && <Link to="/warehouse/finished-goods" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>

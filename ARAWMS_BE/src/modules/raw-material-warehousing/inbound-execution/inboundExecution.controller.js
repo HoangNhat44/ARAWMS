@@ -8,7 +8,7 @@ import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js
 import { createFabricRollTemplate, previewFabricRollImport } from './fabricRollExcelImport.js';
 import { scheduleBarcodeImages } from '../../../common/services/barcodeImageStorage.js';
 import {
-  getSupplierReceiptOptions, listSupplierReceipts, getSupplierReceipt, findDeliveryMatches,
+  getSupplierReceiptOptions, listSupplierReceipts, getSupplierReceipt, getSupplierReceiptByDraftKey, findDeliveryMatches,
   createSupplierReceipt, updateSupplierReceipt, cancelSupplierReceipt, confirmSupplierReceipt, createSupplierMaterial,
   uploadSupplierReceiptAttachment,
 } from './supplierReceipt.service.js';
@@ -17,6 +17,8 @@ import {
   getMaterialReceipt, getMaterialReceiptLabels, confirmMaterialPutaway,
   requestMaterialSupplierReturn, confirmMaterialSupplierReturn,
 } from './inboundExecution.service.js';
+import { listDeliveryPlans, getDeliveryPlan, createDeliveryPlan, setupLegacyDeliveryPlan, closeDeliveryBatch, cancelDeliveryBatch,
+  reviseDeliveryWindow, reviseDeliveryItems } from './deliveryPlan.service.js';
 
 /** Sends known validation and duplicate-code failures without hiding unexpected errors. */
 const respond = (error, res, next) => {
@@ -35,10 +37,22 @@ const handle = (message, task, status = 200) => async (req, res, next) => {
 export const options = handle('Dữ liệu chọn cho phiếu nhập', (req) => getSupplierReceiptOptions(req.user));
 export const createLocation = handle('Đã tạo vị trí kho', async (req) => ({ location: await createReceiptLocation(req.body || {}, req.user) }), 201);
 export const createMaterial = handle('Đã tạo nguyên phụ liệu', async (req) => ({ material: await createSupplierMaterial(req.body || {}) }), 201);
-export const plans = handle('Kế hoạch nhập có thể nhận', async (req) => ({ plans: await getEligibleInboundPlans(req.query.supplierId) }));
-export const planDetails = handle('Chi tiết kế hoạch nhập', async (req) => ({ plan: await getInboundPlanDetails(req.params.id) }));
+export const plans = handle('Kế hoạch nhập nguyên phụ liệu', async (req) => ({ plans: await listDeliveryPlans(req.query, req.user) }));
+export const planDetails = handle('Chi tiết kế hoạch nhập', async (req) => ({ plan: await getDeliveryPlan(req.params.id, req.user) }));
+export const createPlan = handle('Đã tạo kế hoạch nhập', async (req) => ({ plan: await createDeliveryPlan(req.body || {}, req.user) }), 201);
+export const setupLegacyPlan = handle('Đã thiết lập đợt giao cho kế hoạch cũ', async (req) => ({ plan:
+  await setupLegacyDeliveryPlan(req.params.id, req.body || {}, req.user) }));
+export const closeBatch = handle('Đã đóng thiếu đợt giao', async (req) => ({ plan:
+  await closeDeliveryBatch(req.params.id, req.params.batchId, req.body || {}, req.user) }));
+export const cancelBatch = handle('Đã hủy đợt giao', async (req) => ({ plan:
+  await cancelDeliveryBatch(req.params.id, req.params.batchId, req.body || {}, req.user) }));
+export const reviseBatch = handle('Đã cập nhật lịch giao', async (req) => ({ plan:
+  await reviseDeliveryWindow(req.params.id, req.params.batchId, req.body || {}, req.user) }));
+export const reviseBatchItems = handle('Đã điều chỉnh mặt hàng kế hoạch', async (req) => ({ plan:
+  await reviseDeliveryItems(req.params.id, req.params.batchId, req.body || {}, req.user) }));
 export const receipts = handle('Phiếu nhập nguyên phụ liệu', async (req) => ({ receipts: await listSupplierReceipts(req.query, req.user) }));
 export const receiptDetails = handle('Chi tiết phiếu nhập', (req) => getSupplierReceipt(req.params.id, req.user));
+export const receiptByDraftKey = handle('Phiếu nhập đã tạo', (req) => getSupplierReceiptByDraftKey(req.params.key, req.user));
 export const deliveryMatches = handle('Chứng từ giao trùng', async (req) => ({ matches: await findDeliveryMatches(req.query.supplierId, req.query.code, req.query.excludeId) }));
 export const createReceipt = handle('Đã lưu nháp phiếu nhập', async (req) => ({ receipt: await createSupplierReceipt(req.body || {}, req.user) }), 201);
 export const updateReceipt = handle('Đã cập nhật phiếu nhập', async (req) => ({ receipt: await updateSupplierReceipt(req.params.id, req.body || {}, req.user) }));

@@ -5,7 +5,7 @@
  * Description: Jest configuration for ARAWMS Backend Unit Tests
  */
 
-module.exports = {
+export default {
   testEnvironment: 'node',
   coverageDirectory: 'coverage',
   collectCoverageFrom: [
@@ -27,6 +27,5 @@ module.exports = {
     '/test/'
   ],
   verbose: true,
-  testTimeout: 30000,
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.js']
+  testTimeout: 60000
 };

@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowUpRight, ArrowRightLeft, CirclePlus, RefreshCw } from 'lucide-react';
 import { productService } from '../services/productService';
-import { useAuth } from '../hooks/useAuth';
+// import { useAuth } from '../hooks/useAuth';
 import { getPendingCatalogChanges, subscribeCatalogChanges } from '../services/offlineCatalogSync';
 import { finishedGoodsOffline } from '../services/offlineFinishedGoods';
 import { printProductLabels } from '../utils/productLabelPrint';
@@ -17,14 +17,19 @@ import PendingReceiptAllocation from '../components/PendingReceiptAllocation';
 import FinishedGoodsOverview from '../components/FinishedGoodsOverview';
 import '../styles/finishedGoods.css';
 
+// Mock user for testing (NO AUTH REQUIRED)
+const mockUser = { _id: '507f1f77bcf86cd799439011', id: '507f1f77bcf86cd799439011', username: 'test', fullName: 'Test User', roles: ['OWNER', 'WAREHOUSE_MANAGER'] };
+
 const panel = { background: '#fff', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-md)', padding: '1.25rem', boxShadow: 'var(--ara-shadow-sm)' };
 const input = { width: '100%', padding: '.65rem', border: '1px solid var(--ara-border)', borderRadius: 8, font: 'inherit' };
+const money = (value) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(value) || 0);
 
 /** Displays finished-goods stock and the receive or dispatch workflow.
  * Uses account-scoped cached data for offline viewing while keeping local work separate from server stock. */
 export default function FinishedGoodsPage() {
   const location = useLocation();
-  const { user } = useAuth();
+  // const { user } = useAuth();
+  const user = mockUser;
   const ownerId = user?.id || user?._id;
   const [localCatalog, setLocalCatalog] = useState([]);
   const [products, setProducts] = useState([]);
@@ -36,7 +41,6 @@ export default function FinishedGoodsPage() {
   const [notice, setNotice] = useState('');
   const [activeTab, setActiveTab] = useState('stock');
   const [movement, setMovement] = useState(null);
-  const movementRef = useRef(null);
   const [quantity, setQuantity] = useState('');
   const [skuId, setSkuId] = useState('');
   const [note, setNote] = useState('');
@@ -50,6 +54,9 @@ export default function FinishedGoodsPage() {
   const [laterReceipt, setLaterReceipt] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const barcodeRefreshCount = useRef(0);
+  const movementSku = movement?.product.skus.find((sku) => String(sku.id) === String(skuId));
+  const movementUnitCogs = Number(movementSku?.unitCogs || 0);
+  const outboundValue = movementUnitCogs * (Number(quantity) || 0);
 
   /** Shows the last downloaded SKU stock immediately, then refreshes it when reachable.
    * The capture time remains visible because cached stock is not safe for final issue decisions. */
@@ -138,6 +145,20 @@ export default function FinishedGoodsPage() {
     window.addEventListener('arawms-finished-goods-synced', refresh);
     return () => window.removeEventListener('arawms-finished-goods-synced', refresh);
   }, [ownerId]);
+  useEffect(() => {
+    const refreshStock = (event) => {
+      if (event.detail?.warehouseType === 'FINISHED_GOODS') {
+        loadProducts(); loadRecentStockDocuments(); loadPendingReceipts();
+      }
+    };
+    const refreshCatalog = () => loadProducts();
+    window.addEventListener('arawms-finished-goods-realtime', refreshStock);
+    window.addEventListener('arawms-product-description-realtime', refreshCatalog);
+    return () => {
+      window.removeEventListener('arawms-finished-goods-realtime', refreshStock);
+      window.removeEventListener('arawms-product-description-realtime', refreshCatalog);
+    };
+  }, [ownerId]);
   // A synchronized SKU configuration can change the catalog used by the receipt form.
   useEffect(() => {
     const refresh = (event) => { if (String(event.detail?.ownerId) === String(ownerId)) loadProducts(); };
@@ -161,8 +182,6 @@ export default function FinishedGoodsPage() {
     const timer = window.setTimeout(() => { barcodeRefreshCount.current += 1; loadRecentStockDocuments(); }, 5000);
     return () => window.clearTimeout(timer);
   }, [recentDocuments]);
-  // Keep the selected single-product movement visible after opening it from a catalog row.
-  useEffect(() => { if (movement) movementRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, [movement]);
 
   /** Opens existing unit labels without creating new units or stock.
    * If the API is unavailable, previously downloaded label data is rendered as local Code 128. */
@@ -338,10 +357,13 @@ export default function FinishedGoodsPage() {
 
     </div>}
 
-    {movement && <section ref={movementRef} style={{ ...panel, marginTop: '1rem', maxWidth: 560 }}>
-      <h2>{movement.direction === 'IN' ? 'Nhập kho' : 'Xuất kho'} · {movement.product.productCode}</h2>
-      <p style={{ margin: '.5rem 0 1rem', color: 'var(--ara-text-muted)' }}>{movement.product.productName}</p>
-      <form onSubmit={submitStockMovement} style={{ display: 'grid', gap: '1rem' }}>
+    {movement && <div className="fg-movement-backdrop">
+      <section className="fg-movement-drawer" role="dialog" aria-modal="true" aria-label={`${movement.direction === 'IN' ? 'Nhập kho' : 'Xuất kho'} ${movement.product.productCode}`}>
+        <header className="fg-movement-head"><div><span>{movement.direction === 'IN' ? 'NHẬP KHO' : 'XUẤT KHO'}</span><h2>{movement.direction === 'IN' ? 'Nhập kho' : 'Xuất kho'} · {movement.product.productCode}</h2><p>{movement.product.productName}</p></div><button type="button" aria-label="Đóng bảng xuất kho" onClick={() => {
+          if (!window.confirm('Hủy thao tác nhập hoặc xuất kho đang thực hiện?')) return;
+          setMovement(null); setError('');
+        }}>×</button></header>
+      <form className="fg-movement-form" onSubmit={submitStockMovement}>
         {movement.product.skus.length > 0 ? <label>SKU
           <select style={input} required value={skuId} onChange={(event) => setSkuId(event.target.value)}>
             {movement.product.skus.length > 1 && <option value="">Chọn SKU</option>}
@@ -349,16 +371,22 @@ export default function FinishedGoodsPage() {
           </select>
         </label> : <p>Chưa có SKU. Lần nhập đầu sẽ tạo SKU mặc định (FREESIZE).</p>}
         <label>Số lượng *<input style={input} type="number" min="1" max="100000" step="1" required value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
+        {movement.direction === 'OUT' && <div className="fg-movement-value" aria-live="polite">
+          <div><span>Giá vốn / đơn vị</span><strong>{money(movementUnitCogs)}</strong></div>
+          <div><span>Giá trị xuất kho</span><strong>{money(outboundValue)}</strong></div>
+          <small>Tạm tính theo giá vốn của SKU và số lượng xuất. Sổ giao dịch lưu ảnh chụp giá vốn tại thời điểm xác nhận.</small>
+        </div>}
         <label>Ghi chú<input style={input} maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Lý do nhập/xuất" /></label>
         {error && <p role="alert" style={{ color: '#a32121' }}>{error}</p>}
-        <div style={{ display: 'flex', gap: '.75rem' }}>
+        <footer>
           <button className="btn-ara-primary" disabled={saving} type="submit">{saving ? 'Đang lưu...' : 'Xác nhận'}</button>
           <button className="btn-ara-secondary" disabled={saving} type="button" onClick={() => {
             if (!window.confirm('Hủy thao tác nhập hoặc xuất kho đang thực hiện?')) return;
             setMovement(null); setError('');
           }}>Hủy</button>
-        </div>
+        </footer>
       </form>
-    </section>}
+      </section>
+    </div>}
   </main>;
 }

@@ -17,6 +17,7 @@ import Sku from '../../../models/Sku.model.js';
 import Product from '../../../models/Product.model.js';
 import '../../../models/User.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
+import { publishRealtime } from '../../../common/services/realtime.js';
 import { remainingQuantity } from './allocation.service.js';
 
 const id = (value) => String(value || '');
@@ -35,7 +36,8 @@ export async function listPutawayTasks() {
     .map((line) => ({ allocationId: allocation._id, lineId: line.lineId,
       allocationCode: allocation.allocationCode, receiptId: allocation.sourceReceiptId?._id,
       receiptCode: allocation.sourceReceiptId?.documentCode,
-      skuCode: line.skuId?.skuCode, productName: line.skuId?.productId?.productName,
+      skuId: line.skuId?._id, skuCode: line.skuId?.skuCode,
+      productName: line.skuId?.productId?.productName,
       thumbnailUrl: line.skuId?.productId?.thumbnailUrl, color: line.skuId?.color,
       size: line.skuId?.size, locationCode: line.targetLocationId?.locationCode,
       allocatedQuantity: line.allocatedQuantity, placedQuantity: line.placedQuantity || 0,
@@ -56,7 +58,8 @@ export async function getPutawayTask(allocationId, lineId) {
   if (!line) fail('TASK_NOT_FOUND', 'Không tìm thấy hàng cần xếp', 404);
   return { allocationId: allocation._id, lineId: line.lineId,
     allocationCode: allocation.allocationCode, receiptCode: allocation.sourceReceiptId?.documentCode,
-    skuCode: line.skuId?.skuCode, productName: line.skuId?.productId?.productName,
+    skuId: line.skuId?._id, skuCode: line.skuId?.skuCode,
+    productName: line.skuId?.productId?.productName,
     thumbnailUrl: line.skuId?.productId?.thumbnailUrl, color: line.skuId?.color,
     size: line.skuId?.size, locationCode: line.targetLocationId?.locationCode,
     allocatedQuantity: line.allocatedQuantity, placedQuantity: line.placedQuantity || 0,
@@ -174,9 +177,17 @@ export async function scanPutawayUnit(user, allocationId, lineId, input) {
         targetCollection: 'product_units', targetId: unit._id, targetCode: barcode,
         beforeSnapshot: { warehouseId: source._id }, afterSnapshot: { warehouseId: target._id,
           allocationId: allocation._id, lineId: line.lineId } }], { session });
-      result = { barcode, alreadyAccepted: false };
+      result = { barcode, targetLocationId: id(target._id), alreadyAccepted: false };
     });
-    return { ...result, task: await getPutawayTask(allocationId, lineId) };
+  const task = await getPutawayTask(allocationId, lineId);
+  if (!result.alreadyAccepted) {
+    const event = { warehouseType: 'FINISHED_GOODS', allocationId: id(allocationId), lineId: id(lineId),
+      targetLocationId: result.targetLocationId, locationCode: task.locationCode,
+      skuId: id(task.skuId), reason: 'PUTAWAY_SCAN' };
+    publishRealtime('warehouse-putaway:changed', event);
+    publishRealtime('finished-goods:changed', { ...event, direction: 'PUTAWAY' });
+  }
+  return { ...result, task };
   } catch (error) {
     if (error.code === 11000) {
       const accepted = await PutawayScanEvent.findOne({ requestId }).lean();
@@ -210,6 +221,7 @@ export async function reportPutawayShortage(user, allocationId, lineId, reason) 
     majorFeature: 'WAREHOUSE_PUTAWAY', subFeature: 'SHORTAGE', action: 'REPORT_SHORTAGE',
     targetCollection: 'putaway_allocations', targetId: allocation._id,
     afterSnapshot: { lineId, quantity: remainingQuantity(line), reason: text } });
+  publishRealtime('warehouse-putaway:changed', { allocationId: id(allocationId), lineId: id(lineId), reason: 'SHORTAGE_REPORTED' });
   return getPutawayTask(allocationId, lineId);
 }
 
@@ -248,7 +260,12 @@ export async function resolvePutawayShortage(user, allocationId, lineId, accept)
         targetCollection: 'putaway_allocations', targetId: allocation._id,
         afterSnapshot: { lineId, quantity: remaining, reason: line.shortageReason } }], { session });
     });
-    return getPutawayTask(allocationId, lineId);
+    const task = await getPutawayTask(allocationId, lineId);
+    publishRealtime('warehouse-putaway:changed', { warehouseType: 'FINISHED_GOODS',
+      allocationId: id(allocationId), lineId: id(lineId), reason: 'SHORTAGE_RESOLVED' });
+    publishRealtime('finished-goods:changed', { warehouseType: 'FINISHED_GOODS', direction: 'PUTAWAY',
+      allocationId: id(allocationId), lineId: id(lineId), reason: 'SHORTAGE_RESOLVED' });
+    return task;
   } finally { await session.endSession(); }
 }
 

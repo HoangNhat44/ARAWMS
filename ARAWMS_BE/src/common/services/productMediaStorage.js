@@ -29,9 +29,9 @@ export const productMediaOptions = (productCode, kind, suffix = '') => {
 };
 
 /** Copies a publicly reachable Excel media URL into Cloudinary. */
-export const copyProductMediaUrl = async (url, productCode, kind) => {
+export const copyProductMediaUrl = async (url, productCode, kind, suffix = '') => {
   configureProductCloudinary();
-  const options = productMediaOptions(productCode, kind);
+  const options = productMediaOptions(productCode, kind, suffix);
   const result = kind === 'video'
     ? await cloudinary.uploader.upload_large(url, options)
     : await cloudinary.uploader.upload(url, options);

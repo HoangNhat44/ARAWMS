@@ -349,3 +349,85 @@ export const scanProductBarcodeForPacking = async ({ sessionId, stationId, lease
     await dbSession.endSession();
   }
 };
+
+/** Registers a product unit barcode with validation and transaction safety.
+ * Reserves one label slot and creates the unit atomically to prevent duplicate inventory labels.
+ */
+export const registerProductUnitBarcode = async ({ barcode, skuId, warehouseId, batchId }) => {
+  await ensurePackingIndexes();
+  
+  // Validate input format
+  if (typeof barcode !== 'string' || !/^[A-Za-z0-9_-]{3,128}$/.test(barcode)) {
+    throw new PackingError('INVALID_BARCODE', 400);
+  }
+  if (!mongoose.isValidObjectId(skuId) || 
+      !mongoose.isValidObjectId(warehouseId) || 
+      !mongoose.isValidObjectId(batchId)) {
+    throw new PackingError('INVALID_UNIT', 400);
+  }
+
+  // Import models dynamically
+  const Sku = (await import('../../../models/Sku.model.js')).default;
+  const WarehouseLocation = (await import('../../../models/WarehouseLocation.model.js')).default;
+  const ProductUnit = (await import('../../../models/ProductUnit.js')).default;
+
+  // Verify entities exist and are valid
+  const [sku, warehouse, batch] = await Promise.all([
+    Sku.findOne({ 
+      _id: skuId, 
+      isActive: true, 
+      isDeleted: { $ne: true } 
+    }).select('_id'),
+    WarehouseLocation.findOne({ 
+      _id: warehouseId, 
+      warehouseType: 'FINISHED_GOODS', 
+      isDeleted: { $ne: true } 
+    }).select('_id'),
+    FinishedGoodsBatch.findOne({ 
+      _id: batchId, 
+      skuId, 
+      locationId: warehouseId,
+      isDefectQuarantine: false, 
+      isDeleted: { $ne: true } 
+    }).select('_id'),
+  ]);
+
+  if (!sku || !warehouse || !batch) {
+    throw new PackingError('INVALID_UNIT', 400);
+  }
+
+  // Create unit with transaction for atomicity
+  const dbSession = await mongoose.startSession();
+  let unit;
+  
+  try {
+    await dbSession.withTransaction(async () => {
+      // Reserve one label slot
+      const labeled = await FinishedGoodsBatch.findOneAndUpdate({
+        _id: batchId,
+        $expr: { $lt: [{ $ifNull: ['$labeledQty', 0] }, '$currentOnHandQty'] },
+      }, { 
+        $inc: { labeledQty: 1 } 
+      }, { 
+        session: dbSession 
+      });
+
+      if (!labeled) {
+        throw new PackingError('BATCH_LABEL_LIMIT');
+      }
+
+      // Create product unit
+      [unit] = await ProductUnit.create([{
+        barcode,
+        barcodeFormat: 'CODE_128',
+        skuId,
+        warehouseId,
+        batchId,
+      }], { session: dbSession });
+    });
+  } finally {
+    await dbSession.endSession();
+  }
+
+  return unit;
+};

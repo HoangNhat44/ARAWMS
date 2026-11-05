@@ -20,12 +20,37 @@ const expectedItemSchema = new Schema(
   { _id: false }
 );
 
+/** A delivery period can contain several confirmed receipts without mixing accepted and rejected quantities. */
+const deliveryBatchSchema = new Schema({
+  batchCode: { type: String, required: true },
+  expectedStart: { type: Date, required: true },
+  expectedEnd: { type: Date, required: true },
+  status: { type: String, enum: ['OPEN', 'CLOSED_SHORT', 'CANCELLED'], default: 'OPEN' },
+  items: [{ rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial', required: true },
+    plannedQty: { type: Number, required: true, min: 0 },
+    acceptedQty: { type: Number, default: 0, min: 0 },
+    rejectedQty: { type: Number, default: 0, min: 0 } }],
+  closedReason: String,
+  closedAt: Date,
+  closedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+}, { _id: true });
+
 const materialInboundPlanSchema = new Schema(
   {
     planCode: { type: String, required: true, unique: true, index: true },
-    contractId: { type: Schema.Types.ObjectId, ref: 'SupplierContract', required: true, index: true },
+    contractId: { type: Schema.Types.ObjectId, ref: 'SupplierContract', index: true },
     supplierId: { type: Schema.Types.ObjectId, ref: 'Supplier', required: true, index: true },
-    scheduledDeliveryDate: { type: Date, required: true, index: true },
+    warehouseLocationId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation', index: true },
+    scheduledDeliveryDate: { type: Date, index: true },
+    deliveryBatches: [deliveryBatchSchema],
+    deliveryVersion: { type: Number, default: 0 },
+    deliveryHistory: [{ batchId: { type: Schema.Types.ObjectId }, changeType: { type: String, enum: ['WINDOW', 'ITEMS', 'LEGACY_SETUP'] },
+      oldStart: Date, oldEnd: Date,
+      newStart: Date, newEnd: Date, reason: String, changedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+      changedAt: Date, version: Number,
+      oldItems: [{ rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial' }, plannedQty: Number }],
+      newItems: [{ rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial' }, plannedQty: Number }] }],
+    deliveryNote: String,
     status: { type: String, enum: PLAN_STATUS, default: 'SCHEDULED', index: true },
     createdByAccountantId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     expectedItems: [expectedItemSchema],

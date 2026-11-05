@@ -19,6 +19,7 @@ import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import { ReceiptError, getReceiptOptions } from './inboundExecution.service.js';
 import { configureProductCloudinary } from '../../../common/services/productMediaStorage.js';
 import { scheduleBarcodeImages } from '../../../common/services/barcodeImageStorage.js';
+import { getDeliveryBatchContext, commitDeliveryReceipt } from './deliveryPlan.service.js';
 
 const id = (value) => String(value || '');
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
@@ -42,7 +43,7 @@ const deliveryCode = (value) => String(value || '').trim().replace(/\s+/g, ' ').
 export async function getSupplierReceiptOptions(user) {
   const [base, materials] = await Promise.all([getReceiptOptions(user), RawMaterial.find({
     isActive: true, isDeleted: { $ne: true },
-  }).select('materialCode materialName materialType category color widthCm gsm unit requiresWeightKg').sort({ materialCode: 1 }).lean()]);
+  }).select('materialCode materialName materialType category color widthCm gsm unit unitCost requiresWeightKg').sort({ materialCode: 1 }).lean()]);
   return { ...base, materials };
 }
 
@@ -70,6 +71,10 @@ export async function createSupplierMaterial(input) {
 export async function listSupplierReceipts(query, user) {
   const filter = { ticketType: 'INBOUND_FROM_SUPPLIER', isDeleted: { $ne: true },
     ...(user.warehouseIds?.length ? { receivingLocationId: { $in: user.warehouseIds } } : {}) };
+  if (query.source) {
+    fail(['PLAN', 'DIRECT'].includes(query.source), 'Nguồn nhập không hợp lệ', 'INVALID_SOURCE');
+    filter.inboundPlanId = query.source === 'PLAN' ? { $exists: true, $ne: null } : { $exists: false };
+  }
   if (query.supplierId) {
     fail(mongoose.isValidObjectId(query.supplierId), 'Nhà cung cấp không hợp lệ', 'INVALID_SUPPLIER');
     filter.supplierId = query.supplierId;
@@ -99,7 +104,7 @@ export async function listSupplierReceipts(query, user) {
     fail(Object.values(filter.receivedAt).every((date) => !Number.isNaN(date.getTime())), 'Ngày lọc không hợp lệ', 'INVALID_DATE');
   }
   const receipts = await MaterialTicket.find(filter)
-    .select('ticketCode supplierId supplierDeliveryCode receivingLocationId receivedAt createdByManagerId status createdAt confirmedAt receiptLines.rawMaterialId')
+    .select('ticketCode receiptSource inboundPlanId deliveryBatchId supplierId purchaseSourceName purchasedByName supplierDeliveryCode receivingLocationId receivedAt createdByManagerId status createdAt confirmedAt receiptLines.rawMaterialId receiptLines.actualQty receiptLines.acceptedQty receiptLines.rejectedQty receiptLines.unitCost')
     .populate('supplierId', 'supplierName supplierCode')
     .populate('receivingLocationId', 'locationCode')
     .populate('createdByManagerId', 'fullName')
@@ -120,6 +125,15 @@ export async function getSupplierReceipt(receiptId, user) {
   return { receipt, materials };
 }
 
+/** Recovers a created draft after its HTTP response was lost, without creating another receipt. */
+export async function getSupplierReceiptByDraftKey(key, user) {
+  fail(/^[A-Za-z0-9_-]{8,100}$/.test(String(key || '')), 'Mã tạo phiếu không hợp lệ', 'INVALID_DRAFT_KEY');
+  const receipt = await MaterialTicket.findOne({ draftKey: key, ticketType: 'INBOUND_FROM_SUPPLIER',
+    createdByManagerId: user._id, isDeleted: { $ne: true } }).select('_id').lean();
+  fail(receipt, 'Không tìm thấy bản nháp đã tạo', 'RECEIPT_NOT_FOUND', 404);
+  return getSupplierReceipt(receipt._id, user);
+}
+
 /** Finds matching delivery codes so the manager can review duplicates without blocking legitimate split deliveries. */
 export async function findDeliveryMatches(supplierId, code, excludeId) {
   fail(mongoose.isValidObjectId(supplierId), 'Nhà cung cấp không hợp lệ', 'INVALID_SUPPLIER');
@@ -133,13 +147,29 @@ export async function findDeliveryMatches(supplierId, code, excludeId) {
 
 /** Builds server-owned inspection lines from active catalog materials. */
 export async function validateSupplierReceiptDraft(input, user, previousReceipt) {
-  fail(mongoose.isValidObjectId(input.supplierId), 'Cần chọn nhà cung cấp', 'SUPPLIER_REQUIRED');
-  const supplier = await Supplier.findOne({ _id: input.supplierId, isActive: true, isDeleted: { $ne: true } }).select('_id').lean();
-  fail(supplier, 'Nhà cung cấp không còn hoạt động', 'SUPPLIER_UNAVAILABLE', 409);
+  const direct = input.receiptSource === 'DIRECT';
+  const context = direct ? null : await getDeliveryBatchContext(input.inboundPlanId, input.deliveryBatchId, user);
+  fail(!direct || !input.inboundPlanId && !input.deliveryBatchId,
+    'Phiếu ngoài kế hoạch không được liên kết kế hoạch', 'DIRECT_PLAN_LINK');
+  fail(direct || mongoose.isValidObjectId(input.supplierId), 'Cần chọn nhà cung cấp', 'SUPPLIER_REQUIRED');
+  fail(!input.supplierId || mongoose.isValidObjectId(input.supplierId), 'Nhà cung cấp không hợp lệ', 'INVALID_SUPPLIER');
+  const supplier = input.supplierId ? await Supplier.findOne({ _id: input.supplierId, isActive: true,
+    isDeleted: { $ne: true } }).select('_id supplierName').lean() : null;
+  fail(!input.supplierId || supplier, 'Nhà cung cấp không còn hoạt động', 'SUPPLIER_UNAVAILABLE', 409);
+  const purchaseSourceName = String(input.purchaseSourceName || supplier?.supplierName || '').trim();
+  fail(!direct || purchaseSourceName.length <= 160,
+    'Nơi mua quá dài', 'PURCHASE_SOURCE_INVALID');
+  const purchasedByName = String(input.purchasedByName || user.fullName || '').trim();
+  fail(!direct || purchasedByName.length >= 2 && purchasedByName.length <= 120,
+    'Người mua không hợp lệ', 'PURCHASER_REQUIRED');
   fail(mongoose.isValidObjectId(input.receivingLocationId), 'Cần chọn kho nhận', 'LOCATION_REQUIRED');
   const location = await WarehouseLocation.findOne({ _id: input.receivingLocationId, warehouseType: 'RAW_MATERIAL',
-    status: 'ACTIVE', isFrozenForStocktake: false, isDeleted: { $ne: true } }).select('_id').lean();
+    status: 'ACTIVE', isFrozenForStocktake: false, isDeleted: { $ne: true } }).select('_id zoneCode layoutBin').lean();
   fail(location && accessible(location, user), 'Kho nhận không hoạt động hoặc bạn không có quyền', 'LOCATION_FORBIDDEN', 403);
+  fail(!direct || location.zoneCode === 'A' && location.layoutBin,
+    'Phiếu ngoài kế hoạch phải nhận tại ô kho Khu A', 'DIRECT_WAREHOUSE_REQUIRED');
+  fail(direct || id(context.plan.supplierId) === id(supplier._id) && id(context.warehouse._id) === id(location._id),
+    'Nhà cung cấp hoặc kho nhận không khớp kế hoạch', 'PLAN_RECEIPT_MISMATCH', 409);
   const receivedAt = new Date(input.receivedAt);
   fail(input.receivedAt && !Number.isNaN(receivedAt.getTime()) && receivedAt <= new Date(),
     'Ngày nhận không hợp lệ hoặc ở tương lai', 'INVALID_DATE');
@@ -151,37 +181,60 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
   fail(String(input.receiptNote || '').length <= 500, 'Ghi chú quá dài', 'INVALID_NOTE');
   let replacementForTicketId;
   if (input.replacementForTicketId) {
+    fail(!direct, 'Phiếu ngoài kế hoạch không dùng liên kết giao bù', 'DIRECT_RETURN_LINK');
     fail(mongoose.isValidObjectId(input.replacementForTicketId), 'Phiếu trả gốc không hợp lệ', 'INVALID_RETURN_SOURCE');
     const source = await MaterialTicket.findOne({ _id: input.replacementForTicketId,
       supplierId: supplier._id, status: 'COMPLETED', 'supplierReturns.status': 'RETURNED',
-      ticketType: { $in: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER'] } }).select('_id').lean();
+      ticketType: { $in: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER'] } }).select('_id inboundPlanId deliveryBatchId').lean();
     fail(source, 'Phiếu trả gốc chưa bàn giao hoặc không cùng NCC', 'INVALID_RETURN_SOURCE');
+    fail(id(source.inboundPlanId) === id(context.plan._id) && id(source.deliveryBatchId) === id(context.batch._id),
+      'Phiếu giao bù phải thuộc cùng kế hoạch và đợt giao', 'RETURN_BATCH_MISMATCH', 409);
     replacementForTicketId = source._id;
   }
   fail(Array.isArray(input.receiptLines) && input.receiptLines.length <= 100,
     'Danh sách nguyên phụ liệu không hợp lệ', 'INVALID_LINES');
   const materialIds = input.receiptLines.map((line) => id(line.rawMaterialId));
-  fail(new Set(materialIds).size === materialIds.length && materialIds.every(mongoose.isValidObjectId),
+  fail((direct || new Set(materialIds).size === materialIds.length) && materialIds.every(mongoose.isValidObjectId),
     'Nguyên phụ liệu bị trùng hoặc không hợp lệ', 'DUPLICATE_MATERIAL');
+  if (direct) {
+    const lineKeys = input.receiptLines.map((line) => String(line.clientLineId || ''));
+    fail(new Set(lineKeys).size === lineKeys.length, 'Dòng phiếu bị trùng', 'DUPLICATE_LINE');
+  }
   const materials = await RawMaterial.find({ _id: { $in: materialIds }, isActive: true, isDeleted: { $ne: true } }).lean();
   const byMaterial = new Map(materials.map((item) => [id(item._id), item]));
   const previousLines = new Map((previousReceipt?.receiptLines || []).map((line) => [id(line.rawMaterialId), line]));
-  fail(byMaterial.size === materialIds.length, 'Có nguyên phụ liệu không còn hoạt động', 'MATERIAL_UNAVAILABLE', 409);
+  fail(materialIds.every((materialId) => byMaterial.has(materialId)), 'Có nguyên phụ liệu không còn hoạt động', 'MATERIAL_UNAVAILABLE', 409);
+  const batchItems = new Map((context?.batch.items || []).map((item) => [id(item.rawMaterialId), item]));
+  fail(direct || materialIds.every((materialId) => batchItems.has(materialId)),
+    'Chỉ được nhận nguyên phụ liệu thuộc đợt giao', 'UNPLANNED_MATERIAL');
   const seenObjects = new Set();
   const lines = input.receiptLines.map((line) => {
     const material = byMaterial.get(id(line.rawMaterialId));
     const unit = material.unit;
+    const usesCatalogCost = line.unitCost === '' || line.unitCost == null;
+    const unitCost = direct && usesCatalogCost ? undefined : Number(usesCatalogCost ? material.unitCost : line.unitCost);
+    fail(unitCost == null && direct || Number.isFinite(unitCost) && unitCost >= 0 && unitCost <= 1e12 &&
+      Math.abs(unitCost * 100 - Math.round(unitCost * 100)) < 0.000001,
+      'Đơn giá nhập không hợp lệ', 'INVALID_UNIT_COST');
+    const zeroCostReason = String(line.zeroCostReason ||
+      (usesCatalogCost && unitCost === 0 ? 'Đơn giá danh mục bằng 0' : '')).trim().slice(0, 300);
     const actualQty = stockQuantity(line.actualQty ?? 0, unit, 'Thực nhận');
     const acceptedQty = stockQuantity(line.acceptedQty ?? 0, unit, 'Đạt');
     const rejectedQty = stockQuantity(line.rejectedQty ?? 0, unit, 'Không đạt');
     const pendingQty = stockQuantity(line.pendingQty ?? 0, unit, 'Chờ kiểm tra');
-    const previous = previousLines.get(id(line.rawMaterialId));
+    const lineKey = direct ? String(line.clientLineId || '') : id(line.rawMaterialId);
+    fail(!direct || /^[A-Za-z0-9_-]{8,100}$/.test(lineKey), 'Mã dòng phiếu không hợp lệ', 'INVALID_LINE_KEY');
+    const previous = direct ? (previousReceipt?.receiptLines || []).find((item) => item.clientLineId === lineKey)
+      : previousLines.get(lineKey);
     const inspectionChanged = !previous || !['actualQty', 'acceptedQty', 'rejectedQty', 'pendingQty'].every((key) =>
       same(previous[key], { actualQty, acceptedQty, rejectedQty, pendingQty }[key])) ||
       String(previous.inspectionConclusion || '') !== String(line.inspectionConclusion || '').trim() ||
       String(previous.qualityInspectionRef || '') !== String(line.qualityInspectionRef || '').trim();
     fail(same(actualQty, acceptedQty + rejectedQty + pendingQty),
       'Thực nhận phải bằng đạt + không đạt + chờ kiểm tra', 'INSPECTION_TOTAL_MISMATCH');
+    const batchItem = batchItems.get(id(material._id));
+    fail(direct || acceptedQty <= round(batchItem.plannedQty - (batchItem.acceptedQty || 0)) + .0001,
+      'Lượng đạt vượt phần còn thiếu của đợt giao', 'BATCH_EXCEEDED', 409);
     const rolls = Array.isArray(line.rolls) ? line.rolls : [];
     const lots = Array.isArray(line.lots) ? line.lots : [];
     fail(rolls.length + lots.length <= 500 && (material.materialType === 'FABRIC' ? !lots.length : !rolls.length),
@@ -190,7 +243,8 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
     fail(clientIds.every((key) => /^[A-Za-z0-9_-]{1,80}$/.test(key) && !seenObjects.has(key)) &&
       new Set(clientIds).size === clientIds.length, 'Mã dòng cây/lô bị trùng', 'DUPLICATE_OBJECT');
     clientIds.forEach((key) => seenObjects.add(key));
-    return { rawMaterialId: material._id,
+    return { rawMaterialId: material._id, clientLineId: direct ? lineKey : undefined,
+      deliveryBatchItemId: batchItem?._id, unitCost, zeroCostReason,
       supplierDeclaredQty: line.supplierDeclaredQty === '' || line.supplierDeclaredQty == null
         ? undefined : stockQuantity(line.supplierDeclaredQty, unit, 'NCC báo giao'),
       actualQty, acceptedQty, rejectedQty, pendingQty,
@@ -222,17 +276,40 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
     const objects = byMaterial.get(id(line.rawMaterialId)).materialType === 'FABRIC' ? line.rolls : line.lots;
     return same(objects.reduce((sum, item) => sum + (item.lengthMeters ?? item.countedQty), 0), line.actualQty);
   });
-  return { supplierId: supplier._id, supplierDeliveryCode: code || undefined, replacementForTicketId, receivedAt,
+  return { receiptSource: direct ? 'DIRECT' : 'PLAN',
+    inboundPlanId: context?.plan._id, deliveryBatchId: context?.batch._id,
+    supplierId: supplier?._id, purchaseSourceName: direct ? purchaseSourceName : undefined,
+    purchasedByName: direct ? purchasedByName : undefined,
+    supplierDeliveryCode: code || undefined, replacementForTicketId, receivedAt,
     handoverName, receivingLocationId: location._id, receiptNote: String(input.receiptNote || '').trim(),
     receiptLines: lines, status: hasPending ? 'WAITING_QC' : hasObjects ? 'READY_TO_CONFIRM' : 'DRAFT' };
 }
 
 /** Creates a direct supplier receipt with an atomic human-readable code. */
 export async function createSupplierReceipt(input, user) {
+  const draftKey = String(input.draftKey || '').trim();
+  fail(/^[A-Za-z0-9_-]{8,100}$/.test(draftKey), 'Thiếu mã thao tác tạo phiếu', 'DRAFT_KEY_REQUIRED');
+  const canonical = { ...input };
+  delete canonical.draftKey;
+  const draftFingerprint = createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+  const existing = await MaterialTicket.findOne({ draftKey, ticketType: 'INBOUND_FROM_SUPPLIER' });
+  if (existing) {
+    fail(id(existing.createdByManagerId) === id(user._id), 'Mã tạo phiếu thuộc phiên khác', 'DRAFT_KEY_REUSED', 409);
+    fail(existing.draftFingerprint === draftFingerprint, 'Mã tạo phiếu đã dùng cho nội dung khác', 'DRAFT_KEY_REUSED', 409);
+    return existing;
+  }
   const draft = await validateSupplierReceiptDraft(input, user);
   const ticketCode = await CounterSequence.getNextSequence('MATERIAL_SUPPLIER_RECEIPT', 'PNNL', 6);
-  return MaterialTicket.create({ ...draft, ticketCode, ticketType: 'INBOUND_FROM_SUPPLIER',
-    createdByManagerId: user._id, receiptVersion: 0 });
+  try { return await MaterialTicket.create({ ...draft, ticketCode, ticketType: 'INBOUND_FROM_SUPPLIER',
+    draftKey, draftFingerprint, createdByManagerId: user._id, receiptVersion: 0 }); }
+  catch (error) {
+    if (error.code !== 11000) throw error;
+    const retry = await MaterialTicket.findOne({ draftKey, ticketType: 'INBOUND_FROM_SUPPLIER' });
+    if (!retry) throw error;
+    fail(id(retry.createdByManagerId) === id(user._id), 'Mã tạo phiếu thuộc phiên khác', 'DRAFT_KEY_REUSED', 409);
+    fail(retry.draftFingerprint === draftFingerprint, 'Mã tạo phiếu đã dùng cho nội dung khác', 'DRAFT_KEY_REUSED', 409);
+    return retry;
+  }
 }
 
 /** Replaces a draft only at its current version. */
@@ -240,6 +317,10 @@ export async function updateSupplierReceipt(receiptId, input, user) {
   const { receipt } = await getSupplierReceipt(receiptId, user);
   fail(editable.includes(receipt.status), 'Phiếu không còn chỉnh sửa được', 'RECEIPT_LOCKED', 409);
   fail(Number(input.expectedVersion) === receipt.receiptVersion, 'Phiếu đã thay đổi; hãy tải lại', 'VERSION_CONFLICT', 409);
+  fail(id(input.inboundPlanId) === id(receipt.inboundPlanId) && id(input.deliveryBatchId) === id(receipt.deliveryBatchId),
+    'Không được chuyển phiếu sang kế hoạch hoặc đợt khác', 'BATCH_IMMUTABLE', 409);
+  fail((input.receiptSource === 'DIRECT') === (receipt.receiptSource === 'DIRECT'),
+    'Không được đổi nguồn nhập của phiếu', 'SOURCE_IMMUTABLE', 409);
   const draft = await validateSupplierReceiptDraft(input, user, receipt);
   const updated = await MaterialTicket.findOneAndUpdate({ _id: receiptId, receiptVersion: receipt.receiptVersion,
     status: { $in: editable } }, { $set: draft, $inc: { receiptVersion: 1 } }, { new: true, runValidators: true });
@@ -311,6 +392,12 @@ function validateConfirmation(receipt, materials, locations, user) {
   for (const line of receipt.receiptLines) {
     const material = byMaterial.get(id(line.rawMaterialId));
     fail(material, 'Nguyên phụ liệu không còn hoạt động', 'MATERIAL_UNAVAILABLE', 409);
+    fail(receipt.receiptSource !== 'DIRECT' || line.unitCost != null,
+      'Cần nhập đơn giá mua cho từng dòng', 'UNIT_COST_REQUIRED');
+    fail(Number.isFinite(line.unitCost ?? material.unitCost) && (line.unitCost ?? material.unitCost) >= 0,
+      'Đơn giá nhập không hợp lệ', 'INVALID_UNIT_COST');
+    fail(!line.actualQty || (line.unitCost ?? material.unitCost) !== 0 || line.zeroCostReason?.trim().length >= 2,
+      'Cần lý do khi đơn giá nhập bằng 0', 'ZERO_COST_REASON_REQUIRED');
     fail(same(line.actualQty, line.acceptedQty + line.rejectedQty + line.pendingQty), 'Kết quả kiểm nhận không khớp', 'INSPECTION_TOTAL_MISMATCH');
     fail(line.pendingQty === 0, 'Còn hàng chờ kiểm tra', 'QUALITY_PENDING');
     fail(!line.rejectedQty || line.defectReason, 'Cần lý do hàng không đạt', 'DEFECT_REASON_REQUIRED');
@@ -390,8 +477,12 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
       }
       fail(editable.includes(receipt.status), 'Phiếu không thể xác nhận', 'RECEIPT_LOCKED', 409);
       fail(Number(input.expectedVersion) === receipt.receiptVersion, 'Phiếu đã thay đổi; hãy tải lại', 'VERSION_CONFLICT', 409);
-      const supplier = await Supplier.findOne({ _id: receipt.supplierId, isActive: true, isDeleted: { $ne: true } }).session(session);
-      fail(supplier, 'Nhà cung cấp không còn hoạt động', 'SUPPLIER_UNAVAILABLE', 409);
+      const direct = receipt.receiptSource === 'DIRECT';
+      const supplier = receipt.supplierId ? await Supplier.findOne({ _id: receipt.supplierId,
+        isActive: true, isDeleted: { $ne: true } }).session(session) : null;
+      fail(!receipt.supplierId || supplier, 'Nhà cung cấp không còn hoạt động', 'SUPPLIER_UNAVAILABLE', 409);
+      fail(!direct || receipt.purchaseSourceName?.trim() && receipt.purchasedByName?.trim(),
+        'Thiếu nơi mua hoặc người mua', 'DIRECT_SOURCE_REQUIRED');
       const materials = await RawMaterial.find({ _id: { $in: receipt.receiptLines.map((line) => line.rawMaterialId) },
         isActive: true, isDeleted: { $ne: true } }).session(session);
       const locationIds = new Set([id(receipt.receivingLocationId)]);
@@ -404,6 +495,23 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
       const receiving = locations.find((item) => id(item._id) === id(receipt.receivingLocationId));
       fail(receiving?.warehouseType === 'RAW_MATERIAL' && accessible(receiving, user), 'Kho nhận không hợp lệ', 'INVALID_RECEIVING_LOCATION');
       const { allocations, plannedAllocations, units, byMaterial, byLocation } = validateConfirmation(receipt, materials, locations, user);
+      for (const line of receipt.receiptLines) {
+        const acceptedLocations = byMaterial.get(id(line.rawMaterialId))?.materialType === 'FABRIC'
+          ? line.rolls.filter((roll) => roll.quality === 'ACCEPTED').map((roll) => roll.locationId)
+          : line.lots.filter((lot) => lot.quality === 'ACCEPTED')
+            .flatMap((lot) => lot.allocations.map((allocation) => allocation.locationId));
+        fail(acceptedLocations.every((locationId) => !locationId ||
+          byLocation.get(id(locationId))?.zoneCode === receiving.zoneCode),
+        'Hàng đạt phải được phân bổ trong kho của kế hoạch', 'WRONG_PLAN_WAREHOUSE');
+      }
+      if (direct) {
+        fail([...plannedAllocations.keys()].every((locationId) => byLocation.get(locationId)?.zoneCode === receiving.zoneCode),
+          'Vị trí dự kiến phải thuộc khu nhận', 'WRONG_RECEIVING_ZONE');
+        fail(receipt.receiptLines.every((line) => line.lots.filter((lot) => lot.quality === 'ACCEPTED')
+          .every((lot) => lot.allocations.every((allocation) => allocation.locationId)) &&
+          line.rolls.filter((roll) => roll.quality === 'ACCEPTED').every((roll) => roll.locationId)),
+        'Cần chọn vị trí dự kiến cho hàng đạt', 'LOCATION_REQUIRED');
+      } else await commitDeliveryReceipt(receipt, user, session);
       for (const [locationId, amount] of allocations) {
         const plannedAmount = plannedAllocations.get(locationId) || 0;
         const updated = await WarehouseLocation.updateOne({ _id: locationId, status: 'ACTIVE', isFrozenForStocktake: false,
@@ -427,7 +535,7 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
             measuredWidthCm: roll.widthCm, defectReason: roll.defectReason,
             initialLengthMeters: roll.lengthMeters, currentLengthMeters: roll.lengthMeters,
             initialWeightKg: roll.weightKg, currentWeightKg: roll.weightKg,
-            unitCostPerMeter: material.unitCost, locationId: roll.locationId, fifoInboundTimestamp: now,
+            unitCostPerMeter: line.unitCost ?? material.unitCost, locationId: roll.locationId, fifoInboundTimestamp: now,
             status: roll.quality === 'ACCEPTED' ? 'QC_PASSED' : 'DEFECTIVE' }], { session });
         }
         for (const [objectIndex, lot] of line.lots.entries()) {
@@ -436,6 +544,7 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
             clientLineId: lot.clientLineId, supplierLotCode: lot.supplierLotCode,
             packageUnit: lot.packageUnit, packageCount: lot.packageCount, unitsPerPackage: lot.unitsPerPackage,
             initialQty: lot.countedQty, currentQty: lot.countedQty, quality: lot.quality,
+            unitCost: line.unitCost ?? material.unitCost,
             status: lot.quality === 'ACCEPTED' ? 'PENDING_PUTAWAY' : 'QUARANTINED',
             defectReason: lot.defectReason, fifoInboundTimestamp: now,
             allocations: lot.allocations.filter((item) => item.locationId) }], { session });
@@ -460,7 +569,7 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
               warehouseType: 'RAW_MATERIAL', itemType: 'RAW_MATERIAL', rawMaterialId: material._id,
               locationId, transactionType: 'INBOUND_RECEIPT', referenceModel: 'MaterialTicket', referenceId: receipt._id,
               quantityChange: amount, onHandBefore: running, onHandAfter: round(running + amount),
-              unitCostSnapshot: material.unitCost, performedByUserId: user._id }], { session });
+              unitCostSnapshot: line.unitCost ?? material.unitCost, performedByUserId: user._id }], { session });
             running = round(running + amount);
           }
           const unplacedQty = round(line.acceptedQty - [...totals.values()].reduce((sum, amount) => sum + amount, 0));
@@ -469,7 +578,7 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
             itemType: 'RAW_MATERIAL', rawMaterialId: material._id, transactionType: 'INBOUND_RECEIPT',
             referenceModel: 'MaterialTicket', referenceId: receipt._id, quantityChange: unplacedQty,
             onHandBefore: running, onHandAfter: round(running + unplacedQty),
-            unitCostSnapshot: material.unitCost, performedByUserId: user._id,
+            unitCostSnapshot: line.unitCost ?? material.unitCost, performedByUserId: user._id,
             note: 'Chưa chọn vị trí; chờ xác nhận cất hàng' }], { session });
         }
         const rejected = material.materialType === 'FABRIC' ? line.rolls.filter((item) => item.quality === 'REJECTED')
@@ -483,7 +592,8 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
             warehouseType: 'DEFECT_QUARANTINE', itemType: 'RAW_MATERIAL', rawMaterialId: material._id,
             locationId, transactionType: 'DEFECT_QUARANTINE', referenceModel: 'MaterialTicket', referenceId: receipt._id,
             quantityChange: allocation.quantity, onHandBefore: before, onHandAfter: round(before + allocation.quantity),
-            performedByUserId: user._id, note: allocation.reason }], { session });
+            unitCostSnapshot: line.unitCost ?? material.unitCost, performedByUserId: user._id,
+            note: allocation.reason }], { session });
           quarantineBalances.set(locationId, round(before + allocation.quantity));
         }
       }

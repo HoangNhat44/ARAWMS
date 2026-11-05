@@ -10,6 +10,7 @@ import { warehousePutawayService as api } from '../services/warehousePutawayServ
 /** Uses current unit locations for actual stock and confirmed allocation lines for pending work. */
 export default function WarehouseRackContents({ rackId, notify, requestConfirm }) {
   const refreshPending = useRef(false);
+  const refreshQueued = useRef(false);
   const unitsPending = useRef(false);
   const [contents, setContents] = useState(null);
   const [issues, setIssues] = useState([]);
@@ -20,7 +21,7 @@ export default function WarehouseRackContents({ rackId, notify, requestConfirm }
 
   /** Refreshes data when the rack opens or the manager requests an update. */
   const refresh = async () => {
-    if (refreshPending.current) return;
+    if (refreshPending.current) { refreshQueued.current = true; return; }
     refreshPending.current = true;
     setBusy(true);
     try {
@@ -29,9 +30,17 @@ export default function WarehouseRackContents({ rackId, notify, requestConfirm }
       setContents(rack.data.contents); setIssues(reports.data.issues);
       setIncidents(incidentsResponse.data.incidents);
     } catch (err) { notify(err.response?.data?.message || err.message, 'error'); }
-    finally { refreshPending.current = false; setBusy(false); }
+    finally {
+      refreshPending.current = false; setBusy(false);
+      if (refreshQueued.current) { refreshQueued.current = false; queueMicrotask(() => refresh()); }
+    }
   };
   useEffect(() => { refresh(); }, [rackId]);
+  useEffect(() => {
+    const update = (event) => { if (event.detail?.warehouseType === 'FINISHED_GOODS') refresh(); };
+    window.addEventListener('arawms-putaway-realtime', update);
+    return () => window.removeEventListener('arawms-putaway-realtime', update);
+  }, [rackId]);
 
   /** Retrieves one page of barcodes, employee names, and scan times for the selected bin. */
   const openBin = async (binId, page = 1) => {

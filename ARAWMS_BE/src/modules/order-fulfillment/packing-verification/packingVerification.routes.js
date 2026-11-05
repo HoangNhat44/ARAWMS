@@ -21,7 +21,8 @@ import {
 
 const router = express.Router();
 
-// Direct URL testing uses one operator identity for order and unit scans.
+// TODO: Replace with real authentication middleware in production
+// This mock user is for development/testing only
 router.use((req, res, next) => {
   req.user = {
     _id: '507f1f77bcf86cd799439011',

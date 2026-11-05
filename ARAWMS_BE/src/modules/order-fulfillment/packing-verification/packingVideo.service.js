@@ -51,7 +51,7 @@ const receiveVideo = async (input, publicId) => {
   resultPromise.catch(() => {});
   const upload = cloudinary.uploader.upload_chunked_stream({
     resource_type: 'video', type: 'authenticated', public_id: publicId,
-    asset_folder: ARASTORE_CLOUDINARY_FOLDERS.packingVideos,
+    asset_folder: ARASTORE_CLOUDINARY_FOLDERS.packingVideoAssetFolder,
     display_name: publicId.split('/').at(-1),
     overwrite: false, unique_filename: false, chunk_size: 6 * 1024 * 1024,
   }, (error, result) => {

@@ -52,6 +52,17 @@ export default function WarehousePutawayPage() {
     finally { setLoading(false); }
   };
   useEffect(() => { window.scrollTo(0, 0); loadTasks(); }, []);
+  useEffect(() => {
+    const refresh = (event) => {
+      loadTasks();
+      if (task && (!event.detail?.allocationId || String(event.detail.allocationId) === String(task.allocationId)) &&
+          (!event.detail?.lineId || String(event.detail.lineId) === String(task.lineId))) {
+        api.task(task.allocationId, task.lineId).then((response) => setTask(response.data.task)).catch(() => {});
+      }
+    };
+    window.addEventListener('arawms-putaway-realtime', refresh);
+    return () => window.removeEventListener('arawms-putaway-realtime', refresh);
+  }, [task?.allocationId, task?.lineId]);
 
   const stopCamera = () => {
     controlsRef.current?.stop();

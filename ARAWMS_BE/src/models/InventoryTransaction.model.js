@@ -42,7 +42,7 @@ const inventoryTransactionSchema = new Schema(
     },
     referenceModel: {
       type: String,
-      enum: ['MaterialTicket', 'FinishedGoodsTicket', 'SalesOrder', 'ReturnRequest', 'StocktakeSession', 'Sku', 'FinishedGoodsBulkDocument'],
+      enum: ['MaterialTicket', 'MaterialOutbound', 'FinishedGoodsTicket', 'SalesOrder', 'ReturnRequest', 'StocktakeSession', 'Sku', 'FinishedGoodsBulkDocument'],
     },
     referenceId: { type: Schema.Types.ObjectId, required: true, index: true },
     quantityChange: { type: Number, required: true },
@@ -52,6 +52,7 @@ const inventoryTransactionSchema = new Schema(
     reservedBefore: Number,
     reservedAfter: Number,
     unitCostSnapshot: { type: Number, default: 0 },
+    totalValueSnapshot: { type: Number, default: 0, min: 0 },
     performedByUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     note: { type: String, maxlength: 500 },
   },

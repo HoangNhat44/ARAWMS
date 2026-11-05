@@ -7,12 +7,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { productService } from '../services/productService';
-import { useAuth } from '../hooks/useAuth';
+// import { useAuth } from '../hooks/useAuth';
 import { offlineCatalogStore } from '../services/offlineCatalogStore';
 import { previewProductWorkbook } from '../services/offlineProductWorkbook';
 import { queueCatalogChange, syncCatalogChanges, getPendingCatalogChanges,
-  retryCatalogChange, subscribeCatalogChanges } from '../services/offlineCatalogSync';
+  retryCatalogChange, subscribeCatalogChanges, resolveCatalogOperation } from '../services/offlineCatalogSync';
 import '../styles/productConfiguration.css';
+
+// Mock user for testing (NO AUTH REQUIRED)
+const mockUser = { _id: '507f1f77bcf86cd799439011', id: '507f1f77bcf86cd799439011', username: 'test', fullName: 'Test User', roles: ['OWNER', 'WAREHOUSE_MANAGER'] };
 
 const sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'FREESIZE'];
 const blank = { productName: '', sampleCode: '', category: '', description: '', basePrice: '' };
@@ -24,7 +27,9 @@ export default function ProductConfigurationPage() {
   const { id: routeId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
+  // const { user, loading: authLoading } = useAuth();
+  const user = mockUser;
+  const authLoading = false;
   const ownerId = user?.id || user?._id;
   const requestId = useRef(crypto.randomUUID());
   const draftRef = useRef(null);
@@ -57,6 +62,7 @@ export default function ProductConfigurationPage() {
   useEffect(() => () => { if (imagePreview) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
   const [pendingChanges, setPendingChanges] = useState([]);
   const [showPending, setShowPending] = useState(false);
+  const [pendingTab, setPendingTab] = useState('waiting');
   const [draftReady, setDraftReady] = useState(false);
   const [draftNotice, setDraftNotice] = useState('');
   const [conflictView, setConflictView] = useState(null);
@@ -78,12 +84,14 @@ export default function ProductConfigurationPage() {
   useEffect(() => {
     if (!ownerId) return undefined;
     const refresh = () => getPendingCatalogChanges(ownerId).then(setPendingChanges).catch((err) => setError(err.message));
-    const run = () => { syncCatalogChanges(ownerId).then(refresh).catch((err) => setError(err.message)); };
+    const run = () => syncCatalogChanges(ownerId).then(refresh).catch((err) => setError(err.message));
     refresh(); run();
     const unsubscribe = subscribeCatalogChanges(refresh);
-    window.addEventListener('online', run);
-    const timer = window.setInterval(run, 30000);
-    return () => { unsubscribe(); window.removeEventListener('online', run); window.clearInterval(timer); };
+    const onVisible = () => { if (document.visibilityState === 'visible') run(); };
+    window.addEventListener('online', run); window.addEventListener('focus', run);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { unsubscribe(); window.removeEventListener('online', run); window.removeEventListener('focus', run);
+      document.removeEventListener('visibilitychange', onVisible); };
   }, [ownerId]);
   useEffect(() => {
     if (!ownerId) return undefined;
@@ -94,6 +102,22 @@ export default function ProductConfigurationPage() {
     window.addEventListener('arawms-catalog-synced', refresh);
     return () => window.removeEventListener('arawms-catalog-synced', refresh);
   }, [ownerId]);
+  useEffect(() => {
+    if (!ownerId) return undefined;
+    const refresh = (event) => {
+      const productId = String(event.detail?.productId || '');
+      productService.list().then((response) => setProducts(response.data.products)).catch(() => {});
+      if (!productId || String(selected?.product?.id || selected?.product?._id) !== productId) return;
+      const hasLocalEdits = catalog.description !== (selected.product.description || '');
+      if (hasLocalEdits) return;
+      productService.getConfiguration(productId).then((response) => {
+        setSelected(response.data);
+        setCatalog((current) => ({ ...current, description: response.data.product.description || '' }));
+      }).catch(() => {});
+    };
+    window.addEventListener('arawms-product-description-realtime', refresh);
+    return () => window.removeEventListener('arawms-product-description-realtime', refresh);
+  }, [ownerId, selected?.product?.id, selected?.product?._id, catalog.description]);
 
   useEffect(() => {
     if (!ownerId || !draftKey || (draftKey.startsWith('product:') && !selected)) return undefined;
@@ -108,7 +132,7 @@ export default function ProductConfigurationPage() {
         if (draft.skuEdits) setSkuEdits(draft.skuEdits);
         setShowCombinations(Boolean(draft.showCombinations)); requestId.current = draft.requestId || crypto.randomUUID();
         setDraftNotice('Đã khôi phục bản nháp trên thiết bị.');
-      } else if (draft) offlineCatalogStore.remove('drafts', ownerId, draftKey).catch((err) => setError(err.message));
+      } else if (draft) setDraftNotice('Bản nháp trên thiết bị vẫn được giữ lại.');
       setDraftReady(true);
     }).catch((err) => { setError(err.message); setDraftReady(true); });
     return () => { active = false; };
@@ -125,6 +149,12 @@ export default function ProductConfigurationPage() {
     }, 800);
     return () => window.clearTimeout(timer);
   }, [ownerId, draftReady, draftKey, mode, catalog, colors, selectedSizes, excluded, prices, files, skuEdits, showCombinations]);
+
+  useEffect(() => {
+    if (!message) return undefined;
+    const timer = window.setTimeout(() => setMessage(''), 4000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
 
   // Load available products so the existing-product picker can search them.
   useEffect(() => {
@@ -171,6 +201,18 @@ export default function ProductConfigurationPage() {
   ), [selected, skuSearch]);
   const selectableSkuIds = filteredSkus.filter((sku) => sku.isActive && selected?.product.isActive).map((sku) => sku.id || sku._id);
   const activeCombinations = combinations.filter((item) => !excluded.includes(item.key));
+  const activeOperations = pendingChanges.filter((item) => ['QUEUED', 'SYNCING', 'RETRY_WAIT', 'AUTH_REQUIRED'].includes(item.status));
+  const actionOperations = pendingChanges.filter((item) => item.status === 'NEEDS_ACTION');
+  const groupedCount = (items) => new Set(items.map((item) => item.serverEntityId || item.localEntityId || item.operationId)).size;
+  const groupRows = (items) => [...items.reduce((groups, item) => {
+    const key = item.serverEntityId || item.localEntityId || item.operationId;
+    const group = groups.get(key) || [];
+    group.push(item); groups.set(key, group); return groups;
+  }, new Map()).values()].map((operations) => ({
+    ...operations.slice().sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt))[0], operationCount: operations.length,
+  }));
+  const activeGroupRows = groupRows(activeOperations);
+  const actionGroupRows = groupRows(actionOperations);
   const matchingVariant = selected?.skus.find((sku) => variantKey(sku.color, sku.size) === variantKey(newVariant.color, newVariant.size));
 
   /** Loads a product and its SKUs for editing or receiving selection. */
@@ -205,17 +247,23 @@ export default function ProductConfigurationPage() {
     if (!ownerId) throw new Error('Cần đăng nhập trước khi lưu dữ liệu sản phẩm.');
     const operation = await queueCatalogChange(ownerId, change, media);
     await syncCatalogChanges(ownerId);
-    const saved = (await getPendingCatalogChanges(ownerId)).find((item) => item.operationId === operation.operationId);
-    if (saved?.status === 'REVIEW') {
-      setShowPending(true);
-      throw new Error(`${saved.lastError}. Dữ liệu vẫn được giữ trong mục Cần kiểm tra.`);
+    let saved = (await getPendingCatalogChanges(ownerId)).find((item) => item.operationId === operation.operationId);
+    if (saved?.status === 'NEEDS_ACTION') {
+      setPendingTab('action'); setShowPending(true);
+      throw new Error(saved.errorCode === 'VERSION_CONFLICT'
+        ? 'Sản phẩm đã có thay đổi trên hệ thống. Cần kiểm tra trước khi lưu.'
+        : `${saved.lastError}. Dữ liệu vẫn được giữ trong mục Cần xử lý.`);
     }
     if (resolvingOperationId) {
-      const original = await offlineCatalogStore.get('operations', ownerId, resolvingOperationId);
-      if (original) await offlineCatalogStore.put('operations', ownerId, original.operationId,
-        { ...original, status: 'SUPERSEDED', supersededBy: operation.operationId });
+      const all = await getPendingCatalogChanges(ownerId);
+      const original = all.find((item) => item.operationId === resolvingOperationId);
+      for (const related of all.filter((item) => item.status === 'NEEDS_ACTION' && item.serverEntityId === original?.serverEntityId)) {
+        await resolveCatalogOperation(ownerId, related, 'SUPERSEDED', { supersededBy: operation.operationId });
+      }
       setResolvingOperationId(null);
       setConflictView(null);
+      await syncCatalogChanges(ownerId);
+      saved = (await getPendingCatalogChanges(ownerId)).find((item) => item.operationId === operation.operationId);
     }
     setMessage(saved?.status === 'DONE' ? 'Đã đồng bộ.' : 'Đã lưu trên thiết bị — sẽ đồng bộ khi kết nối trở lại.');
     return saved;
@@ -224,38 +272,41 @@ export default function ProductConfigurationPage() {
   const inspectConflict = async (operation) => {
     try {
       const response = operation.serverEntityId ? await productService.getConfiguration(operation.serverEntityId) : null;
-      setConflictView({ operation, current: response?.data || null });
+      setConflictView({ operation, current: response?.data || null, selections: {} });
     } catch (error) { setError(error.message); }
   };
 
   const useCurrentCatalog = async () => {
     const { operation, current } = conflictView;
-    await offlineCatalogStore.put('operations', ownerId, operation.operationId,
-      { ...operation, status: 'DISCARDED', updatedAt: Date.now() });
+    if (!window.confirm('Bỏ các thay đổi cục bộ của thao tác này? Dữ liệu trên hệ thống sẽ được giữ nguyên.')) return;
+    await resolveCatalogOperation(ownerId, operation, 'DISCARDED');
+    const related = (await getPendingCatalogChanges(ownerId)).filter((item) => item.status === 'NEEDS_ACTION' && item.serverEntityId === operation.serverEntityId);
+    for (const item of related) await resolveCatalogOperation(ownerId, item, 'DISCARDED');
     if (current) await loadProductConfiguration(operation.serverEntityId);
     setConflictView(null);
   };
 
   const editConflictingChange = async () => {
     const { operation, current } = conflictView;
+    const selectedPayload = Object.fromEntries(Object.entries(operation.payload).filter(([key]) => conflictView.selections?.[key] !== 'current'));
     if (!current) {
       setMode('new'); setSelected(null);
-      setCatalog({ ...blank, ...operation.payload, basePrice: String(operation.payload.basePrice ?? '') });
-      setColors((operation.payload.variants || []).map((item) => item.color).join(', '));
-      setSelectedSizes([...new Set((operation.payload.variants || []).map((item) => item.size))]);
+      setCatalog({ ...blank, ...selectedPayload, basePrice: String(selectedPayload.basePrice ?? '') });
+      setColors((selectedPayload.variants || []).map((item) => item.color).join(', '));
+      setSelectedSizes([...new Set((selectedPayload.variants || []).map((item) => item.size))]);
     } else {
       await loadProductConfiguration(operation.serverEntityId);
       if (operation.operationType === 'UPDATE_PRODUCT') {
-        setCatalog((value) => ({ ...value, ...operation.payload,
-          basePrice: String(operation.payload.basePrice ?? value.basePrice) }));
+        setCatalog((value) => ({ ...value, ...selectedPayload,
+          basePrice: String(selectedPayload.basePrice ?? value.basePrice) }));
         setEditingCatalog(true);
       } else if (['UPDATE_SKU_PRICE', 'UPDATE_SKU'].includes(operation.operationType)) {
         setSkuEdits((value) => ({ ...value, [operation.payload.skuId]: { ...value[operation.payload.skuId],
-          ...operation.payload, retailPrice: operation.payload.retailPrice == null
-            ? value[operation.payload.skuId]?.retailPrice : String(operation.payload.retailPrice) } }));
+          ...selectedPayload, retailPrice: selectedPayload.retailPrice == null
+            ? value[operation.payload.skuId]?.retailPrice : String(selectedPayload.retailPrice) } }));
         setEditingCatalog(true);
       } else if (operation.operationType === 'ADD_VARIANTS') {
-        const variant = operation.payload.variants[0];
+        const variant = selectedPayload.variants[0];
         setNewVariant({ color: variant.color, size: variant.size, retailPrice: String(variant.retailPrice ?? '') });
         setShowVariantPanel(true);
       }
@@ -303,14 +354,18 @@ export default function ProductConfigurationPage() {
     if (!selected || busy) return;
     setBusy(true); setError(''); setMessage('');
     try {
-      const changed = Object.fromEntries(Object.entries({ ...catalog, basePrice: Number(catalog.basePrice), status }).filter(([key, value]) =>
-        (key === 'status' ? value !== (selected.product.isActive ? 'ACTIVE' : 'DRAFT') : value !== selected.product[key])));
+      const changed = Object.fromEntries(Object.entries({ ...catalog, basePrice: Number(catalog.basePrice), status }).filter(([key, value]) => {
+        if (key === 'status') return value !== (selected.product.isActive ? 'ACTIVE' : 'DRAFT');
+        if (key === 'sampleCode') return String(value || '').trim() !== String(selected.product.sampleCode || '').trim();
+        return value !== selected.product[key];
+      }));
       if (!Object.keys(changed).length && !files.image && !files.video && !files.additional.length) {
         setMessage('Không có thay đổi để lưu.'); return;
       }
       const media = [files.image && { kind: 'image', file: files.image }, files.video && { kind: 'video', file: files.video },
         ...files.additional.map((file) => ({ kind: 'additional', file }))].filter(Boolean);
-      const saved = await submitCatalogChange({ operationType: 'UPDATE_PRODUCT',
+      const baseline = Object.fromEntries(Object.keys(changed).map((key) => [key, selected.product[key] ?? (key === 'status' ? (selected.product.isActive ? 'ACTIVE' : 'DRAFT') : '')]));
+      const saved = await submitCatalogChange({ operationType: 'UPDATE_PRODUCT', baseline,
         serverEntityId: selected.product.id || selected.product._id, baseVersion: selected.product.version ?? 0,
         payload: Object.keys(changed).length ? changed : { status: selected.product.isActive ? 'ACTIVE' : 'DRAFT' },
         label: selected.product.productName }, media);
@@ -555,42 +610,44 @@ export default function ProductConfigurationPage() {
         </div>}
       </div>
     </div>}
-    <section className="ara-card" aria-label="Dữ liệu sản phẩm chờ đồng bộ" style={{ marginTop: '2rem' }}>
-      <button type="button" className="ara-btn ara-btn-secondary" onClick={() => setShowPending((value) => !value)}>
-        Xem dữ liệu chờ đồng bộ ({pendingChanges.filter((item) => ['PENDING', 'SYNCING', 'REVIEW'].includes(item.status)).length})
-      </button>
-      {showPending && <div style={{ marginTop: '1rem' }}>
-        {pendingChanges.length === 0 && <p>Chưa có thao tác sản phẩm nào trên thiết bị.</p>}
-        {pendingChanges.slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, 30).map((item) => <div key={item.operationId} className="ara-card" style={{ marginTop: '.6rem' }}>
-          <strong>{item.label}</strong> · {({ CREATE: 'Tạo sản phẩm', UPDATE_PRODUCT: 'Sửa sản phẩm',
-            ADD_VARIANTS: 'Thêm SKU', UPDATE_SKU_PRICE: 'Sửa giá SKU', UPDATE_SKU: 'Sửa SKU', IMPORT_PRODUCT: 'Import Excel',
-            IMPORT_ROW_ERROR: 'Dòng Excel cần sửa' })[item.operationType] || item.operationType}
-          <p>{({ PENDING: 'Chờ đồng bộ', SYNCING: 'Đang đồng bộ', REVIEW: 'Cần kiểm tra',
-            DONE: 'Đã đồng bộ', DISCARDED: 'Đã dùng dữ liệu hiện tại', SUPERSEDED: 'Đã thay bằng bản sửa mới' })[item.status] || item.status}</p>
-          {item.lastError && <p role="alert">{item.lastError}</p>}
-          {['PENDING', 'REVIEW'].includes(item.status) && item.operationType !== 'IMPORT_ROW_ERROR' && <button type="button" className="ara-btn ara-btn-secondary" disabled={busy} onClick={() =>
-            retryCatalogChange(ownerId, item).catch((failure) => setError(failure.message))}>Thử lại</button>}
-          {item.status === 'REVIEW' && item.operationType !== 'IMPORT_ROW_ERROR' && <button type="button" className="ara-btn ara-btn-secondary" onClick={() => inspectConflict(item)}>Xem xung đột</button>}
-          {item.operationType === 'IMPORT_ROW_ERROR' && item.status === 'REVIEW' && <button type="button" className="ara-btn ara-btn-secondary" onClick={async () => {
-            await offlineCatalogStore.put('operations', ownerId, item.operationId, { ...item, status: 'DISCARDED' });
+    <div className="catalog-sync-indicator" aria-live="polite">
+      {activeOperations.length > 0 || actionOperations.length > 0 ? <button type="button" className="ara-btn ara-btn-secondary" onClick={() => setShowPending(true)}>
+        {actionOperations.length ? `Có ${groupedCount(actionOperations)} mục cần xử lý` : activeOperations.some((item) => item.status === 'SYNCING') ? 'Đang đồng bộ…' : `Chờ đồng bộ ${groupedCount(activeOperations)}`}
+      </button> : draftNotice ? <span>Đã lưu bản nháp trên thiết bị</span> : message ? <span>{message}</span> : null}
+    </div>
+    {showPending && <div className="catalog-sync-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowPending(false); }}>
+      <section className="catalog-sync-panel" role="dialog" aria-modal="true" aria-label="Dữ liệu cần đồng bộ">
+        <header><h2>Dữ liệu cần đồng bộ</h2><button className="ara-modal-close" type="button" aria-label="Đóng" onClick={() => setShowPending(false)}>×</button></header>
+        <div className="catalog-sync-tabs"><button type="button" onClick={() => setPendingTab('waiting')} aria-pressed={pendingTab === 'waiting'}>Đang chờ ({groupedCount(activeOperations)})</button><button type="button" onClick={() => setPendingTab('action')} aria-pressed={pendingTab === 'action'}>Cần xử lý ({groupedCount(actionOperations)})</button></div>
+        {(pendingTab === 'waiting' ? activeGroupRows : actionGroupRows).map((item) => <article className="catalog-sync-item" key={item.serverEntityId || item.localEntityId || item.operationId}>
+          <strong>{item.label}</strong><span>{({ CREATE: 'Tạo sản phẩm', UPDATE_PRODUCT: 'Sửa sản phẩm', ADD_VARIANTS: 'Thêm SKU', UPDATE_SKU_PRICE: 'Sửa giá SKU', UPDATE_SKU: 'Sửa SKU', IMPORT_PRODUCT: 'Import Excel' })[item.operationType] || item.operationType}{item.operationCount > 1 ? ` · ${item.operationCount} thao tác` : ''}</span>
+          <small>{new Date(item.updatedAt || item.createdAt).toLocaleString('vi-VN')} · {({ QUEUED: 'Chờ đồng bộ', SYNCING: 'Đang gửi', RETRY_WAIT: 'Lỗi tạm thời', AUTH_REQUIRED: 'Đăng nhập để đồng bộ', NEEDS_ACTION: 'Cần xử lý' })[item.status]}</small>
+          {item.status === 'NEEDS_ACTION' && <p>{item.errorCode === 'VERSION_CONFLICT' ? 'Sản phẩm đã có thay đổi trên hệ thống. Cần kiểm tra trước khi lưu.' : item.errorCode === 'PRODUCT_NOT_FOUND' ? 'Sản phẩm không còn tồn tại trên hệ thống.' : item.errorCode === 'DUPLICATE_SAMPLE_CODE' ? 'Mã sản phẩm đã tồn tại.' : item.lastError}</p>}
+          {item.errorCode && <details><summary>Chi tiết lỗi</summary><code>{item.errorCode}: {item.lastError}</code></details>}
+          {item.status === 'RETRY_WAIT' && <button type="button" className="ara-btn ara-btn-secondary" onClick={() => retryCatalogChange(ownerId, item)}>Thử lại</button>}
+          {item.status === 'NEEDS_ACTION' && <button type="button" className="ara-btn ara-btn-gold" onClick={() => inspectConflict(item)}>{item.errorCode === 'VERSION_CONFLICT' ? 'Kiểm tra thay đổi' : 'Mở và sửa'}</button>}
+          {item.status === 'NEEDS_ACTION' && <button type="button" className="ara-btn ara-btn-secondary" onClick={async () => {
+            if (!window.confirm('Bỏ thay đổi trên thiết bị? Dữ liệu đã lưu trên hệ thống sẽ không bị xóa.')) return;
+            for (const related of pendingChanges.filter((entry) => entry.status === 'NEEDS_ACTION' &&
+              (entry.serverEntityId || entry.localEntityId || entry.operationId) === (item.serverEntityId || item.localEntityId || item.operationId))) {
+              await resolveCatalogOperation(ownerId, related, 'DISCARDED');
+            }
             setPendingChanges(await getPendingCatalogChanges(ownerId));
-          }}>Đã sửa trong file mới</button>}
-        </div>)}
-        {conflictView && <div className="ara-card" role="dialog" aria-label="Đối chiếu dữ liệu sản phẩm">
-          <h3>Đối chiếu thay đổi: {conflictView.operation.label}</h3>
-          <div className="ara-table-wrapper"><table className="ara-variant-table"><thead><tr><th>Trường</th><th>Dữ liệu hiện tại</th><th>Muốn lưu</th></tr></thead><tbody>
-            {Object.entries(conflictView.operation.payload).filter(([key]) => key !== 'variants' && key !== 'rows').map(([key, value]) =>
-              <tr key={key}><td>{key}</td><td>{String(conflictView.current?.product?.[key] ?? conflictView.current?.skus?.find((sku) =>
-                (sku.id || sku._id) === conflictView.operation.payload.skuId)?.[key] ?? '—')}</td><td>{String(value)}</td></tr>)}
+          }}>Bỏ thay đổi trên thiết bị</button>}
+        </article>)}
+        <details className="catalog-sync-history"><summary>Lịch sử hoàn tất ({pendingChanges.filter((item) => ['DONE', 'DISCARDED', 'SUPERSEDED'].includes(item.status)).length})</summary>
+          {pendingChanges.filter((item) => ['DONE', 'DISCARDED', 'SUPERSEDED'].includes(item.status)).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 20).map((item) => <p key={item.operationId}>{item.label} · {item.status === 'DONE' ? 'Đã đồng bộ' : item.status === 'DISCARDED' ? 'Đã bỏ thay đổi' : 'Đã được thay thế'}</p>)}
+        </details>
+        {conflictView && <div className="catalog-conflict" role="dialog" aria-modal="true" aria-label="Kiểm tra thay đổi sản phẩm"><h3>Sản phẩm đã có thay đổi trên hệ thống. Cần kiểm tra trước khi lưu.</h3>
+          <div className="ara-table-wrapper"><table className="ara-variant-table"><thead><tr><th>Trường</th><th>Khi bắt đầu sửa</th><th>Thay đổi của tôi</th><th>Hiện tại</th><th>Giữ</th></tr></thead><tbody>
+            {Object.entries(conflictView.operation.payload).filter(([key]) => key !== 'variants' && key !== 'rows').map(([key, value]) => { const currentValue = conflictView.current?.product?.[key] ?? ''; return <tr key={key}><td>{key}</td><td>{String(conflictView.operation.baseline?.[key] ?? '—')}</td><td>{String(value)}</td><td>{String(currentValue)}</td><td><select aria-label={`Giữ giá trị ${key}`} value={conflictView.selections?.[key] || 'mine'} onChange={(event) => setConflictView((state) => ({ ...state, selections: { ...state.selections, [key]: event.target.value } }))}><option value="mine">Thay đổi của tôi</option><option value="current">Bản hệ thống</option></select></td></tr>; })}
           </tbody></table></div>
-          {conflictView.current && <button className="ara-btn ara-btn-secondary" type="button" onClick={() =>
-            useCurrentCatalog().catch((failure) => setError(failure.message))}>Dùng dữ liệu hiện tại</button>}
-          <button className="ara-btn ara-btn-gold" type="button" onClick={() =>
-            editConflictingChange().catch((failure) => setError(failure.message))}>Mở chỉnh sửa</button>
-          <button className="ara-btn ara-btn-secondary" type="button" onClick={() => setConflictView(null)}>Đóng</button>
+          <button className="ara-btn ara-btn-secondary" type="button" onClick={() => useCurrentCatalog().catch((failure) => setError(failure.message))}>Dùng bản trên hệ thống</button>
+          <button className="ara-btn ara-btn-gold" type="button" onClick={() => editConflictingChange().catch((failure) => setError(failure.message))}>Chọn nội dung cần giữ</button>
+          <button className="ara-btn ara-btn-secondary" type="button" onClick={() => setConflictView(null)}>Để xử lý sau</button>
         </div>}
-      </div>}
-    </section>
+      </section>
+    </div>}
     {mode === 'existing' && selected && <>
       <div className="ara-chosen-product">
         <div className="ara-chosen-product-image">{selected.product.thumbnailUrl ? <img src={selected.product.thumbnailUrl} alt="" /> : <span className="ara-chosen-product-placeholder">ARA</span>}</div>

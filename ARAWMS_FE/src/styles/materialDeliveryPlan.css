@@ -1,0 +1,60 @@
+/* File: materialDeliveryPlan.css | Description: Styles planned material deliveries and batch history dialogs. */
+.main-content:has(> .material-inbound-page) { width: 100%; min-width: 0; align-items: stretch; background: #faf7f2; }
+.material-inbound-page:has(> .material-plan-page) { max-width: none; padding: 0; display: block; }
+.material-plan-page { box-sizing: border-box; width: 100%; max-width: 1625px; margin: 0 auto; padding: 32px 28px 80px; font: 16px/1.5 var(--font-sans); color: #302a23; }
+.material-plan-page * { box-sizing: border-box; }
+.material-plan-page h1 { margin: 0; font-size: 32px; }
+.material-plan-page h2, .material-plan-page h3 { margin: 0; font-size: 22px; }
+.material-plan-page p { margin: 8px 0; }
+.material-plan-page nav { color: #746b60; font-size: 14px; margin-bottom: 14px; }
+.material-plan-page nav a { color: inherit; }
+.material-plan-hero, .material-plan-actions, .material-plan-modal header, .material-plan-modal footer { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; }
+.material-plan-hero { margin-bottom: 24px; }
+.material-plan-hero p { color: #746b60; }
+.material-plan-actions { justify-content: flex-end; }
+.material-plan-page button { min-height: 44px; padding: 8px 13px; border: 1px solid #d9c9b6; border-radius: 9px; background: white; color: #62472d; font: 600 15px var(--font-sans); cursor: pointer; }
+.material-plan-page button.primary { background: #86653f; border-color: #86653f; color: white; }
+.material-plan-page button:disabled { opacity: .5; cursor: not-allowed; }
+.material-plan-page input, .material-plan-page select { width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid #ded0bf; border-radius: 8px; background: white; color: #302a23; font: 15px var(--font-sans); }
+.material-plan-page label { display: grid; gap: 5px; color: #665b4e; font-size: 14px; }
+.material-plan-card { min-width: 0; padding: 24px; border: 1px solid #e8dccd; border-radius: 14px; background: white; }
+.material-plan-filters { display: grid; grid-template-columns: minmax(230px, 2fr) repeat(5, minmax(110px, 1fr)) auto; gap: 10px; align-items: end; margin-bottom: 24px; }
+.material-plan-table-wrap { overflow-x: auto; }
+.material-plan-page table { width: 100%; min-width: 900px; border-collapse: collapse; }
+.material-plan-page th, .material-plan-page td { padding: 11px 9px; text-align: left; border-bottom: 1px solid #eee5db; vertical-align: top; }
+.material-plan-page th { font-size: 14px; color: #74695d; }
+.material-plan-page td small { display: block; color: #827769; }
+.material-plan-empty { text-align: center; padding: 42px 0; color: #786d61; }
+.material-plan-error, .material-plan-notice { padding: 11px 14px; border-radius: 8px; }
+.material-plan-error { background: #fff0ed; color: #a12f22; }
+.material-plan-notice { background: #e9f6e9; color: #286b3a; }
+.material-plan-overlay { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 20px; background: #17120eb3; }
+.material-plan-overlay.top { z-index: 1200; }
+.material-plan-overlay.receipt-detail { z-index: 1300; }
+.material-direct-overlay { z-index: 1400; }
+.material-receipt-list { margin-bottom: 24px; }
+.material-receipt-list-heading { justify-content: space-between; margin-bottom: 12px; }
+.material-receipt-list-heading label { min-width: 180px; }
+#material-plan-list { margin: 20px 0 12px; }
+.material-plan-modal { display: flex; flex-direction: column; width: min(1500px, 100%); max-height: 94vh; overflow: hidden; border-radius: 16px; background: #faf7f2; }
+.material-plan-modal header, .material-plan-modal footer { flex: none; padding: 17px 24px; background: white; }
+.material-plan-modal header { border-bottom: 1px solid #e8dccd; }
+.material-plan-modal header span { color: #74695d; }
+.material-plan-modal header button { border: 0; font-size: 28px; padding: 0 8px; }
+.material-plan-modal-body { display: grid; gap: 20px; overflow-y: auto; padding: 24px; }
+.material-plan-card summary { display: flex; justify-content: space-between; gap: 12px; cursor: pointer; }
+.material-plan-card summary + div { margin-top: 14px; }
+.material-plan-card > .material-plan-actions { margin-top: 16px; }
+.material-plan-inline { display: flex; align-items: end; gap: 9px; flex-wrap: wrap; margin-top: 16px; padding: 15px; border-radius: 9px; background: #f8f2ea; }
+.material-plan-inline label { flex: 1 1 170px; }
+.material-plan-item-edit { display: grid; grid-template-columns: 1fr auto auto; }
+.material-plan-item-edit .material-plan-form { grid-column: 1 / -1; width: 100%; margin: 0; }
+.material-plan-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+.material-plan-form .wide { grid-column: 1 / -1; }
+.material-plan-receipt-section { min-width: 0; }
+.material-plan-receipt-section .material-reference-overlay { position: static; display: block; padding: 0; background: none; backdrop-filter: none; }
+.material-plan-receipt-section .material-reference-sheet { width: 100%; max-height: none; overflow: visible; box-shadow: none; border: 1px solid #e8dccd; }
+.material-plan-receipt-section .material-reference-sheet-content { overflow: visible; }
+.material-plan-receipt-section .material-actions { flex-wrap: wrap; }
+@media (max-width: 1050px) { .material-plan-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 650px) { .material-plan-page { padding: 18px 14px 60px; } .material-plan-filters, .material-plan-form { grid-template-columns: 1fr; } .material-plan-overlay { padding: 0; } .material-plan-modal { height: 100dvh; max-height: 100dvh; width: 100%; border-radius: 0; } .material-plan-modal-body { padding: 15px; } .material-plan-card { padding: 15px; } }

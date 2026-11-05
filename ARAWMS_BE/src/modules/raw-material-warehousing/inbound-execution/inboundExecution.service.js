@@ -137,7 +137,8 @@ export async function getMaterialReceipt(receiptId, user) {
     ticketType: { $in: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER'] }, isDeleted: { $ne: true } }).lean();
   requireValue(receipt, 'Không tìm thấy phiếu nhập', 'RECEIPT_NOT_FOUND', 404);
   if (user) requireValue(accessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền xem phiếu này', 'RECEIPT_FORBIDDEN', 403);
-  return { receipt, plan: receipt.inboundPlanId ? await getInboundPlanDetails(receipt.inboundPlanId, true) : null };
+  return { receipt, plan: receipt.inboundPlanId && !receipt.deliveryBatchId
+    ? await getInboundPlanDetails(receipt.inboundPlanId, true) : null };
 }
 
 /** Creates a plan-bound draft; the supplier delivery code is unique per supplier. */

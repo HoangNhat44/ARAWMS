@@ -2,19 +2,24 @@
  * File: packingVerification.controller.js
  * Author: Duy Anh
  * Date: 2026-10-21
- * Description: Handles packing session requests and API errors.
+ * Description: Handles packing session HTTP requests and delegates to service layer.
  */
 import mongoose from 'mongoose';
 import PackingSession from '../../../models/PackingSession.js';
-import ProductUnit from '../../../models/ProductUnit.js';
-import Sku from '../../../models/Sku.model.js';
-import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
-import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
-import { findOrder, issueQr, publicOrderDetail, resolveQr } from '../order-qr-management/orderQrManagement.service.js';
+import { findOrder, publicOrderDetail, resolveQr } from '../order-qr-management/orderQrManagement.service.js';
 import { canPackOrder, canViewOrder } from '../../../common/services/orderAccessService.js';
-import { PackingError, discardPackingAttempt, openPackingSession, releasePackingSession, removeScannedBarcodeFromPacking, renewPackingSessionLease, scanProductBarcodeForPacking, toPackingSessionView } from './packingVerification.service.js';
-import { ensurePackingIndexes } from './packingIndexes.js';
+import { 
+  PackingError, 
+  discardPackingAttempt, 
+  openPackingSession, 
+  releasePackingSession, 
+  removeScannedBarcodeFromPacking, 
+  renewPackingSessionLease, 
+  scanProductBarcodeForPacking, 
+  toPackingSessionView,
+  registerProductUnitBarcode 
+} from './packingVerification.service.js';
 import { uploadPackingVideo as saveVideo, syncPackingVideo as syncVideo, streamPackingVideo } from './packingVideo.service.js';
 
 const sendPackingErrorResponse = (res, error) => sendError(res, error.code, { code: error.code }, error.status);
@@ -166,40 +171,25 @@ export const getPackingVideo = async (req, res, next) => {
 /** Registers one physical unit barcode against an available finished goods batch. */
 export const registerProductUnit = async (req, res, next) => {
   try {
-    if (!req.user.roles?.includes('ADMIN')) return sendError(res, 'Không có quyền', { code: 'FORBIDDEN' }, 403);
-    await ensurePackingIndexes();
-    const { barcode, skuId, warehouseId, batchId } = req.body;
-    if (typeof barcode !== 'string' || !/^[A-Za-z0-9_-]{3,128}$/.test(barcode) ||
-        !mongoose.isValidObjectId(skuId) || !mongoose.isValidObjectId(warehouseId) ||
-        !mongoose.isValidObjectId(batchId)) {
-      return sendError(res, 'Dữ liệu tem không hợp lệ', { code: 'INVALID_UNIT' }, 400);
+    // Authorization check
+    if (!req.user.roles?.includes('ADMIN')) {
+      return sendError(res, 'Không có quyền', { code: 'FORBIDDEN' }, 403);
     }
-    const [sku, warehouse, batch] = await Promise.all([
-      Sku.findOne({ _id: skuId, isActive: true, isDeleted: { $ne: true } }).select('_id'),
-      WarehouseLocation.findOne({ _id: warehouseId, warehouseType: 'FINISHED_GOODS', isDeleted: { $ne: true } }).select('_id'),
-      FinishedGoodsBatch.findOne({ _id: batchId, skuId, locationId: warehouseId,
-        isDefectQuarantine: false, isDeleted: { $ne: true } }).select('_id'),
-    ]);
-    if (!sku || !warehouse || !batch) return sendError(res, 'SKU, lô hoặc vị trí kho không hợp lệ', { code: 'INVALID_UNIT' }, 400);
-    const dbSession = await mongoose.startSession();
-    let unit;
-    try {
-      // Reserve one label slot and create the unit together to prevent duplicate inventory labels.
-      await dbSession.withTransaction(async () => {
-        const labeled = await FinishedGoodsBatch.findOneAndUpdate({
-          _id: batchId,
-          $expr: { $lt: [{ $ifNull: ['$labeledQty', 0] }, '$currentOnHandQty'] },
-        }, { $inc: { labeledQty: 1 } }, { session: dbSession });
-        if (!labeled) throw new PackingError('BATCH_LABEL_LIMIT');
-        [unit] = await ProductUnit.create([{
-          barcode, barcodeFormat: 'CODE_128', skuId, warehouseId, batchId,
-        }], { session: dbSession });
-      });
-    } finally { await dbSession.endSession(); }
-    return sendSuccess(res, 'Đã đăng ký tem sản phẩm vật lý', { id: unit.id, barcode: unit.barcode }, 201);
+    
+    // Delegate all business logic to service
+    const unit = await registerProductUnitBarcode(req.body);
+    
+    return sendSuccess(res, 'Đã đăng ký tem sản phẩm vật lý', { 
+      id: unit.id, 
+      barcode: unit.barcode 
+    }, 201);
   } catch (error) {
-    if (error.code === 11000) return sendError(res, 'Barcode đã tồn tại', { code: 'BARCODE_EXISTS' }, 409);
-    if (error instanceof PackingError) return sendPackingErrorResponse(res, error);
+    if (error.code === 11000) {
+      return sendError(res, 'Barcode đã tồn tại', { code: 'BARCODE_EXISTS' }, 409);
+    }
+    if (error instanceof PackingError) {
+      return sendPackingErrorResponse(res, error);
+    }
     next(error);
   }
 };

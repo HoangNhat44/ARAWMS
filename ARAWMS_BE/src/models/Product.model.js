@@ -24,12 +24,16 @@ const productSchema = new Schema(
     imagePublicId: { type: String },
     videoUrl: { type: String },
     videoPublicId: { type: String },
+    mediaOperations: [{ ownerUserId: Schema.Types.ObjectId, operationId: String,
+      sha256: String, kind: String, url: String }],
     isActive: { type: Boolean, default: true },
   },
-  { collection: 'products' }
+  { collection: 'products', optimisticConcurrency: true, versionKey: 'version' }
 );
 
 productSchema.plugin(baseSchemaPlugin);
+productSchema.index({ sampleCode: 1 }, { unique: true,
+  partialFilterExpression: { sampleCode: { $gt: '' } } });
 
 const Product = mongoose.model('Product', productSchema);
 export default Product;

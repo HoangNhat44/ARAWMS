@@ -16,8 +16,12 @@ export default function CatalogSyncRunner() {
     const run = () => syncCatalogChanges(ownerId).catch(() => {});
     run();
     window.addEventListener('online', run);
-    const timer = window.setInterval(run, 30000);
-    return () => { window.removeEventListener('online', run); window.clearInterval(timer); };
+    window.addEventListener('focus', run);
+    const onVisible = () => { if (document.visibilityState === 'visible') run(); };
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = window.setInterval(run, 60000);
+    return () => { window.removeEventListener('online', run); window.removeEventListener('focus', run);
+      document.removeEventListener('visibilitychange', onVisible); window.clearInterval(timer); };
   }, [ownerId]);
   return null;
 }

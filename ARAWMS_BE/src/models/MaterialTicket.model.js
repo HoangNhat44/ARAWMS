@@ -27,7 +27,11 @@ const materialTicketItemSchema = new Schema(
 
 /** Keeps the supplier inspection result and physical storage plan for one material. */
 const receiptLineSchema = new Schema({
+  clientLineId: String,
   rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial', required: true },
+  deliveryBatchItemId: { type: Schema.Types.ObjectId },
+  unitCost: { type: Number, min: 0 },
+  zeroCostReason: String,
   supplierDeclaredQty: Number,
   actualQty: { type: Number, default: 0 },
   acceptedQty: { type: Number, default: 0 },
@@ -63,6 +67,12 @@ const materialTicketSchema = new Schema(
       index: true,
     },
     inboundPlanId: { type: Schema.Types.ObjectId, ref: 'MaterialInboundPlan', index: true },
+    deliveryBatchId: { type: Schema.Types.ObjectId, index: true },
+    receiptSource: { type: String, enum: ['PLAN', 'DIRECT'] },
+    purchaseSourceName: { type: String, trim: true },
+    purchasedByName: { type: String, trim: true },
+    deliveryTimeliness: { label: { type: String, enum: ['EARLY', 'ON_TIME', 'LATE'] },
+      daysDifference: Number, expectedStart: Date, expectedEnd: Date },
     replacementForTicketId: { type: Schema.Types.ObjectId, ref: 'MaterialTicket' },
     remnantRequestId: { type: Schema.Types.ObjectId, ref: 'RemnantRecoveryRequest' },
     parentOutboundTicketId: { type: Schema.Types.ObjectId, ref: 'MaterialTicket' },
@@ -80,6 +90,8 @@ const materialTicketSchema = new Schema(
       uploadedByUserId: { type: Schema.Types.ObjectId, ref: 'User' }, uploadedAt: Date }],
     receiptLines: [receiptLineSchema],
     receiptVersion: { type: Number, default: 0 },
+    draftKey: String,
+    draftFingerprint: String,
     confirmationKey: String,
     confirmationFingerprint: String,
     usesPlannedLocationReservation: { type: Boolean, default: false },
@@ -102,6 +114,8 @@ materialTicketSchema.index(
   { supplierId: 1, supplierDeliveryCode: 1, ticketType: 1 },
   { unique: true, partialFilterExpression: { ticketType: 'INBOUND_FROM_PLAN', supplierId: { $exists: true }, supplierDeliveryCode: { $exists: true } } }
 );
+materialTicketSchema.index({ draftKey: 1 }, { unique: true,
+  partialFilterExpression: { draftKey: { $type: 'string' } } });
 
 const MaterialTicket = mongoose.model('MaterialTicket', materialTicketSchema);
 export default MaterialTicket;

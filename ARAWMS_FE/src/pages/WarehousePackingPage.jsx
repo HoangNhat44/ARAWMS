@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { packingSessionService } from '../services/packingSessionService';
 import { savePendingVideo, listPendingVideos, storageEstimate } from '../services/localPackingVideoQueue';
 import { packingVideoUploadManager } from '../services/packingVideoUploadManager';
+import '../styles/warehousePacking.css';
 
 const panel = { background: '#fff', border: '1px solid var(--ara-border)', borderRadius: 10, padding: '1.5rem' };
 const inputStyle = { flex: '1 1 240px', padding: '0.7rem', border: '1px solid var(--ara-border)', borderRadius: 6 };
@@ -433,30 +434,28 @@ export default function WarehousePackingPage() {
   };
 
   return (
-    <div style={{ width: 'min(100%, 950px)', margin: '2rem auto', padding: '0 1rem', display: 'grid', gap: '1rem' }}>
-      <h1>Bàn đóng hàng</h1>
-      <p>Mở camera một lần: quét QR để mở đơn, sau đó đưa từng barcode sản phẩm vào cùng khung hình để đối soát.</p>
+    <main className="packing-page">
+      <p className="packing-crumb">Trang chủ <span>/</span> Đóng hàng</p>
+      <header className="packing-heading"><div><h1>Đóng hàng</h1><p>Quét QR đơn, đối soát từng sản phẩm rồi quay video đóng gói.</p></div><div className="packing-heading-actions"><span className="packing-warehouse">Kho Tổng TP.HCM</span><span className={`packing-network ${queue.online ? 'is-online' : 'is-offline'}`}>{queue.online ? 'Đang kết nối' : 'Mất kết nối'}</span></div></header>
+      <ol className="packing-steps"><li className="is-current">1 <span>Quét QR đơn</span></li><li className={session ? 'is-current' : ''}>2 <span>Quét đủ từng chiếc</span></li><li className={recording ? 'is-current' : ''}>3 <span>Quay video</span></li><li className={session?.video ? 'is-current' : ''}>4 <span>Lưu và chờ tải</span></li></ol>
       {scanNotice && <div role="status" className="packing-scan-notice">{scanNotice}</div>}
       {error && <div role="alert" style={{ ...panel, color: 'var(--ara-error)' }}>{error}</div>}
       {message && <div role="status" style={{ ...panel, color: 'var(--ara-success)' }}>{message}</div>}
       <VideoUploadStatusPanel queue={queue} />
-      <section style={panel}>
-        <h2>1. Camera quét QR và barcode</h2>
-        <p>{recording ? 'Đang quay đơn này. Quét QR đơn tiếp theo để tự kết thúc video và bắt đầu đơn mới.' :
-          session ? 'Đơn đang mở. Quét QR đơn tiếp theo để chuyển đơn.' : 'Đưa QR đơn hàng vào khung hình.'}</p>
-        <button className="btn-ara-secondary" type="button" disabled={recording || !!recorderRef.current || busy} onClick={() => cameraMode ? stopCamera() : startCamera()}>
-          {cameraMode ? 'Tắt camera' : 'Mở camera quét mã'}
-        </button>
-        {recording && <strong role="status" style={{ marginLeft: '1rem', color: 'var(--ara-error)' }}>● ĐANG QUAY</strong>}
-        <video ref={videoRef} playsInline muted style={{ display: cameraMode ? 'block' : 'none', width: '100%', maxWidth: 720, marginTop: '1rem', borderRadius: 8 }} />
-        <h3 style={{ marginTop: '1rem' }}>Nhập hoặc dùng máy quét QR</h3>
-        <form onSubmit={(event) => { event.preventDefault(); openPackingOrderFromQr(qrInput); }} style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem', marginTop: '1rem' }}>
-          <input aria-label="QR đơn hàng" value={qrInput} onChange={(event) => setQrInput(event.target.value)} style={inputStyle} required placeholder="PACK:v1:..." />
-          <button className="btn-ara-primary" type="submit" disabled={busy}>Mở đơn</button>
+      {order && <section className="packing-order-ribbon"><strong>{order.orderCode}</strong><span>{order.recipientName || order.recipient?.name || 'Chưa có người nhận'}</span><span className="packing-order-status">{order.status}</span>{session && <span>{session.items.reduce((sum, item) => sum + item.scanned, 0)}/{session.items.reduce((sum, item) => sum + item.quantity, 0)} chiếc đã quét</span>}</section>}
+      <div className="packing-grid">
+      <section className="packing-camera-card">
+        <div className="packing-camera-top"><div><h2>Camera đóng hàng</h2><p>{recording ? 'Đang quay. Quét QR tiếp theo để chuyển đơn.' : session ? 'Đơn đang mở. Quét QR tiếp theo để chuyển đơn.' : 'Đưa QR đơn hàng vào khung hình hoặc nhập mã bên dưới.'}</p></div><button className="btn-ara-secondary" type="button" disabled={recording || !!recorderRef.current || busy} onClick={() => cameraMode ? stopCamera() : startCamera()}>{cameraMode ? 'Tắt camera' : 'Mở camera'}</button></div>
+        <div className="packing-camera-frame">{cameraMode ? <video ref={videoRef} playsInline muted /> : <div className="packing-camera-empty"><span className="packing-camera-icon">⌗</span><h3>{session ? 'Đơn đang mở' : 'Quét QR để bắt đầu'}</h3><p>Camera chỉ mở sau khi bạn cấp quyền. Có thể dùng máy quét cầm tay ở bên dưới.</p></div>}{recording && <span role="status" className="packing-recording-badge">● ĐANG QUAY</span>}</div>
+        <p className="packing-camera-caption">{cameraMode ? 'Đưa QR đơn hoặc barcode vào khung camera.' : 'Camera chưa mở · có thể nhập mã bằng máy quét bàn phím.'}</p>
+        <form className="packing-scan-form" onSubmit={(event) => { event.preventDefault(); openPackingOrderFromQr(qrInput); }}>
+          <label htmlFor="packing-order-qr">QR đơn hàng</label><div className="packing-scan-row"><input id="packing-order-qr" aria-label="QR đơn hàng" value={qrInput} onChange={(event) => setQrInput(event.target.value)} required placeholder="Quét hoặc nhập nội dung QR đơn…" /><button className="btn-ara-primary" type="submit" disabled={busy}>Mở đơn</button></div>
         </form>
       </section>
-      {order && <section style={panel}>
-        <h2>2. Chi tiết đơn {order.orderCode}</h2>
+      <aside className="packing-products-card">
+      {!order && <><h2>Sản phẩm cần đóng</h2><p className="packing-hint">Quét QR đơn đã chốt để xem danh sách SKU và số lượng cần đối soát.</p></>}
+      {order && <>
+        <h2>Sản phẩm cần đóng</h2><p className="packing-order-code">Đơn {order.orderCode} · {order.status}</p>
         <div className="packing-detail-grid">
           <Detail label="Mã đơn" value={order.orderCode} />
           <Detail label="Trạng thái" value={order.status} />
@@ -490,7 +489,7 @@ export default function WarehousePackingPage() {
           <Detail label="Tiền thu hộ" value={order.amounts?.codAmount != null && formatMoney(order.amounts.codAmount)} />
         </div></>}
         {order.note && <p><strong>Ghi chú:</strong> {order.note}</p>}
-        <h3>Danh sách sản phẩm ({order.items.reduce((sum, item) => sum + item.quantity, 0)} món)</h3>
+        <h3>Danh sách sản phẩm ({order.items.reduce((sum, item) => sum + item.quantity, 0)} chiếc)</h3>
         <div className="packing-products-scroll">
           <table className="packing-products-table">
             <thead><tr><th>STT</th><th>Mã mẫu</th><th>Số lượng</th><th>Chiết khấu</th><th>Thành tiền</th></tr></thead>
@@ -512,9 +511,11 @@ export default function WarehousePackingPage() {
             })}</tbody>
           </table>
         </div>
-      </section>}
-      {session && <section style={panel}>
-        <h2>3. Đối soát barcode sản phẩm</h2>
+      </>}
+      </aside>
+      </div>
+      {session && <section className="packing-session-card">
+        <h2>Đối soát barcode sản phẩm</h2>
         <p>Phiên: {session.state === 'READY_TO_RECORD' ? 'Đã đủ hàng' : 'Đang đối soát'}.</p>
         {session.state === 'SCANNING' && <>
           <form onSubmit={(event) => { event.preventDefault(); scanBarcode(barcodeInput); }} style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem', margin: '1rem 0' }}>
@@ -554,6 +555,6 @@ export default function WarehousePackingPage() {
         </button>}
         {!!recorderRef.current && <p style={{ marginTop: '.5rem' }}>“Kết thúc” bỏ video và kết quả quét lần này; đơn có thể đóng lại.</p>}
       </section>}
-    </div>
+    </main>
   );
 }

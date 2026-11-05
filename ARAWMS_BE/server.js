@@ -5,8 +5,10 @@
  * Description: Loads backend configuration, connects MongoDB, and starts the API server.
  */
 import dotenv from 'dotenv';
+import { createServer } from 'node:http';
 import app from './src/app.js';
 import connectDB from './src/config/db.js';
+import { attachRealtime } from './src/common/services/realtime.js';
 
 // Load the local environment before the database connection is created.
 dotenv.config();
@@ -17,7 +19,9 @@ const PORT = process.env.PORT || 5000;
 const startServer = async () => {
   await connectDB();
 
-  app.listen(PORT, () => {
+  const server = createServer(app);
+  attachRealtime(server);
+  server.listen(PORT, () => {
     console.log(`=================================`);
     console.log(`🚀 Server đang chạy tại: http://localhost:${PORT}`);
     console.log(`⚙️  Môi trường: ${process.env.NODE_ENV || 'development'}`);

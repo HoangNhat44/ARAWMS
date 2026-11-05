@@ -13,4 +13,5 @@ export const ARASTORE_CLOUDINARY_FOLDERS = Object.freeze({
   productBarcodes: `${ARASTORE_CLOUDINARY_ROOT}/barcode-san-pham`,
   rawMaterialBarcodes: `${ARASTORE_CLOUDINARY_ROOT}/barcode-nguyen-phu-lieu`,
   packingVideos: `${ARASTORE_CLOUDINARY_ROOT}/video-dong-hang`,
+  packingVideoAssetFolder: 'Arastore/video-dong-hang',
 });
