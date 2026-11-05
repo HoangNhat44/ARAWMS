@@ -16,7 +16,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Container, Row, Col, Table, Badge, Button, ButtonGroup, Form,
-  InputGroup, Stack, Card, Alert, Spinner,
+  InputGroup, Stack, Card, Alert, Spinner, Pagination,
 } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
 import { useToast } from '../../context/ToastContext';
@@ -104,7 +104,7 @@ const SellerOrdersPage = () => {
   const { user } = useAuth();
   const { showSuccess, showInfo, showWarning } = useToast();
 
-  // State dữ liệu và bộ lọc
+  // State dữ liệu, bộ lọc và phân trang
   const [orders, setOrders] = useState([]);
   const [statusCounts, setStatusCounts] = useState({});
   const [loading, setLoading] = useState(false);
@@ -112,6 +112,16 @@ const SellerOrdersPage = () => {
   const [channelFilter, setChannelFilter] = useState('ALL'); // 'ALL' | 'SHOPEE' | 'TIKTOK' | 'FACEBOOK' | 'POS' | 'EXCEL_IMPORT'
   const [subTab, setSubTab] = useState('ORDERS'); // 'ORDERS' | 'IMPORT_PENDING' | 'NEED_ACTION' | 'RETURNS'
   const [search, setSearch] = useState('');
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    limit: 20,
+    totalPages: 1,
+  });
 
   // Selection
   const [selectedIds, setSelectedIds] = useState([]);
@@ -138,13 +148,14 @@ const SellerOrdersPage = () => {
   }, [location.search]);
 
   useEffect(() => {
-    fetchOrders();
-  }, [statusFilter, channelFilter, subTab]);
+    setCurrentPage(1);
+    fetchOrders(1);
+  }, [statusFilter, channelFilter, subTab, pageSize]);
 
   /**
-   * Gọi API lấy danh sách đơn hàng kèm tổng đếm từng trạng thái
+   * Gọi API lấy danh sách đơn hàng kèm phân trang và tổng đếm từng trạng thái
    */
-  const fetchOrders = async () => {
+  const fetchOrders = async (targetPage = currentPage) => {
     try {
       setLoading(true);
       const res = await sellerService.getOrderList({
@@ -152,12 +163,17 @@ const SellerOrdersPage = () => {
         channel: channelFilter !== 'ALL' ? channelFilter : undefined,
         importStatus: subTab === 'IMPORT_PENDING' ? 'PENDING_WAREHOUSE_APPROVAL' : undefined,
         search: search.trim() || undefined,
-        limit: 100,
+        page: targetPage,
+        limit: pageSize,
       });
       if (res.success) {
         setOrders(res.data?.items || []);
         if (res.data?.statusCounts) {
           setStatusCounts(res.data.statusCounts);
+        }
+        if (res.data?.pagination) {
+          setPagination(res.data.pagination);
+          setCurrentPage(res.data.pagination.page || targetPage);
         }
       }
     } catch (err) {
@@ -165,6 +181,60 @@ const SellerOrdersPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Chuyển trang phân trang
+   */
+  const handlePageChange = (newPage) => {
+    const totalP = pagination.totalPages || 1;
+    if (newPage < 1 || newPage > totalP || newPage === currentPage) return;
+    setCurrentPage(newPage);
+    fetchOrders(newPage);
+  };
+
+  /**
+   * Sinh các nút số trang phân trang
+   */
+  const renderPaginationItems = () => {
+    const totalPages = pagination.totalPages || 1;
+    if (totalPages <= 1) return null;
+
+    const items = [];
+    const maxVisible = 5;
+    let startPage = Math.max(1, currentPage - 2);
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+    if (endPage - startPage < maxVisible - 1) {
+      startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+
+    if (startPage > 1) {
+      items.push(
+        <Pagination.Item key={1} active={currentPage === 1} onClick={() => handlePageChange(1)}>
+          1
+        </Pagination.Item>
+      );
+      if (startPage > 2) items.push(<Pagination.Ellipsis key="ellipsis-start" disabled />);
+    }
+
+    for (let p = startPage; p <= endPage; p++) {
+      items.push(
+        <Pagination.Item key={p} active={p === currentPage} onClick={() => handlePageChange(p)}>
+          {p}
+        </Pagination.Item>
+      );
+    }
+
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) items.push(<Pagination.Ellipsis key="ellipsis-end" disabled />);
+      items.push(
+        <Pagination.Item key={totalPages} active={currentPage === totalPages} onClick={() => handlePageChange(totalPages)}>
+          {totalPages}
+        </Pagination.Item>
+      );
+    }
+
+    return items;
   };
 
   /**
@@ -374,7 +444,7 @@ const SellerOrdersPage = () => {
   return (
     <div className="d-flex flex-column h-100 seller-workspace" style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
       {/* ── Top Header Navigation Bar (Enterprise Solid Surface) ─── */}
-      <div className="ara-seller-header px-2 px-md-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div className="ara-seller-header px-2 px-md-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2 flex-shrink-0">
         <Stack direction="horizontal" gap={2} className="align-items-center">
           <Button
             size="sm"
@@ -396,7 +466,7 @@ const SellerOrdersPage = () => {
           <Button
             size="sm"
             className="btn-wms-default d-flex align-items-center gap-1 px-2 py-1"
-            onClick={fetchOrders}
+            onClick={() => fetchOrders(currentPage)}
             title="Đồng bộ danh sách đơn"
           >
             <Icon name="arrow-clockwise" /> <span className="d-none d-md-inline">Đồng bộ</span>
@@ -448,7 +518,12 @@ const SellerOrdersPage = () => {
               placeholder="Tìm theo mã đơn, SĐT, tên khách, mã sàn, SKU..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') fetchOrders(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setCurrentPage(1);
+                  fetchOrders(1);
+                }
+              }}
             />
           </InputGroup>
         </div>
@@ -456,7 +531,7 @@ const SellerOrdersPage = () => {
 
       {/* ── Channel Tabs Bar & Sub Tabs (Multi-Channel Support - Mentor 4.3.3) ─── */}
       <div
-        className="px-2 px-md-3 py-2 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2 overflow-x-auto"
+        className="px-2 px-md-3 py-2 border-bottom d-flex align-items-center justify-content-between gap-2 overflow-x-auto flex-shrink-0 ara-channels-subtabs-bar text-nowrap"
         style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}
       >
         {/* Đa kênh: Tất cả / Shopee / TikTok / FB / POS / Excel */}
@@ -506,7 +581,7 @@ const SellerOrdersPage = () => {
         </div>
 
         {/* Sub-tabs: Đơn hàng / Chờ kho duyệt TMĐT / Cần xử lý / Đơn đã hoàn */}
-        <div className="ara-segmented-group text-nowrap flex-shrink-0">
+        <div className="ara-segmented-group text-nowrap flex-shrink-0 ms-auto">
           <button
             type="button"
             className={`ara-segmented-btn ${subTab === 'ORDERS' ? 'active' : ''}`}
@@ -543,7 +618,7 @@ const SellerOrdersPage = () => {
       </div>
 
       {/* ── Pancake Status Pill Counters Bar ─── */}
-      <div className="ara-status-pills-container px-3 py-2 d-flex align-items-center gap-1 overflow-x-auto">
+      <div className="ara-status-pills-container px-3 py-2 d-flex align-items-center gap-1 overflow-x-auto flex-shrink-0">
         {PANCAKE_STATUSES.map((st) => {
           const count = statusCounts[st.countKey] !== undefined ? statusCounts[st.countKey] : 0;
           const isActive = statusFilter === st.key;
@@ -998,14 +1073,66 @@ const SellerOrdersPage = () => {
         )}
       </div>
 
-      {/* ── Footer status bar ─── */}
+      {/* ── Footer status & Pagination bar ─── */}
       <div
-        className="border-top px-3 py-2 small d-flex align-items-center justify-content-between"
+        className="border-top px-3 py-2 small d-flex flex-wrap align-items-center justify-content-between gap-2 flex-shrink-0"
         style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)', color: 'var(--wms-secondary, #574F46)' }}
       >
-        <div>
-          Tổng số: <strong className="text-dark">{filteredOrders.length}</strong> đơn hàng · Đã chọn <strong className="text-dark">{selectedIds.length}</strong> đơn
+        <div className="d-flex align-items-center gap-2 flex-wrap">
+          <div>
+            Tổng số: <strong className="text-dark">{pagination.total ?? filteredOrders.length}</strong> đơn hàng · Đã chọn <strong className="text-dark">{selectedIds.length}</strong> đơn
+          </div>
+          <div className="vr opacity-25 d-none d-sm-block" style={{ height: 16 }} />
+          <div className="d-flex align-items-center gap-1">
+            <span className="text-muted d-none d-sm-inline">Hiển thị:</span>
+            <Form.Select
+              size="sm"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              style={{ width: 'auto', padding: '2px 24px 2px 8px', fontSize: '0.8rem', backgroundColor: '#FFFFFF', borderColor: 'var(--wms-border, #C8B9A6)' }}
+            >
+              <option value={10}>10 đơn/trang</option>
+              <option value={20}>20 đơn/trang</option>
+              <option value={50}>50 đơn/trang</option>
+              <option value={100}>100 đơn/trang</option>
+            </Form.Select>
+          </div>
         </div>
+
+        {/* Phân trang Bootstrap */}
+        {(pagination.totalPages > 1 || pagination.total > pageSize) && (
+          <div className="d-flex align-items-center gap-2 ms-auto">
+            <span className="text-muted small d-none d-md-inline">
+              Trang {currentPage} / {pagination.totalPages || 1}
+            </span>
+            <Pagination size="sm" className="mb-0 ara-pagination">
+              <Pagination.First
+                disabled={currentPage <= 1 || loading}
+                onClick={() => handlePageChange(1)}
+                title="Trang đầu"
+              />
+              <Pagination.Prev
+                disabled={currentPage <= 1 || loading}
+                onClick={() => handlePageChange(currentPage - 1)}
+                title="Trang trước"
+              />
+              {renderPaginationItems()}
+              <Pagination.Next
+                disabled={currentPage >= (pagination.totalPages || 1) || loading}
+                onClick={() => handlePageChange(currentPage + 1)}
+                title="Trang sau"
+              />
+              <Pagination.Last
+                disabled={currentPage >= (pagination.totalPages || 1) || loading}
+                onClick={() => handlePageChange(pagination.totalPages || 1)}
+                title="Trang cuối"
+              />
+            </Pagination>
+          </div>
+        )}
       </div>
 
       {/* ── Thanh thao tác nổi khi tích chọn Checkbox hàng loạt ─── */}

@@ -233,6 +233,22 @@ body:has(.seller-workspace),
 }
 
 /* ── 4. Segmented Control Filter Bars ───────────────────────────────────── */
+.ara-channels-subtabs-bar {
+  min-height: 46px;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: thin;
+  flex-shrink: 0 !important;
+}
+
+.ara-channels-subtabs-bar::-webkit-scrollbar {
+  height: 4px;
+}
+.ara-channels-subtabs-bar::-webkit-scrollbar-thumb {
+  background-color: var(--wms-border-strong);
+  border-radius: 4px;
+}
+
 .ara-segmented-group {
   display: inline-flex;
   align-items: center;
@@ -272,6 +288,58 @@ body:has(.seller-workspace),
 .ara-status-pills-container {
   background-color: var(--wms-bg-subtle);
   border-bottom: 1px solid var(--wms-border);
+  min-height: 44px;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: thin;
+  flex-shrink: 0 !important;
+}
+
+.ara-status-pills-container::-webkit-scrollbar {
+  height: 4px;
+}
+.ara-status-pills-container::-webkit-scrollbar-thumb {
+  background-color: var(--wms-border-strong);
+  border-radius: 4px;
+}
+
+/* ── Pagination Styling (UIDesign.md Compliant) ─────────────────────────── */
+.ara-pagination {
+  gap: 3px;
+}
+
+.ara-pagination .page-item .page-link {
+  color: var(--wms-text-primary);
+  background-color: #FFFFFF;
+  border: 1px solid var(--wms-border);
+  font-size: 0.8rem;
+  padding: 3px 9px;
+  border-radius: 4px !important;
+  transition: all 0.15s ease;
+  min-width: 28px;
+  text-align: center;
+}
+
+.ara-pagination .page-item.active .page-link {
+  background-color: var(--wms-primary) !important;
+  border-color: var(--wms-primary) !important;
+  color: #FFFFFF !important;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(20, 18, 16, 0.1);
+}
+
+.ara-pagination .page-item .page-link:hover {
+  background-color: var(--wms-primary-subtle);
+  border-color: var(--wms-accent);
+  color: var(--wms-text-primary);
+}
+
+.ara-pagination .page-item.disabled .page-link {
+  color: var(--wms-text-light);
+  background-color: rgba(255, 255, 255, 0.6);
+  border-color: var(--wms-border);
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .ara-status-pill-btn {
@@ -673,6 +741,40 @@ body:has(.seller-workspace),
 
 .ara-mobile-order-card:active {
   background-color: var(--wms-bg-subtle);
+}
+
+/* ── Pagination Styling (ARA Luxury Enterprise) ─── */
+.ara-pagination .page-item .page-link {
+  color: var(--wms-text-primary, #141210);
+  background-color: #FFFFFF;
+  border: 1px solid var(--wms-border, #C8B9A6);
+  font-size: 0.8rem;
+  padding: 0.25rem 0.55rem;
+  min-width: 30px;
+  text-align: center;
+  transition: all 0.15s ease;
+  box-shadow: none !important;
+}
+
+.ara-pagination .page-item:not(.active):not(.disabled) .page-link:hover {
+  background-color: var(--wms-primary-subtle, #EFE6DA);
+  border-color: var(--wms-border-strong, #AE9C86);
+  color: var(--wms-accent-hover, #6E5233);
+}
+
+.ara-pagination .page-item.active .page-link {
+  background-color: var(--wms-primary, #141210) !important;
+  border-color: var(--wms-primary, #141210) !important;
+  color: #FFFFFF !important;
+  font-weight: 600;
+}
+
+.ara-pagination .page-item.disabled .page-link {
+  color: var(--wms-text-light, #786E63);
+  background-color: var(--wms-bg-subtle, #F3EDE4);
+  border-color: var(--wms-border, #C8B9A6);
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* ── 12. Slim Scrollbars ────────────────────────────────────────────────── */

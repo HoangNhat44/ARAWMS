@@ -792,33 +792,42 @@ export const getOrderList = async (filters, user) => {
   if (filters.customerId) baseQuery.customerId = new mongoose.Types.ObjectId(filters.customerId);
 
   // Lọc theo Kênh / Nguồn đơn hàng (Shopee, TikTok, Facebook, POS...)
+  let channelCondition = null;
   if (filters.channel && filters.channel !== 'ALL') {
     if (filters.channel === 'POS') {
-      baseQuery.$or = [{ orderType: 'POS_DIRECT' }, { channel: 'POS_OFFLINE' }];
+      channelCondition = { $or: [{ orderType: 'POS_DIRECT' }, { channel: 'POS_OFFLINE' }] };
     } else if (filters.channel === 'ONLINE') {
       baseQuery.channel = { $nin: ['POS_OFFLINE'] };
       baseQuery.orderType = { $ne: 'POS_DIRECT' };
     } else if (filters.channel === 'FACEBOOK') {
-      baseQuery.$or = [
-        { channel: { $in: ['FACEBOOK', 'FACEBOOK_MESSENGER'] } },
-        { 'sourceDetails.sourceType': 'FANPAGE' },
-      ];
+      channelCondition = {
+        $or: [
+          { channel: { $in: ['FACEBOOK', 'FACEBOOK_MESSENGER'] } },
+          { 'sourceDetails.sourceType': 'FANPAGE' },
+        ],
+      };
     } else if (filters.channel === 'SHOPEE') {
-      baseQuery.$or = [
-        { channel: 'SHOPEE' },
-        { 'sourceDetails.sourceType': 'SHOPEE_STORE' },
-      ];
+      channelCondition = {
+        $or: [
+          { channel: 'SHOPEE' },
+          { 'sourceDetails.sourceType': 'SHOPEE_STORE' },
+        ],
+      };
     } else if (filters.channel === 'TIKTOK') {
-      baseQuery.$or = [
-        { channel: 'TIKTOK' },
-        { 'sourceDetails.sourceType': 'TIKTOK_SHOP' },
-      ];
+      channelCondition = {
+        $or: [
+          { channel: 'TIKTOK' },
+          { 'sourceDetails.sourceType': 'TIKTOK_SHOP' },
+        ],
+      };
     } else if (filters.channel === 'EXCEL_IMPORT') {
-      baseQuery.$or = [
-        { channel: 'EXCEL_IMPORT' },
-        { 'sourceDetails.sourceType': 'EXCEL_CUSTOM' },
-        { 'sourceDetails.importBatchCode': { $exists: true, $ne: null } },
-      ];
+      channelCondition = {
+        $or: [
+          { channel: 'EXCEL_IMPORT' },
+          { 'sourceDetails.sourceType': 'EXCEL_CUSTOM' },
+          { 'sourceDetails.importBatchCode': { $exists: true, $ne: null } },
+        ],
+      };
     } else {
       baseQuery.channel = filters.channel;
     }
@@ -845,16 +854,28 @@ export const getOrderList = async (filters, user) => {
   }
 
   // 2. Tìm kiếm theo mã đơn / tên / SĐT người nhận / mã SKU / mã đơn sàn
+  let searchCondition = null;
   if (search && search.trim()) {
     const re = new RegExp(escapeRegex(search.trim()), 'i');
-    baseQuery.$or = [
-      { orderCode: re },
-      { 'sourceDetails.externalOrderCode': re },
-      { 'sourceDetails.sourceName': re },
-      { 'shippingRecipient.name': re },
-      { 'shippingRecipient.phone': re },
-      { 'items.skuCode': re },
-    ];
+    searchCondition = {
+      $or: [
+        { orderCode: re },
+        { 'sourceDetails.externalOrderCode': re },
+        { 'sourceDetails.sourceName': re },
+        { 'shippingRecipient.name': re },
+        { 'shippingRecipient.phone': re },
+        { 'items.skuCode': re },
+      ],
+    };
+  }
+
+  // Kết hợp điều kiện kênh và tìm kiếm không bị ghi đè $or
+  if (channelCondition && searchCondition) {
+    baseQuery.$and = [channelCondition, searchCondition];
+  } else if (channelCondition) {
+    Object.assign(baseQuery, channelCondition);
+  } else if (searchCondition) {
+    Object.assign(baseQuery, searchCondition);
   }
 
   const query = status ? { ...baseQuery, status } : baseQuery;
