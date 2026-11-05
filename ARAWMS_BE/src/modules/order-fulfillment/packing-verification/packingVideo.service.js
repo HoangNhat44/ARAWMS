@@ -20,7 +20,7 @@ const videoTypes = new Set(['video/webm', 'video/mp4']);
 let indexesReady;
 /** Creates the recording ID index once so retried uploads cannot create duplicates. */
 const ensureVideoIndexes = () => {
-  if (!indexesReady) indexesReady = PackingVideo.createIndexes().catch((error) => {
+  if (!indexesReady) indexesReady = PackingSession.createIndexes().catch((error) => {
     indexesReady = null;
     throw error;
   });
@@ -98,26 +98,26 @@ const orderCodeFor = async (packing) => {
 /** Stages uploaded video metadata for recovery after a database failure. */
 const stageVideo = async (packing, recordingId, resource, durationMs, orderCode) => {
   await ensureVideoIndexes();
-  const previous = await PackingVideo.findOne({ recordingId });
-  if (previous && String(previous.sessionId) !== String(packing._id)) throw new PackingError('RECORDING_ID_CONFLICT');
+  const previous = await PackingSession.findOne({ recordingId }).select('_id').lean();
+  if (previous && String(previous._id) !== String(packing._id)) throw new PackingError('RECORDING_ID_CONFLICT');
   const publicId = resource.public_id;
   if (![publicIdFor(orderCode), previousPublicIdFor(packing._id, recordingId), legacyPublicIdFor(packing._id, recordingId)].includes(publicId) ||
       !resource.asset_id || !resource.secure_url) {
     throw new PackingError('VIDEO_RESOURCE_MISMATCH', 502);
   }
-  const staged = await PackingVideo.findOneAndUpdate(
-    { recordingId },
-    { $setOnInsert: {
-      recordingId, sessionId: packing._id, orderId: packing.orderKey,
+  const staged = await PackingSession.findOneAndUpdate(
+    { _id: packing._id, $or: [{ recordingId: { $exists: false } }, { recordingId }] },
+    { $set: { recordingId, pendingVideo: {
+      recordingId,
       cloudinaryPublicId: publicId, cloudinaryAssetId: resource.asset_id,
       cloudinaryUrl: resource.secure_url, mimeType: `video/${resource.format}`,
       fileSize: resource.bytes, durationMs: Math.max(1, Math.round((resource.duration || 0) * 1000) || durationMs),
-      status: 'SYNC_PENDING', uploadedAt: new Date(resource.created_at || Date.now()),
-    } },
-    { upsert: true, new: true }
+      uploadedAt: new Date(resource.created_at || Date.now()),
+    } } },
+    { new: true }
   );
-  if (String(staged.sessionId) !== String(packing._id)) throw new PackingError('RECORDING_ID_CONFLICT');
-  return staged;
+  if (!staged) throw new PackingError('RECORDING_ID_CONFLICT');
+  return staged.pendingVideo;
 };
 
 /** Links a saved video to its order when packing completes. */
@@ -145,7 +145,8 @@ const completeVideo = async (packing, video) => {
   if (packing.video?.publicId) {
     if (packing.video.recordingId !== video.recordingId) throw new PackingError('VIDEO_ALREADY_SAVED');
     await linkExistingOrderVideo(packing, video);
-    await PackingVideo.updateOne({ recordingId: video.recordingId }, { $set: { status: 'COMPLETED' } });
+    await PackingSession.updateOne({ _id: packing._id },
+      { $set: { recordingId: video.recordingId, 'video.status': 'COMPLETED' }, $unset: { pendingVideo: '' } });
     return { status: 'COMPLETED', session: toPackingSessionView(packing) };
   }
   const dbSession = await mongoose.startSession();
@@ -163,12 +164,12 @@ const completeVideo = async (packing, video) => {
         }
         const updated = await PackingSession.findOneAndUpdate(
           { _id: packing._id, 'video.publicId': { $exists: false } },
-          { $set: { video: {
+          { $set: { recordingId: video.recordingId, video: {
             recordingId: video.recordingId, publicId: video.cloudinaryPublicId,
             assetId: video.cloudinaryAssetId, url: video.cloudinaryUrl,
             mimeType: video.mimeType, sizeBytes: video.fileSize,
-            durationMs: video.durationMs, uploadedAt: video.uploadedAt,
-          } }, $inc: { version: 1 } },
+            durationMs: video.durationMs, uploadedAt: video.uploadedAt, status: 'COMPLETED',
+          } }, $unset: { pendingVideo: '' }, $inc: { version: 1 } },
           { new: true, session: dbSession }
         );
         if (!updated) throw new PackingError('VIDEO_ALREADY_SAVED');
@@ -188,10 +189,9 @@ const completeVideo = async (packing, video) => {
         await updated.save({ session: dbSession });
         current.video = updated.video;
       }
-      await PackingVideo.updateOne(
-        { recordingId: video.recordingId, sessionId: packing._id },
-        { $set: { status: 'COMPLETED' } }, { session: dbSession }
-      );
+      await PackingSession.updateOne({ _id: packing._id },
+        { $set: { recordingId: video.recordingId, 'video.status': 'COMPLETED' },
+          $unset: { pendingVideo: '' } }, { session: dbSession });
       saved = toPackingSessionView(current);
     });
     return { status: 'COMPLETED', session: saved };
@@ -221,8 +221,14 @@ export const syncPackingVideo = async ({ sessionId, recordingId, durationMs = 1 
   if (!packing) throw new PackingError('SESSION_NOT_FOUND', 404);
   const orderCode = await orderCodeFor(packing);
   if (packing.video?.publicId && packing.video.recordingId !== recordingId) throw new PackingError('VIDEO_ALREADY_SAVED');
-  let video = await PackingVideo.findOne({ recordingId });
-  if (video && String(video.sessionId) !== sessionId) throw new PackingError('RECORDING_ID_CONFLICT');
+  let video = packing.video?.publicId ? {
+    recordingId, cloudinaryPublicId: packing.video.publicId, cloudinaryAssetId: packing.video.assetId,
+    cloudinaryUrl: packing.video.url, mimeType: packing.video.mimeType,
+    fileSize: packing.video.sizeBytes, durationMs: packing.video.durationMs,
+    uploadedAt: packing.video.uploadedAt,
+  } : packing.pendingVideo?.recordingId === recordingId ? packing.pendingVideo :
+    await PackingVideo.findOne({ recordingId });
+  if (video?.sessionId && String(video.sessionId) !== sessionId) throw new PackingError('RECORDING_ID_CONFLICT');
   if (!video) {
     const resource = await cloudinaryResource(publicIdFor(orderCode)) ||
       await cloudinaryResource(previousPublicIdFor(sessionId, recordingId)) ||
@@ -258,7 +264,7 @@ export const uploadPackingVideo = async ({ sessionId, recordingId, mimeType, dur
     return syncPackingVideo({ sessionId, recordingId, durationMs });
   }
   if (!['SCANNING', 'READY_TO_RECORD'].includes(existing.state)) throw new PackingError('SESSION_NOT_PACKABLE');
-  const known = await PackingVideo.findOne({ recordingId });
+  const known = existing.pendingVideo?.recordingId === recordingId || await PackingVideo.findOne({ recordingId });
   if (known || await cloudinaryResource(publicIdFor(orderCode)) ||
       await cloudinaryResource(previousPublicIdFor(sessionId, recordingId)) ||
       await cloudinaryResource(legacyPublicIdFor(sessionId, recordingId))) {

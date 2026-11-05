@@ -40,6 +40,12 @@ const packingSessionSchema = new Schema({
   state: { type: String, required: true, enum: ['SCANNING', 'READY_TO_RECORD'], default: 'SCANNING' },
   items: { type: [snapshotItemSchema], required: true },
   scannedUnits: { type: [scannedUnitSchema], default: [] },
+  recordingId: String,
+  pendingVideo: {
+    recordingId: String, cloudinaryPublicId: String, cloudinaryAssetId: String,
+    cloudinaryUrl: String, mimeType: String, fileSize: Number, durationMs: Number,
+    uploadedAt: Date,
+  },
   video: {
     recordingId: { type: String },
     publicId: { type: String },
@@ -49,11 +55,14 @@ const packingSessionSchema = new Schema({
     sizeBytes: { type: Number },
     durationMs: { type: Number },
     uploadedAt: { type: Date },
+    status: { type: String, enum: ['COMPLETED'] },
   },
   version: { type: Number, required: true, default: 0 },
 }, { timestamps: true, collection: 'packing_sessions' });
 
 // Keep one current session per order; repacking will require a separate attempt revision.
 packingSessionSchema.index({ orderKey: 1 }, { unique: true });
+packingSessionSchema.index({ recordingId: 1 }, { unique: true,
+  partialFilterExpression: { recordingId: { $type: 'string' } } });
 
 export default mongoose.model('PackingSession', packingSessionSchema);

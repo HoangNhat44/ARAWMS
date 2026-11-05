@@ -49,6 +49,12 @@ const salesOrderSchema = new Schema(
       from: String, to: String,
       by: { type: Schema.Types.ObjectId, ref: 'User' }, at: Date,
     }],
+    qr: {
+      token: { type: String, select: false },
+      revokedAt: { type: Date, default: null },
+      issuedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+      qrImagePublicId: String,
+    },
     shippingRecipient: {
       name: String,
       phone: String,
@@ -89,6 +95,8 @@ const salesOrderSchema = new Schema(
 );
 
 salesOrderSchema.plugin(baseSchemaPlugin);
+salesOrderSchema.index({ 'qr.token': 1 }, { unique: true,
+  partialFilterExpression: { 'qr.token': { $type: 'string' } } });
 
 const SalesOrder = mongoose.model('SalesOrder', salesOrderSchema);
 export default SalesOrder;

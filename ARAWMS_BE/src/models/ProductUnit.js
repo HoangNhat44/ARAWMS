@@ -21,6 +21,10 @@ const productUnitSchema = new Schema({
   inventoryStatus: { type: String, required: true, enum: ['AVAILABLE', 'UNAVAILABLE'], default: 'AVAILABLE' },
   packedOrderId: { type: Schema.Types.ObjectId, ref: 'SalesOrder' },
   packedAt: Date,
+  packingClaim: { type: new Schema({ orderKey: { type: String, required: true },
+    sessionId: { type: Schema.Types.ObjectId, ref: 'PackingSession', required: true },
+    lineKey: { type: String, required: true }, claimedAt: { type: Date, required: true } },
+  { _id: false }), default: undefined },
 }, { timestamps: true, collection: 'product_units' });
 
 export default mongoose.model('ProductUnit', productUnitSchema);

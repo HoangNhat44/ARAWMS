@@ -13,7 +13,7 @@ const allocationSchema = new Schema({
   orderKey: { type: String, required: true },
   sessionId: { type: Schema.Types.ObjectId, ref: 'PackingSession', required: true },
   lineKey: { type: String, required: true },
-}, { timestamps: true, collection: 'product_unit_allocations' });
+}, { timestamps: true, collection: 'product_unit_allocations', autoCreate: false, autoIndex: false });
 
 allocationSchema.index({ barcode: 1 }, { unique: true });
 allocationSchema.index({ orderKey: 1 });

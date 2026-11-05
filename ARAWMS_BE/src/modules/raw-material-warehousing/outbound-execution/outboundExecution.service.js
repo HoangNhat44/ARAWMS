@@ -7,6 +7,7 @@ import mongoose from 'mongoose';
 import FabricRoll from '../../../models/FabricRoll.model.js';
 import MaterialStockLot from '../../../models/MaterialStockLot.model.js';
 import MaterialOutbound from '../../../models/MaterialOutbound.model.js';
+import MaterialTicket from '../../../models/MaterialTicket.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import InventoryTransaction from '../../../models/InventoryTransaction.model.js';
@@ -30,6 +31,7 @@ const safeTicket = (ticket) => {
   delete plain.confirmationKey;
   return plain;
 };
+const outboundTicketFilter = { ticketType: 'OUTBOUND_WAREHOUSE' };
 
 /** Lists usable materials and physical sources without exposing receipt unit costs. */
 export async function getOutboundOptions(user) {
@@ -77,8 +79,15 @@ export async function listOutbounds(query, user) {
     if (query.to) filter.issueDate.$lte = new Date(`${query.to}T23:59:59Z`);
     requireRule(Object.values(filter.issueDate).every((date) => !Number.isNaN(date.getTime())), 'Ngày lọc không hợp lệ', 'INVALID_DATE');
   }
-  const tickets = await MaterialOutbound.find(filter).populate('createdByUserId', 'fullName')
-    .populate('confirmedByUserId', 'fullName').sort({ createdAt: -1 }).limit(200).lean();
+  const [current, legacy] = await Promise.all([
+    MaterialTicket.find({ ...filter, ...outboundTicketFilter }).populate('createdByUserId', 'fullName')
+      .populate('confirmedByUserId', 'fullName').sort({ createdAt: -1 }).limit(200).lean(),
+    MaterialOutbound.find(filter).populate('createdByUserId', 'fullName')
+      .populate('confirmedByUserId', 'fullName').sort({ createdAt: -1 }).limit(200).lean(),
+  ]);
+  const currentIds = new Set(current.map((ticket) => id(ticket._id)));
+  const tickets = [...current, ...legacy.filter((ticket) => !currentIds.has(id(ticket._id)))]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 200);
   const allowed = user.warehouseIds?.length ? await WarehouseLocation.find({ _id: { $in: user.warehouseIds } }).select('zoneCode').lean() : null;
   const zones = allowed && new Set(allowed.map((location) => location.zoneCode));
   const search = String(query.search || '').trim().toLocaleLowerCase('vi');
@@ -90,7 +99,8 @@ export async function listOutbounds(query, user) {
 /** Reads only tickets belonging to a warehouse the user can access. */
 export async function getOutbound(ticketId, user) {
   requireRule(mongoose.isValidObjectId(ticketId), 'Mã phiếu không hợp lệ', 'INVALID_TICKET');
-  const ticket = await MaterialOutbound.findById(ticketId);
+  const ticket = await MaterialTicket.findOne({ _id: ticketId, ...outboundTicketFilter }) ||
+    await MaterialOutbound.findById(ticketId);
   requireRule(ticket, 'Không tìm thấy phiếu xuất', 'TICKET_NOT_FOUND', 404);
   const locations = await WarehouseLocation.find({ warehouseType: 'RAW_MATERIAL', zoneCode: ticket.warehouseCode }).select('_id').lean();
   requireRule(locations.some((location) => access(location, user)), 'Không có quyền xem kho này', 'FORBIDDEN', 403);
@@ -156,7 +166,8 @@ export async function saveOutbound(ticketId, input, user) {
     lines.push({ rawMaterialId: material._id, materialCode: material.materialCode,
       materialName: material.materialName, color: material.color, unit: material.unit, quantity: requested, sources });
   }
-  if (!existing) return MaterialOutbound.create({ ticketCode: `XNL-${Date.now()}-${randomUUID().slice(0, 6).toUpperCase()}`,
+  if (!existing) return MaterialTicket.create({ ticketType: 'OUTBOUND_WAREHOUSE', status: 'DRAFT',
+    createdByManagerId: user._id, ticketCode: `XNL-${Date.now()}-${randomUUID().slice(0, 6).toUpperCase()}`,
     warehouseCode, issueDate, department: fields[0], recipient: fields[1], purpose: fields[2], lines,
     createdByUserId: user._id, updatedByUserId: user._id });
   existing.set({ warehouseCode, issueDate, department: fields[0], recipient: fields[1], purpose: fields[2], lines,
@@ -213,7 +224,8 @@ export async function confirmOutbound(ticketId, input, user) {
   let result;
   try {
     await session.withTransaction(async () => {
-      const ticket = await MaterialOutbound.findById(ticketId).session(session);
+      const ticket = await MaterialTicket.findOne({ _id: ticketId, ...outboundTicketFilter }).session(session) ||
+        await MaterialOutbound.findById(ticketId).session(session);
       requireRule(ticket, 'Không tìm thấy phiếu xuất', 'TICKET_NOT_FOUND', 404);
       if (ticket.status === 'COMPLETED' && ticket.confirmationKey === key) { result = ticket; return; }
       requireRule(ticket.status === 'DRAFT', 'Phiếu đã xác nhận hoặc hủy', 'TICKET_LOCKED', 409);
@@ -251,7 +263,8 @@ export async function confirmOutbound(ticketId, input, user) {
           await InventoryTransaction.create([{ transactionCode: `${ticket.ticketCode}-${line.materialCode}-${index + 1}`,
             warehouseType: 'RAW_MATERIAL', itemType: source.kind === 'ROLL' ? 'FABRIC_ROLL' : 'RAW_MATERIAL',
             rawMaterialId: line.rawMaterialId, ...(source.kind === 'ROLL' ? { fabricRollId: source.objectId } : {}),
-            locationId: location._id, transactionType: 'OUTBOUND_ISSUE_CUTTING', referenceModel: 'MaterialOutbound',
+            locationId: location._id, transactionType: 'OUTBOUND_ISSUE_CUTTING',
+            referenceModel: ticket.ticketType === 'OUTBOUND_WAREHOUSE' ? 'MaterialTicket' : 'MaterialOutbound',
             referenceId: ticket._id, quantityChange: -source.quantity, onHandBefore: before,
             onHandAfter: round(before - source.quantity), performedByUserId: user._id,
             note: `${ticket.ticketCode} · ${ticket.department} · ${source.barcode}` }], { session });

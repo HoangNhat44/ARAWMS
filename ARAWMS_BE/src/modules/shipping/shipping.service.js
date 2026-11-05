@@ -21,9 +21,12 @@ const shipmentView = (row) => ({
   lastError: row.lastError, createdAt: row.createdAt,
 });
 
-const completedVideoFor = async (session) => session?.video?.recordingId
-  ? PackingVideo.findOne({ sessionId: session._id, recordingId: session.video.recordingId, status: 'COMPLETED' }).lean()
-  : null;
+const completedVideoFor = async (session) => {
+  if (!session?.video?.recordingId) return null;
+  if (session.video.status === 'COMPLETED') return session.video;
+  return PackingVideo.findOne({ sessionId: session._id,
+    recordingId: session.video.recordingId, status: 'COMPLETED' }).lean();
+};
 
 export async function listShippingOrders() {
   const orders = await SalesOrder.find({ status: 'PACKED' })

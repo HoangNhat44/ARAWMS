@@ -16,7 +16,7 @@ const orderQrTokenSchema = new Schema(
     issuedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     qrImagePublicId: { type: String, default: null },
   },
-  { timestamps: true, collection: 'order_qr_tokens' }
+  { timestamps: true, collection: 'order_qr_tokens', autoCreate: false, autoIndex: false }
 );
 
 export default mongoose.model('OrderQrToken', orderQrTokenSchema);

@@ -18,7 +18,7 @@ const packingVideoSchema = new mongoose.Schema({
   durationMs: { type: Number, required: true },
   status: { type: String, enum: ['SYNC_PENDING', 'COMPLETED'], required: true },
   uploadedAt: { type: Date, required: true },
-}, { timestamps: true, collection: 'packing_videos' });
+}, { timestamps: true, collection: 'packing_videos', autoCreate: false, autoIndex: false });
 
 packingVideoSchema.index({ sessionId: 1 });
 

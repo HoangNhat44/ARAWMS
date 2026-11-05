@@ -57,12 +57,32 @@ const receiptLineSchema = new Schema({
   }],
 }, { _id: false });
 
+// Outbound lines retain the checked physical sources on the same ticket that owns the issue.
+const outboundSourceSchema = new Schema({
+  kind: { type: String, enum: ['ROLL', 'LOT'], required: true },
+  objectId: { type: Schema.Types.ObjectId, required: true },
+  barcode: { type: String, required: true },
+  locationId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation', required: true },
+  locationCode: String,
+  inboundTicketId: { type: Schema.Types.ObjectId, ref: 'MaterialTicket' },
+  quantity: { type: Number, required: true, min: 0 },
+  checkedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+  checkedAt: Date,
+  checkedQuantity: Number,
+}, { _id: false });
+const outboundLineSchema = new Schema({
+  rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial', required: true },
+  materialCode: String, materialName: String, color: String, unit: String,
+  quantity: { type: Number, required: true, min: 0 },
+  sources: [outboundSourceSchema],
+}, { _id: false });
+
 const materialTicketSchema = new Schema(
   {
     ticketCode: { type: String, required: true, unique: true, index: true },
     ticketType: {
       type: String,
-      enum: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER', 'INBOUND_FROM_REMNANT', 'OUTBOUND_FOR_CUTTING', 'OUTBOUND_SUPPLEMENTARY'],
+      enum: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER', 'INBOUND_FROM_REMNANT', 'OUTBOUND_FOR_CUTTING', 'OUTBOUND_SUPPLEMENTARY', 'OUTBOUND_WAREHOUSE'],
       required: true,
       index: true,
     },
@@ -89,6 +109,17 @@ const materialTicketSchema = new Schema(
     receiptAttachments: [{ fileName: String, mimeType: String, url: String, publicId: String,
       uploadedByUserId: { type: Schema.Types.ObjectId, ref: 'User' }, uploadedAt: Date }],
     receiptLines: [receiptLineSchema],
+    warehouseCode: { type: String, index: true },
+    issueDate: Date,
+    department: String,
+    recipient: String,
+    purpose: String,
+    lines: [outboundLineSchema],
+    version: { type: Number, default: 0 },
+    createdByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+    updatedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+    cancelledByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+    cancelledAt: Date,
     receiptVersion: { type: Number, default: 0 },
     draftKey: String,
     draftFingerprint: String,
@@ -116,6 +147,8 @@ materialTicketSchema.index(
 );
 materialTicketSchema.index({ draftKey: 1 }, { unique: true,
   partialFilterExpression: { draftKey: { $type: 'string' } } });
+materialTicketSchema.index({ confirmationKey: 1 }, { unique: true,
+  partialFilterExpression: { ticketType: 'OUTBOUND_WAREHOUSE', confirmationKey: { $type: 'string' } } });
 
 const MaterialTicket = mongoose.model('MaterialTicket', materialTicketSchema);
 export default MaterialTicket;

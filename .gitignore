@@ -27,6 +27,7 @@ dist-ssr
 /*.md
 /docs/
 /image/
+/.migration-backups/
 
 # Office files (planning, diagrams, notes)
 *.docx

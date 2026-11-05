@@ -10,11 +10,14 @@
     "migrate:sku-index": "node scripts/drop-obsolete-sku-index.mjs",
     "migrate:catalog-offline-index": "node scripts/ensure-catalog-offline-indexes.mjs",
     "check:catalog-offline-index": "node scripts/check-catalog-offline-indexes.mjs",
+    "warehouse:backup": "node scripts/backup-warehouse-collections.mjs",
+    "warehouse:migrate": "node scripts/migrate-warehouse-collections.mjs",
+    "warehouse:verify": "node scripts/verify-warehouse-collections.mjs",
     "backfill:product-media": "node scripts/backfill-product-media.mjs",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --detectOpenHandles --forceExit",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
-    "test:packing": "node --experimental-vm-modules node_modules/jest/bin/jest.js packingVerification.test.js",
+    "test:packing": "node --test test/packingBarcodeScan.test.js tests/warehouseCollectionMerge.test.mjs",
     "test:inbound": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.finishedGoodsInbound.config.cjs --runInBand"
   },
   "keywords": [

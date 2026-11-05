@@ -41,7 +41,7 @@ const schema = new Schema({
   cancelledByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
   cancelledAt: Date,
   confirmationKey: { type: String },
-}, { collection: 'material_outbounds' });
+}, { collection: 'material_outbounds', autoCreate: false, autoIndex: false });
 schema.index({ confirmationKey: 1 }, { unique: true, partialFilterExpression: { confirmationKey: { $type: 'string' } } });
 schema.plugin(baseSchemaPlugin);
 export default mongoose.model('MaterialOutbound', schema);

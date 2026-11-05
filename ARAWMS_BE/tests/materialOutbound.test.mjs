@@ -13,6 +13,8 @@ import FabricRoll from '../src/models/FabricRoll.model.js';
 import MaterialStockLot from '../src/models/MaterialStockLot.model.js';
 import WarehouseLocation from '../src/models/WarehouseLocation.model.js';
 import InventoryTransaction from '../src/models/InventoryTransaction.model.js';
+import MaterialTicket from '../src/models/MaterialTicket.model.js';
+import MaterialOutbound from '../src/models/MaterialOutbound.model.js';
 import { saveOutbound, checkOutboundSource, confirmOutbound } from '../src/modules/raw-material-warehousing/outbound-execution/outboundExecution.service.js';
 
 test('a checked roll and lot deduct once; a draft does not reserve stock', async () => {
@@ -44,6 +46,8 @@ test('a checked roll and lot deduct once; a draft does not reserve stock', async
         { rawMaterialId: fabric._id, quantity: 20, sources: [{ objectId: roll._id, locationId: location._id, quantity: 20 }] },
         { rawMaterialId: buttons._id, quantity: 30, sources: [{ objectId: lot._id, locationId: location._id, quantity: 30 }] },
       ] }, user);
+    assert.equal(await MaterialTicket.countDocuments({ _id: draft._id, ticketType: 'OUTBOUND_WAREHOUSE' }), 1);
+    assert.equal(await MaterialOutbound.countDocuments({ _id: draft._id }), 0);
     assert.equal((await RawMaterial.findById(fabric._id)).onHandQty, 50);
     assert.equal((await FabricRoll.findById(roll._id)).currentLengthMeters, 50);
     await assert.rejects(confirmOutbound(draft._id, { confirmationKey: 'outbound-test-key', version: 0, reviewed: true }, user),
