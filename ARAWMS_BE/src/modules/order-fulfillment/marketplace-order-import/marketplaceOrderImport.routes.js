@@ -17,6 +17,7 @@ import {
   approveImportedOrder,
   approveImportedOrdersBulk,
   downloadExcelTemplate,
+  autoProvisionSkus,
 } from './marketplaceOrderImport.controller.js';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
@@ -51,17 +52,24 @@ router.post(
   processImportOrders
 );
 
-// 5. Warehouse duyệt 1 đơn hàng import
+// 4b. Tự động tạo sản phẩm & SKU kho cho các sản phẩm chưa có
+router.post(
+  '/auto-provision-skus',
+  authorizeRole('SELLER', 'OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'),
+  autoProvisionSkus
+);
+
+// 5. Warehouse / Quản lý / Seller duyệt 1 đơn hàng import
 router.post(
   '/:id/warehouse-approve',
-  authorizeRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'OWNER'),
+  authorizeRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'OWNER', 'SELLER'),
   approveImportedOrder
 );
 
-// 6. Warehouse duyệt hàng loạt đơn hàng import
+// 6. Warehouse / Quản lý / Seller duyệt hàng loạt đơn hàng import
 router.post(
   '/warehouse-approve-bulk',
-  authorizeRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'OWNER'),
+  authorizeRole('WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'OWNER', 'SELLER'),
   approveImportedOrdersBulk
 );
 

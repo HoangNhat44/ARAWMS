@@ -798,6 +798,27 @@ export const getOrderList = async (filters, user) => {
     } else if (filters.channel === 'ONLINE') {
       baseQuery.channel = { $nin: ['POS_OFFLINE'] };
       baseQuery.orderType = { $ne: 'POS_DIRECT' };
+    } else if (filters.channel === 'FACEBOOK') {
+      baseQuery.$or = [
+        { channel: { $in: ['FACEBOOK', 'FACEBOOK_MESSENGER'] } },
+        { 'sourceDetails.sourceType': 'FANPAGE' },
+      ];
+    } else if (filters.channel === 'SHOPEE') {
+      baseQuery.$or = [
+        { channel: 'SHOPEE' },
+        { 'sourceDetails.sourceType': 'SHOPEE_STORE' },
+      ];
+    } else if (filters.channel === 'TIKTOK') {
+      baseQuery.$or = [
+        { channel: 'TIKTOK' },
+        { 'sourceDetails.sourceType': 'TIKTOK_SHOP' },
+      ];
+    } else if (filters.channel === 'EXCEL_IMPORT') {
+      baseQuery.$or = [
+        { channel: 'EXCEL_IMPORT' },
+        { 'sourceDetails.sourceType': 'EXCEL_CUSTOM' },
+        { 'sourceDetails.importBatchCode': { $exists: true, $ne: null } },
+      ];
     } else {
       baseQuery.channel = filters.channel;
     }

@@ -43,6 +43,24 @@ export const previewExcelImport = async (req, res) => {
 };
 
 /**
+ * POST /api/orders/marketplace/auto-provision-skus
+ * Tự động tạo sản phẩm & SKU mới trong kho cho các sản phẩm chưa có mã
+ */
+export const autoProvisionSkus = async (req, res) => {
+  try {
+    const { items } = req.body;
+    const result = await marketplaceService.autoProvisionSkus(items);
+    return res.status(200).json({
+      success: true,
+      message: `Đã tự động khởi tạo thành công ${result.length} SKU mới vào kho!`,
+      data: result,
+    });
+  } catch (err) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+/**
  * POST /api/orders/marketplace/process-orders
  * Seller thực hiện "Xử lý đơn" (Tạo các đơn hàng hợp lệ vào hệ thống)
  */
@@ -116,7 +134,8 @@ export const downloadExcelTemplate = async (req, res) => {
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=ARA_Template_${channel}_Orders.xlsx`);
-    return res.send(buffer);
+    res.setHeader('Content-Length', buffer.length);
+    return res.end(buffer);
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
