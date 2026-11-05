@@ -32,8 +32,8 @@ import { Icon, Avatar, formatVnd, ORDER_STATUS_VARIANT, ORDER_STATUS_CLASS, Empt
  * Nhận diện nhà mạng viễn thông tự động dựa trên đầu số điện thoại Việt Nam
  */
 const detectTelco = (phone = '') => {
-  const p = phone.replace(/\D/g, '');
-  if (!p) return null;
+  const p = String(phone).replace(/\D/g, '');
+  if (!p || p.length < 9) return null;
   if (/^(086|096|097|098|032|033|034|035|036|037|038|039)/.test(p)) {
     return { name: 'Viettel', color: '#EE0033', bg: '#FEE2E2' };
   }
@@ -43,7 +43,7 @@ const detectTelco = (phone = '') => {
   if (/^(088|091|094|083|084|085|081|082)/.test(p)) {
     return { name: 'Vinaphone', color: '#0085d0', bg: '#E0F2FE' };
   }
-  return { name: 'Khác', color: '#6B7280', bg: '#F3F4F6' };
+  return null;
 };
 
 /**
@@ -168,7 +168,7 @@ const SellerOrdersPage = () => {
   };
 
   /**
-   * Kho duyệt đơn hàng import trực tiếp
+   * Kho / Seller duyệt đơn hàng import trực tiếp
    */
   const handleWarehouseApprove = async (orderId) => {
     try {
@@ -183,6 +183,25 @@ const SellerOrdersPage = () => {
   };
 
   /**
+   * Duyệt hàng loạt các đơn sàn đang chờ phê duyệt
+   */
+  const handleBulkApprove = async () => {
+    try {
+      setLoading(true);
+      const res = await sellerService.warehouseApproveOrdersBulk(selectedIds);
+      if (res.success) {
+        showSuccess(`Đã duyệt thành công ${res.data?.approvedCount || selectedIds.length} đơn sàn TMĐT! Tồn kho đã được giữ chỗ.`, 'Duyệt hàng loạt thành công');
+        setSelectedIds([]);
+        fetchOrders();
+      }
+    } catch (err) {
+      showWarning(err.response?.data?.message || err.message || 'Lỗi khi duyệt đơn hàng loạt');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
    * Lọc theo kênh (Đa kênh: Shopee, TikTok, Facebook, POS, Excel)
    */
   const filteredOrders = useMemo(() => {
@@ -190,10 +209,10 @@ const SellerOrdersPage = () => {
       if (channelFilter === 'POS') {
         return ord.orderType === 'POS_DIRECT' || ord.channel === 'POS_OFFLINE';
       }
-      if (channelFilter === 'SHOPEE') return ord.channel === 'SHOPEE';
-      if (channelFilter === 'TIKTOK') return ord.channel === 'TIKTOK';
-      if (channelFilter === 'FACEBOOK') return ord.channel === 'FACEBOOK' || ord.channel === 'FACEBOOK_MESSENGER';
-      if (channelFilter === 'EXCEL_IMPORT') return ord.channel === 'EXCEL_IMPORT' || ord.importStatus !== 'NONE';
+      if (channelFilter === 'SHOPEE') return ord.channel === 'SHOPEE' || ord.sourceDetails?.sourceType === 'SHOPEE_STORE';
+      if (channelFilter === 'TIKTOK') return ord.channel === 'TIKTOK' || ord.sourceDetails?.sourceType === 'TIKTOK_SHOP';
+      if (channelFilter === 'FACEBOOK') return ord.channel === 'FACEBOOK' || ord.channel === 'FACEBOOK_MESSENGER' || ord.sourceDetails?.sourceType === 'FANPAGE';
+      if (channelFilter === 'EXCEL_IMPORT') return ord.channel === 'EXCEL_IMPORT' || ord.importStatus !== 'NONE' || ord.sourceDetails?.sourceType === 'EXCEL_CUSTOM';
       return true;
     });
   }, [orders, channelFilter]);
@@ -551,259 +570,261 @@ const SellerOrdersPage = () => {
 
       {/* ── Main Orders Data View: Desktop/Tablet Table vs Mobile Cards Stream ─── */}
       {/* 1. Desktop & Tablet Table (>= md, >= 768px) */}
-      <div className="d-none d-md-block flex-grow-1 overflow-auto bg-white">
-        <Table responsive hover className="ara-seller-table align-middle mb-0 text-nowrap w-100">
-          <thead className="sticky-top">
-            <tr>
-              <th style={{ width: 40 }} className="text-center">
-                <Form.Check
-                  type="checkbox"
-                  checked={isAllSelected}
-                  onChange={toggleSelectAll}
-                  aria-label="Chọn tất cả đơn"
-                />
-              </th>
-              <th style={{ minWidth: 95 }}>ID</th>
-              <th style={{ minWidth: 120 }}>Mã vận đơn</th>
-              <th style={{ minWidth: 130 }}>Thời gian tạo</th>
-              <th style={{ minWidth: 130 }}>Cập nhật TT</th>
-              <th style={{ minWidth: 150 }}>Khách hàng</th>
-              <th style={{ minWidth: 135 }}>SĐT</th>
-              <th style={{ minWidth: 160 }}>Mã mẫu mã</th>
-              <th style={{ minWidth: 190 }}>Sản phẩm</th>
-              <th style={{ minWidth: 110 }} className="text-end">Tổng tiền</th>
-              <th style={{ minWidth: 120 }}>Ghi chú nội bộ</th>
-              <th style={{ minWidth: 125 }} className="text-center">Trạng thái</th>
-              <th style={{ minWidth: 100 }} className="text-center">Thao tác</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              [1, 2, 3, 4, 5, 6].map((i) => (
-                <tr key={i}>
-                  <td colSpan="13" className="py-2">
-                    <SkeletonOrderRow />
+      <div className="d-none d-md-flex flex-column flex-grow-1 overflow-hidden bg-white" style={{ minHeight: 0 }}>
+        <div className="flex-grow-1 overflow-auto ara-seller-table-scroll" style={{ minHeight: 0, height: '100%' }}>
+          <Table hover className="ara-seller-table align-middle mb-0 text-nowrap w-100">
+            <thead className="sticky-top shadow-sm" style={{ zIndex: 10 }}>
+              <tr>
+                <th style={{ width: 40, minWidth: 40 }} className="text-center">
+                  <Form.Check
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={toggleSelectAll}
+                    aria-label="Chọn tất cả đơn"
+                  />
+                </th>
+                <th style={{ minWidth: 145 }}>Mã đơn & Kênh</th>
+                <th style={{ minWidth: 95 }}>Mã vận đơn</th>
+                <th style={{ minWidth: 110 }}>Thời gian</th>
+                <th style={{ minWidth: 125 }}>Khách hàng</th>
+                <th style={{ minWidth: 105 }}>SĐT</th>
+                <th style={{ minWidth: 190 }}>Sản phẩm & Phân loại</th>
+                <th style={{ minWidth: 105 }} className="text-end">Tổng tiền</th>
+                <th style={{ minWidth: 110 }}>Ghi chú</th>
+                <th style={{ minWidth: 145 }} className="text-center">Trạng thái</th>
+                <th style={{ minWidth: 115 }} className="text-center col-sticky-end">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                [1, 2, 3, 4, 5, 6].map((i) => (
+                  <tr key={i}>
+                    <td colSpan="11" className="py-2">
+                      <SkeletonOrderRow />
+                    </td>
+                  </tr>
+                ))
+              ) : filteredOrders.length === 0 ? (
+                <tr>
+                  <td colSpan="11" className="text-center py-5">
+                    <EmptyState icon="bag" title="Không tìm thấy đơn hàng nào phù hợp bộ lọc" />
                   </td>
                 </tr>
-              ))
-            ) : filteredOrders.length === 0 ? (
-              <tr>
-                <td colSpan="13" className="text-center py-5">
-                  <EmptyState icon="bag" title="Không tìm thấy đơn hàng nào phù hợp bộ lọc" />
-                </td>
-              </tr>
-            ) : (
-              filteredOrders.map((ord) => {
-                const id = ord._id || ord.id;
-                const isSelected = selectedIds.includes(id);
-                const recipient = ord.shippingRecipient || {};
-                const customer = ord.customerId || {};
-                const telco = detectTelco(recipient.phone || customer.phone || '');
-                const waybill = ord.warehouseFulfillment?.waybillCode;
-                const firstItem = ord.items?.[0] || {};
-                const totalAmount = ord.financialSummary?.totalOrderAmount || 0;
+              ) : (
+                filteredOrders.map((ord) => {
+                  const id = ord._id || ord.id;
+                  const isSelected = selectedIds.includes(id);
+                  const recipient = ord.shippingRecipient || {};
+                  const customer = ord.customerId || {};
+                  const telco = detectTelco(recipient.phone || customer.phone || '');
+                  const waybill = ord.warehouseFulfillment?.waybillCode;
+                  const firstItem = ord.items?.[0] || {};
+                  const totalAmount = ord.financialSummary?.totalOrderAmount || 0;
 
-                return (
-                  <tr
-                    key={id}
-                    className={isSelected ? 'table-active' : ''}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => handleOpenDetail(ord)}
-                  >
-                    {/* Checkbox */}
-                    <td className="text-center" onClick={(e) => e.stopPropagation()}>
-                      <Form.Check
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleSelectOrder(id)}
-                        aria-label={`Chọn đơn ${ord.orderCode || id}`}
-                      />
-                    </td>
+                  return (
+                    <tr
+                      key={id}
+                      className={isSelected ? 'table-active' : ''}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => handleOpenDetail(ord)}
+                    >
+                      {/* Checkbox */}
+                      <td className="text-center" onClick={(e) => e.stopPropagation()}>
+                        <Form.Check
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectOrder(id)}
+                          aria-label={`Chọn đơn ${ord.orderCode || id}`}
+                        />
+                      </td>
 
-                    {/* ID & Kênh Nguồn */}
-                    <td>
-                      <div className="d-flex flex-column gap-1">
-                        <div className="ara-code-badge">
-                          <Icon
-                            name={
-                              ord.channel === 'SHOPEE' ? 'bag-fill' :
-                              ord.channel === 'TIKTOK' ? 'play-btn-fill' :
-                              ord.orderType === 'POS_DIRECT' ? 'shop' : 'facebook'
-                            }
-                            style={{
-                              color:
-                                ord.channel === 'SHOPEE' ? '#EE4D2D' :
-                                ord.channel === 'TIKTOK' ? '#111827' :
-                                ord.orderType === 'POS_DIRECT' ? '#7E766D' : '#1877F2',
-                            }}
-                          />
-                          <span className="fw-bold">{ord.orderCode || id.slice(-6)}</span>
-                        </div>
-                        {ord.sourceDetails?.sourceName && (
-                          <span className="badge rounded-pill bg-light text-secondary border text-truncate text-start" style={{ maxWidth: 140, fontSize: '0.65rem' }}>
-                            {ord.sourceDetails.sourceName}
-                          </span>
-                        )}
-                        {ord.sourceDetails?.externalOrderCode && (
-                          <span className="font-monospace text-primary text-truncate" style={{ maxWidth: 140, fontSize: '0.68rem' }}>
-                            Mã sàn: {ord.sourceDetails.externalOrderCode}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Mã vận đơn */}
-                    <td>
-                      {waybill ? (
-                        <span className="font-monospace fw-semibold" style={{ color: '#0369A1' }}>{waybill}</span>
-                      ) : (
-                        <span className="text-muted opacity-50">-</span>
-                      )}
-                    </td>
-
-                    {/* Thời gian tạo */}
-                    <td>
-                      {renderDateTimeCell(ord.createdAt)}
-                    </td>
-
-                    {/* Cập nhật TT */}
-                    <td>
-                      {renderDateTimeCell(ord.updatedAt)}
-                    </td>
-
-                    {/* Khách hàng */}
-                    <td>
-                      <div className="d-flex align-items-center gap-2">
-                        <Avatar name={customer.fullName || recipient.name} size={28} />
-                        <span className="fw-semibold text-truncate text-dark" style={{ maxWidth: 140 }} title={customer.fullName || recipient.name}>
-                          {customer.fullName || recipient.name || 'Khách vãng lai'}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* SĐT */}
-                    <td>
-                      <div className="d-flex align-items-center gap-1">
-                        <span className="fw-semibold text-body" style={{ fontSize: '0.82rem' }}>
-                          {recipient.phone || customer.phone || '-'}
-                        </span>
-                        {telco && (
-                          <span
-                            className="badge rounded-pill fw-normal"
-                            style={{ backgroundColor: 'rgba(0,0,0,0.06)', color: '#555', fontSize: '0.65rem', padding: '1px 5px' }}
-                          >
-                            {telco.name}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Mã mẫu mã */}
-                    <td>
-                      {ord.items && ord.items.length > 0 ? (
-                        <div className="d-flex align-items-center gap-1">
-                          <span className="fw-semibold font-monospace" style={{ fontSize: '0.82rem', color: '#1C1A17' }}>
-                            {firstItem.skuCode || firstItem.skuId?.skuCode}
-                          </span>
-                          <span className="text-secondary" style={{ fontSize: '0.78rem' }}>x{firstItem.orderedQty}</span>
-                          {ord.items.length > 1 && (
-                            <span
-                              className="badge rounded-pill"
-                              style={{ backgroundColor: '#EBE4DA', color: '#5A524A', fontSize: '0.67rem' }}
-                            >
-                              +{ord.items.length - 1}
+                      {/* ID & Kênh Nguồn */}
+                      <td>
+                        <div className="d-flex flex-column gap-1">
+                          <div className="ara-code-badge">
+                            <Icon
+                              name={
+                                ord.channel === 'SHOPEE' ? 'bag-fill' :
+                                ord.channel === 'TIKTOK' ? 'play-btn-fill' :
+                                ord.orderType === 'POS_DIRECT' ? 'shop' : 'facebook'
+                              }
+                              style={{
+                                color:
+                                  ord.channel === 'SHOPEE' ? '#EE4D2D' :
+                                  ord.channel === 'TIKTOK' ? '#111827' :
+                                  ord.orderType === 'POS_DIRECT' ? '#7E766D' : '#1877F2',
+                              }}
+                            />
+                            <span className="fw-bold">{ord.orderCode || id.slice(-6)}</span>
+                          </div>
+                          {ord.sourceDetails?.sourceName && (
+                            <span className="badge rounded-pill bg-light text-secondary border text-start" style={{ fontSize: '0.67rem', whiteSpace: 'nowrap' }}>
+                              {ord.sourceDetails.sourceName}
+                            </span>
+                          )}
+                          {ord.sourceDetails?.externalOrderCode && (
+                            <span className="text-primary fw-medium text-truncate" style={{ maxWidth: 145, fontSize: '0.72rem' }} title={ord.sourceDetails.externalOrderCode}>
+                              Mã sàn: {ord.sourceDetails.externalOrderCode}
                             </span>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-secondary">-</span>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* Tên sản phẩm */}
-                    <td>
-                      {ord.items && ord.items.length > 0 ? (
-                        <div className="text-truncate" style={{ maxWidth: 220, fontSize: '0.82rem' }}>
-                          {firstItem.skuId?.styleName || firstItem.styleName || firstItem.skuCode}
-                          {ord.items.length > 1 && ` (và ${ord.items.length - 1} món khác)`}
-                        </div>
-                      ) : (
-                        <span className="text-secondary">Chưa có SP</span>
-                      )}
-                    </td>
+                      {/* Mã vận đơn */}
+                      <td>
+                        {waybill ? (
+                          <span className="fw-semibold text-primary" style={{ fontSize: '0.82rem' }}>{waybill}</span>
+                        ) : (
+                          <span className="text-muted opacity-50">-</span>
+                        )}
+                      </td>
 
-                    {/* Tổng tiền */}
-                    <td className="text-end fw-bold" style={{ color: 'var(--wms-text-primary, #141210)', fontSize: '0.88rem' }}>
-                      {formatVnd(totalAmount)}
-                    </td>
-
-                    {/* Ghi chú nội bộ */}
-                    <td>
-                      <div className="text-truncate text-secondary" style={{ maxWidth: 140, fontSize: '0.8rem' }}>
-                        {ord.notes || (ord.financialSummary?.discountAmount > 0 ? 'Đã giảm giá' : 'Đơn COD')}
-                      </div>
-                    </td>
-
-                    {/* Trạng thái */}
-                    <td className="text-center">
-                      {renderStatusBadge(ord.status)}
-                      {ord.importStatus === 'PENDING_WAREHOUSE_APPROVAL' && (
-                        <div className="mt-1 d-flex flex-column align-items-center gap-1">
-                          <Badge bg="warning" text="dark" style={{ fontSize: '0.65rem' }}>
-                            Chờ Kho Duyệt (TMĐT)
-                          </Badge>
-                          {(user?.roles?.includes('WAREHOUSE_STAFF') || user?.roles?.includes('WAREHOUSE_MANAGER') || user?.roles?.includes('OWNER')) && (
-                            <Button
-                              size="sm"
-                              variant="success"
-                              className="py-0 px-2 fw-bold text-nowrap shadow-sm"
-                              style={{ fontSize: '0.68rem' }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleWarehouseApprove(ord._id || ord.id);
-                              }}
-                              title="Warehouse phê duyệt đơn và giữ chỗ tồn kho"
-                            >
-                              <Icon name="check-lg" /> Duyệt đơn
-                            </Button>
+                      {/* Thời gian */}
+                      <td>
+                        <div className="d-flex flex-column lh-sm">
+                          <span className="fw-semibold text-dark" style={{ fontSize: '0.82rem' }}>
+                            {formatDateTime(ord.createdAt)}
+                          </span>
+                          {ord.updatedAt && ord.updatedAt !== ord.createdAt && (
+                            <span className="text-muted" style={{ fontSize: '0.68rem' }} title={`Cập nhật TT: ${formatDateTime(ord.updatedAt)}`}>
+                              Sửa: {formatDateTime(ord.updatedAt)}
+                            </span>
                           )}
                         </div>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* Thao tác */}
-                    <td className="text-center" onClick={(e) => e.stopPropagation()}>
-                      <Stack direction="horizontal" gap={1} className="justify-content-center">
-                        <Button
-                          size="sm"
-                          variant="light"
-                          className="py-0 px-2 border"
-                          style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
-                          onClick={() => handleOpenDetail(ord)}
-                          title="Xem chi tiết & đổi trạng thái"
-                        >
-                          <Icon name="eye" className="text-secondary" />
-                        </Button>
-                        {['DELIVERED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
+                      {/* Khách hàng */}
+                      <td>
+                        <div className="d-flex align-items-center gap-2">
+                          <Avatar name={customer.fullName || recipient.name} size={28} />
+                          <span className="fw-semibold text-truncate text-dark" style={{ maxWidth: 120 }} title={customer.fullName || recipient.name}>
+                            {customer.fullName || recipient.name || 'Khách vãng lai'}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* SĐT */}
+                      <td>
+                        <div className="d-flex align-items-center gap-1">
+                          <span className="fw-semibold text-body" style={{ fontSize: '0.82rem' }}>
+                            {recipient.phone || customer.phone || '-'}
+                          </span>
+                          {telco && (
+                            <span
+                              className="badge rounded-pill fw-normal"
+                              style={{ backgroundColor: 'rgba(0,0,0,0.06)', color: '#555', fontSize: '0.65rem', padding: '1px 5px' }}
+                            >
+                              {telco.name}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Sản phẩm & Phân loại */}
+                      <td>
+                        {ord.items && ord.items.length > 0 ? (
+                          <div className="d-flex flex-column gap-1" style={{ maxWidth: 210 }}>
+                            <span className="fw-semibold text-dark text-truncate" style={{ fontSize: '0.82rem' }} title={firstItem.skuId?.styleName || firstItem.styleName || firstItem.skuCode}>
+                              {firstItem.skuId?.styleName || firstItem.styleName || firstItem.skuCode}
+                            </span>
+                            <div className="d-flex align-items-center gap-1">
+                              <span className="badge rounded-pill bg-light text-dark border fw-medium" style={{ fontSize: '0.72rem' }}>
+                                {firstItem.skuCode || firstItem.skuId?.skuCode}
+                              </span>
+                              <span className="text-secondary small fw-semibold">x{firstItem.orderedQty}</span>
+                              {ord.items.length > 1 && (
+                                <span className="badge rounded-pill" style={{ backgroundColor: '#EBE4DA', color: '#5A524A', fontSize: '0.67rem' }}>
+                                  +{ord.items.length - 1} món khác
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-secondary">-</span>
+                        )}
+                      </td>
+
+                      {/* Tổng tiền */}
+                      <td className="text-end fw-bold" style={{ color: 'var(--wms-text-primary, #141210)', fontSize: '0.88rem' }}>
+                        {formatVnd(totalAmount)}
+                      </td>
+
+                      {/* Ghi chú nội bộ */}
+                      <td>
+                        <div className="text-truncate text-secondary" style={{ maxWidth: 110, fontSize: '0.8rem' }} title={ord.notes || ''}>
+                          {ord.notes || (ord.financialSummary?.discountAmount > 0 ? 'Đã giảm giá' : 'Đơn COD')}
+                        </div>
+                      </td>
+
+                      {/* Trạng thái */}
+                      <td className="text-center">
+                        <div className="d-flex flex-column align-items-center gap-1">
+                          {renderStatusBadge(ord.status)}
+                          {ord.importStatus === 'PENDING_WAREHOUSE_APPROVAL' && (
+                            <span
+                              className="badge rounded-pill fw-semibold border"
+                              style={{
+                                backgroundColor: '#FEF3C7',
+                                color: '#92400E',
+                                borderColor: '#FCD34D',
+                                fontSize: '0.68rem',
+                                padding: '3px 8px',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              Chờ Kho Duyệt (TMĐT)
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Thao tác (Sticky End) */}
+                      <td className="text-center col-sticky-end" onClick={(e) => e.stopPropagation()}>
+                        <Stack direction="horizontal" gap={1} className="justify-content-center">
                           <Button
                             size="sm"
                             variant="light"
-                            className="py-0 px-2 border"
-                            style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
-                            onClick={() => handleOpenRma(ord)}
-                            title="Tạo yêu cầu Đổi / Trả (RMA)"
+                            className="py-1 px-2 border d-flex align-items-center gap-1"
+                            style={{ borderColor: 'var(--wms-border, #C8B9A6)', fontSize: '0.75rem' }}
+                            onClick={() => handleOpenDetail(ord)}
+                            title="Xem chi tiết đơn hàng"
                           >
-                            <Icon name="arrow-counterclockwise" className="text-warning" />
+                            <Icon name="eye" className="text-secondary" />
+                            <span>Xem</span>
                           </Button>
-                        )}
-                      </Stack>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </Table>
+                          {ord.importStatus === 'PENDING_WAREHOUSE_APPROVAL' && (
+                            <Button
+                              size="sm"
+                              variant="success"
+                              className="py-1 px-2 fw-bold text-nowrap shadow-sm d-flex align-items-center gap-1"
+                              style={{ fontSize: '0.72rem' }}
+                              onClick={() => handleWarehouseApprove(ord._id || ord.id)}
+                              title="Duyệt đơn và giữ chỗ tồn kho"
+                            >
+                              <Icon name="check-lg" /> Duyệt
+                            </Button>
+                          )}
+                          {['DELIVERED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
+                            <Button
+                              size="sm"
+                              variant="light"
+                              className="py-1 px-2 border"
+                              style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
+                              onClick={() => handleOpenRma(ord)}
+                              title="Tạo yêu cầu Đổi / Trả (RMA)"
+                            >
+                              <Icon name="arrow-counterclockwise" className="text-warning" />
+                            </Button>
+                          )}
+                        </Stack>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </Table>
+        </div>
       </div>
 
       {/* 2. Mobile Cards Stream (< md, < 768px) */}
@@ -989,10 +1010,20 @@ const SellerOrdersPage = () => {
 
       {/* ── Thanh thao tác nổi khi tích chọn Checkbox hàng loạt ─── */}
       {selectedIds.length > 0 && (
-        <div className="ara-floating-toolbar">
+        <div className="ara-floating-toolbar d-flex align-items-center gap-2">
           <span className="badge px-2 py-1" style={{ backgroundColor: 'var(--wms-accent, #8A6A46)', color: '#FFFFFF' }}>
             Đã chọn {selectedIds.length} đơn
           </span>
+          {filteredOrders.some((o) => selectedIds.includes(o._id || o.id) && o.importStatus === 'PENDING_WAREHOUSE_APPROVAL') && (
+            <Button
+              size="sm"
+              variant="success"
+              className="rounded-pill px-3 fw-bold d-flex align-items-center gap-1 shadow-sm"
+              onClick={handleBulkApprove}
+            >
+              <Icon name="check-circle-fill" /> Duyệt đơn sàn đã chọn
+            </Button>
+          )}
           <button
             type="button"
             className="btn btn-sm btn-light rounded-pill px-3 fw-semibold d-flex align-items-center gap-1"

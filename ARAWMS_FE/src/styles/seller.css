@@ -78,8 +78,8 @@ body:has(.seller-workspace),
   font-family: var(--wms-font);
   color: var(--wms-text-body);
   background-color: var(--wms-bg-app);
-  height: calc(100dvh - 64px);
-  max-height: calc(100dvh - 64px);
+  height: 100% !important;
+  max-height: 100% !important;
   overflow: hidden !important;
 }
 
@@ -364,19 +364,67 @@ body:has(.seller-workspace),
   background-color: rgba(138, 106, 70, 0.14) !important;
 }
 
-/* Monospace Code Pill (Consolas/monospace, high contrast) */
+/* Code Pill (High legibility, tabular numbers, no ClearType distortion) */
 .ara-code-badge {
-  font-family: Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-  font-size: 0.77rem;
-  font-weight: 600;
-  padding: 2px 6px;
+  font-family: var(--wms-font);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 2px 7px;
   border-radius: 4px;
   background-color: var(--wms-bg-subtle);
   color: var(--wms-text-primary);
   border: 1px solid var(--wms-border);
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  line-height: 1.25;
+}
+
+.ara-seller-table .font-monospace {
+  font-family: var(--wms-font) !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+/* Custom scrollbars for table container */
+.ara-seller-table-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--wms-border-strong) #F9F7F4;
+}
+.ara-seller-table-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.ara-seller-table-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--wms-border-strong);
+  border-radius: 4px;
+}
+.ara-seller-table-scroll::-webkit-scrollbar-track {
+  background: #F9F7F4;
+}
+
+/* Sticky Action Column (Pin to right edge so it's never cut off) */
+.ara-seller-table th.col-sticky-end,
+.ara-seller-table td.col-sticky-end {
+  position: sticky !important;
+  right: 0 !important;
+  background-color: #FFFFFF !important;
+  box-shadow: -3px 0 8px rgba(0, 0, 0, 0.06);
+  z-index: 2;
+}
+
+.ara-seller-table thead th.col-sticky-end {
+  z-index: 12 !important;
+  background-color: var(--wms-bg-subtle) !important;
+}
+
+.ara-seller-table tbody tr:hover td.col-sticky-end {
+  background-color: var(--wms-primary-subtle) !important;
+}
+
+.ara-seller-table tbody tr.table-active td.col-sticky-end {
+  background-color: #EFE6DA !important;
 }
 
 /* ── 7. High-Contrast Status Badges (UIDesign.md Section 6 Table) ────────── */
