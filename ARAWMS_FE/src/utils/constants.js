@@ -4,3 +4,6 @@ export const STORAGE_KEYS = {
   TOKEN: 'arawms_auth_token',
   USER: 'arawms_user_info',
 };
+
+// Fixed number of rows for Owner tables and server-paged lists.
+export const OWNER_PAGE_SIZE = 15;

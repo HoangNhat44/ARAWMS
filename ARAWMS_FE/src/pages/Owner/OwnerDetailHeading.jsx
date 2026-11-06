@@ -6,9 +6,9 @@
 import { useLocation } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { WmsLinkButton } from '../../components/ui/WmsControls';
-export default function OwnerDetailHeading({ title, description, backTo, disabled = false }) {
+export default function OwnerDetailHeading({ title, description, backTo, backState, disabled = false }) {
   const location = useLocation(); const previous = location.state?.from;
   const destination = typeof previous === 'string' && previous.startsWith('/owner/') ? previous : backTo;
-  return <header className="owner-detail-heading"><WmsLinkButton to={destination} disabled={disabled} aria-label="Quay lại danh sách" icon={<ArrowLeft size={18} />} />
+  return <header className="owner-detail-heading"><WmsLinkButton to={destination} state={backState} disabled={disabled} aria-label="Quay lại danh sách" icon={<ArrowLeft size={18} />} />
     <div><h1>{title}</h1>{description && <p>{description}</p>}</div></header>;
 }

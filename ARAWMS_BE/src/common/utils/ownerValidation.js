@@ -38,7 +38,7 @@ export const pagination = (query) => {
     if (typeof v !== 'string' || !/^[1-9]\d*$/.test(v) || Number(v) > max) throw httpError(400, 'Phân trang không hợp lệ.');
     return Number(v);
   };
-  return { page: parse(query.page, 1, 100000), limit: parse(query.limit, 20, 100) };
+  return { page: parse(query.page, 1, 100000), limit: parse(query.limit, 15, 100) };
 };
 // Dấu chấm, sao, ngoặc... được tìm như ký tự thường, không trở thành mẫu regex do người dùng điều khiển.
 export const escapedSearch = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

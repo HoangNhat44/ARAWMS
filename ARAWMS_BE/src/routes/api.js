@@ -18,7 +18,11 @@ import roleAssignmentRoutes from '../modules/user-management/role-assignment/rol
 import settingsRoutes from '../modules/system-administration/system-settings/systemSettings.routes.js';
 import stockAdjustmentRoutes from '../modules/inventory-auditing/stock-adjustment/stockAdjustment.routes.js';
 
+import productCatalogRoutes from '../modules/master-data/product-catalog/productCatalog.routes.js';
+import contractWorkspaceRoutes from '../modules/supplier-contracts/contract-workspace/contractWorkspace.routes.js';
 const router = express.Router();
+router.use('/owner/contracts', contractWorkspaceRoutes);
+router.use('/owner/products', productCatalogRoutes);
 router.use('/owner/operations-report', operationsReportRoutes);
 router.use('/auth', authRoutes);
 router.use('/accounts', accountRoutes);
@@ -33,7 +37,6 @@ router.use('/owner/material-valuation', materialValuationRoutes);
 router.use('/owner/asset-valuation', assetValuationRoutes);
 router.use('/owner/production-reports', productionReportRoutes);
 router.use('/owner/product-samples', sampleRoutes);
-// Nguyễn Ngọc Huy-HE171157, 30-10-2026: OWNER-EXT-01..06 - Bổ sung Word, giữ UC-05..20 của bảng ảnh.
 router.use('/owner/employee-roles', roleAssignmentRoutes);
 router.use('/owner/system-settings', settingsRoutes);
 router.use('/owner/stock-adjustments', stockAdjustmentRoutes);

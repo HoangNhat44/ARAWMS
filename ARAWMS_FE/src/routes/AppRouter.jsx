@@ -18,6 +18,9 @@ import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 const OwnerLayout = lazy(() => import('../pages/Owner/OwnerLayout'));
 // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13/19 và phản hồi 1–8 - Ưu tiên kho, nhập hàng và sản xuất.
+const InboundPlanDetailPage = lazy(() => import('../pages/Owner/InboundPlanDetailPage'));
+const ContractDetailPage = lazy(() => import('../pages/Owner/ContractDetailPage'));
+const ProductCatalogPage = lazy(() => import('../pages/Owner/ProductCatalogPage'));
 const OperationsPage = lazy(() => import('../pages/Owner/OperationsPage'));
 const EmployeesPage = lazy(() => import('../pages/Owner/EmployeesPage'));
 const ActivityPage = lazy(() => import('../pages/Owner/ActivityPage'));
@@ -72,11 +75,13 @@ export default function AppRouter() {
       <Route path="dashboard" element={<OperationsPage key="dashboard" />} />
       <Route path="bi" element={<OperationsPage key="bi" mode="bi" />} />
       <Route path="profit" element={<Navigate to="/owner/bi" replace />} />
+      <Route path="contracts/:id/plans/:planId" element={<InboundPlanDetailPage />} />
+      <Route path="contracts/:id" element={<ContractDetailPage />} />
       <Route path="purchases" element={<OperationsPage key="purchases" mode="purchases" />} />
-      <Route path="tasks" element={<OperationsPage key="tasks" mode="tasks" />} />
+      <Route path="tasks" element={<Navigate to="/owner/dashboard" replace />} />
       <Route path="payables" element={<OperationsPage key="payables" mode="payables" />} />
-      <Route path="material-stocktakes" element={<OperationsPage key="material-stocktakes" mode="stocktakes" warehouse="RAW_MATERIAL" />} />
-      <Route path="finished-stocktakes" element={<OperationsPage key="finished-stocktakes" mode="stocktakes" warehouse="FINISHED_GOODS" />} />
+      <Route path="material-stocktakes" element={<Navigate to="/owner/stock-adjustments?warehouseType=RAW_MATERIAL" replace />} />
+      <Route path="finished-stocktakes" element={<Navigate to="/owner/stock-adjustments?warehouseType=FINISHED_GOODS" replace />} />
       {/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi - Bỏ báo cáo thu chi; đường dẫn cũ quay về tổng quan. */}
       <Route path="cash-flow" element={<Navigate to="/owner/dashboard" replace />} />
       <Route path="employees" element={<EmployeesPage />} />
@@ -88,10 +93,11 @@ export default function AppRouter() {
       <Route path="asset-valuation" element={<OperationsPage key="finished" mode="finished" />} />
       <Route path="manager-reports" element={<OwnerRecordsPage key="reports" mode="reports" />} />
       <Route path="manager-reports/:id" element={<OwnerRecordDetailPage key="report-detail" mode="reports" />} />
-      <Route path="production" element={<OperationsPage key="production" mode="production" />} />
-      <Route path="production/:id" element={<OwnerRecordDetailPage key="production-detail" mode="production" />} />
-      <Route path="samples" element={<OwnerRecordsPage key="samples" mode="samples" />} />
-      <Route path="samples/:id" element={<OwnerRecordDetailPage key="sample-detail" mode="samples" />} />
+      <Route path="production" element={<Navigate to="/owner/dashboard" replace />} />
+      <Route path="production/:id" element={<Navigate to="/owner/dashboard" replace />} />
+      <Route path="products" element={<ProductCatalogPage />} />
+      <Route path="samples" element={<Navigate to="/owner/products" replace />} />
+      <Route path="samples/:id" element={<Navigate to="/owner/products" replace />} />
       {/* OWNER-EXT-02..06: Nhóm bổ sung từ Word sau khi hợp nhất hai danh sách Owner. */}
       <Route path="settings" element={<Navigate to="integrations" replace />} />
       <Route path="settings/integrations" element={<SystemSettingsPage key="api" section="api" />} />

@@ -4,7 +4,8 @@
  * Ngày thực hiện: 30-10-2026
  * Chức năng: Thành phần Ant Design dùng chung cho tất cả màn hình Owner.
  */
-import { Children, Fragment, isValidElement, useRef, useEffect } from 'react';
+import { OWNER_PAGE_SIZE } from '../../utils/constants';
+import { Children, Fragment, isValidElement, useRef, useEffect, useState } from 'react';
 import { Alert, Button, Card, Empty, Grid, Modal as AntModal, Pagination as AntPagination, Skeleton, Statistic, Table as AntTable, Tag } from 'antd';
 import { AlertCircle, CheckCircle2, Clock3, Info } from 'lucide-react';
 
@@ -13,7 +14,7 @@ export const money = (value) => Number.isFinite(value) ? new Intl.NumberFormat('
 export const quantity = (value) => Number.isFinite(value) ? new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 3 }).format(value) : 'Chưa có';
 export const datetime = (value) => value && Number.isFinite(new Date(value).getTime()) ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' }) : '—';
 export const labels = {
-  ACTIVE: 'Đang hoạt động', LOCKED: 'Đã khóa', INACTIVE: 'Ngừng hoạt động', OWNER: 'Chủ cửa hàng',
+  DRAFT_FRAMEWORK: 'Hợp đồng nháp', PENDING_OWNER_APPROVAL: 'Chờ Owner duyệt', DEVIATION_FLAGGED: 'Hợp đồng có chênh lệch', TERMINATED: 'Đã chấm dứt', SUPERSEDED: 'Đã thay thế', ACTIVE: 'Đang hoạt động', LOCKED: 'Đã khóa', INACTIVE: 'Ngừng hoạt động', OWNER: 'Chủ cửa hàng',
   // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13/19, phản hồi 7 - Nhãn nghiệp vụ tiếng Việt phổ thông.
   SCHEDULED: 'Chờ hàng về', IN_INSPECTION: 'Đang kiểm hàng', VERIFIED_MATCHED: 'Kiểm hàng đạt', DEVIATION_REPORTED: 'Có chênh lệch', RESOLVED_SUPERSEDED: 'Đã thay kế hoạch',
   AVAILABLE: 'Còn đủ hàng', LOW_STOCK: 'Dưới mức tối thiểu', OUT_OF_STOCK: 'Hết hàng khả dụng', STANDARD: 'Định mức chuẩn',
@@ -54,7 +55,7 @@ export function ResourceState({ resource, children }) {
 export function Pagination({ data, onPage }) {
   const screens = Grid.useBreakpoint();
   if (!data) return null;
-  return <div className="owner-pagination"><span aria-live="polite">{quantity(data.total)} bản ghi</span><AntPagination current={data.page} pageSize={data.limit} total={data.total}
+  return <div className="owner-pagination"><AntPagination current={data.page} pageSize={data.limit} total={data.total}
     showSizeChanger={false} simple={!screens.sm} showLessItems onChange={onPage} aria-label="Phân trang danh sách" /></div>;
 }
 
@@ -66,24 +67,30 @@ export function Modal({ title, children, onClose, busy = false }) {
 // Chuyển các dòng JSX sẵn có thành dữ liệu bảng Ant Design, giữ nguyên nút và handler nghiệp vụ.
 const flatten = (nodes) => Children.toArray(nodes).flatMap((node) => isValidElement(node) && node.type === Fragment ? flatten(node.props.children) : [node]);
 const numeric = (heading) => /(số lượng|số đơn|số chứng từ|giá|tiền|doanh thu|chi phí|lợi nhuận|tồn|giữ chỗ|cách ly|khả dụng|thực đếm|chênh lệch|hao hụt|ngưỡng|đầu vào|đầu ra|hoàn thành|tỷ lệ|kế hoạch|định mức|tiêu hao)/i.test(heading);
-export function Table({ headings, children, empty = false, mobileCards = true, caption }) {
+export function Table({ headings, children, empty = false, mobileCards = true, caption, paginated = true }) {
   const screens = Grid.useBreakpoint();
   const tableRoot = useRef(null);
+  const [page, setPage] = useState(1); const pageSize = OWNER_PAGE_SIZE;
   // Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Bảng rộng cuộn được bằng bàn phím trên máy tính bảng.
   useEffect(() => { tableRoot.current?.querySelectorAll('.ant-table-content').forEach((el) => { el.tabIndex = 0; el.setAttribute('aria-label', caption || 'Cuộn ngang bảng dữ liệu'); }); });
   const rows = empty ? [] : flatten(children).filter(isValidElement).map((row, index) => ({ key: row.key || index, cells: flatten(row.props.children).filter(isValidElement), className: row.props.className }));
+  // Khi bộ lọc làm giảm số dòng, kẹp trang hiện tại về trang cuối còn tồn tại để tránh bảng trống.
+  const safePage = Math.min(page, Math.max(1, Math.ceil(rows.length / pageSize)));
+  // Bảng tải toàn bộ dữ liệu cắt 15 dòng tại FE; paginated=false dùng cho dữ liệu đã phân trang ở BE.
+  const visibleRows = paginated ? rows.slice((safePage - 1) * pageSize, safePage * pageSize) : rows;
+  const pager = paginated && rows.length > 0 ? <div className="owner-pagination"><AntPagination current={safePage} pageSize={pageSize} total={rows.length} showSizeChanger={false} showLessItems onChange={setPage} /></div> : null;
   const columns = headings.map((heading, index) => ({ title: heading, key: `${heading}-${index}`, align: numeric(heading) ? 'right' : 'left',
     render: (_, record) => record.cells[index]?.props.children,
     onCell: (record) => ({ className: record.cells[index]?.props.className, style: record.cells[index]?.props.style }),
   }));
   // Điện thoại dùng thẻ có nhãn từng giá trị; màn hình lớn giữ bảng để so sánh nhiều dòng.
-  if (screens.sm === false && mobileCards) return <div className="owner-data-cards" aria-label={caption || 'Danh sách dữ liệu'}>
-    {!rows.length ? <Card><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có dữ liệu phù hợp." /></Card> : rows.map((row) => <Card key={row.key} size="small" className={row.className}>
+  if (screens.sm === false && mobileCards) return <><div className="owner-data-cards" aria-label={caption || 'Danh sách dữ liệu'}>
+    {!rows.length ? <Card><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có dữ liệu phù hợp." /></Card> : visibleRows.map((row) => <Card key={row.key} size="small" className={row.className}>
       <dl className="owner-record-card">{headings.map((heading, index) => <div key={index} className={index === 0 || /thao tác|chi tiết/i.test(heading) ? 'owner-record-card-wide' : ''}>
         <dt>{heading}</dt><dd className={row.cells[index]?.props.className}>{row.cells[index]?.props.children ?? '—'}</dd></div>)}</dl></Card>)}
-  </div>;
-  return <div ref={tableRoot} className="owner-table-region" role="region" aria-label={caption || 'Bảng dữ liệu'} tabIndex={0}>
-    <AntTable className="owner-table" columns={columns} dataSource={rows} pagination={false} size="middle" rowClassName={(row) => row.className || ''}
-      scroll={{ x: 'max-content' }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có dữ liệu phù hợp." /> }} /></div>;
+  </div>{pager}</>;
+  return <><div ref={tableRoot} className="owner-table-region" role="region" aria-label={caption || 'Bảng dữ liệu'} tabIndex={0}>
+    <AntTable className="owner-table" columns={columns} dataSource={visibleRows} pagination={false} size="middle" rowClassName={(row) => row.className || ''}
+      scroll={{ x: 'max-content' }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có dữ liệu phù hợp." /> }} /></div>{pager}</>;
 }
 export const Metric = ({ label, value, note }) => <Card className="owner-metric"><Statistic title={label} value={value} />{note && <p className="owner-method">{note}</p>}</Card>;

@@ -1,43 +1,67 @@
 /* Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 2-11-2026
- * UC-12/13: Chọn năm, chỉ số và biểu đồ cột nhóm/đường; đủ 12 tháng, so sánh năm hoặc quý.
+ * Xu hướng theo khoảng ngày được chọn và so sánh hai kỳ bằng cột hoặc đường.
  * Nguồn dữ liệu máy chủ, không lấy số tổng của một kỳ rồi chia đều cho 12 tháng.
  */
 import { useState } from 'react';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
-import { WmsField, WmsSelect, WmsInput, WmsButton } from '../../components/ui/WmsControls';
+import { WmsField, WmsSelect } from '../../components/ui/WmsControls';
 import { ResourceState, Table, money, quantity } from './OwnerUI';
 import { SeriesPlot, Columns } from './OwnerCharts';
-const metrics = { revenue: 'Doanh thu', orders: 'Số đơn hàng', returns: 'Số yêu cầu hoàn', shipping: 'Phí vận chuyển', paid: 'Số đơn đã thanh toán', unpaid: 'Số đơn chưa trả hoặc trả một phần', late: 'Số đơn giao trễ' };
-export default function AnnualAnalytics({ year, salesChannel, paymentStatus }) {
-  const [years, setYears] = useState({ year, compareYear: year - 1 }); const [draft, setDraft] = useState(years);
-  const [metric, setMetric] = useState('revenue'); const [kind, setKind] = useState('column'); const [group, setGroup] = useState('month');
-  const resource = useOwnerResource('operations-report/annual', { ...years, salesChannel, paymentStatus });
-  const currency = ['revenue', 'shipping'].includes(metric); const format = currency ? money : quantity;
-  const source = resource.data ? (group === 'month' ? resource.data.months : resource.data.quarters) : [];
-  const rows = (source || []).map((r) => ({ label: r.label, current: r[metric], previous: r.previous[metric] }));
-  const title = `${metrics[metric]} theo ${group === 'month' ? '12 tháng' : '4 quý'}: năm ${years.year} và ${years.compareYear}`;
-  return <section className="owner-content-panel owner-annual-analytics"><h2>Biểu đồ cả năm</h2>
-    <form className="owner-filters" onSubmit={(e) => { e.preventDefault(); setYears({ year: Number(draft.year), compareYear: Number(draft.compareYear) }); }}>
-      <WmsField>Năm cần xem<WmsInput type="number" min="2000" max="2200" required value={draft.year} onChange={(e) => setDraft({ ...draft, year: e.target.value })} /></WmsField>
-      <WmsField>Năm đối chiếu<WmsInput type="number" min="2000" max="2200" required value={draft.compareYear} onChange={(e) => setDraft({ ...draft, compareYear: e.target.value })} /></WmsField><WmsButton type="submit">Xem hai năm</WmsButton>
-      <WmsField>Chỉ số theo năm<WmsSelect value={metric} onChange={(e) => setMetric(e.target.value)}>{Object.entries(metrics).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</WmsSelect></WmsField>
-      <WmsField>Chia theo<WmsSelect value={group} onChange={(e) => setGroup(e.target.value)}><option value="month">12 tháng</option><option value="quarter">4 quý</option></WmsSelect></WmsField>
-      <WmsField>Dạng biểu đồ cả năm<WmsSelect value={kind} onChange={(e) => setKind(e.target.value)}><option value="column">Cột nhóm để so sánh</option><option value="line">Đường để xem xu hướng</option></WmsSelect></WmsField>
-    </form><ResourceState resource={resource}>{resource.data && <><h3>{title}</h3><SeriesPlot rows={rows} title={title} currency={currency} kind={kind} categoryLabel={group === 'month' ? 'Tháng trong năm' : 'Quý trong năm'} unitLabel={metric === 'returns' ? 'yêu cầu hoàn' : 'đơn hàng'} series={[{ key: 'current', label: `Năm ${years.year}` }, { key: 'previous', label: `Năm ${years.compareYear}` }]} />
-      <details><summary>Xem bảng số liệu và mức tăng giảm</summary><Table headings={[group === 'month' ? 'Tháng' : 'Quý', `Năm ${years.year}`, `Năm ${years.compareYear}`, 'Tăng hoặc giảm']} empty={!rows.length}>{rows.map((r) => <tr key={r.label}><td>{r.label}</td><td>{format(r.current)}</td><td>{format(r.previous)}</td><td>{r.previous === 0 ? 'Chưa có cơ sở so sánh' : `${quantity((r.current - r.previous) / Math.abs(r.previous) * 100)}%`}</td></tr>)}</Table></details>
-    </>}</ResourceState>
+const metrics = { orderValue: 'Tổng giá trị đơn hàng', orders: 'Số đơn hàng', returns: 'Số yêu cầu hoàn', shipping: 'Phí vận chuyển', paid: 'Số đơn đã thanh toán', unpaid: 'Số đơn chưa thanh toán', late: 'Số đơn giao trễ' };
+/**
+ * API trend tổng hợp từng tháng trong đúng khoảng ngày, kể cả tháng đầu/cuối chỉ xem một phần.
+ * Đổi chỉ số hoặc dạng biểu đồ chỉ đổi cách vẽ; dữ liệu tải lại khi ngày/nguồn bán/thanh toán đổi.
+ */
+export default function AnnualAnalytics({ from, to, salesChannel, paymentStatus }) {
+  const [metric, setMetric] = useState('orderValue'); const [kind, setKind] = useState('line');
+  const resource = useOwnerResource('operations-report/trend', { from, to, salesChannel, paymentStatus });
+  // Tổng giá trị đơn hàng và phí vận chuyển hiển thị bằng VND; các chỉ số còn lại là số đếm.
+  const currency = ['orderValue', 'shipping'].includes(metric); const format = currency ? money : quantity;
+  const rows = (resource.data?.months || []).map((r) => ({ label: r.label, current: r[metric] }));
+  const title = `${metrics[metric]} · ${from} – ${to}`;
+  return <section className="owner-content-panel owner-annual-analytics"><h2>Xu hướng trong kỳ</h2>
+    <div className="owner-filters"><WmsField>Chỉ số<WmsSelect value={metric} onChange={(e) => setMetric(e.target.value)}>{Object.entries(metrics).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</WmsSelect></WmsField>
+    <WmsField>Dạng biểu đồ<WmsSelect value={kind} onChange={(e) => setKind(e.target.value)}><option value="column">Biểu đồ cột</option><option value="line">Biểu đồ đường</option></WmsSelect></WmsField></div>
+    <ResourceState resource={resource}>{resource.data && <><SeriesPlot rows={rows} title={title} currency={currency} kind={kind} categoryLabel="Tháng trong kỳ đã chọn" unitLabel={metric === 'returns' ? 'yêu cầu hoàn' : 'đơn hàng'} series={[{ key: 'current', label: 'Kỳ đang xem' }]} />
+    <details><summary>Xem bảng số liệu</summary><Table headings={['Tháng', metrics[metric]]} empty={!rows.length}>{rows.map((row) => <tr key={row.label}><td>{row.label}</td><td>{format(row.current)}</td></tr>)}</Table></details></>}</ResourceState>
   </section>;
 }
 // UC-13: Tỷ trọng chỉ dùng số không âm; tên đầy đủ trên thanh ngang, các số tiền vẫn có đơn vị đồng.
+// Bộ chọn chỉ số nằm trong thẻ biểu đồ; tiêu đề cố định giúp hai thẻ cạnh nhau thẳng hàng.
 export function SalesSourceChart({ channels, labels }) {
-  const [metric, setMetric] = useState('revenue');
-  const options = { revenue: 'Doanh thu trước giảm trừ hàng trả', orders: 'Số đơn hàng', paid: 'Số đơn đã thanh toán', unpaid: 'Số đơn chưa trả hoặc trả một phần', late: 'Số đơn giao trễ', shipping: 'Phí vận chuyển' };
-  return <div><WmsField>Chỉ số theo nguồn bán<WmsSelect value={metric} onChange={(e) => setMetric(e.target.value)}>{Object.entries(options).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</WmsSelect></WmsField><Columns title={`${options[metric]} theo nguồn bán`} allowDonut currency={['revenue', 'shipping'].includes(metric)} rows={channels.map((r) => ({ label: labels[r.channel], value: r[metric] }))} /></div>;
+  const [metric, setMetric] = useState('orderValue');
+  const options = { orderValue: 'Tổng giá trị đơn hàng', orders: 'Số đơn hàng', paid: 'Số đơn đã thanh toán', unpaid: 'Số đơn chưa thanh toán', late: 'Số đơn giao trễ', shipping: 'Phí vận chuyển' };
+  return <Columns title="Kết quả theo nguồn bán" controls={<WmsField>Chỉ số theo nguồn bán<WmsSelect value={metric} onChange={(e) => setMetric(e.target.value)}>{Object.entries(options).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</WmsSelect></WmsField>} allowDonut currency={['orderValue', 'shipping'].includes(metric)} categoryLabel="Nguồn bán" unitLabel="đơn hàng" rows={channels.map((r) => ({ label: labels[r.channel], value: r[metric] }))} />;
 }
 
 // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13 - Chủ cửa hàng chọn chỉ số để đối chiếu hai kỳ trên cùng đơn vị.
 export function PeriodComparison({ data, dates }) {
- const [metric, setMetric] = useState('revenue');
- const options = { revenue: 'Doanh thu', orders: 'Số đơn hàng', paid: 'Số đơn đã thanh toán', unpaid: 'Số đơn chưa trả hoặc trả một phần', returns: 'Số yêu cầu hoàn', shipping: 'Phí vận chuyển' };
- return <div><WmsField>Chỉ số so sánh hai kỳ<WmsSelect value={metric} onChange={(e) => setMetric(e.target.value)}>{Object.entries(options).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</WmsSelect></WmsField><Columns title={`So sánh ${options[metric].toLocaleLowerCase('vi')} hai kỳ`} currency={['revenue', 'shipping'].includes(metric)} categoryLabel="Kỳ báo cáo" unitLabel={metric === 'returns' ? 'yêu cầu hoàn' : 'đơn hàng'} rows={[{ label: `${dates.from} – ${dates.to}`, value: data.sales[metric] }, { label: `${dates.compareFrom} – ${dates.compareTo}`, value: data.previous[metric] }]} /></div>;
+  const [metric, setMetric] = useState('orderValue'); const [kind, setKind] = useState('column');
+  const options = { orderValue: 'Tổng giá trị đơn hàng', orders: 'Số đơn hàng', paid: 'Số đơn đã thanh toán', unpaid: 'Số đơn chưa thanh toán', returns: 'Số yêu cầu hoàn', shipping: 'Phí vận chuyển' };
+  const currency = ['orderValue', 'shipping'].includes(metric);
+  return <section className="owner-content-panel"><h2>So sánh hai kỳ</h2><div className="owner-filters"><WmsField>Chỉ số so sánh<WmsSelect value={metric} onChange={(e) => setMetric(e.target.value)}>{Object.entries(options).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</WmsSelect></WmsField>
+    <WmsField>Dạng biểu đồ so sánh<WmsSelect value={kind} onChange={(e) => setKind(e.target.value)}><option value="column">Biểu đồ cột · Tổng hai kỳ</option><option value="line">Biểu đồ đường · Xu hướng hai kỳ</option></WmsSelect></WmsField></div>
+    {kind === 'line' ? <ComparisonTrend dates={dates} metric={metric} title={options[metric]} currency={currency} /> : <Columns title={`So sánh ${options[metric].toLocaleLowerCase('vi')} hai kỳ`} currency={currency} categoryLabel="Kỳ báo cáo" unitLabel={metric === 'returns' ? 'yêu cầu hoàn' : 'đơn hàng'} rows={[{ label: `${dates.from} – ${dates.to}`, value: data.sales[metric] }, { label: `${dates.compareFrom} – ${dates.compareTo}`, value: data.previous[metric] }]} />}
+  </section>;
+}
+/**
+ * Mỗi kỳ có một truy vấn trend riêng, cùng điều kiện nguồn bán và thanh toán.
+ * Căn điểm theo thứ tự ngày/tháng trong kỳ để có thể so sánh hai khoảng thời gian khác nhau.
+ */
+function ComparisonTrend({ dates, metric, title, currency }) {
+  const span = Math.max(Date.parse(dates.to) - Date.parse(dates.from), Date.parse(dates.compareTo) - Date.parse(dates.compareFrom));
+  // Nếu cả hai khoảng ngắn hơn 63 ngày (tính cả hai đầu), chia theo ngày; còn lại chia theo tháng.
+  const bucket = span < 62 * 86400000 ? 'day' : 'month';
+  const scope = { salesChannel: dates.salesChannel, paymentStatus: dates.paymentStatus, bucket };
+  const current = useOwnerResource('operations-report/trend', { ...scope, from: dates.from, to: dates.to });
+  const previous = useOwnerResource('operations-report/trend', { ...scope, from: dates.compareFrom, to: dates.compareTo });
+  const a = current.data?.points || [], b = previous.data?.points || [];
+  // Kỳ dài hơn quyết định số điểm; null biểu thị ngoài phạm vi kỳ ngắn hơn, không thay bằng 0.
+  const rows = Array.from({ length: Math.max(a.length, b.length) }, (_, i) => ({ label: `${a[i]?.label || '—'} / ${b[i]?.label || '—'}`, current: a[i]?.[metric] ?? null, previous: b[i]?.[metric] ?? null }));
+  const format = currency ? money : quantity;
+  return <ResourceState resource={current}><ResourceState resource={previous}>{current.data && previous.data && <>
+    <p className="owner-method">Đối chiếu theo thứ tự {bucket === 'day' ? 'ngày' : 'tháng'} trong mỗi kỳ. Mỗi nhãn hiển thị thời gian của kỳ đang xem / kỳ đối chiếu; phần ngoài phạm vi một kỳ được để trống.</p>
+    <SeriesPlot rows={rows} kind="line" currency={currency} title={`So sánh xu hướng ${title.toLocaleLowerCase('vi')}`} categoryLabel={bucket === 'day' ? 'Ngày của hai kỳ (theo thứ tự)' : 'Tháng của hai kỳ (theo thứ tự)'} unitLabel={metric === 'returns' ? 'yêu cầu hoàn' : 'đơn hàng'} series={[{ key: 'current', label: `Kỳ đang xem: ${dates.from} – ${dates.to}` }, { key: 'previous', label: `Kỳ đối chiếu: ${dates.compareFrom} – ${dates.compareTo}` }]} />
+    <details><summary>Xem số liệu đối chiếu</summary><Table headings={['Ngày / tháng hai kỳ', 'Kỳ đang xem', 'Kỳ đối chiếu']} empty={!rows.length}>{rows.map((r) => <tr key={r.label}><td>{r.label}</td><td>{r.current === null ? 'Ngoài phạm vi kỳ' : format(r.current)}</td><td>{r.previous === null ? 'Ngoài phạm vi kỳ' : format(r.previous)}</td></tr>)}</Table></details>
+  </>}</ResourceState></ResourceState>;
 }

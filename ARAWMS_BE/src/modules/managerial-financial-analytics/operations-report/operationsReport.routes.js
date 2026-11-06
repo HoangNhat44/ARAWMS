@@ -6,7 +6,8 @@ import { ownerRouter } from '../../../common/middlewares/ownerRouter.js';
 import { asyncHandler, httpError } from '../../../common/utils/httpError.js';
 import { objectId, textField, numberField } from '../../../common/utils/ownerValidation.js';
 import { operationsReport, period } from './operationsReport.service.js';
-import { annualReport } from './annualReport.service.js';
+import { bestSellersReport } from './bestSellers.service.js';
+import { annualReport, trendReport } from './annualReport.service.js';
 import ProductionOrder from '../../../models/ProductionOrder.model.js';
 import User from '../../../models/User.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
@@ -16,6 +17,8 @@ import CashFlowVoucher from '../../../models/CashFlowVoucher.model.js';
 import MaterialInboundPlan from '../../../models/MaterialInboundPlan.model.js';
 const router = ownerRouter();
 // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13 - Biểu đồ 12 tháng độc lập khoảng ngày của báo cáo tổng hợp.
+router.get('/best-sellers', asyncHandler(async (req, res) => res.json({ success: true, data: await bestSellersReport(req.query) })));
+router.get('/trend', asyncHandler(async (req, res) => res.json({ success: true, data: await trendReport(req.query) })));
 router.get('/annual', asyncHandler(async (req, res) => res.json({ success: true, data: await annualReport(req.query) })));
 router.get('/', asyncHandler(async (req, res) => res.json({ success: true, data: await operationsReport(req.query) })));
 // Phản hồi 3/8; GBR-14: Phiếu trả nợ có hợp đồng gốc, số tiền không vượt dư nợ; cập nhật cùng một giao dịch.

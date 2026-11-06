@@ -5,9 +5,10 @@
  * Chức năng: UC-06 đến UC-20 - Gọi API Owner qua cơ chế phiên hiện có.
  */
 import api from './api';
+import { OWNER_PAGE_SIZE } from '../utils/constants';
 export const ownerService = {
-  // UC-06..20: GET danh sách/báo cáo, hỗ trợ bộ lọc và hủy yêu cầu khi đổi trang.
-  list: (resource, params = {}, signal) => api.get(`/owner/${resource}`, { params, signal }),
+  // Danh sách có phân trang luôn lấy 15 dòng; báo cáo và chi tiết giữ nguyên bộ lọc.
+  list: (resource, params = {}, signal) => api.get(`/owner/${resource}`, { params: params.page !== undefined ? { ...params, limit: OWNER_PAGE_SIZE } : params, signal }),
   // UC-09/18/19/20: Đọc một đối tượng theo ID, không ghi thay đổi.
   detail: (resource, id, signal) => api.get(`/owner/${resource}/${id}`, { signal }),
   // UC-06: Gửi form đã kiểm tra; BE kiểm tra độc lập trước khi tạo tài khoản.

@@ -22,7 +22,7 @@ export const reasonError = (value) => value.trim().length < 5 || value.length > 
   ? 'Lý do cần từ 5 đến 500 ký tự, không chứa ký tự điều khiển.' : '';
 // Lấy ngày theo giờ Việt Nam, không dùng múi giờ mặc định của thiết bị.
 export const todayOwner = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-export const defaultOwnerDates = () => { const to = todayOwner(); return { from: `${to.slice(0, 7)}-01`, to }; };
+export const defaultOwnerDates = () => { const to = todayOwner(); return { from: `${to.slice(0, 4)}-01-01`, to }; };
 // UC-12/13/14/17: Kiểm tra ngày tồn tại, đúng thứ tự và không quá 366 ngày trước khi gọi API.
 export const dateRangeError = ({ from, to }) => {
   const date = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`))

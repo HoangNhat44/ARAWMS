@@ -20,8 +20,11 @@ const active = { isDeleted: { $ne: true } };
 
 export const listStocktakes = async (query) => {
   const { filter, page, limit } = readQuery(query, { fields: ['sessionCode'],
-    statuses: ['VARIANCE_REVIEW', 'APPROVED_PENDING_ADJUSTMENT', 'APPROVED_COMPLETED'] });
-  filter.status ||= 'VARIANCE_REVIEW';
+    statuses: ['FROZEN_COUNTING', 'VARIANCE_REVIEW', 'APPROVED_PENDING_ADJUSTMENT', 'APPROVED_COMPLETED', 'CANCELLED'], extra: ['warehouseType'] });
+  if (query.warehouseType) {
+    if (!['RAW_MATERIAL', 'FINISHED_GOODS'].includes(query.warehouseType)) throw httpError(400, 'Loại kho không hợp lệ.');
+    filter.warehouseType = query.warehouseType;
+  }
   const [items, total] = await Promise.all([StocktakeSession.find(filter).sort({ createdAt: -1, _id: -1 })
     .skip((page - 1) * limit).limit(limit), StocktakeSession.countDocuments(filter)]);
   return { items, total, page, limit };

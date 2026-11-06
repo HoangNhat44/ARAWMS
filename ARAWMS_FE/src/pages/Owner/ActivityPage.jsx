@@ -32,7 +32,7 @@ export default function ActivityPage() {
       <WmsField key={key}>{label}<WmsInput type={['from', 'to'].includes(key) ? 'date' : 'text'} maxLength={100} value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} /></WmsField>)}
       <WmsField className="owner-checkbox"><WmsInput type="checkbox" checked={trace} onChange={(e) => setTrace(e.target.checked)} />Truy vết theo đối tượng</WmsField><WmsButton className="btn-ara-primary">Áp dụng</WmsButton>
       <WmsButton type="button" onClick={() => { setDraft(initial); setFilters({ page: 1 }); setTrace(false); setError(''); }}>Xóa bộ lọc</WmsButton></form>
-    <Notice error={error} /><ResourceState resource={resource}>{resource.data && <><Table headings={['Thời gian', 'Người thực hiện', 'Chức năng', 'Hành động', 'Đối tượng', 'Chi tiết']} empty={!resource.data.items.length}>
+    <Notice error={error} /><ResourceState resource={resource}>{resource.data && <><Table paginated={false} headings={['Thời gian', 'Người thực hiện', 'Chức năng', 'Hành động', 'Đối tượng', 'Chi tiết']} empty={!resource.data.items.length}>
       {resource.data.items.map((log) => <tr key={log.id}><td>{datetime(log.createdAt)}</td><td>{log.actor?.fullName || 'Hệ thống'}<small>{log.actor?.employeeCode} · {labels[log.actorRole] || 'Chưa cập nhật'}</small></td><td>{businessLabel(log.majorFeature)}<small>{businessLabel(log.subFeature)}</small></td>
         <td>{businessLabel(log.action)}</td><td>{log.targetCode || log.targetId || '—'}</td><td><WmsButton onClick={() => setSelected(log)}>Xem</WmsButton></td></tr>)}
     </Table><Pagination data={resource.data} onPage={(page) => setQuery({ ...query, page })} /></>}</ResourceState>

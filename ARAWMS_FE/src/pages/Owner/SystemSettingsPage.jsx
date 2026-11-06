@@ -1,4 +1,4 @@
-// Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Nhãn nghiệp vụ tiếng Việt.
+
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
