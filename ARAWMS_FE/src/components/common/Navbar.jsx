@@ -1,54 +1,125 @@
 /*
  * File: Navbar.jsx
- * Author: Duy Anh
+ * Author: Duy Anh & Antigravity
  * Date: 2026-10-29
- * Description: Links warehouse workflows and exposes catalog account sign-in and safe sign-out.
+ * Description: Clean navigation bar with role modules, user badge, and logout.
  */
-import { Link, useNavigate } from 'react-router-dom';
+import React from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { getPendingCatalogChanges } from '../../services/offlineCatalogSync';
+import { LogOut, User as UserIcon, LogIn } from 'lucide-react';
 
-const links = [
-  ['/', 'Trang chủ'],
-  ['/orders/qr', 'Đơn hàng / QR'],
-  ['/packing/qr', 'Đóng hàng'],
-  ['/warehouse/putaway', 'Xếp hàng vào kệ'],
-  ['/warehouse/finished-goods', 'Kho thành phẩm'],
-  ['/warehouse/layout', 'Vị trí kho'],
-  ['/warehouse/raw-materials/inbound', 'Nhập nguyên phụ liệu'],
-  ['/warehouse/raw-materials/outbound', 'Xuất nguyên phụ liệu'],
-  ['/warehouse/stocktake', 'Kiểm kê kho'],
-];
-
-export default function Navbar() {
+const Navbar = () => {
   const { user, logout } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
-  const signOut = async () => {
-    try {
-      const ownerId = user?.id || user?._id;
-      const pending = await getPendingCatalogChanges(ownerId);
-      if (pending.some((item) => !['DONE', 'DISCARDED', 'SUPERSEDED'].includes(item.status)) &&
-          !window.confirm('Có dữ liệu sản phẩm chưa đồng bộ. Dữ liệu vẫn ở thiết bị này và chỉ hiện lại khi đăng nhập đúng tài khoản. Đăng xuất?')) return;
-      logout();
-      navigate('/login');
-    } catch (error) { window.alert(`Không kiểm tra được dữ liệu chờ đồng bộ: ${error.message}`); }
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
   };
-  return <header className="ara-navbar">
-    <Link to="/" className="ara-brand">
-      <img src="/logo.png" alt="ARA Logo" className="ara-brand-logo" />
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <span className="ara-brand-text">ARA</span>
-        <span style={{ fontSize: '0.68rem', letterSpacing: '0.12em', color: 'var(--ara-gold)', textTransform: 'uppercase', marginTop: '-4px' }}>
-          Atelier & Warehouse
-        </span>
-      </div>
-    </Link>
-    <nav aria-label="Chức năng kho">
-      <ul className="ara-nav-links">
-        {links.map(([to, label]) => <li key={to}><Link to={to}>{label}</Link></li>)}
-      </ul>
-    </nav>
-    {user ? <button type="button" className="btn-ara-secondary" onClick={signOut}>Đăng xuất</button>
-      : <Link to="/login" className="btn-ara-secondary">Đăng nhập</Link>}
-  </header>;
-}
+
+  const isGarmentRole = user?.roleCode === 'GARMENT_TECHNICIAN' || user?.roles?.includes('GARMENT_TECHNICIAN') || location.pathname.startsWith('/garment');
+
+  return (
+    <header className="ara-navbar">
+      <Link to="/" className="ara-brand">
+        <img 
+          src="/logo.png" 
+          alt="ARA Logo" 
+          className="ara-brand-logo" 
+        />
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <span className="ara-brand-text">ARA</span>
+          <span style={{ fontSize: '0.68rem', letterSpacing: '0.12em', color: 'var(--ara-gold)', textTransform: 'uppercase', marginTop: '-4px' }}>
+            Atelier & Warehouse
+          </span>
+        </div>
+      </Link>
+
+      <nav>
+        <ul className="ara-nav-links">
+          <li>
+            <Link to="/">Trang chủ</Link>
+          </li>
+
+          {/* Phân hệ Kỹ thuật xưởng (KCS) */}
+          <li>
+            <Link 
+              to="/garment/material-inbound-verification" 
+              style={location.pathname.startsWith('/garment') ? { color: 'var(--ara-gold)', fontWeight: 700 } : undefined}
+            >
+              Phân hệ Kỹ thuật may
+            </Link>
+          </li>
+
+          {/* Link kho vận nếu không ở phân hệ garment */}
+          {!isGarmentRole && (
+            <>
+              <li><Link to="/warehouse/raw-materials/inbound">Kho NPL</Link></li>
+              <li><Link to="/warehouse/finished-goods">Kho thành phẩm</Link></li>
+              <li><Link to="/warehouse/putaway">Xếp kệ</Link></li>
+            </>
+          )}
+
+          {user ? (
+            <>
+              <li style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem', 
+                color: 'var(--ara-noir)', 
+                background: 'var(--ara-bg-surface)',
+                border: '1px solid var(--ara-border)',
+                padding: '0.4rem 0.85rem',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '0.88rem',
+                fontWeight: 600 
+              }}>
+                <UserIcon size={16} color="var(--ara-gold)" />
+                <span>{user.fullName || user.username}</span>
+                <span style={{
+                  fontSize: '0.7rem',
+                  background: 'var(--ara-noir)',
+                  color: '#FFFFFF',
+                  padding: '0.15rem 0.45rem',
+                  borderRadius: '4px',
+                  marginLeft: '0.25rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.04em',
+                }}>
+                  {user.roleCode || (user.roles && user.roles[0]) || 'GARMENT_TECHNICIAN'}
+                </span>
+              </li>
+              <li>
+                <button 
+                  onClick={handleLogout} 
+                  className="btn-ara-secondary" 
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  <LogOut size={15} />
+                  <span>Đăng xuất</span>
+                </button>
+              </li>
+            </>
+          ) : (
+            <>
+              <li>
+                <Link 
+                  to="/login" 
+                  className="btn-ara-primary" 
+                  style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  <LogIn size={15} />
+                  <span>Đăng nhập</span>
+                </Link>
+              </li>
+            </>
+          )}
+        </ul>
+      </nav>
+    </header>
+  );
+};
+
+export default Navbar;

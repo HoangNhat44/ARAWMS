@@ -20,6 +20,12 @@ import WarehouseLayoutPage from '../pages/WarehouseLayoutPage';
 import WarehousePutawayPage from '../pages/WarehousePutawayPage';
 import StocktakePage from '../pages/StocktakePage';
 import ShippingPage from '../pages/ShippingPage';
+import MaterialInboundVerificationPage from '../pages/garment/MaterialInboundVerificationPage';
+import FinishedGoodsInspectionPage from '../pages/garment/FinishedGoodsInspectionPage';
+import GarmentStocktakeExecutionPage from '../pages/garment/GarmentStocktakeExecutionPage';
+import GarmentMaterialOutboundPage from '../pages/garment/GarmentMaterialOutboundPage';
+import GarmentCuttingAndRemnantPage from '../pages/garment/GarmentCuttingAndRemnantPage';
+import GarmentLayout from '../components/garment/GarmentLayout';
 // import { useAuth } from '../hooks/useAuth';
 // import LoadingSpinner from '../components/common/LoadingSpinner';
 
@@ -69,6 +75,11 @@ const AppRouter = () => {
       <Route path="/warehouse/putaway" element={<WarehousePutawayPage />} />
       <Route path="/warehouse/stocktake" element={<StocktakePage />} />
       <Route path="/warehouse/shipping" element={<ShippingPage />} />
+      <Route path="/garment/material-inbound-verification" element={<GarmentLayout><MaterialInboundVerificationPage /></GarmentLayout>} />
+      <Route path="/garment/finished-goods-inspection" element={<GarmentLayout><FinishedGoodsInspectionPage /></GarmentLayout>} />
+      <Route path="/garment/stocktake-execution" element={<GarmentLayout><GarmentStocktakeExecutionPage /></GarmentLayout>} />
+      <Route path="/garment/material-outbound-request" element={<GarmentLayout><GarmentMaterialOutboundPage /></GarmentLayout>} />
+      <Route path="/garment/remnant-recovery" element={<GarmentLayout><GarmentCuttingAndRemnantPage /></GarmentLayout>} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<Navigate to="/" replace />} />
       <Route path="*" element={<NotFoundPage />} />
