@@ -60,6 +60,7 @@ export const sellerService = {
 
   // === MARKETPLACE IMPORT & PROCESS (Mentor Feedback 4.3.3) ===
   getMarketplaceChannels: () => api.get('/orders/marketplace/channels'),
+  getChannelsSummary: () => api.get('/orders/marketplace/channels/summary'),
   downloadExcelTemplate: (channel) => api.get('/orders/marketplace/template', { params: { channel }, responseType: 'blob' }),
   previewExcelImport: (formData) => api.post('/orders/marketplace/preview-excel', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

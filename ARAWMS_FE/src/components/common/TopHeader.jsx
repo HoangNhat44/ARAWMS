@@ -1,3 +1,4 @@
+
 /**
  * ============================================================================
  * @title        : Enterprise Top Header Bar
@@ -22,9 +23,10 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { getSocket } from '../../services/socketService';
+import { sellerService } from '../../services/sellerService';
 
 const PAGE_TITLES = {
-  '/seller/chat': { section: 'Bán Hàng & CSKH', title: 'Hội Thoại Đa Kênh (Pancake Inbox)' },
+  '/seller/chat': { section: 'Bán Hàng & CSKH', title: 'Hội Thoại Đa Kênh' },
   '/seller/orders': { section: 'Bán Hàng & CSKH', title: 'Quản Lý Đơn Hàng' },
   '/orders/qr': { section: 'Vận Hành Kho', title: 'Chốt Đơn & In Tem QR' },
   '/packing/qr': { section: 'Vận Hành Kho', title: 'Đóng Hàng & Ghi Hình Video' },
@@ -40,6 +42,8 @@ const TopHeader = ({ onToggleSidebar, user }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [channelChips, setChannelChips] = useState([]);
+  const [loadingChannels, setLoadingChannels] = useState(false);
   const [notifications, setNotifications] = useState([
     {
       id: 'init-1',
@@ -89,6 +93,41 @@ const TopHeader = ({ onToggleSidebar, user }) => {
     };
   }, []);
 
+  // Tải trạng thái kết nối đa kênh thực tế từ Database (MongoDB Atlas)
+  useEffect(() => {
+    let isMounted = true;
+    const loadChannelStatus = async () => {
+      try {
+        setLoadingChannels(true);
+        const res = await sellerService.getChannelsSummary();
+        if (isMounted && res.success && Array.isArray(res.data)) {
+          setChannelChips(res.data);
+        }
+      } catch (err) {
+        console.warn('[TopHeader] Không thể tải trạng thái kênh từ DB:', err.message);
+      } finally {
+        if (isMounted) setLoadingChannels(false);
+      }
+    };
+
+    loadChannelStatus();
+
+    // Lắng nghe socket để cập nhật Realtime khi có kênh mới hoặc đơn mới import
+    const socket = getSocket();
+    if (socket) {
+      socket.on('channel_status_changed', loadChannelStatus);
+      socket.on('marketplace_orders_imported', loadChannelStatus);
+    }
+
+    return () => {
+      isMounted = false;
+      if (socket) {
+        socket.off('channel_status_changed', loadChannelStatus);
+        socket.off('marketplace_orders_imported', loadChannelStatus);
+      }
+    };
+  }, []);
+
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const currentPathKey = Object.keys(PAGE_TITLES).find(
@@ -125,17 +164,31 @@ const TopHeader = ({ onToggleSidebar, user }) => {
       </div>
 
       <div className="ara-header-right">
-        {/* Multi-channel active chips (Desktop/Tablet Large Only) */}
+        {/* Multi-channel active chips (Desktop/Tablet Large Only) - Dynamic data from DB */}
         <div className="ara-channel-chips d-none d-lg-flex">
-          <span className="channel-chip fb-chip" title="Đã kết nối Facebook Fanpages">
-            <span className="chip-dot" /> FB Fanpages (2)
-          </span>
-          <span className="channel-chip tiktok-chip" title="Đã kết nối TikTok Shops">
-            <span className="chip-dot" /> TikTok Shop (2)
-          </span>
-          <span className="channel-chip shopee-chip" title="Đã kết nối Shopee Stores">
-            <span className="chip-dot" /> Shopee Mall
-          </span>
+          {channelChips.map((chip) => {
+            const storeList = chip.stores?.map((s) => s.name).join('\n• ');
+            const tooltipTitle = chip.isConnected
+              ? `Kênh ${chip.label}: Đang liên kết ${chip.count} tài khoản/gian hàng thực tế:\n• ${storeList}`
+              : `Kênh ${chip.label}: Chưa có gian hàng nào đang hoạt động`;
+
+            return (
+              <span
+                key={chip.channel}
+                className={`channel-chip ${chip.chipClass || ''}`}
+                title={tooltipTitle}
+                style={{ cursor: 'pointer' }}
+              >
+                <span
+                  className="chip-dot"
+                  style={{
+                    backgroundColor: chip.isConnected ? '#10B981' : '#9CA3AF',
+                  }}
+                />
+                {' '}{chip.display}
+              </span>
+            );
+          })}
         </div>
 
         {/* Notifications Dropdown */}
