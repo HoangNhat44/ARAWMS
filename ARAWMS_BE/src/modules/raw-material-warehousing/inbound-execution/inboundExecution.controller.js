@@ -15,10 +15,13 @@ import {
 import {
   createReceiptLocation, getEligibleInboundPlans, getInboundPlanDetails,
   getMaterialReceipt, getMaterialReceiptLabels, confirmMaterialPutaway,
+  updateMaterialReceiptDraft, confirmMaterialReceipt,
   requestMaterialSupplierReturn, confirmMaterialSupplierReturn,
 } from './inboundExecution.service.js';
 import { listDeliveryPlans, getDeliveryPlan, createDeliveryPlan, setupLegacyDeliveryPlan, closeDeliveryBatch, cancelDeliveryBatch,
   reviseDeliveryWindow, reviseDeliveryItems } from './deliveryPlan.service.js';
+import { listTechnicianInboundRequests, createTechnicianInboundRequest,
+  reportInboundRequestDiscrepancy } from './technicianInboundRequest.service.js';
 
 /** Sends known validation and duplicate-code failures without hiding unexpected errors. */
 const respond = (error, res, next) => {
@@ -37,6 +40,16 @@ const handle = (message, task, status = 200) => async (req, res, next) => {
 export const options = handle('Dữ liệu chọn cho phiếu nhập', (req) => getSupplierReceiptOptions(req.user));
 export const createLocation = handle('Đã tạo vị trí kho', async (req) => ({ location: await createReceiptLocation(req.body || {}, req.user) }), 201);
 export const createMaterial = handle('Đã tạo nguyên phụ liệu', async (req) => ({ material: await createSupplierMaterial(req.body || {}) }), 201);
+export const technicianRequests = handle('Yêu cầu nhập của kỹ thuật viên', async () => ({ requests: await listTechnicianInboundRequests() }));
+export const legacyReceiptDetails = handle('Phiếu nhập theo kế hoạch', (req) => getMaterialReceipt(req.params.id, req.user));
+export const updateLegacyReceipt = handle('Đã lưu phiếu nhập theo kế hoạch', async (req) => ({ receipt:
+  await updateMaterialReceiptDraft(req.params.id, req.body || {}, req.user) }));
+export const confirmLegacyReceipt = handle('Đã xác nhận nhập kho theo kế hoạch', async (req) => ({ receipt:
+  await confirmMaterialReceipt(req.params.id, req.body || {}, req.user) }));
+export const createTechnicianRequest = handle('Đã tạo yêu cầu nhập', async (req) => ({ request:
+  await createTechnicianInboundRequest(req.body || {}, req.user) }), 201);
+export const reportTechnicianRequestDiscrepancy = handle('Đã báo sai lệch yêu cầu nhập', async (req) => ({ request:
+  await reportInboundRequestDiscrepancy(req.params.id, req.body || {}, req.user) }));
 export const plans = handle('Kế hoạch nhập nguyên phụ liệu', async (req) => ({ plans: await listDeliveryPlans(req.query, req.user) }));
 export const planDetails = handle('Chi tiết kế hoạch nhập', async (req) => ({ plan: await getDeliveryPlan(req.params.id, req.user) }));
 export const createPlan = handle('Đã tạo kế hoạch nhập', async (req) => ({ plan: await createDeliveryPlan(req.body || {}, req.user) }), 201);

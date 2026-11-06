@@ -16,9 +16,9 @@ export const printMaterialLabels = (labels, tab = window.open('', '_blank')) => 
   const articles = labels.map((label) => `<article>
     <strong>${escapeHtml(label.materialCode)} · ${escapeHtml(label.materialName)}</strong>
     ${label.imageUrl ? `<img src="${escapeHtml(label.imageUrl)}" alt="${escapeHtml(label.barcode)}"/>` : code128Svg(label.barcode)}
+    <p>Nhà cung cấp: ${escapeHtml(label.supplierName || 'Chưa xác định')}</p>
     <p>Màu: ${escapeHtml(label.color || '—')} · Khổ: ${escapeHtml(label.widthCm ? `${label.widthCm} cm` : '—')}</p>
-    <p>Số lượng lúc nhập: ${escapeHtml(label.quantity)} ${escapeHtml(label.unit || '')}</p>
-    <p>Lô NCC: ${escapeHtml(label.supplierLotCode || '—')} · Ngày nhập: ${escapeHtml(label.receivedAt?.slice(0, 10) || '—')}</p>
+    <p>Lô / cây: ${escapeHtml(label.lotOrRollCode || label.supplierLotCode || '—')} · Ngày nhập: ${escapeHtml(label.receivedAt?.slice(0, 10) || '—')}</p>
     <p>Vị trí: ${escapeHtml((label.locationCodes || []).join(', ') || '—')} · ${label.quality === 'REJECTED' ? 'HÀNG KHÔNG ĐẠT' : 'HÀNG ĐẠT'}</p>
   </article>`).join('');
   tab.document.write(`<!doctype html><html lang="vi"><meta charset="utf-8"><title>Tem nguyên phụ liệu</title>

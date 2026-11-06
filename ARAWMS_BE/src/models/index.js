@@ -18,6 +18,7 @@ export { default as SystemLog } from './SystemLog.model.js';
 export { default as WarehouseLocation } from './WarehouseLocation.model.js';
 export { default as WarehouseLayout } from './WarehouseLayout.model.js';
 export { default as WarehouseBarcodeHistory } from './WarehouseBarcodeHistory.model.js';
+export { default as WarehouseStockBarcode } from './WarehouseStockBarcode.model.js';
 export { default as PutawayAllocation } from './PutawayAllocation.model.js';
 export { default as DocumentTemplate } from './DocumentTemplate.model.js';
 export { default as ShippingCarrier } from './ShippingCarrier.model.js';

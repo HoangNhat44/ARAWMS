@@ -19,7 +19,10 @@ import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import { ReceiptError, getReceiptOptions } from './inboundExecution.service.js';
 import { configureProductCloudinary } from '../../../common/services/productMediaStorage.js';
 import { scheduleBarcodeImages } from '../../../common/services/barcodeImageStorage.js';
+import { claimRawMaterialBarcode, nextRawMaterialBarcode } from '../../../common/services/rawMaterialBarcode.js';
+import { publishRealtime } from '../../../common/services/realtime.js';
 import { getDeliveryBatchContext, commitDeliveryReceipt } from './deliveryPlan.service.js';
+import { validateInboundRequestReceipt, applyInboundRequestReceipt } from './technicianInboundRequest.service.js';
 
 const id = (value) => String(value || '');
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
@@ -69,11 +72,18 @@ export async function createSupplierMaterial(input) {
 
 /** Searches persisted supplier receipts without mixing quantities of different units. */
 export async function listSupplierReceipts(query, user) {
+  const page = query.page == null ? 1 : Number(query.page);
+  fail(Number.isSafeInteger(page) && page > 0 && Number.isSafeInteger((page - 1) * 100),
+    'Trang danh sách phiếu nhập không hợp lệ', 'INVALID_PAGE');
   const filter = { ticketType: 'INBOUND_FROM_SUPPLIER', isDeleted: { $ne: true },
     ...(user.warehouseIds?.length ? { receivingLocationId: { $in: user.warehouseIds } } : {}) };
   if (query.source) {
     fail(['PLAN', 'DIRECT'].includes(query.source), 'Nguồn nhập không hợp lệ', 'INVALID_SOURCE');
     filter.inboundPlanId = query.source === 'PLAN' ? { $exists: true, $ne: null } : { $exists: false };
+  }
+  if (query.inboundRequestId) {
+    fail(mongoose.isValidObjectId(query.inboundRequestId), 'Yêu cầu nhập kho không hợp lệ', 'INVALID_INBOUND_REQUEST');
+    filter.inboundRequestId = query.inboundRequestId;
   }
   if (query.supplierId) {
     fail(mongoose.isValidObjectId(query.supplierId), 'Nhà cung cấp không hợp lệ', 'INVALID_SUPPLIER');
@@ -104,12 +114,12 @@ export async function listSupplierReceipts(query, user) {
     fail(Object.values(filter.receivedAt).every((date) => !Number.isNaN(date.getTime())), 'Ngày lọc không hợp lệ', 'INVALID_DATE');
   }
   const receipts = await MaterialTicket.find(filter)
-    .select('ticketCode receiptSource inboundPlanId deliveryBatchId supplierId purchaseSourceName purchasedByName supplierDeliveryCode receivingLocationId receivedAt createdByManagerId status createdAt confirmedAt receiptLines.rawMaterialId receiptLines.actualQty receiptLines.acceptedQty receiptLines.rejectedQty receiptLines.unitCost')
+    .select('ticketCode draftKey receiptSource inboundPlanId inboundRequestId deliveryBatchId supplierId purchaseSourceName purchasedByName supplierDeliveryCode receivingLocationId receivedAt createdByManagerId status createdAt confirmedAt receiptLines.rawMaterialId receiptLines.actualQty receiptLines.acceptedQty receiptLines.rejectedQty receiptLines.unitCost')
     .populate('supplierId', 'supplierName supplierCode')
     .populate('receivingLocationId', 'locationCode')
     .populate('createdByManagerId', 'fullName')
-    .populate('receiptLines.rawMaterialId', 'materialCode materialName color')
-    .sort({ createdAt: -1 }).limit(100).lean();
+    .populate('receiptLines.rawMaterialId', 'materialCode materialName color unit')
+    .sort({ createdAt: -1, _id: -1 }).skip((page - 1) * 100).limit(100).lean();
   return receipts;
 }
 
@@ -148,6 +158,9 @@ export async function findDeliveryMatches(supplierId, code, excludeId) {
 /** Builds server-owned inspection lines from active catalog materials. */
 export async function validateSupplierReceiptDraft(input, user, previousReceipt) {
   const direct = input.receiptSource === 'DIRECT';
+  fail(!input.inboundRequestId || direct, 'Phiếu theo yêu cầu phải là phiếu nhận trực tiếp', 'REQUEST_SOURCE_INVALID');
+  fail(!previousReceipt || id(input.inboundRequestId) === id(previousReceipt.inboundRequestId),
+    'Không được đổi yêu cầu của phiếu nhập', 'REQUEST_IMMUTABLE', 409);
   const context = direct ? null : await getDeliveryBatchContext(input.inboundPlanId, input.deliveryBatchId, user);
   fail(!direct || !input.inboundPlanId && !input.deliveryBatchId,
     'Phiếu ngoài kế hoạch không được liên kết kế hoạch', 'DIRECT_PLAN_LINK');
@@ -157,7 +170,8 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
     isDeleted: { $ne: true } }).select('_id supplierName').lean() : null;
   fail(!input.supplierId || supplier, 'Nhà cung cấp không còn hoạt động', 'SUPPLIER_UNAVAILABLE', 409);
   const purchaseSourceName = String(input.purchaseSourceName || supplier?.supplierName || '').trim();
-  fail(!direct || purchaseSourceName.length <= 160,
+  fail(!direct || purchaseSourceName.length <= 160 &&
+    (purchaseSourceName.length > 0 || Boolean(input.inboundRequestId)),
     'Nơi mua quá dài', 'PURCHASE_SOURCE_INVALID');
   const purchasedByName = String(input.purchasedByName || user.fullName || '').trim();
   fail(!direct || purchasedByName.length >= 2 && purchasedByName.length <= 120,
@@ -202,6 +216,11 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
   }
   const materials = await RawMaterial.find({ _id: { $in: materialIds }, isActive: true, isDeleted: { $ne: true } }).lean();
   const byMaterial = new Map(materials.map((item) => [id(item._id), item]));
+  const lineSupplierIds = [...new Set(input.receiptLines.map((line) => id(line.supplierId)).filter(Boolean))];
+  const lineSuppliers = lineSupplierIds.length ? await Supplier.find({ _id: { $in: lineSupplierIds }, isActive: true,
+    isDeleted: { $ne: true } }).select('_id supplierName').lean() : [];
+  fail(lineSuppliers.length === lineSupplierIds.length, 'Nhà cung cấp của một dòng không còn hoạt động', 'SUPPLIER_UNAVAILABLE', 409);
+  const lineSupplierById = new Map(lineSuppliers.map((item) => [id(item._id), item]));
   const previousLines = new Map((previousReceipt?.receiptLines || []).map((line) => [id(line.rawMaterialId), line]));
   fail(materialIds.every((materialId) => byMaterial.has(materialId)), 'Có nguyên phụ liệu không còn hoạt động', 'MATERIAL_UNAVAILABLE', 409);
   const batchItems = new Map((context?.batch.items || []).map((item) => [id(item.rawMaterialId), item]));
@@ -211,9 +230,11 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
   const lines = input.receiptLines.map((line) => {
     const material = byMaterial.get(id(line.rawMaterialId));
     const unit = material.unit;
-    const usesCatalogCost = line.unitCost === '' || line.unitCost == null;
-    const unitCost = direct && usesCatalogCost ? undefined : Number(usesCatalogCost ? material.unitCost : line.unitCost);
-    fail(unitCost == null && direct || Number.isFinite(unitCost) && unitCost >= 0 && unitCost <= 1e12 &&
+    const requestLinked = Boolean(input.inboundRequestId);
+    const usesCatalogCost = !requestLinked && (line.unitCost === '' || line.unitCost == null);
+    const unitCost = requestLinked && (line.unitCost === '' || line.unitCost == null)
+      ? undefined : Number(usesCatalogCost ? material.unitCost : line.unitCost);
+    fail(unitCost == null && requestLinked || Number.isFinite(unitCost) && unitCost >= 0 && unitCost <= 1e12 &&
       Math.abs(unitCost * 100 - Math.round(unitCost * 100)) < 0.000001,
       'Đơn giá nhập không hợp lệ', 'INVALID_UNIT_COST');
     const zeroCostReason = String(line.zeroCostReason ||
@@ -230,7 +251,7 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
       same(previous[key], { actualQty, acceptedQty, rejectedQty, pendingQty }[key])) ||
       String(previous.inspectionConclusion || '') !== String(line.inspectionConclusion || '').trim() ||
       String(previous.qualityInspectionRef || '') !== String(line.qualityInspectionRef || '').trim();
-    fail(same(actualQty, acceptedQty + rejectedQty + pendingQty),
+    fail(requestLinked || same(actualQty, acceptedQty + rejectedQty + pendingQty),
       'Thực nhận phải bằng đạt + không đạt + chờ kiểm tra', 'INSPECTION_TOTAL_MISMATCH');
     const batchItem = batchItems.get(id(material._id));
     fail(direct || acceptedQty <= round(batchItem.plannedQty - (batchItem.acceptedQty || 0)) + .0001,
@@ -243,15 +264,22 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
     fail(clientIds.every((key) => /^[A-Za-z0-9_-]{1,80}$/.test(key) && !seenObjects.has(key)) &&
       new Set(clientIds).size === clientIds.length, 'Mã dòng cây/lô bị trùng', 'DUPLICATE_OBJECT');
     clientIds.forEach((key) => seenObjects.add(key));
+    const lineSupplier = lineSupplierById.get(id(line.supplierId));
     return { rawMaterialId: material._id, clientLineId: direct ? lineKey : undefined,
+      requestLineId: requestLinked ? String(line.requestLineId || line.clientLineId || '') : undefined,
+      supplierId: lineSupplier?._id || (requestLinked ? undefined : supplier?._id),
+      supplierNameSnapshot: String(line.supplierNameSnapshot || lineSupplier?.supplierName ||
+        (requestLinked ? '' : purchaseSourceName)).trim() || undefined,
       deliveryBatchItemId: batchItem?._id, unitCost, zeroCostReason,
       supplierDeclaredQty: line.supplierDeclaredQty === '' || line.supplierDeclaredQty == null
         ? undefined : stockQuantity(line.supplierDeclaredQty, unit, 'NCC báo giao'),
       actualQty, acceptedQty, rejectedQty, pendingQty,
       defectReason: String(line.defectReason || '').trim().slice(0, 500),
       qualityInspectionRef: String(line.qualityInspectionRef || '').trim().slice(0, 120),
-      inspectedByUserId: actualQty > pendingQty ? inspectionChanged ? user._id : previous.inspectedByUserId : undefined,
-      inspectedAt: actualQty > pendingQty ? inspectionChanged ? new Date() : previous.inspectedAt : undefined,
+      inspectedByUserId: requestLinked ? line.inspectedByUserId :
+        actualQty > pendingQty ? inspectionChanged ? user._id : previous.inspectedByUserId : undefined,
+      inspectedAt: requestLinked ? line.inspectedAt :
+        actualQty > pendingQty ? inspectionChanged ? new Date() : previous.inspectedAt : undefined,
       inspectionConclusion: String(line.inspectionConclusion || '').trim().slice(0, 120),
       inspectionNote: String(line.inspectionNote || '').trim().slice(0, 500),
       rolls: rolls.map((roll) => ({ clientLineId: roll.clientLineId,
@@ -276,13 +304,20 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
     const objects = byMaterial.get(id(line.rawMaterialId)).materialType === 'FABRIC' ? line.rolls : line.lots;
     return same(objects.reduce((sum, item) => sum + (item.lengthMeters ?? item.countedQty), 0), line.actualQty);
   });
+  const inboundRequest = input.inboundRequestId
+    ? await validateInboundRequestReceipt(input.inboundRequestId, lines) : null;
+  if (previousReceipt?.inboundRequestId) fail(Number(previousReceipt.inboundRequestVersion || 0) ===
+    Number(inboundRequest?.requestVersion || 0),
+  'Yêu cầu đã thay đổi; hãy tải lại trước khi lưu phân bổ', 'REQUEST_VERSION_CONFLICT', 409);
   return { receiptSource: direct ? 'DIRECT' : 'PLAN',
+    inboundRequestId: input.inboundRequestId || undefined,
+    inboundRequestVersion: inboundRequest ? inboundRequest.requestVersion || 0 : undefined,
     inboundPlanId: context?.plan._id, deliveryBatchId: context?.batch._id,
     supplierId: supplier?._id, purchaseSourceName: direct ? purchaseSourceName : undefined,
     purchasedByName: direct ? purchasedByName : undefined,
     supplierDeliveryCode: code || undefined, replacementForTicketId, receivedAt,
     handoverName, receivingLocationId: location._id, receiptNote: String(input.receiptNote || '').trim(),
-    receiptLines: lines, status: hasPending ? 'WAITING_QC' : hasObjects ? 'READY_TO_CONFIRM' : 'DRAFT' };
+    receiptLines: lines, status: hasPending && !input.inboundRequestId ? 'WAITING_QC' : hasObjects ? 'READY_TO_CONFIRM' : 'DRAFT' };
 }
 
 /** Creates a direct supplier receipt with an atomic human-readable code. */
@@ -392,11 +427,10 @@ function validateConfirmation(receipt, materials, locations, user) {
   for (const line of receipt.receiptLines) {
     const material = byMaterial.get(id(line.rawMaterialId));
     fail(material, 'Nguyên phụ liệu không còn hoạt động', 'MATERIAL_UNAVAILABLE', 409);
-    fail(receipt.receiptSource !== 'DIRECT' || line.unitCost != null,
-      'Cần nhập đơn giá mua cho từng dòng', 'UNIT_COST_REQUIRED');
-    fail(Number.isFinite(line.unitCost ?? material.unitCost) && (line.unitCost ?? material.unitCost) >= 0,
+    const unitCost = receipt.inboundRequestId ? line.unitCost : line.unitCost ?? material.unitCost;
+    fail(unitCost == null && receipt.inboundRequestId || Number.isFinite(unitCost) && unitCost >= 0,
       'Đơn giá nhập không hợp lệ', 'INVALID_UNIT_COST');
-    fail(!line.actualQty || (line.unitCost ?? material.unitCost) !== 0 || line.zeroCostReason?.trim().length >= 2,
+    fail(!line.actualQty || unitCost == null || unitCost !== 0 || line.zeroCostReason?.trim().length >= 2,
       'Cần lý do khi đơn giá nhập bằng 0', 'ZERO_COST_REASON_REQUIRED');
     fail(same(line.actualQty, line.acceptedQty + line.rejectedQty + line.pendingQty), 'Kết quả kiểm nhận không khớp', 'INSPECTION_TOTAL_MISMATCH');
     fail(line.pendingQty === 0, 'Còn hàng chờ kiểm tra', 'QUALITY_PENDING');
@@ -477,11 +511,15 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
       }
       fail(editable.includes(receipt.status), 'Phiếu không thể xác nhận', 'RECEIPT_LOCKED', 409);
       fail(Number(input.expectedVersion) === receipt.receiptVersion, 'Phiếu đã thay đổi; hãy tải lại', 'VERSION_CONFLICT', 409);
+      if (receipt.inboundRequestId) await validateInboundRequestReceipt(receipt.inboundRequestId,
+        receipt.receiptLines, session, receipt.inboundRequestVersion);
       const direct = receipt.receiptSource === 'DIRECT';
-      const supplier = receipt.supplierId ? await Supplier.findOne({ _id: receipt.supplierId,
-        isActive: true, isDeleted: { $ne: true } }).session(session) : null;
-      fail(!receipt.supplierId || supplier, 'Nhà cung cấp không còn hoạt động', 'SUPPLIER_UNAVAILABLE', 409);
-      fail(!direct || receipt.purchaseSourceName?.trim() && receipt.purchasedByName?.trim(),
+      const supplierIds = [...new Set([id(receipt.supplierId), ...receipt.receiptLines.map((line) => id(line.supplierId))].filter(Boolean))];
+      const suppliers = supplierIds.length ? await Supplier.find({ _id: { $in: supplierIds }, isActive: true,
+        isDeleted: { $ne: true } }).session(session) : [];
+      const supplierById = new Map(suppliers.map((item) => [id(item._id), item]));
+      fail(suppliers.length === supplierIds.length, 'Nhà cung cấp không còn hoạt động', 'SUPPLIER_UNAVAILABLE', 409);
+      fail(!direct || (receipt.purchaseSourceName?.trim() || receipt.inboundRequestId) && receipt.purchasedByName?.trim(),
         'Thiếu nơi mua hoặc người mua', 'DIRECT_SOURCE_REQUIRED');
       const materials = await RawMaterial.find({ _id: { $in: receipt.receiptLines.map((line) => line.rawMaterialId) },
         isActive: true, isDeleted: { $ne: true } }).session(session);
@@ -524,30 +562,40 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
         fail(updated.matchedCount === 1, 'Sức chứa vị trí đã thay đổi', 'LOCATION_FULL', 409);
       }
       const now = new Date();
+      const receivedAt = receipt.receivedAt || now;
       const quarantineBalances = new Map(locations.filter((item) => item.warehouseType === 'DEFECT_QUARANTINE')
         .map((item) => [id(item._id), item.currentOccupancy || 0]));
       for (const [lineIndex, line] of receipt.receiptLines.entries()) {
         const material = byMaterial.get(id(line.rawMaterialId));
-        for (const [objectIndex, roll] of line.rolls.entries()) {
-          await FabricRoll.create([{ rollBarcode: `FR-${String(receipt._id).toUpperCase()}-${lineIndex}-${objectIndex}`,
-            rawMaterialId: material._id, supplierId: receipt.supplierId, inboundTicketId: receipt._id,
+        const supplierId = line.supplierId || receipt.supplierId;
+        const supplierNameSnapshot = line.supplierNameSnapshot || supplierById.get(id(supplierId))?.supplierName || receipt.purchaseSourceName;
+        const unitCost = receipt.inboundRequestId ? line.unitCost : line.unitCost ?? material.unitCost;
+        for (const roll of line.rolls) {
+          const barcode = await nextRawMaterialBarcode(session);
+          const [createdRoll] = await FabricRoll.create([{ rollBarcode: barcode,
+            rawMaterialId: material._id, supplierId, supplierNameSnapshot, inboundTicketId: receipt._id,
             clientLineId: roll.clientLineId, supplierRollCode: roll.supplierRollCode, supplierLotCode: roll.lotCode,
             measuredWidthCm: roll.widthCm, defectReason: roll.defectReason,
             initialLengthMeters: roll.lengthMeters, currentLengthMeters: roll.lengthMeters,
             initialWeightKg: roll.weightKg, currentWeightKg: roll.weightKg,
-            unitCostPerMeter: line.unitCost ?? material.unitCost, locationId: roll.locationId, fifoInboundTimestamp: now,
+            unitCostPerMeter: unitCost, locationId: roll.locationId, fifoInboundTimestamp: receivedAt,
             status: roll.quality === 'ACCEPTED' ? 'QC_PASSED' : 'DEFECTIVE' }], { session });
+          await claimRawMaterialBarcode({ barcode, stockType: 'ROLL', stockObjectId: createdRoll._id,
+            inboundTicketId: receipt._id, rawMaterialId: material._id, supplierId }, session);
         }
-        for (const [objectIndex, lot] of line.lots.entries()) {
-          await MaterialStockLot.create([{ lotBarcode: `ML-${String(receipt._id).toUpperCase()}-${lineIndex}-${objectIndex}`,
-            rawMaterialId: material._id, supplierId: receipt.supplierId, inboundTicketId: receipt._id,
+        for (const lot of line.lots) {
+          const barcode = await nextRawMaterialBarcode(session);
+          const [createdLot] = await MaterialStockLot.create([{ lotBarcode: barcode,
+            rawMaterialId: material._id, supplierId, supplierNameSnapshot, inboundTicketId: receipt._id,
             clientLineId: lot.clientLineId, supplierLotCode: lot.supplierLotCode,
             packageUnit: lot.packageUnit, packageCount: lot.packageCount, unitsPerPackage: lot.unitsPerPackage,
             initialQty: lot.countedQty, currentQty: lot.countedQty, quality: lot.quality,
-            unitCost: line.unitCost ?? material.unitCost,
+            unitCost,
             status: lot.quality === 'ACCEPTED' ? 'PENDING_PUTAWAY' : 'QUARANTINED',
-            defectReason: lot.defectReason, fifoInboundTimestamp: now,
+            defectReason: lot.defectReason, fifoInboundTimestamp: receivedAt,
             allocations: lot.allocations.filter((item) => item.locationId) }], { session });
+          await claimRawMaterialBarcode({ barcode, stockType: 'LOT', stockObjectId: createdLot._id,
+            inboundTicketId: receipt._id, rawMaterialId: material._id, supplierId }, session);
         }
         if (line.acceptedQty > 0) {
           const before = material.onHandQty || 0;
@@ -604,6 +652,7 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
       receipt.confirmedAt = now;
       receipt.confirmedByUserId = user._id;
       receipt.receiptVersion += 1;
+      if (receipt.inboundRequestId) await applyInboundRequestReceipt(receipt.inboundRequestId, receipt.receiptLines, session);
       await receipt.save({ session });
       await SystemLog.create([{ actorId: user._id, actorRole: user.roles?.[0] || 'WAREHOUSE_MANAGER',
         majorFeature: 'RAW_MATERIAL', subFeature: 'SUPPLIER_INBOUND', action: 'CONFIRM_RECEIPT',
@@ -614,6 +663,8 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
       confirmed = receipt;
     });
     scheduleBarcodeImages('RAW_MATERIAL', String(confirmed._id));
+    if (confirmed.inboundRequestId) publishRealtime('material-inbound-request:changed', {
+      requestId: id(confirmed.inboundRequestId), receiptId: id(confirmed._id) });
     return confirmed;
   } finally { await session.endSession(); }
 }

@@ -22,11 +22,11 @@ counterSequenceSchema.plugin(baseSchemaPlugin);
 /**
  * Static Helper: Atomic Code Generation
  */
-counterSequenceSchema.statics.getNextSequence = async function (sequenceKey, prefix, padLength = 5) {
+counterSequenceSchema.statics.getNextSequence = async function (sequenceKey, prefix, padLength = 5, options = {}) {
   const counter = await this.findOneAndUpdate(
     { sequenceKey },
     { $inc: { seq: 1 } },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
+    { new: true, upsert: true, setDefaultsOnInsert: true, ...(options.session ? { session: options.session } : {}) }
   );
   const paddedSeq = String(counter.seq).padStart(padLength, '0');
   return prefix ? `${prefix}-${paddedSeq}` : paddedSeq;

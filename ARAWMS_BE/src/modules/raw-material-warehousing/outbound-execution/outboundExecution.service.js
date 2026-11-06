@@ -262,7 +262,8 @@ export async function confirmOutbound(ticketId, input, user) {
           requireRule(locationChanged.matchedCount === 1, 'Tồn vị trí đã thay đổi', 'LOCATION_STOCK_CHANGED', 409);
           await InventoryTransaction.create([{ transactionCode: `${ticket.ticketCode}-${line.materialCode}-${index + 1}`,
             warehouseType: 'RAW_MATERIAL', itemType: source.kind === 'ROLL' ? 'FABRIC_ROLL' : 'RAW_MATERIAL',
-            rawMaterialId: line.rawMaterialId, ...(source.kind === 'ROLL' ? { fabricRollId: source.objectId } : {}),
+            rawMaterialId: line.rawMaterialId, ...(source.kind === 'ROLL'
+              ? { fabricRollId: source.objectId } : { materialStockLotId: source.objectId }),
             locationId: location._id, transactionType: 'OUTBOUND_ISSUE_CUTTING',
             referenceModel: ticket.ticketType === 'OUTBOUND_WAREHOUSE' ? 'MaterialTicket' : 'MaterialOutbound',
             referenceId: ticket._id, quantityChange: -source.quantity, onHandBefore: before,

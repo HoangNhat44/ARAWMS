@@ -2,24 +2,20 @@
  * File: materialInboundService.js
  * Author: Duy Anh
  * Date: 2026-10-26
- * Description: Calls supplier raw-material receipt APIs. Keeps the page's plan, draft, location, and confirmation requests in one service.
+ * Description: Calls raw-material request, receipt, location, and confirmation APIs.
  */
 import api from './api';
 
 export const materialInboundService = {
   options: () => api.get('/raw-material-inbound/options'),
-  plans: (params = {}) => api.get('/raw-material-inbound/plans', { params }),
-  plan: (id) => api.get(`/raw-material-inbound/plans/${id}`),
-  createPlan: (values) => api.post('/raw-material-inbound/plans', values),
-  setupLegacyPlan: (id, values) => api.post(`/raw-material-inbound/plans/${id}/setup-legacy`, values),
-  closeBatch: (planId, batchId, values) => api.post(`/raw-material-inbound/plans/${planId}/batches/${batchId}/close-short`, values),
-  cancelBatch: (planId, batchId, values) => api.post(`/raw-material-inbound/plans/${planId}/batches/${batchId}/cancel`, values),
-  reviseBatch: (planId, batchId, values) => api.put(`/raw-material-inbound/plans/${planId}/batches/${batchId}/window`, values),
-  reviseBatchItems: (planId, batchId, values) => api.put(`/raw-material-inbound/plans/${planId}/batches/${batchId}/items`, values),
+  technicianRequests: () => api.get('/raw-material-inbound/technician-requests'),
+  reportTechnicianRequestDiscrepancy: (id, payload) => api.post(`/raw-material-inbound/technician-requests/${id}/discrepancies`, payload),
+  legacyReceipt: (id) => api.get(`/raw-material-inbound/legacy-receipts/${id}`),
+  updateLegacyReceipt: (id, values) => api.put(`/raw-material-inbound/legacy-receipts/${id}`, values),
+  confirmLegacyReceipt: (id, values) => api.post(`/raw-material-inbound/legacy-receipts/${id}/confirm`, values),
   createMaterial: (values) => api.post('/raw-material-inbound/materials', values),
   createLocation: (values) => api.post('/raw-material-inbound/locations', values),
   receipts: (params = {}) => api.get('/raw-material-inbound/receipts', { params }),
-  deliveryMatches: (supplierId, code, excludeId) => api.get('/raw-material-inbound/delivery-matches', { params: { supplierId, code, excludeId } }),
   receipt: (id) => api.get(`/raw-material-inbound/receipts/${id}`),
   receiptByDraftKey: (key) => api.get(`/raw-material-inbound/receipts/by-draft-key/${encodeURIComponent(key)}`),
   create: (values) => api.post('/raw-material-inbound/receipts', values),

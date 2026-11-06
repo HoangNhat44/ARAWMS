@@ -2,7 +2,7 @@
  * File: MaterialTicket.model.js
  * Author: Duy Anh
  * Date: 2026-10-26
- * Description: Defines inbound and outbound raw-material tickets. Supplier receipts retain inspection lines, physical lot plans, versions, confirmation keys, and putaway history.
+ * Description: Defines material requests, receipts, and outbound tickets with inspection, stock, and progress fields.
  */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
@@ -28,7 +28,10 @@ const materialTicketItemSchema = new Schema(
 /** Keeps the supplier inspection result and physical storage plan for one material. */
 const receiptLineSchema = new Schema({
   clientLineId: String,
+  requestLineId: String,
   rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial', required: true },
+  supplierId: { type: Schema.Types.ObjectId, ref: 'Supplier' },
+  supplierNameSnapshot: { type: String, trim: true },
   deliveryBatchItemId: { type: Schema.Types.ObjectId },
   unitCost: { type: Number, min: 0 },
   zeroCostReason: String,
@@ -77,12 +80,33 @@ const outboundLineSchema = new Schema({
   sources: [outboundSourceSchema],
 }, { _id: false });
 
+/** A technician request is fulfilled by accepted quantities from linked receipts. */
+const inboundRequestLineSchema = new Schema({
+  clientLineId: { type: String, required: true },
+  rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial', required: true },
+  supplierId: { type: Schema.Types.ObjectId, ref: 'Supplier' },
+  supplierNameSnapshot: { type: String, trim: true },
+  requestedQty: { type: Number, required: true, min: 0 },
+  acceptedQty: { type: Number, min: 0 },
+  receivedQty: { type: Number, default: 0, min: 0 },
+  unitCost: { type: Number, min: 0 },
+  inspectionRef: String,
+  inspectedAt: Date,
+  inspectedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+  inspectionConclusion: String,
+  rolls: [{ clientLineId: String, supplierRollCode: String, lotCode: String, widthCm: Number,
+    lengthMeters: Number, weightKg: Number, locationId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation' } }],
+  lots: [{ clientLineId: String, supplierLotCode: String, packageUnit: String, packageCount: Number,
+    unitsPerPackage: Number, countedQty: Number,
+    allocations: [{ locationId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation' }, quantity: Number }] }],
+}, { _id: false });
+
 const materialTicketSchema = new Schema(
   {
     ticketCode: { type: String, required: true, unique: true, index: true },
     ticketType: {
       type: String,
-      enum: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER', 'INBOUND_FROM_REMNANT', 'OUTBOUND_FOR_CUTTING', 'OUTBOUND_SUPPLEMENTARY', 'OUTBOUND_WAREHOUSE'],
+      enum: ['INBOUND_REQUEST', 'INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER', 'INBOUND_FROM_REMNANT', 'OUTBOUND_FOR_CUTTING', 'OUTBOUND_SUPPLEMENTARY', 'OUTBOUND_WAREHOUSE'],
       required: true,
       index: true,
     },
@@ -95,9 +119,23 @@ const materialTicketSchema = new Schema(
       daysDifference: Number, expectedStart: Date, expectedEnd: Date },
     replacementForTicketId: { type: Schema.Types.ObjectId, ref: 'MaterialTicket' },
     remnantRequestId: { type: Schema.Types.ObjectId, ref: 'RemnantRecoveryRequest' },
+    inboundRequestId: { type: Schema.Types.ObjectId, ref: 'MaterialTicket', index: true },
+    requestedByTechnicianId: { type: Schema.Types.ObjectId, ref: 'User' },
+    requestedAt: Date,
+    requestNote: { type: String, maxlength: 500 },
+    inspectionCompletedAt: Date,
+    requestVersion: { type: Number, default: 0 },
+    requestStatus: { type: String, enum: ['PARTIALLY_RECEIVED', 'COMPLETED', 'DISCREPANCY_REPORTED'] },
+    requestLines: [inboundRequestLineSchema],
+    discrepancyReports: [{ receiptId: { type: Schema.Types.ObjectId, ref: 'MaterialTicket' },
+      requestVersion: Number, reason: { type: String, required: true },
+      reportedByUserId: { type: Schema.Types.ObjectId, ref: 'User' }, reportedAt: Date,
+      status: { type: String, enum: ['OPEN', 'RESOLVED'], default: 'OPEN' } }],
+    inboundRequestVersion: Number,
     parentOutboundTicketId: { type: Schema.Types.ObjectId, ref: 'MaterialTicket' },
     status: { type: String, enum: TICKET_STATUS, default: 'WAITING_SCAN', index: true },
-    createdByManagerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    createdByManagerId: { type: Schema.Types.ObjectId, ref: 'User',
+      required() { return this.ticketType !== 'INBOUND_REQUEST'; } },
     items: [materialTicketItemSchema],
     supplierId: { type: Schema.Types.ObjectId, ref: 'Supplier', index: true },
     contractId: { type: Schema.Types.ObjectId, ref: 'SupplierContract' },

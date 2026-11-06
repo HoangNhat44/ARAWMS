@@ -2,10 +2,10 @@
  * File: inboundExecution.routes.js
  * Author: Duy Anh
  * Date: 2026-10-26
- * Description: Exposes plan-bound raw-material receiving endpoints. Requires a warehouse manager or owner before reading or changing receipt data.
+ * Description: Exposes technician inbound requests and raw-material receiving endpoints.
  */
 import express from 'express';
-// import { authenticate } from '../../../common/middlewares/authenticate.js';
+import { authenticate } from '../../../common/middlewares/authenticate.js';
 // import { sendError } from '../../../common/utils/responseHandler.js';
 import {
   options, createLocation, createMaterial, plans, planDetails, receipts, receiptDetails, deliveryMatches,
@@ -13,6 +13,9 @@ import {
   receiptLabels, syncReceiptBarcodes, rollTemplate, previewRolls, putaway,
   requestSupplierReturn, confirmSupplierReturn,
   createPlan, setupLegacyPlan, closeBatch, cancelBatch, reviseBatch, reviseBatchItems,
+  technicianRequests, createTechnicianRequest,
+  reportTechnicianRequestDiscrepancy,
+  legacyReceiptDetails, updateLegacyReceipt, confirmLegacyReceipt,
 } from './inboundExecution.controller.js';
 
 const router = express.Router();
@@ -40,6 +43,13 @@ router.get('/roll-template', rollTemplate);
 router.post('/roll-import/preview', express.raw({ type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', limit: '5mb' }), previewRolls);
 router.post('/locations', createLocation);
 router.post('/materials', createMaterial);
+router.get('/technician-requests', technicianRequests);
+router.get('/legacy-receipts/:id', legacyReceiptDetails);
+router.put('/legacy-receipts/:id', updateLegacyReceipt);
+router.post('/legacy-receipts/:id/confirm', confirmLegacyReceipt);
+// The warehouse uses a direct-link test account; only a real technician token may create requests.
+router.post('/technician-requests', authenticate, createTechnicianRequest);
+router.post('/technician-requests/:id/discrepancies', reportTechnicianRequestDiscrepancy);
 router.get('/plans', plans);
 router.post('/plans', createPlan);
 router.get('/plans/:id', planDetails);

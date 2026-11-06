@@ -12,11 +12,12 @@ const { Schema } = mongoose;
 
 const fabricRollSchema = new Schema(
   {
-    rollBarcode: { type: String, required: true, unique: true, index: true },
+    rollBarcode: { type: String, required: true, trim: true, uppercase: true, unique: true, index: true },
     barcodeImageUrl: String,
     barcodeImagePublicId: String,
     rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial', required: true, index: true },
     supplierId: { type: Schema.Types.ObjectId, ref: 'Supplier', index: true },
+    supplierNameSnapshot: { type: String, trim: true },
     contractId: { type: Schema.Types.ObjectId, ref: 'SupplierContract' },
     inboundTicketId: { type: Schema.Types.ObjectId, ref: 'MaterialTicket' },
     clientLineId: String,
@@ -31,7 +32,7 @@ const fabricRollSchema = new Schema(
     currentLengthMeters: { type: Number, required: true, min: 0, index: true },
     initialWeightKg: { type: Number, min: 0 },
     currentWeightKg: { type: Number, min: 0 },
-    unitCostPerMeter: { type: Number, required: true, min: 0 },
+    unitCostPerMeter: { type: Number, min: 0 },
     locationId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation', index: true },
     fifoInboundTimestamp: { type: Date, required: true, index: true },
     status: { type: String, enum: FABRIC_ROLL_STATUS, default: 'PENDING_QC', index: true },

@@ -17,6 +17,7 @@ import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import InventoryTransaction from '../../../models/InventoryTransaction.model.js';
 import User from '../../../models/User.model.js';
 import { scheduleBarcodeImages } from '../../../common/services/barcodeImageStorage.js';
+import { claimRawMaterialBarcode, nextRawMaterialBarcode } from '../../../common/services/rawMaterialBarcode.js';
 
 const allowedPlanStatuses = ['SCHEDULED', 'IN_INSPECTION', 'VERIFIED_MATCHED', 'DEVIATION_REPORTED'];
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
@@ -74,7 +75,8 @@ export async function createReceiptLocation(input, user) {
   const maxCapacity = quantity(input.maxCapacity, input.capacityUnit, 'Sức chứa');
   requireValue(maxCapacity > 0 && maxCapacity <= 100000000, 'Sức chứa không hợp lệ', 'INVALID_CAPACITY');
   const location = await WarehouseLocation.create({ locationCode, barcode: `LOC-${locationCode}`, warehouseType: input.warehouseType,
-    zoneCode, rackCode, shelfCode, maxCapacity, capacityUnit: input.capacityUnit });
+    zoneCode, rackCode, shelfCode, maxCapacity, capacityUnit: input.capacityUnit,
+    layoutBin: input.warehouseType === 'RAW_MATERIAL' });
   if (user.warehouseIds?.length) await User.updateOne({ _id: user._id }, { $addToSet: { warehouseIds: location._id } });
   return location;
 }
@@ -138,7 +140,9 @@ export async function getMaterialReceipt(receiptId, user) {
   requireValue(receipt, 'Không tìm thấy phiếu nhập', 'RECEIPT_NOT_FOUND', 404);
   if (user) requireValue(accessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền xem phiếu này', 'RECEIPT_FORBIDDEN', 403);
   return { receipt, plan: receipt.inboundPlanId && !receipt.deliveryBatchId
-    ? await getInboundPlanDetails(receipt.inboundPlanId, true) : null };
+    ? await getInboundPlanDetails(receipt.inboundPlanId, true) : null,
+  supplier: receipt.supplierId ? await Supplier.findById(receipt.supplierId)
+    .select('supplierName supplierCode').lean() : null };
 }
 
 /** Creates a plan-bound draft; the supplier delivery code is unique per supplier. */
@@ -282,7 +286,7 @@ export async function updateMaterialReceiptDraft(receiptId, input, user) {
 
 /** Cancels only an unconfirmed draft while retaining it for audit and duplicate-delivery checks. */
 export async function cancelMaterialReceipt(receiptId, input, user) {
-  const { receipt } = await getMaterialReceipt(receiptId, user);
+  const { receipt, supplier } = await getMaterialReceipt(receiptId, user);
   requireValue(editableReceiptStatuses.includes(receipt.status), 'Chỉ được hủy phiếu chưa xác nhận', 'RECEIPT_LOCKED', 409);
   requireValue(Number(input.expectedVersion) === receipt.receiptVersion, 'Phiếu đã thay đổi; hãy tải lại', 'VERSION_CONFLICT', 409);
   const cancelled = await MaterialTicket.findOneAndUpdate({ _id: receiptId, receiptVersion: receipt.receiptVersion,
@@ -293,37 +297,58 @@ export async function cancelMaterialReceipt(receiptId, input, user) {
 
 /** Returns stable barcodes from confirmed roll and accessory-lot records for printing. */
 export async function getMaterialReceiptLabels(receiptId, user) {
-  const { receipt } = await getMaterialReceipt(receiptId, user);
+  const { receipt, supplier } = await getMaterialReceipt(receiptId, user);
   requireValue(receipt.status === 'COMPLETED', 'Chỉ in tem cho phiếu đã xác nhận', 'RECEIPT_NOT_CONFIRMED', 409);
   const [rolls, lots] = await Promise.all([
-    FabricRoll.find({ inboundTicketId: receiptId }).select('rollBarcode barcodeImageUrl rawMaterialId initialLengthMeters measuredWidthCm supplierLotCode fifoInboundTimestamp status locationId').lean(),
-    MaterialStockLot.find({ inboundTicketId: receiptId }).select('lotBarcode barcodeImageUrl rawMaterialId initialQty quality status allocations supplierLotCode fifoInboundTimestamp').lean(),
+    FabricRoll.find({ inboundTicketId: receiptId }).select('rollBarcode barcodeImageUrl rawMaterialId supplierId supplierNameSnapshot clientLineId supplierRollCode initialLengthMeters currentLengthMeters measuredWidthCm supplierLotCode unitCostPerMeter fifoInboundTimestamp status locationId').lean(),
+    MaterialStockLot.find({ inboundTicketId: receiptId }).select('lotBarcode barcodeImageUrl rawMaterialId supplierId supplierNameSnapshot clientLineId initialQty currentQty unitCost quality status allocations supplierLotCode fifoInboundTimestamp').lean(),
   ]);
   if ([...rolls, ...lots].some((item) => !item.barcodeImageUrl)) scheduleBarcodeImages('RAW_MATERIAL', receiptId);
   const materialIds = [...new Set([...rolls, ...lots].map((item) => id(item.rawMaterialId)))];
   const locationIds = [...new Set([...rolls.map((item) => id(item.locationId)),
     ...lots.flatMap((lot) => lot.allocations.map((item) => id(item.locationId)))])];
+  const supplierIds = [...new Set([...rolls, ...lots].map((item) => id(item.supplierId)).filter(Boolean))];
   const [materials, locations] = await Promise.all([
-    RawMaterial.find({ _id: { $in: materialIds } }).select('materialName materialCode color unit').lean(),
+    RawMaterial.find({ _id: { $in: materialIds } }).select('materialName materialCode color widthCm gsm unit').lean(),
     WarehouseLocation.find({ _id: { $in: locationIds } }).select('locationCode').lean(),
   ]);
+  const suppliers = supplierIds.length ? await Supplier.find({ _id: { $in: supplierIds } }).select('supplierName').lean() : [];
+  const bySupplier = new Map(suppliers.map((item) => [id(item._id), item.supplierName]));
   const byMaterial = new Map(materials.map((item) => [id(item._id), item]));
   const byLocation = new Map(locations.map((item) => [id(item._id), item.locationCode]));
   const labels = [
-    ...rolls.map((roll) => ({ barcode: roll.rollBarcode, rawMaterialId: id(roll.rawMaterialId), quantity: roll.initialLengthMeters,
+    ...rolls.map((roll) => ({ barcode: roll.rollBarcode, stockObjectId: id(roll._id), sourceLineId: roll.clientLineId,
+      receiptCode: receipt.ticketCode, supplierName: roll.supplierNameSnapshot || bySupplier.get(id(roll.supplierId)) || supplier?.supplierName || receipt.purchaseSourceName || 'Chưa xác định',
+      supplierId: id(roll.supplierId), rawMaterialId: id(roll.rawMaterialId), quantity: roll.initialLengthMeters,
+      remainingQuantity: roll.currentLengthMeters, unitCost: roll.unitCostPerMeter,
       imageUrl: roll.barcodeImageUrl || null,
       materialName: byMaterial.get(id(roll.rawMaterialId))?.materialName, materialCode: byMaterial.get(id(roll.rawMaterialId))?.materialCode,
       color: byMaterial.get(id(roll.rawMaterialId))?.color, unit: 'METER', widthCm: roll.measuredWidthCm,
-      supplierLotCode: roll.supplierLotCode, receivedAt: roll.fifoInboundTimestamp,
+      supplierLotCode: roll.supplierLotCode, lotOrRollCode: roll.supplierRollCode || roll.supplierLotCode || roll.rollBarcode,
+      receivedAt: roll.fifoInboundTimestamp,
       locationCodes: [byLocation.get(id(roll.locationId))].filter(Boolean),
+      plannedLocationCodes: roll.status === 'QC_PASSED' ? [byLocation.get(id(roll.locationId))].filter(Boolean) : [],
+      actualLocationCodes: roll.status === 'IN_STOCK' ? [byLocation.get(id(roll.locationId))].filter(Boolean) : [],
+      stockStatus: roll.status,
       quality: ['DEFECTIVE', 'RETURNED_TO_SUPPLIER'].includes(roll.status) ? 'REJECTED' : 'ACCEPTED',
       putawayComplete: ['IN_STOCK', 'DEFECTIVE', 'RETURNED_TO_SUPPLIER'].includes(roll.status) })),
-    ...lots.map((lot) => ({ barcode: lot.lotBarcode, rawMaterialId: id(lot.rawMaterialId), quantity: lot.initialQty,
+    ...lots.map((lot) => ({ barcode: lot.lotBarcode, stockObjectId: id(lot._id), sourceLineId: lot.clientLineId,
+      receiptCode: receipt.ticketCode, supplierName: lot.supplierNameSnapshot || bySupplier.get(id(lot.supplierId)) || supplier?.supplierName || receipt.purchaseSourceName || 'Chưa xác định',
+      supplierId: id(lot.supplierId), rawMaterialId: id(lot.rawMaterialId), quantity: lot.initialQty,
+      remainingQuantity: lot.currentQty, unitCost: lot.unitCost,
       imageUrl: lot.barcodeImageUrl || null,
       materialName: byMaterial.get(id(lot.rawMaterialId))?.materialName, materialCode: byMaterial.get(id(lot.rawMaterialId))?.materialCode,
-      color: byMaterial.get(id(lot.rawMaterialId))?.color, unit: byMaterial.get(id(lot.rawMaterialId))?.unit,
-      supplierLotCode: lot.supplierLotCode, receivedAt: lot.fifoInboundTimestamp,
+      color: byMaterial.get(id(lot.rawMaterialId))?.color,
+      widthCm: byMaterial.get(id(lot.rawMaterialId))?.widthCm, gsm: byMaterial.get(id(lot.rawMaterialId))?.gsm,
+      unit: byMaterial.get(id(lot.rawMaterialId))?.unit,
+      supplierLotCode: lot.supplierLotCode, lotOrRollCode: lot.supplierLotCode || lot.lotBarcode,
+      receivedAt: lot.fifoInboundTimestamp,
       locationCodes: lot.allocations.map((item) => byLocation.get(id(item.locationId))).filter(Boolean),
+      plannedLocationCodes: lot.allocations.filter((item) => item.quantity > (item.putawayQty || 0))
+        .map((item) => byLocation.get(id(item.locationId))).filter(Boolean),
+      actualLocationCodes: lot.allocations.filter((item) => item.putawayQty > 0)
+        .map((item) => byLocation.get(id(item.locationId))).filter(Boolean),
+      stockStatus: lot.status,
       quality: lot.quality, putawayComplete: ['IN_STOCK', 'QUARANTINED'].includes(lot.status),
       allocations: lot.allocations.map((allocation) => ({ locationId: id(allocation.locationId), quantity: allocation.quantity, putawayQty: allocation.putawayQty || 0 })) })),
   ];
@@ -363,8 +388,9 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
       let amount;
       let materialId;
       let plannedDestination = false;
-      if (barcode.startsWith('FR-')) {
-        const roll = await FabricRoll.findOne({ rollBarcode: barcode, inboundTicketId: receiptId }).session(session);
+      const matchingRoll = await FabricRoll.findOne({ rollBarcode: barcode, inboundTicketId: receiptId }).session(session);
+      if (matchingRoll) {
+        const roll = matchingRoll;
         requireValue(roll && roll.status === 'QC_PASSED' &&
           (id(roll.locationId) === id(location._id) || receipt.usesPlannedLocationReservation && !roll.locationId),
           'Cây vải không chờ cất tại vị trí này', 'ROLL_NOT_PENDING', 409);
@@ -376,7 +402,7 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
         roll.status = 'IN_STOCK';
         roll.putawayConfirmedAt = new Date();
         await roll.save({ session });
-      } else if (barcode.startsWith('ML-')) {
+      } else {
         const lot = await MaterialStockLot.findOne({ lotBarcode: barcode, inboundTicketId: receiptId, quality: 'ACCEPTED' }).session(session);
         requireValue(lot && lot.status === 'PENDING_PUTAWAY', 'Lô không chờ cất hàng', 'LOT_NOT_PENDING', 409);
         const allocation = lot.allocations.find((item) => id(item.locationId) === id(location._id));
@@ -398,7 +424,7 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
         if (same(lot.initialQty, lot.allocations.reduce((sum, item) => sum + (item.putawayQty || 0), 0)))
           lot.status = 'IN_STOCK';
         await lot.save({ session });
-      } else throw new ReceiptError('Barcode cây/lô không hợp lệ', 'INVALID_OBJECT_BARCODE');
+      }
       // Author: Duy Anh. Planned bins become physically occupied only after the matching barcode scan succeeds.
       if (receipt.usesPlannedLocationReservation) {
         const material = await RawMaterial.findById(materialId).select('unit').session(session);
@@ -433,9 +459,9 @@ export async function requestMaterialSupplierReturn(receiptId, input, user) {
   requireValue(reason.length >= 2 && reason.length <= 500, 'Cần lý do trả NCC', 'RETURN_REASON_REQUIRED');
   const existing = (receipt.supplierReturns || []).find((item) => item.objectBarcode === barcode);
   if (existing) return { supplierReturn: existing, alreadyRequested: true };
-  const object = barcode.startsWith('FR-')
-    ? await FabricRoll.findOne({ rollBarcode: barcode, inboundTicketId: receiptId, status: 'DEFECTIVE' }).lean()
-    : await MaterialStockLot.findOne({ lotBarcode: barcode, inboundTicketId: receiptId, quality: 'REJECTED', status: 'QUARANTINED' }).lean();
+  const object = await FabricRoll.findOne({ rollBarcode: barcode, inboundTicketId: receiptId, status: 'DEFECTIVE' }).lean()
+    || await MaterialStockLot.findOne({ lotBarcode: barcode, inboundTicketId: receiptId,
+      quality: 'REJECTED', status: 'QUARANTINED' }).lean();
   requireValue(object, 'Chỉ được yêu cầu trả cây/lô không đạt của phiếu này', 'RETURN_OBJECT_INVALID');
   const supplierReturn = { objectBarcode: barcode, rawMaterialId: object.rawMaterialId,
     quantity: object.initialLengthMeters ?? object.initialQty, defectReason: reason,
@@ -467,10 +493,10 @@ export async function confirmMaterialSupplierReturn(receiptId, input, user) {
         result = { supplierReturn: request, alreadyProcessed: true };
         return;
       }
-      const roll = barcode.startsWith('FR-')
-        ? await FabricRoll.findOne({ rollBarcode: barcode, inboundTicketId: receiptId, status: 'DEFECTIVE' }).session(session) : null;
-      const lot = barcode.startsWith('ML-')
-        ? await MaterialStockLot.findOne({ lotBarcode: barcode, inboundTicketId: receiptId, quality: 'REJECTED', status: 'QUARANTINED' }).session(session) : null;
+      const roll = await FabricRoll.findOne({ rollBarcode: barcode, inboundTicketId: receiptId,
+        status: 'DEFECTIVE' }).session(session);
+      const lot = roll ? null : await MaterialStockLot.findOne({ lotBarcode: barcode, inboundTicketId: receiptId,
+        quality: 'REJECTED', status: 'QUARANTINED' }).session(session);
       requireValue(roll || lot, 'Cây/lô không còn ở khu cách ly', 'RETURN_OBJECT_CHANGED', 409);
       const allocations = roll ? [{ locationId: roll.locationId, quantity: roll.currentLengthMeters }]
         : lot.allocations.map((item) => ({ locationId: item.locationId, quantity: item.quantity }));
@@ -620,6 +646,7 @@ export async function confirmMaterialReceipt(receiptId, input, user) {
       requireValue(receiving?.warehouseType === 'RAW_MATERIAL' && accessible(receiving, user), 'Vị trí kho nhận không hợp lệ', 'INVALID_RECEIVING_LOCATION');
       const { occupancy, locationUnits } = validateForConfirmation(receipt, planView, locations, user);
       const now = new Date();
+      const receivedAt = receipt.receivedAt || now;
       for (const [locationId, amount] of occupancy) {
         const updated = await WarehouseLocation.updateOne({ _id: locationId, status: 'ACTIVE', isFrozenForStocktake: false,
           $or: [{ capacityUnit: locationUnits.get(locationId) }, { capacityUnit: null }],
@@ -634,25 +661,31 @@ export async function confirmMaterialReceipt(receiptId, input, user) {
         planItem.actualDefectiveOrShortQty = round((planItem.actualDefectiveOrShortQty || 0) + line.rejectedQty);
         const acceptedObjects = material.materialType === 'FABRIC' ? line.rolls.filter((roll) => roll.quality === 'ACCEPTED')
           : line.lots.filter((lot) => lot.quality === 'ACCEPTED');
-        for (const [objectIndex, roll] of line.rolls.entries()) {
-          await FabricRoll.create([{ rollBarcode: `FR-${String(receipt._id).toUpperCase()}-${lineIndex}-${objectIndex}`,
+        for (const roll of line.rolls) {
+          const barcode = await nextRawMaterialBarcode(session);
+          const [createdRoll] = await FabricRoll.create([{ rollBarcode: barcode,
             rawMaterialId: material._id, supplierId: receipt.supplierId, contractId: receipt.contractId,
             inboundTicketId: receipt._id, clientLineId: roll.clientLineId, supplierRollCode: roll.supplierRollCode,
             supplierLotCode: roll.lotCode, measuredWidthCm: roll.widthCm, defectReason: roll.defectReason,
             initialLengthMeters: roll.lengthMeters, currentLengthMeters: roll.lengthMeters,
             initialWeightKg: roll.weightKg, currentWeightKg: roll.weightKg, unitCostPerMeter: material.unitCost,
-            locationId: roll.locationId, fifoInboundTimestamp: now,
+            locationId: roll.locationId, fifoInboundTimestamp: receivedAt,
             status: roll.quality === 'ACCEPTED' ? 'QC_PASSED' : 'DEFECTIVE' }], { session });
+          await claimRawMaterialBarcode({ barcode, stockType: 'ROLL', stockObjectId: createdRoll._id,
+            inboundTicketId: receipt._id, rawMaterialId: material._id, supplierId: receipt.supplierId }, session);
         }
-        for (const [objectIndex, lot] of line.lots.entries()) {
-          await MaterialStockLot.create([{ lotBarcode: `ML-${String(receipt._id).toUpperCase()}-${lineIndex}-${objectIndex}`,
+        for (const lot of line.lots) {
+          const barcode = await nextRawMaterialBarcode(session);
+          const [createdLot] = await MaterialStockLot.create([{ lotBarcode: barcode,
             rawMaterialId: material._id, supplierId: receipt.supplierId, inboundTicketId: receipt._id,
             clientLineId: lot.clientLineId, supplierLotCode: lot.supplierLotCode,
             packageUnit: lot.packageUnit, packageCount: lot.packageCount, unitsPerPackage: lot.unitsPerPackage,
             initialQty: lot.countedQty,
             currentQty: lot.countedQty, quality: lot.quality,
             status: lot.quality === 'ACCEPTED' ? 'PENDING_PUTAWAY' : 'QUARANTINED', defectReason: lot.defectReason,
-            fifoInboundTimestamp: now, allocations: lot.allocations }], { session });
+            fifoInboundTimestamp: receivedAt, allocations: lot.allocations }], { session });
+          await claimRawMaterialBarcode({ barcode, stockType: 'LOT', stockObjectId: createdLot._id,
+            inboundTicketId: receipt._id, rawMaterialId: material._id, supplierId: receipt.supplierId }, session);
         }
         if (!acceptedObjects.length) continue;
         const before = material.onHandQty || 0;

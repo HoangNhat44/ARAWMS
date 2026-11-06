@@ -17,6 +17,7 @@ const inventoryTransactionSchema = new Schema(
     itemType: { type: String, enum: ['RAW_MATERIAL', 'FABRIC_ROLL', 'FINISHED_SKU'], required: true },
     rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial', index: true },
     fabricRollId: { type: Schema.Types.ObjectId, ref: 'FabricRoll', index: true },
+    materialStockLotId: { type: Schema.Types.ObjectId, ref: 'MaterialStockLot', index: true },
     skuId: { type: Schema.Types.ObjectId, ref: 'Sku', index: true },
     locationId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation', index: true },
     transactionType: {
