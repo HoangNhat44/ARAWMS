@@ -48,6 +48,7 @@ export { default as Customer } from './Customer.model.js';
 export { default as ChatConversation } from './ChatConversation.model.js';
 export { default as ChatMessage } from './ChatMessage.model.js';
 export { default as SalesOrder } from './SalesOrder.model.js';
+export { default as SalesChannel } from './SalesChannel.model.js';
 export { default as ReturnRequest } from './ReturnRequest.model.js';
 
 // Financial

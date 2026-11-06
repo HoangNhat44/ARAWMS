@@ -12,12 +12,25 @@ import * as marketplaceService from './marketplaceOrderImport.service.js';
 
 /**
  * GET /api/orders/marketplace/channels
- * Lấy danh sách kênh bán hàng đa nguồn được cấu hình
+ * Lấy danh sách kênh bán hàng đa nguồn thực tế từ Database
  */
 export const getSalesChannels = async (req, res) => {
   try {
-    const channels = marketplaceService.getSalesChannels();
+    const channels = await marketplaceService.getSalesChannels();
     return res.status(200).json({ success: true, data: channels });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * GET /api/orders/marketplace/channels/summary
+ * Lấy tóm tắt trạng thái kết nối các kênh bán hàng thực tế từ Database (phục vụ Header Chips)
+ */
+export const getChannelsSummary = async (req, res) => {
+  try {
+    const summary = await marketplaceService.getChannelsSummary();
+    return res.status(200).json({ success: true, data: summary });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
