@@ -17,6 +17,10 @@ import putawayRoutes from '../modules/warehouse-management/location-layout/putaw
 import authRoutes from '../modules/system-administration/authentication/auth.routes.js';
 import stocktakeRoutes from '../modules/inventory-auditing/stocktake-session/stocktakeSession.routes.js';
 import shippingRoutes from '../modules/shipping/shipping.routes.js';
+import garmentInboundVerificationRoutes from '../modules/garment-technical/inbound-verification/inboundVerification.routes.js';
+import garmentFinishedInspectionRoutes from '../modules/garment-technical/finished-inspection/finishedInspection.routes.js';
+import garmentStocktakeExecutionRoutes from '../modules/garment-technical/stocktake-execution/stocktakeExecution.routes.js';
+import garmentRemnantRecoveryRoutes from '../modules/garment-technical/remnant-recovery/remnantRecovery.routes.js';
 
 const router = express.Router();
 
@@ -36,6 +40,12 @@ router.use('/warehouse-putaway', putawayRoutes);
 router.use('/stocktake', stocktakeRoutes);
 router.use('/shipping', shippingRoutes);
 router.use('/auth', authRoutes);
+
+// Garment Technical & KCS Routes
+router.use('/garment-technical/inbound-verification', garmentInboundVerificationRoutes);
+router.use('/garment-technical/finished-inspection', garmentFinishedInspectionRoutes);
+router.use('/garment-technical/stocktake-execution', garmentStocktakeExecutionRoutes);
+router.use('/garment-technical/remnant-recovery', garmentRemnantRecoveryRoutes);
 
 // Mount other module routes (from main branch)
 // TODO: Add other module routes as needed
