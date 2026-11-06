@@ -53,12 +53,17 @@ const Navbar = () => {
             </Link>
           </li>
 
-          {/* Link kho vận nếu không ở phân hệ garment */}
+          {/* Link kho vận đầy đủ */}
           {!isGarmentRole && (
             <>
-              <li><Link to="/warehouse/raw-materials/inbound">Kho NPL</Link></li>
+              <li><Link to="/orders/qr">Đơn hàng / QR</Link></li>
+              <li><Link to="/packing/qr">Đóng hàng</Link></li>
+              <li><Link to="/warehouse/putaway">Xếp hàng vào kệ</Link></li>
               <li><Link to="/warehouse/finished-goods">Kho thành phẩm</Link></li>
-              <li><Link to="/warehouse/putaway">Xếp kệ</Link></li>
+              <li><Link to="/warehouse/layout">Vị trí kho</Link></li>
+              <li><Link to="/warehouse/raw-materials/inbound">Nhập nguyên phụ liệu</Link></li>
+              <li><Link to="/warehouse/raw-materials/outbound">Xuất nguyên phụ liệu</Link></li>
+              <li><Link to="/warehouse/stocktake">Kiểm kê kho</Link></li>
             </>
           )}
 
