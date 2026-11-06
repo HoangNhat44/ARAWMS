@@ -38,24 +38,20 @@ const AccountantSidebar = ({ collapsed, onToggleCollapse }) => {
           <div key={group.groupKey} className="ara-acc-nav-group">
             {!collapsed && <div className="ara-acc-nav-group-title">{group.groupTitle}</div>}
 
-            {group.items.map((item) => {
+            {(group?.items || []).map((item) => {
               const Icon = item.icon;
               return (
                 <NavLink
                   key={item.key}
                   to={item.path}
                   end={Boolean(item.exact)}
-                  title={collapsed ? `${item.label} (${item.ucCode})` : item.description}
+                  title={collapsed ? item.label : item.description}
                   className={({ isActive }) => `ara-acc-nav-item ${isActive ? 'active' : ''}`}
                 >
                   <div className="ara-acc-nav-item-left">
                     <Icon size={18} className="ara-acc-nav-icon" aria-hidden="true" />
                     {!collapsed && <span className="ara-acc-nav-label">{item.label}</span>}
                   </div>
-
-                  {!collapsed && item.ucCode && (
-                    <span className="ara-acc-nav-uc-badge">{item.ucCode}</span>
-                  )}
                 </NavLink>
               );
             })}

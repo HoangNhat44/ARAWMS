@@ -6,6 +6,7 @@ import {
   validateDraftContract,
   validateContractIdParam,
   validateContractStatusUpdate,
+  validateTerminateContract,
 } from './contractWorkspace.validation.js';
 
 const router = express.Router();
@@ -17,10 +18,22 @@ router.put('/suppliers/:id', validateUpdateSupplier, contractWorkspaceController
 
 // Helper Catalog for Contract Drafting
 router.get('/materials-catalog', contractWorkspaceController.getMaterialsCatalog);
+router.post('/materials-catalog', contractWorkspaceController.createRawMaterial);
 
-// UC 04: Draft Supplier Contract Framework
+// UC 04: Draft Supplier Contract Framework & Versioning
 router.get('/contracts', contractWorkspaceController.getContracts);
+router.get(
+  '/contracts/:id/versions',
+  validateContractIdParam,
+  contractWorkspaceController.getContractVersions
+);
 router.get('/contracts/:id', validateContractIdParam, contractWorkspaceController.getContractDetail);
+router.post(
+  '/contracts/:id/amend',
+  validateContractIdParam,
+  validateDraftContract,
+  contractWorkspaceController.amendContract
+);
 router.post('/contracts', validateDraftContract, contractWorkspaceController.draftContract);
 router.put(
   '/contracts/:id',
@@ -33,6 +46,12 @@ router.patch(
   validateContractIdParam,
   validateContractStatusUpdate,
   contractWorkspaceController.updateContractStatus
+);
+router.post(
+  '/contracts/:id/terminate',
+  validateContractIdParam,
+  validateTerminateContract,
+  contractWorkspaceController.terminateContract
 );
 
 export default router;

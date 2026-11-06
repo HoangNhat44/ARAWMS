@@ -6,9 +6,9 @@ import { notFoundHandler, globalErrorHandler } from './common/middlewares/errorH
 
 const app = express();
 
-// Middlewares
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Middlewares - Hỗ trợ upload ảnh hợp đồng vật lý dung lượng lớn dạng Base64
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // CORS configuration
 app.use(

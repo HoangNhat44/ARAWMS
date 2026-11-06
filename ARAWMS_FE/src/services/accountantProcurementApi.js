@@ -9,8 +9,20 @@ const apiClient = axios.create({
   },
 });
 
+// Tự động đính kèm token xác thực nếu người dùng đã đăng nhập
+apiClient.interceptors.request.use((config) => {
+  const token =
+    localStorage.getItem('arawms_auth_token') ||
+    localStorage.getItem('token') ||
+    localStorage.getItem('accessToken');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 export const accountantProcurementApi = {
-  // UC 01 - 03: Manage Material Suppliers (View, Add, Update)
+  // UC: Quản lý nhà cung ứng nguyên vật liệu
   getSuppliers: async (params = {}) => {
     const res = await apiClient.get('/supplier-contracts/suppliers', { params });
     return res.data.data || [];
@@ -26,13 +38,18 @@ export const accountantProcurementApi = {
     return res.data;
   },
 
-  // Materials Catalog for Contract Drafting
-  getMaterialsCatalog: async () => {
-    const res = await apiClient.get('/supplier-contracts/materials-catalog');
+  // Materials Catalog for Contract Drafting (optional filter by supplierId)
+  getMaterialsCatalog: async (params = {}) => {
+    const res = await apiClient.get('/supplier-contracts/materials-catalog', { params });
     return res.data.data || [];
   },
 
-  // UC 04: Draft Supplier Contract Framework
+  createRawMaterial: async (payload) => {
+    const res = await apiClient.post('/supplier-contracts/materials-catalog', payload);
+    return res.data;
+  },
+
+  // UC: Soạn thảo khung hợp đồng với nhà cung cấp
   getContracts: async (params = {}) => {
     const res = await apiClient.get('/supplier-contracts/contracts', { params });
     return res.data.data || [];
@@ -53,15 +70,40 @@ export const accountantProcurementApi = {
     return res.data;
   },
 
+  amendContract: async (contractId, payload) => {
+    const res = await apiClient.post(`/supplier-contracts/contracts/${contractId}/amend`, payload);
+    return res.data;
+  },
+
+  getContractVersions: async (contractId) => {
+    const res = await apiClient.get(`/supplier-contracts/contracts/${contractId}/versions`);
+    return res.data.data || [];
+  },
+
   updateContractStatus: async (contractId, payload) => {
     const res = await apiClient.patch(`/supplier-contracts/contracts/${contractId}/status`, payload);
     return res.data;
   },
 
-  // UC 05: Schedule Material Inbound Plan
+  terminateContract: async (contractId, payload) => {
+    const res = await apiClient.post(`/supplier-contracts/contracts/${contractId}/terminate`, payload);
+    return res.data;
+  },
+
+  // UC: Lập kế hoạch lịch trình tiếp nhận nguyên vật liệu
   getInboundPlans: async (params = {}) => {
     const res = await apiClient.get('/supplier-contracts/inbound-plans', { params });
     return res.data.data || [];
+  },
+
+  getInboundPlanDetail: async (planId) => {
+    const res = await apiClient.get(`/supplier-contracts/inbound-plans/${planId}`);
+    return res.data.data;
+  },
+
+  getContractInboundSummary: async (contractId) => {
+    const res = await apiClient.get(`/supplier-contracts/inbound-plans/contract-summary/${contractId}`);
+    return res.data.data;
   },
 
   createInboundPlan: async (payload) => {
@@ -69,8 +111,138 @@ export const accountantProcurementApi = {
     return res.data;
   },
 
+  amendInboundPlan: async (planId, payload) => {
+    const res = await apiClient.post(`/supplier-contracts/inbound-plans/${planId}/amend`, payload);
+    return res.data;
+  },
+
+  getInboundPlanVersions: async (planId) => {
+    const res = await apiClient.get(`/supplier-contracts/inbound-plans/${planId}/versions`);
+    return res.data.data || [];
+  },
+
   updateInboundPlanStatus: async (planId, payload) => {
     const res = await apiClient.patch(`/supplier-contracts/inbound-plans/${planId}`, payload);
+    return res.data;
+  },
+
+  // KCS: Kỹ thuật viên may kiểm tra và ghi nhận giao nhận đúng/sai kế hoạch
+  verifyInboundPlanDelivery: async (planId, payload) => {
+    const res = await apiClient.post(`/supplier-contracts/inbound-plans/${planId}/verify`, payload);
+    return res.data;
+  },
+
+  // UC 06: Execute Contract Deviation Resolution (Xử lý sai lệch hợp đồng)
+  getContractDeviations: async (params = {}) => {
+    const res = await apiClient.get('/supplier-contracts/deviations', { params });
+    return res.data.data || [];
+  },
+
+  resolveContractDeviation: async (planId, payload) => {
+    const res = await apiClient.post(`/supplier-contracts/deviations/${planId}/resolve`, payload);
+    return res.data;
+  },
+
+  // UC: Quản lý Phiếu chi tiền (Payment Vouchers - UC 08 / UC 15)
+  getExpenseCategories: async () => {
+    const res = await apiClient.get('/payment-vouchers/categories');
+    return res.data.data || [];
+  },
+
+  getPaymentVouchers: async (params = {}) => {
+    const res = await apiClient.get('/payment-vouchers', { params });
+    return res.data.data || [];
+  },
+
+  getPaymentVoucherDetail: async (voucherId) => {
+    const res = await apiClient.get(`/payment-vouchers/${voucherId}`);
+    return res.data.data;
+  },
+
+  createPaymentVoucher: async (payload) => {
+    const res = await apiClient.post('/payment-vouchers', payload);
+    return res.data;
+  },
+
+  updatePaymentVoucher: async (voucherId, payload) => {
+    const res = await apiClient.put(`/payment-vouchers/${voucherId}`, payload);
+    return res.data;
+  },
+
+  confirmPaymentVoucher: async (voucherId) => {
+    const res = await apiClient.patch(`/payment-vouchers/${voucherId}/confirm`);
+    return res.data;
+  },
+
+  executePaymentVoucher: async (voucherId, payload = {}) => {
+    const res = await apiClient.post(`/payment-vouchers/${voucherId}/execute-payment`, payload);
+    return res.data;
+  },
+
+  cancelPaymentVoucher: async (voucherId, payload = {}) => {
+    const res = await apiClient.patch(`/payment-vouchers/${voucherId}/cancel`, payload);
+    return res.data;
+  },
+
+  // UC 16–17: Đối soát COD Tự động qua API Giao Hàng Nhanh
+  getCodOrders: async (params = {}) => {
+    const res = await apiClient.get('/financial/cod-reconciliation/orders', { params });
+    return res.data.data;
+  },
+
+  syncGhnCod: async (payload = {}) => {
+    const res = await apiClient.post('/financial/cod-reconciliation/sync-ghn', payload);
+    return res.data;
+  },
+
+  getCodRedFlags: async () => {
+    const res = await apiClient.get('/financial/cod-reconciliation/red-flags');
+    return res.data.data || [];
+  },
+
+  resolveCodDispute: async (itemId, payload) => {
+    const res = await apiClient.post(`/financial/cod-reconciliation/disputes/${itemId}`, payload);
+    return res.data;
+  },
+
+  simulateGhnDisputeFeedback: async (itemId, payload = {}) => {
+    const res = await apiClient.post(`/financial/cod-reconciliation/disputes/${itemId}/simulate-feedback`, payload);
+    return res.data;
+  },
+
+  seedSampleCodOrders: async () => {
+    const res = await apiClient.post('/financial/cod-reconciliation/seed-sample');
+    return res.data;
+  },
+
+  // UC 07: Quản lý Công nợ Nhà cung cấp & Đối tác Vận chuyển GHN
+  getSupplierDebtOverview: async () => {
+    const res = await apiClient.get('/financial/debts/suppliers');
+    return res.data.data;
+  },
+
+  getSupplierDebtLedger: async (supplierId) => {
+    const res = await apiClient.get(`/financial/debts/suppliers/${supplierId}/ledger`);
+    return res.data.data;
+  },
+
+  getCarrierDebtOverview: async () => {
+    const res = await apiClient.get('/financial/debts/carrier');
+    return res.data.data;
+  },
+
+  updateCarrierConfig: async (payload) => {
+    const res = await apiClient.patch('/financial/debts/carrier/config', payload);
+    return res.data;
+  },
+
+  settleCarrierCodPayment: async (payload) => {
+    const res = await apiClient.post('/financial/debts/carrier/settle-cod', payload);
+    return res.data;
+  },
+
+  settleCarrierShippingFeePayment: async (payload) => {
+    const res = await apiClient.post('/financial/debts/carrier/settle-shipping-fee', payload);
     return res.data;
   },
 };

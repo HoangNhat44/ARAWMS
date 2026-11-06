@@ -42,9 +42,6 @@ const AccountantHeader = () => {
           <h1 className="ara-acc-header-title">
             {currentNavItem?.label || 'Bảng điều khiển Kế toán'}
           </h1>
-          {currentNavItem?.ucCode && (
-            <span className="ara-acc-header-uc-pill">{currentNavItem.ucCode}</span>
-          )}
         </div>
       </div>
 

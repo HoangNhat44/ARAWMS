@@ -48,6 +48,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
     groupKey: 'supplier_contracts',
     groupTitle: 'Mua sắm & Hợp đồng NCC',
     items: [
+      // UC: Quản lý nhà cung ứng nguyên phụ liệu
       {
         key: 'suppliers',
         label: 'Nhà cung ứng nguyên liệu',
@@ -56,6 +57,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
         ucCode: 'UC 01–03',
         description: 'Manage Material Suppliers (Xem, Thêm mới, Cập nhật nhà cung ứng)',
       },
+      // UC: Soạn thảo khung hợp đồng với nhà cung cấp
       {
         key: 'contracts',
         label: 'Khung hợp đồng mua sắm',
@@ -64,6 +66,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
         ucCode: 'UC 04',
         description: 'Draft Supplier Contract Framework (Soạn thảo khung hợp đồng NCC)',
       },
+      // UC: Lập kế hoạch lịch trình tiếp nhận nguyên phụ liệu
       {
         key: 'inbound-plans',
         label: 'Kế hoạch lịch trình nhập',
@@ -72,6 +75,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
         ucCode: 'UC 05',
         description: 'Schedule Material Inbound Plan (Lập kế hoạch tiếp nhận nguyên vật liệu)',
       },
+      // UC: Xử lý sai lệch hợp đồng mua sắm
       {
         key: 'contract-deviations',
         label: 'Xử lý sai lệch hợp đồng',
@@ -88,11 +92,11 @@ export const ACCOUNTANT_NAV_GROUPS = [
     items: [
       {
         key: 'supplier-debts',
-        label: 'Quản lý công nợ NCC',
+        label: 'Quản lý công nợ',
         path: '/accountant/supplier-debts',
         icon: Wallet,
         ucCode: 'UC 07',
-        description: 'Manage Material Supplier Debt (Theo dõi công nợ phải trả nhà cung cấp)',
+        description: 'Manage Debts (Theo dõi công nợ phải trả NCC và công nợ phải thu GHN)',
       },
       {
         key: 'supplier-payments',
@@ -101,14 +105,6 @@ export const ACCOUNTANT_NAV_GROUPS = [
         icon: Receipt,
         ucCode: 'UC 08',
         description: 'Create Supplier Payment Slip (Tạo phiếu thanh toán/đặt cọc cho NCC)',
-      },
-      {
-        key: 'cash-flow-history',
-        label: 'Lịch sử dòng tiền thu/chi',
-        path: '/accountant/cash-flow',
-        icon: ArrowLeftRight,
-        ucCode: 'UC 14',
-        description: 'View Cash Flow History (Xem lịch sử biến động dòng tiền toàn hệ thống)',
       },
       {
         key: 'cash-flow-vouchers',
@@ -121,17 +117,26 @@ export const ACCOUNTANT_NAV_GROUPS = [
     ],
   },
   {
+    groupKey: 'cod_and_disputes',
+    groupTitle: 'Đối soát COD & Giao vận',
+    items: [
+      {
+        key: 'cod-statements',
+        label: 'Đối soát bảng kê COD',
+        path: '/accountant/cod-reconciliation',
+        icon: FileSpreadsheet,
+        ucCode: 'UC 16–17',
+        description: 'Upload & Reconcile Carrier COD Statement (Tải bảng kê & chạy đối soát tự động)',
+      },
+      
+      
+    ],
+  },
+  {
     groupKey: 'valuation_and_pnl',
     groupTitle: 'Giá vốn, Định giá & P&L',
     items: [
-      {
-        key: 'actual-cogs',
-        label: 'Giá vốn hàng bán (COGS)',
-        path: '/accountant/cogs',
-        icon: Calculator,
-        ucCode: 'UC 09',
-        description: 'View Actual Cost of Product Sold (Tính & xem giá vốn hàng bán thực tế)',
-      },
+      
       {
         key: 'inventory-valuation',
         label: 'Tổng định giá tồn kho',
@@ -148,78 +153,20 @@ export const ACCOUNTANT_NAV_GROUPS = [
         ucCode: 'UC 11',
         description: 'View Total Raw Material Inventory Value (Định giá kho vải cuộn & phụ liệu)',
       },
-      {
-        key: 'pnl-report',
-        label: 'Báo cáo Lãi / Lỗ (P&L)',
-        path: '/accountant/pnl-report',
-        icon: TrendingUp,
-        ucCode: 'UC 12',
-        description: 'Export Profit Loss Report (Tổng hợp và xuất báo cáo kết quả kinh doanh P&L)',
-      },
+    
     ],
   },
-  {
-    groupKey: 'cod_and_disputes',
-    groupTitle: 'Đối soát COD & Giao vận',
-    items: [
-      {
-        key: 'cod-statements',
-        label: 'Tải & Đối soát bảng kê COD',
-        path: '/accountant/cod-reconciliation',
-        icon: FileSpreadsheet,
-        ucCode: 'UC 16–17',
-        description: 'Upload & Reconcile Carrier COD Statement (Tải bảng kê & chạy đối soát tự động)',
-      },
-      {
-        key: 'cod-red-flags',
-        label: 'Cảnh báo cờ đỏ lệch COD',
-        path: '/accountant/cod-red-flags',
-        icon: Flag,
-        ucCode: 'UC 13',
-        badge: 'Red Flag',
-        description: 'View COD Discrepancy Red Flags (Giám sát các vận đơn bất thường tiền thu hộ)',
-      },
-      {
-        key: 'carrier-disputes',
-        label: 'Khiếu nại đơn vị vận chuyển',
-        path: '/accountant/carrier-disputes',
-        icon: ShieldAlert,
-        ucCode: 'UC 20–21',
-        description: 'File & Update Shipping Carrier Dispute (Khiếu nại thất thoát/cước phí & cập nhật đền bù)',
-      },
-    ],
-  },
-  {
-    groupKey: 'return_financials',
-    groupTitle: 'Tài chính Đổi / Trả hàng',
-    items: [
-      {
-        key: 'return-approvals',
-        label: 'Duyệt hoàn tiền hàng trả',
-        path: '/accountant/return-approvals',
-        icon: RotateCcw,
-        ucCode: 'UC 18',
-        description: 'Approve Return Order Financials (Phê duyệt chi phí tài chính & hoàn tiền đơn trả)',
-      },
-      {
-        key: 'return-surcharges',
-        label: 'Ghi nhận phụ phí hoàn hàng',
-        path: '/accountant/return-surcharges',
-        icon: Percent,
-        ucCode: 'UC 19',
-        description: 'Record Return Surcharge Variance (Ghi nhận chênh lệch phụ phí phát sinh từ hàng trả)',
-      },
-    ],
-  },
+  
+  
 ];
 
 /**
  * Trả về danh sách phẳng tất cả các mục điều hướng để Header tra cứu tiêu đề & mô tả theo URL hiện tại
  */
-export const FLATTENED_ACCOUNTANT_NAV = ACCOUNTANT_NAV_GROUPS.flatMap((group) =>
-  group.items.map((item) => ({
+export const FLATTENED_ACCOUNTANT_NAV = (ACCOUNTANT_NAV_GROUPS || []).flatMap((group) =>
+  (group?.items || []).map((item) => ({
     ...item,
-    groupTitle: group.groupTitle,
+    groupTitle: group?.groupTitle || '',
   }))
 );
 

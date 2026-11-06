@@ -13,6 +13,15 @@ const isValidDate = (d) => {
   return !Number.isNaN(date.getTime());
 };
 
+const toDateKey = (d) => {
+  if (!d) return '';
+  const str = String(d).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return '';
+  return dt.toISOString().slice(0, 10);
+};
+
 /**
  * Validate Tạo mới Nhà cung ứng (UC 02)
  */
@@ -192,8 +201,17 @@ export const validateDraftContract = (req, res, next) => {
   } else {
     contractedMaterials.forEach((item, index) => {
       const lineNo = index + 1;
-      if (!item.rawMaterialId || !isValidObjectId(item.rawMaterialId)) {
+      const isNew = item.isNewMaterial || item.rawMaterialId === '__NEW__' || item.rawMaterialId === '__CREATE_NEW__';
+      if (!isNew && (!item.rawMaterialId || !isValidObjectId(item.rawMaterialId))) {
         errors.push(`Dòng ${lineNo}: Chưa chọn mã nguyên vật liệu hợp lệ.`);
+      } else if (isNew) {
+        if (!item.materialNameSnapshot && !item.materialName) {
+          errors.push(`Dòng ${lineNo}: Tên nguyên phụ liệu mới không được để trống.`);
+        }
+      }
+
+      if (!item.unitSnapshot || (typeof item.unitSnapshot === 'string' && !item.unitSnapshot.trim())) {
+        errors.push(`Dòng ${lineNo}: Đơn vị tính của nguyên phụ liệu không được để trống.`);
       }
 
       const qty = Number(item.contractedQty);
@@ -237,7 +255,7 @@ export const validateDraftContract = (req, res, next) => {
       if (item.qtyTolerancePct !== undefined && item.qtyTolerancePct !== null) {
         const t = Number(item.qtyTolerancePct);
         if (!Number.isFinite(t) || t < 0 || t > 25) {
-          errors.push(`Dòng ${lineNo}: Dung sai số lượng giao hàng phải từ 0% đến 25%.`);
+          errors.push(`Dòng ${lineNo}: Đúng sai số lượng giao hàng phải từ 0% đến 25%.`);
         }
       }
 
@@ -277,6 +295,124 @@ export const validateDraftContract = (req, res, next) => {
     !['GIAO_TAI_KHO_BEN_A', 'GIAO_TAI_XUONG_MAY', 'NHAN_TAI_KHO_NCC'].includes(commercialTerms.deliveryTerm)
   ) {
     errors.push('Điều kiện giao hàng không hợp lệ (GIAO_TAI_KHO_BEN_A, GIAO_TAI_XUONG_MAY, NHAN_TAI_KHO_NCC).');
+  }
+
+  // 7b. Lộ trình các lần thanh toán (Payment Schedule)
+  const depPct = Number(commercialTerms?.depositPercent ?? 30);
+  const effFromKey = toDateKey(effectiveFrom || signingDate);
+  const effToKey = toDateKey(effectiveTo);
+
+  if (Array.isArray(commercialTerms?.paymentSchedule) && commercialTerms.paymentSchedule.length > 0) {
+    const schedule = commercialTerms.paymentSchedule;
+    if (schedule.length > 12) {
+      errors.push('Số lần thanh toán không được vượt quá 12 lần.');
+    }
+
+    let sumInstallmentPct = 0;
+    let prevDueKey = '';
+
+    schedule.forEach((inst, idx) => {
+      const stepNo = idx + 1;
+      const pct = Number(inst.paymentPercent);
+      if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+        errors.push(`Lần thanh toán ${stepNo}: Tỷ lệ phần trăm thanh toán phải lớn hơn 0% và tối đa 100%.`);
+      } else {
+        sumInstallmentPct += pct;
+      }
+
+      if (!inst.dueDate || !isValidDate(inst.dueDate)) {
+        errors.push(`Lần thanh toán ${stepNo}: Vui lòng chọn ngày thanh toán hợp lệ.`);
+      } else {
+        const dueKey = toDateKey(inst.dueDate);
+        if (effFromKey && dueKey < effFromKey) {
+          errors.push(
+            `Lần thanh toán ${stepNo}: Ngày thanh toán (${dueKey}) không được trước ngày bắt đầu hiệu lực hợp đồng (${effFromKey}).`
+          );
+        }
+        if (effToKey && dueKey > effToKey) {
+          errors.push(
+            `Lần thanh toán ${stepNo}: Ngày thanh toán (${dueKey}) không được sau khi hợp đồng hết hạn (${effToKey}).`
+          );
+        }
+        if (prevDueKey && dueKey < prevDueKey) {
+          errors.push(
+            `Lần thanh toán ${stepNo}: Ngày thanh toán (${dueKey}) không được trước ngày của Lần ${stepNo - 1} (${prevDueKey}).`
+          );
+        }
+        prevDueKey = dueKey;
+      }
+    });
+
+    const totalPct = Number((depPct + sumInstallmentPct).toFixed(2));
+    if (Math.abs(totalPct - 100) > 0.05) {
+      errors.push(
+        `Tổng các lần thanh toán (${Number(sumInstallmentPct.toFixed(2))}%) và tiền đặt cọc (${depPct}%) phải bằng đúng 100% tổng giá trị tiền hàng (Hiện tại: ${totalPct}%).`
+      );
+    }
+  } else if (Number.isFinite(depPct) && depPct < 100 && commercialTerms?.paymentInstallmentsCount !== undefined) {
+    errors.push('Vui lòng thiết lập đầy đủ các lần thanh toán cho phần giá trị tiền hàng còn lại.');
+  }
+
+  // 7c. Kế hoạch Lịch trình Tiếp nhận Nguyên vật liệu (Inbound Delivery Schedule)
+  const batchesToValidate = Array.isArray(req.body.inboundBatches)
+    ? req.body.inboundBatches
+    : (Array.isArray(req.body.inboundPlan?.batches) ? req.body.inboundPlan.batches : null);
+
+  if (batchesToValidate && batchesToValidate.length > 0) {
+    if (batchesToValidate.length > 12) {
+      errors.push('Số đợt tiếp nhận nguyên liệu không được vượt quá 12 đợt.');
+    }
+
+    let prevDeliveryKey = '';
+    const matQtySumMap = new Map();
+
+    batchesToValidate.forEach((b, bIdx) => {
+      const bNo = b.batchNumber || bIdx + 1;
+      if (!b.scheduledDeliveryDate || !isValidDate(b.scheduledDeliveryDate)) {
+        errors.push(`Đợt ${bNo}: Vui lòng chọn ngày giao hàng dự kiến hợp lệ.`);
+      } else {
+        const dKey = toDateKey(b.scheduledDeliveryDate);
+        if (effFromKey && dKey < effFromKey) {
+          errors.push(
+            `Đợt ${bNo}: Ngày giao hàng (${dKey}) không được trước ngày bắt đầu hiệu lực hợp đồng (${effFromKey}).`
+          );
+        }
+        if (effToKey && dKey > effToKey) {
+          errors.push(
+            `Đợt ${bNo}: Ngày giao hàng (${dKey}) không được sau ngày hết hạn hợp đồng (${effToKey}).`
+          );
+        }
+        if (prevDeliveryKey && dKey < prevDeliveryKey) {
+          errors.push(
+            `Đợt ${bNo}: Ngày giao hàng (${dKey}) không được trước ngày giao của Đợt ${bNo - 1} (${prevDeliveryKey}).`
+          );
+        }
+        prevDeliveryKey = dKey;
+      }
+
+      if (Array.isArray(b.expectedItems)) {
+        b.expectedItems.forEach((it) => {
+          const rawId = String(it.rawMaterialId);
+          const q = Number(it.plannedQty || 0);
+          matQtySumMap.set(rawId, (matQtySumMap.get(rawId) || 0) + q);
+        });
+      }
+    });
+
+    // Đối soát tổng số lượng từng nguyên phụ liệu qua các đợt phải khớp với contractedQty
+    if (Array.isArray(contractedMaterials)) {
+      contractedMaterials.forEach((cm, cIdx) => {
+        const rawId = String(cm.rawMaterialId);
+        const expectedTotal = Number(cm.contractedQty || 0);
+        const scheduledTotal = matQtySumMap.get(rawId) || 0;
+        if (Math.abs(expectedTotal - scheduledTotal) > 0.001) {
+          const matLabel = cm.materialNameSnapshot || `dòng ${cIdx + 1}`;
+          errors.push(
+            `Mặt hàng "${matLabel}": Tổng số lượng phân bổ qua các đợt (${scheduledTotal}) chưa khớp với số lượng cam kết trên hợp đồng (${expectedTotal}).`
+          );
+        }
+      });
+    }
   }
 
   // 8. Chế tài phạt vi phạm
@@ -330,10 +466,27 @@ export const validateContractStatusUpdate = (req, res, next) => {
   return next();
 };
 
+/**
+ * Validate Chấm dứt Hợp đồng Mua sắm (Accountant Contract Termination)
+ */
+export const validateTerminateContract = (req, res, next) => {
+  const { terminationReason } = req.body || {};
+  if (!terminationReason || !String(terminationReason).trim()) {
+    res.status(400);
+    return next(new Error('Vui lòng nhập lý do/ghi chú chấm dứt hợp đồng.'));
+  }
+  if (String(terminationReason).trim().length < 5) {
+    res.status(400);
+    return next(new Error('Lý do chấm dứt hợp đồng phải có độ dài tối thiểu 5 ký tự.'));
+  }
+  return next();
+};
+
 export default {
   validateCreateSupplier,
   validateUpdateSupplier,
   validateDraftContract,
   validateContractIdParam,
   validateContractStatusUpdate,
+  validateTerminateContract,
 };

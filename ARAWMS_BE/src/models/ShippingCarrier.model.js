@@ -11,7 +11,7 @@ const shippingCarrierSchema = new Schema(
     apiBaseUrl: { type: String },
     apiKey: { type: String },
     codFeePercent: { type: Number, default: 0 },
-    baseShippingFee: { type: Number, default: 30000 },
+    baseShippingFee: { type: Number, default: 19000 },
     statementColumnMapping: {
       waybillColumn: String,
       codAmountColumn: String,

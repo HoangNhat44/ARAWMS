@@ -88,15 +88,51 @@ body:has(.ara-accountant-shell) .ara-footer {
   font-family: var(--wms-font-family);
   font-size: var(--wms-font-body);
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ==========================================================================
+   QUY CHUẨN TYPOGRAPHY & CHỐNG LỖI PHÔNG TIẾNG VIỆT
+   Bắt buộc 100% các tiêu đề (h1-h6), nội dung, nhãn, nút bấm, ô nhập liệu
+   trong phân hệ Kế toán / WMS dùng Font Sans-Serif chuẩn tiếng Việt (Inter).
+   Tuyệt đối không để rò rỉ font Serif (Cormorant Garamond) gây vỡ dấu tiếng Việt.
+   ========================================================================== */
+.ara-accountant-shell,
+.ara-accountant-shell *,
+.ara-accountant-shell h1,
+.ara-accountant-shell h2,
+.ara-accountant-shell h3,
+.ara-accountant-shell h4,
+.ara-accountant-shell h5,
+.ara-accountant-shell h6,
+.ara-accountant-shell p,
+.ara-accountant-shell span,
+.ara-accountant-shell a,
+.ara-accountant-shell button,
+.ara-accountant-shell input,
+.ara-accountant-shell select,
+.ara-accountant-shell textarea,
+.ara-accountant-shell label,
+.ara-accountant-shell th,
+.ara-accountant-shell td,
+.wms-page-title,
+.wms-page-subtitle,
+.wms-modal-title,
+.wms-form-section-title,
+.wms-card-title,
+.wms-kpi-label,
+.wms-kpi-value,
+.wms-kpi-meta {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  letter-spacing: normal !important;
 }
 
 .ara-accountant-shell h1,
 .ara-accountant-shell h2,
 .ara-accountant-shell h3,
 .ara-accountant-shell h4 {
-  font-family: var(--wms-font-family);
   color: var(--wms-text-primary);
-  letter-spacing: normal;
   margin: 0;
 }
 
@@ -329,7 +365,7 @@ body:has(.ara-accountant-shell) .ara-footer {
 
 /* ==================== 4.4 HEADER & MAIN CONTENT ==================== */
 .ara-acc-main-wrapper {
-  flex: 1;
+  flex: 1 1 0%;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -503,11 +539,13 @@ body:has(.ara-accountant-shell) .ara-footer {
 
 /* Main Content Container */
 .ara-acc-content {
-  flex: 1;
+  flex: 1 1 auto;
   padding: var(--wms-space-6);
   max-width: 1440px;
   width: 100%;
   margin: 0 auto;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 /* ==================== 5. REUSABLE ENTERPRISE COMPONENTS (ANT DESIGN CONVENTIONS) ==================== */
@@ -683,6 +721,7 @@ body:has(.ara-accountant-shell) .ara-footer {
   font-size: var(--wms-font-caption);
   font-weight: 600;
   line-height: 1.4;
+  white-space: nowrap;
 }
 
 .wms-status-available,
@@ -716,6 +755,198 @@ body:has(.ara-accountant-shell) .ara-footer {
   background-color: var(--wms-bg-muted);
   color: var(--wms-secondary);
   border: 1px solid var(--wms-border-strong);
+}
+
+.wms-status-superseded {
+  background-color: #F1ECE6;
+  color: #766B63;
+  border: 1px dashed #C8BCB0;
+  font-style: italic;
+}
+
+.wms-badge-version {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #2D2824;
+  color: #FAF7F2;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+.wms-badge-batch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: #141210;
+  color: #D4B48C;
+  border: 1px solid #8A6A46;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
+  line-height: 1.4;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.wms-batch-card {
+  border: 1px solid var(--wms-border);
+  border-radius: var(--wms-radius-md);
+  background-color: var(--wms-bg-subtle);
+  padding: var(--wms-space-4);
+  margin-bottom: var(--wms-space-4);
+  transition: all 0.2s ease;
+}
+
+.wms-batch-card:hover {
+  border-color: var(--wms-accent);
+}
+
+.wms-batch-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--wms-space-3);
+  padding-bottom: var(--wms-space-2);
+  border-bottom: 1px solid var(--wms-border);
+}
+
+.wms-btn-version-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: #2D2824;
+  color: #FAF7F2;
+  border: 1px solid #483E36;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1.4;
+}
+
+.wms-btn-version-pill:hover {
+  background-color: var(--wms-accent);
+  color: #FFFFFF;
+  border-color: var(--wms-accent);
+}
+
+.wms-btn-version-pill.expanded {
+  background-color: var(--wms-accent);
+  color: #FFFFFF;
+  border-color: var(--wms-accent);
+}
+
+.wms-arrow-icon {
+  transition: transform 0.2s ease;
+}
+
+.wms-arrow-icon.rotated {
+  transform: rotate(180deg);
+}
+
+/* Expanded Sub-Table for Multiple Versions of Contract */
+.wms-family-subtable-row {
+  background-color: #FAF7F2 !important;
+}
+
+.wms-family-subtable-row > td {
+  padding: 0 !important;
+  border-bottom: 2px solid var(--wms-border) !important;
+}
+
+.wms-family-subtable-container {
+  padding: 12px 18px 16px 28px;
+  border-left: 4px solid var(--wms-accent);
+  background: #FAF7F2;
+}
+
+.wms-family-subtable-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--wms-text-title);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wms-nested-table {
+  width: 100%;
+  background: #FFFFFF;
+  border: 1px solid var(--wms-border);
+  border-radius: var(--wms-radius-sm);
+  border-collapse: collapse;
+  font-size: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.wms-nested-table th {
+  background-color: #F3EAE0;
+  color: var(--wms-text-title);
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--wms-border);
+  letter-spacing: 0.3px;
+}
+
+.wms-nested-table td {
+  padding: 8px 10px !important;
+  border-bottom: 1px solid var(--wms-border-subtle);
+  color: var(--wms-text-body);
+}
+
+.wms-nested-table tr:last-child td {
+  border-bottom: none;
+}
+
+.wms-amendment-banner {
+  background-color: #FFFDF9;
+  border: 1.5px solid #D8C3AE;
+  border-left: 5px solid var(--wms-accent);
+  border-radius: var(--wms-radius-md);
+  padding: 14px 18px;
+  margin-bottom: var(--wms-space-5);
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  box-shadow: var(--wms-shadow-sm);
+}
+
+.wms-amendment-banner-icon {
+  color: var(--wms-accent);
+  background-color: #F3EAE0;
+  padding: 8px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wms-amendment-banner-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--wms-text-title);
+  margin-bottom: 4px;
+}
+
+.wms-amendment-banner-desc {
+  font-size: 13px;
+  color: var(--wms-text-body);
+  line-height: 1.5;
+  margin: 0;
 }
 
 /* Empty / Placeholder Info Box */
@@ -988,6 +1219,32 @@ body:has(.ara-accountant-shell) .ara-footer {
 
 .wms-table-scroll {
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+}
+
+/* Slim elegant scrollbar for internal table scrolling */
+.wms-table-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.wms-table-scroll::-webkit-scrollbar-track {
+  background: var(--wms-bg-subtle);
+  border-radius: var(--wms-radius-sm);
+}
+.wms-table-scroll::-webkit-scrollbar-thumb {
+  background: var(--wms-border-strong);
+  border-radius: var(--wms-radius-sm);
+}
+.wms-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--wms-accent);
+}
+
+/* Zero Horizontal Scroll responsive table fit */
+.wms-table-scroll.no-horizontal-scroll {
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
 }
 
@@ -997,21 +1254,79 @@ body:has(.ara-accountant-shell) .ara-footer {
   font-size: var(--wms-font-table);
 }
 
+.wms-table th,
+.wms-table td {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.wms-table.wms-table-responsive-fit {
+  width: 100% !important;
+  border-collapse: collapse;
+}
+
+.wms-table.wms-table-responsive-fit th {
+  white-space: normal !important;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  padding: 10px 8px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.wms-table.wms-table-responsive-fit td {
+  padding: 10px 8px;
+  font-size: 12.5px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  vertical-align: top;
+  line-height: 1.4;
+}
+
+.wms-table.wms-table-responsive-fit td .wms-status-badge {
+  max-width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  justify-content: center;
+  font-size: 11.5px;
+  padding: 3px 8px;
+  white-space: normal;
+  display: inline-flex;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.wms-row-expandable {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease;
+}
+
+.wms-row-expandable:hover {
+  background-color: #F8F3EC !important;
+}
+
+.wms-row-expanded {
+  background-color: #F4EBE0 !important;
+}
+
 .wms-table th {
   background-color: var(--wms-bg-subtle);
   color: var(--wms-text-primary);
   font-weight: 700;
   text-align: left;
-  padding: var(--wms-space-3) var(--wms-space-4);
+  padding: 10px 12px;
   border-bottom: 2px solid var(--wms-border);
   white-space: nowrap;
+  font-size: 13px;
 }
 
 .wms-table td {
-  padding: var(--wms-space-3) var(--wms-space-4);
+  padding: 10px 12px;
   border-bottom: 1px solid var(--wms-border);
   color: var(--wms-text-body);
   vertical-align: top;
+  font-size: 13px;
 }
 
 .wms-table tbody tr:hover {
@@ -1022,6 +1337,7 @@ body:has(.ara-accountant-shell) .ara-footer {
   text-align: right;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .wms-code-pill {
@@ -1035,6 +1351,7 @@ body:has(.ara-accountant-shell) .ara-footer {
   background-color: var(--wms-bg-subtle);
   border: 1px solid var(--wms-border);
   color: var(--wms-text-primary);
+  white-space: nowrap;
 }
 
 .wms-row-actions {
@@ -1044,10 +1361,86 @@ body:has(.ara-accountant-shell) .ara-footer {
   flex-wrap: wrap;
 }
 
+.wms-action-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 .wms-btn-sm {
-  height: 30px;
-  padding: 0 var(--wms-space-3);
+  height: 28px;
+  padding: 0 10px;
   font-size: 12px;
+}
+
+.wms-btn-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--wms-radius-sm);
+  flex-shrink: 0;
+}
+
+.wms-action-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.wms-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background-color: var(--wms-bg-surface);
+  border: 1px solid var(--wms-border-strong);
+  border-radius: var(--wms-radius-md);
+  box-shadow: 0 8px 24px rgba(20, 18, 16, 0.25);
+  z-index: 90;
+  min-width: 220px;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wms-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: var(--wms-space-2);
+  width: 100%;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-family: var(--wms-font-family);
+  font-size: 13px;
+  color: var(--wms-text-primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.wms-dropdown-item:hover {
+  background-color: var(--wms-bg-subtle);
+  color: var(--wms-accent);
+}
+
+.wms-dropdown-item svg {
+  color: var(--wms-secondary);
+  flex-shrink: 0;
+}
+
+.wms-dropdown-item:hover svg {
+  color: var(--wms-accent);
+}
+
+.wms-dropdown-divider {
+  height: 1px;
+  background-color: var(--wms-border);
+  margin: 4px 0;
 }
 
 /* ==================== 11. CONTRACT MATERIAL SPEC LINE ITEM CARD ==================== */
@@ -1207,59 +1600,240 @@ form.wms-modal-dialog.wide {
   border: 1px solid var(--wms-danger-border);
 }
 
-/* Legal Garment Contract Document Preview */
+/* Legal Garment Contract Document Preview & Authentic Print */
 .wms-legal-doc {
   background-color: #FFFFFF;
   border: 1px solid var(--wms-border-strong);
-  padding: var(--wms-space-8);
-  color: var(--wms-text-primary);
+  padding: 36px 48px;
+  color: #111827;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 14.5px;
   line-height: 1.65;
+  text-align: justify;
+}
+
+.wms-legal-doc p,
+.wms-legal-doc div {
+  text-align: justify;
 }
 
 .wms-legal-header {
   text-align: center;
-  margin-bottom: var(--wms-space-6);
-  padding-bottom: var(--wms-space-4);
-  border-bottom: 2px solid var(--wms-text-primary);
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #1f2937;
+}
+
+.wms-legal-header * {
+  text-align: center !important;
 }
 
 .wms-legal-nation {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .wms-legal-motto {
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: var(--wms-space-3);
+  font-size: 14px;
+  font-weight: 700;
+  margin-top: 2px;
+  margin-bottom: 4px;
+}
+
+.wms-national-motto-line {
+  width: 140px;
+  height: 1.5px;
+  background-color: #111827;
+  margin: 4px auto 12px auto;
 }
 
 .wms-legal-title {
   font-size: 20px;
   font-weight: 700;
   text-transform: uppercase;
-  margin-top: var(--wms-space-2);
+  margin-top: 10px;
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+}
+
+.wms-legal-subtitle {
+  font-size: 13.5px;
+  font-style: italic;
+  margin-bottom: 6px;
+}
+
+.wms-legal-meta {
+  font-size: 13.5px;
+  margin-bottom: 10px;
+}
+
+.wms-legal-preamble {
+  font-style: italic;
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: 10px;
+  text-align: justify !important;
 }
 
 .wms-legal-section {
-  margin-bottom: var(--wms-space-4);
+  margin-bottom: 18px;
 }
 
 .wms-legal-section-title {
   font-size: 15px;
   font-weight: 700;
   text-transform: uppercase;
-  margin-bottom: var(--wms-space-2);
-  color: var(--wms-text-primary);
+  margin-top: 16px;
+  margin-bottom: 6px;
+  color: #111827;
+  text-align: left !important;
+}
+
+.wms-legal-article-heading {
+  font-size: 14.5px;
+  font-weight: 700;
+  margin-top: 14px;
+  margin-bottom: 4px;
+}
+
+.wms-legal-paragraph {
+  margin: 6px 0;
+  text-indent: 20px;
+}
+
+.wms-legal-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.wms-legal-table th,
+.wms-legal-table td {
+  border: 1px solid #374151;
+  padding: 6px 8px;
+  vertical-align: middle;
+}
+
+.wms-legal-table th {
+  background-color: #f3f4f6;
+  font-weight: 700;
+  text-align: center;
 }
 
 .wms-legal-signatures {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--wms-space-4);
-  margin-top: var(--wms-space-8);
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  margin-top: 36px;
   text-align: center;
+}
+
+.wms-legal-signatures * {
+  text-align: center !important;
+}
+
+/* Blank Printable Contract Template for Manual Handwriting */
+.wms-blank-field-line {
+  display: inline-block;
+  border-bottom: 1px dotted #374151;
+  min-height: 1.25em;
+  vertical-align: bottom;
+  margin: 0 4px;
+}
+
+.wms-blank-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+}
+
+.wms-blank-table th,
+.wms-blank-table td {
+  border: 1px solid #374151;
+  padding: 8px 6px;
+  font-size: 12.5px;
+  vertical-align: middle;
+}
+
+.wms-blank-table th {
+  background-color: #f3f4f6;
+  font-weight: 700;
+  text-align: center;
+}
+
+.wms-blank-table-empty-row td {
+  height: 34px;
+}
+
+/* Print Optimization */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 15mm 15mm 15mm 20mm;
+  }
+
+  body, html {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    font-family: 'Times New Roman', Times, serif !important;
+    font-size: 11pt !important;
+    line-height: 1.5 !important;
+  }
+
+  .ara-acc-sidebar,
+  .ara-acc-header,
+  .wms-page-header,
+  .wms-tabs-bar,
+  .wms-filter-bar,
+  .wms-table-card,
+  .wms-feedback-banner,
+  .wms-modal-header,
+  .wms-modal-footer,
+  .no-print {
+    display: none !important;
+  }
+
+  .wms-modal-backdrop {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    inset: auto !important;
+  }
+
+  .wms-modal-dialog,
+  .wms-modal-dialog.wide {
+    max-width: 100% !important;
+    width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+
+  .wms-modal-body {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .wms-legal-doc {
+    border: none !important;
+    padding: 0 !important;
+    color: #000000 !important;
+    background: #FFFFFF !important;
+    font-size: 11pt !important;
+    line-height: 1.5 !important;
+  }
+
+  .wms-legal-section,
+  .wms-legal-signatures,
+  .wms-legal-table,
+  .wms-blank-table {
+    page-break-inside: avoid;
+  }
 }
 
 /* Responsive (Section 8) */
@@ -1291,4 +1865,200 @@ form.wms-modal-dialog.wide {
   .wms-field-span-2 {
     grid-column: 1 / -1;
   }
+}
+
+/* ==================== 13. PHYSICAL CONTRACT PHOTO ATTACHMENTS & DETAILS ==================== */
+.wms-photo-uploader {
+  margin-top: var(--wms-space-2);
+}
+
+.wms-photo-dropzone {
+  border: 2px dashed var(--wms-border-strong);
+  background-color: var(--wms-bg-subtle);
+  border-radius: var(--wms-radius-md);
+  padding: var(--wms-space-4);
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wms-space-2);
+}
+
+.wms-photo-dropzone:hover {
+  border-color: var(--wms-accent);
+  background-color: rgba(138, 106, 70, 0.05);
+}
+
+.wms-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: var(--wms-space-3);
+  margin-top: var(--wms-space-3);
+}
+
+.wms-photo-card {
+  position: relative;
+  border-radius: var(--wms-radius-sm);
+  border: 1px solid var(--wms-border-strong);
+  overflow: hidden;
+  background-color: #1A1715;
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.wms-photo-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.wms-photo-card img:hover {
+  transform: scale(1.05);
+}
+
+.wms-photo-card-actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 4px;
+  z-index: 2;
+}
+
+.wms-photo-delete-btn {
+  background-color: rgba(20, 18, 16, 0.85);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.wms-photo-delete-btn:hover {
+  background-color: var(--wms-danger);
+}
+
+.wms-photo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background-color: #EFE6DD;
+  color: var(--wms-text-title);
+  border: 1px solid var(--wms-border);
+}
+
+/* Lightbox Modal */
+.wms-lightbox-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(10, 8, 7, 0.92);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(4px);
+}
+
+.wms-lightbox-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.wms-lightbox-content img {
+  max-width: 100%;
+  max-height: calc(90vh - 60px);
+  object-fit: contain;
+  border-radius: var(--wms-radius-sm);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  border: 1px solid #443B33;
+}
+
+.wms-lightbox-close {
+  position: absolute;
+  top: -38px;
+  right: 0;
+  background: transparent;
+  border: none;
+  color: #FAF7F2;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.wms-lightbox-close:hover {
+  color: var(--wms-accent-light);
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Plan Details Cards & Sections */
+.wms-detail-card {
+  background-color: var(--wms-bg-surface);
+  border: 1px solid var(--wms-border);
+  border-radius: var(--wms-radius-md);
+  padding: var(--wms-space-4);
+  margin-bottom: var(--wms-space-4);
+}
+
+.wms-detail-card-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--wms-text-title);
+  margin-bottom: var(--wms-space-3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: var(--wms-space-2);
+  border-bottom: 1px solid var(--wms-border-subtle);
+}
+
+.wms-detail-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--wms-space-3) var(--wms-space-4);
+}
+
+.wms-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wms-detail-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--wms-secondary);
+}
+
+.wms-detail-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--wms-text-primary);
 }

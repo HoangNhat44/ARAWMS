@@ -50,6 +50,12 @@ const salesOrderSchema = new Schema(
       discountAmount: { type: Number, default: 0 },
       totalOrderAmount: { type: Number, required: true },
       expectedCodAmount: { type: Number, required: true },
+      actualCodAmount: { type: Number },
+      resolvedFaultParty: {
+        type: String,
+        enum: ['NONE', 'ARA_STORE', 'CARRIER_GHN'],
+        default: 'NONE',
+      },
     },
     warehouseFulfillment: {
       stockReservedAt: Date,
@@ -67,6 +73,34 @@ const salesOrderSchema = new Schema(
       type: String,
       enum: RECONCILIATION_STATUS,
       default: 'UNRECONCILED',
+      index: true,
+    },
+    // Trạng thái tất toán công nợ COD bưu điện/hãng vận chuyển đã thanh toán
+    isCodSettled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    codSettledAt: {
+      type: Date,
+    },
+    codSettlementVoucherId: {
+      type: Schema.Types.ObjectId,
+      ref: 'CashFlowVoucher',
+      index: true,
+    },
+    // Trạng thái tất toán cước phí vận chuyển Shop thanh toán cho hãng vận chuyển
+    isShippingFeeSettled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    shippingFeeSettledAt: {
+      type: Date,
+    },
+    shippingFeeSettlementVoucherId: {
+      type: Schema.Types.ObjectId,
+      ref: 'CashFlowVoucher',
       index: true,
     },
   },

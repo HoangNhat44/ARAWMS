@@ -79,7 +79,6 @@ const AccountantOverviewPage = () => {
                     <span>{item.label}</span>
                   </div>
                   <div className="wms-module-link-right">
-                    <span className="ara-acc-header-uc-pill">{item.ucCode}</span>
                     <ArrowRight size={15} aria-hidden="true" />
                   </div>
                 </Link>

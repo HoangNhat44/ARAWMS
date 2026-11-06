@@ -5,6 +5,7 @@ import {
   Plus,
   Edit3,
   FileSignature,
+  FileText,
   RefreshCw,
   Search,
   X,
@@ -43,6 +44,7 @@ const SUPPLY_CATEGORY_LABELS = {
 const formatVnd = (value) =>
   `${Number(value || 0).toLocaleString('vi-VN')} ₫`;
 
+// UC: Quản lý nhà cung ứng nguyên phụ liệu
 const SupplierManagementPage = () => {
   const navigate = useNavigate();
   const [suppliers, setSuppliers] = useState([]);
@@ -54,6 +56,7 @@ const SupplierManagementPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [sortBy, setSortBy] = useState('NEWEST'); // 'NEWEST' (Mặc định: Mới -> Cũ) | 'OLDEST' | 'NAME_ASC' | 'DEBT_DESC'
 
   // Modal state for Add / Update Supplier (UC 02 & UC 03)
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -81,7 +84,7 @@ const SupplierManagementPage = () => {
   }, []);
 
   const filteredSuppliers = useMemo(() => {
-    return suppliers.filter((sup) => {
+    const list = suppliers.filter((sup) => {
       const q = searchTerm.trim().toLowerCase();
       const matchSearch =
         !q ||
@@ -101,7 +104,21 @@ const SupplierManagementPage = () => {
 
       return matchSearch && matchCat && matchStatus;
     });
-  }, [suppliers, searchTerm, categoryFilter, statusFilter]);
+
+    // Mặc định: Mới nhất -> Cũ nhất (NEWEST)
+    return list.sort((a, b) => {
+      if (sortBy === 'OLDEST') {
+        return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+      }
+      if (sortBy === 'NAME_ASC') {
+        return (a.supplierName || '').localeCompare(b.supplierName || '', 'vi');
+      }
+      if (sortBy === 'DEBT_DESC') {
+        return (Number(b.totalPayableDebt) || 0) - (Number(a.totalPayableDebt) || 0);
+      }
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    });
+  }, [suppliers, searchTerm, categoryFilter, statusFilter, sortBy]);
 
   const kpis = useMemo(() => {
     const total = suppliers.length;
@@ -200,8 +217,9 @@ const SupplierManagementPage = () => {
       };
 
       if (editingSupplier) {
+        const targetId = editingSupplier._id || editingSupplier.id;
         const res = await accountantProcurementApi.updateSupplier(
-          editingSupplier._id,
+          targetId,
           payload
         );
         setFeedback({ type: 'success', text: res.message });
@@ -228,10 +246,10 @@ const SupplierManagementPage = () => {
       <section className="wms-page-header">
         <div>
           <h1 className="wms-page-title">
-            Quản lý Nhà cung ứng Nguyên phụ liệu (Manage Material Suppliers)
+            Quản lý Nhà cung ứng Nguyên phụ liệu
           </h1>
           <p className="wms-page-subtitle">
-            UC 01–03: Quản lý hồ sơ pháp lý, điều khoản công nợ, tài khoản ngân hàng thụ hưởng và năng lực cung ứng vải/phụ liệu may mặc.
+            Quản lý hồ sơ pháp lý, điều khoản công nợ, tài khoản ngân hàng thụ hưởng và năng lực cung ứng vải/phụ liệu may mặc.
           </p>
         </div>
         <div className="wms-row-actions">
@@ -250,7 +268,7 @@ const SupplierManagementPage = () => {
             onClick={openAddModal}
           >
             <Plus size={16} />
-            Thêm Nhà cung ứng (Add Supplier)
+            Thêm Nhà cung ứng
           </button>
         </div>
       </section>
@@ -278,7 +296,7 @@ const SupplierManagementPage = () => {
         <div className="wms-kpi-card">
           <span className="wms-kpi-label">Đang hợp tác cung ứng</span>
           <span className="wms-kpi-value">{kpis.activeCount} đối tác</span>
-          <span className="wms-kpi-meta">Đủ điều kiện ký hợp đồng khung</span>
+          <span className="wms-kpi-meta">Đủ điều kiện ký khung hợp đồng </span>
         </div>
         <div className="wms-kpi-card">
           <span className="wms-kpi-label">Tổng dư nợ phải trả NCC</span>
@@ -336,23 +354,50 @@ const SupplierManagementPage = () => {
               <option value="INACTIVE">Ngừng giao dịch</option>
             </select>
           </div>
+
+          <div className="wms-filter-field">
+            <label htmlFor="sup-sort-filter" className="wms-label">
+              Thứ tự sắp xếp
+            </label>
+            <select
+              id="sup-sort-filter"
+              className="wms-select"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+            >
+              <option value="NEWEST">Mới nhất trước (Mới → Cũ)</option>
+              <option value="OLDEST">Cũ nhất trước (Cũ → Mới)</option>
+              <option value="NAME_ASC">Tên NCC (A → Z)</option>
+              <option value="DEBT_DESC">Dư nợ công nợ giảm dần</option>
+            </select>
+          </div>
         </div>
       </section>
 
       {/* Suppliers Table */}
       <section className="wms-table-card" aria-label="Bảng danh sách nhà cung ứng">
-        <div className="wms-table-scroll">
-          <table className="wms-table">
+        <div className="wms-table-scroll no-horizontal-scroll">
+          <table className="wms-table wms-table-responsive-fit">
+            <colgroup>
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '23%' }} />
+              <col style={{ width: '18%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '6%' }} />
+            </colgroup>
             <thead>
               <tr>
                 <th>Mã NCC</th>
-                <th>Tên Doanh nghiệp & Mã số thuế</th>
-                <th>Người đại diện & Liên hệ</th>
-                <th>Nhóm cung ứng & Kỳ hạn nợ</th>
-                <th>Tài khoản Ngân hàng Thụ hưởng</th>
+                <th>Tên Doanh nghiệp & MST</th>
+                <th>Người đại diện & SĐT</th>
+                <th>Nhóm cung ứng</th>
+                <th>Tài khoản Ngân hàng</th>
                 <th className="wms-td-number">Dư nợ phải trả</th>
-                <th>Trạng thái</th>
-                <th>Thao tác nghiệp vụ</th>
+                <th style={{ textAlign: 'center' }}>Trạng thái</th>
+                <th style={{ textAlign: 'center' }}>Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -367,8 +412,8 @@ const SupplierManagementPage = () => {
                   </td>
                 </tr>
               ) : (
-                filteredSuppliers.map((sup) => (
-                  <tr key={sup._id}>
+                filteredSuppliers.map((sup, idx) => (
+                  <tr key={sup._id || sup.id || sup.supplierCode || idx}>
                     <td>
                       <span className="wms-code-pill">{sup.supplierCode}</span>
                     </td>
@@ -379,7 +424,7 @@ const SupplierManagementPage = () => {
                       <div className="wms-helper-text">
                         MST: {sup.taxCode || 'Chưa cập nhật'}
                       </div>
-                      <div className="wms-helper-text">
+                      <div className="wms-helper-text" style={{ wordBreak: 'break-word' }}>
                         Đ/c: {sup.address || 'Chưa cập nhật'}
                       </div>
                     </td>
@@ -393,7 +438,7 @@ const SupplierManagementPage = () => {
                       <div className="wms-helper-text">
                         Liên hệ: {sup.contactName || '—'} | SĐT: {sup.phone}
                       </div>
-                      <div className="wms-helper-text">{sup.email || ''}</div>
+                      <div className="wms-helper-text" style={{ wordBreak: 'break-all' }}>{sup.email || ''}</div>
                     </td>
                     <td>
                       <div>
@@ -417,13 +462,13 @@ const SupplierManagementPage = () => {
                         Chủ TK: {sup.bankInfo?.accountHolder || '—'}
                       </div>
                     </td>
-                    <td className="wms-td-number">
+                    <td className="wms-td-number" style={{ whiteSpace: 'nowrap', fontWeight: 700, color: 'var(--wms-accent-hover)' }}>
                       {formatVnd(sup.totalPayableDebt)}
                     </td>
-                    <td>
+                    <td style={{ textAlign: 'center' }}>
                       {sup.isActive !== false ? (
                         <span className="wms-status-badge wms-status-available">
-                          Available (Đang hợp tác)
+                          Đang hợp tác
                         </span>
                       ) : (
                         <span className="wms-status-badge wms-status-out-of-stock">
@@ -431,26 +476,47 @@ const SupplierManagementPage = () => {
                         </span>
                       )}
                     </td>
-                    <td>
-                      <div className="wms-row-actions">
+                    <td style={{ textAlign: 'center' }}>
+                      <div className="wms-action-cell" style={{ justifyContent: 'center', gap: '6px', flexWrap: 'wrap' }}>
                         <button
                           type="button"
                           className="wms-btn wms-btn-default wms-btn-sm"
                           onClick={() => openEditModal(sup)}
+                          title="Cập nhật thông tin NCC"
                         >
-                          <Edit3 size={14} />
-                          Cập nhật
+                          <Edit3 size={13} />
+                          <span>Sửa</span>
                         </button>
-                        <button
-                          type="button"
-                          className="wms-btn wms-btn-primary wms-btn-sm"
-                          onClick={() =>
-                            navigate(`/accountant/contracts?supplierId=${sup._id}`)
-                          }
-                        >
-                          <FileSignature size={14} />
-                          Lập HĐ Khung
-                        </button>
+                        {Number(sup.activeContractsCount || 0) === 0 ? (
+                          <button
+                            type="button"
+                            className="wms-btn wms-btn-primary wms-btn-sm"
+                            style={{
+                              backgroundColor: '#16a34a',
+                              borderColor: '#15803d',
+                              fontWeight: 600,
+                            }}
+                            onClick={() =>
+                              navigate(`/accountant/contracts?supplierId=${sup._id || sup.id}`)
+                            }
+                            title="Nhà cung ứng chưa có HĐ active - Bấm để lập và ký kết hợp đồng mới"
+                          >
+                            <FileSignature size={13} />
+                            <span>Ký HĐ</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="wms-btn wms-btn-default wms-btn-sm"
+                            onClick={() =>
+                              navigate(`/accountant/contracts?supplierId=${sup._id || sup.id}`)
+                            }
+                            title={`NCC đang có ${sup.activeContractsCount} hợp đồng active - Xem hoặc lập thêm HĐ`}
+                          >
+                            <FileText size={13} />
+                            <span>HĐ ({sup.activeContractsCount})</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -468,8 +534,8 @@ const SupplierManagementPage = () => {
             <div className="wms-modal-header">
               <h2 className="wms-modal-title">
                 {editingSupplier
-                  ? `Cập nhật Nhà cung ứng: ${editingSupplier.supplierCode} (Update Material Supplier)`
-                  : 'Thêm mới Nhà cung ứng Nguyên phụ liệu (Add Material Supplier)'}
+                  ? `Cập nhật Nhà cung ứng: ${editingSupplier.supplierCode}`
+                  : 'Thêm mới Nhà cung ứng Nguyên phụ liệu'}
               </h2>
               <button
                 type="button"

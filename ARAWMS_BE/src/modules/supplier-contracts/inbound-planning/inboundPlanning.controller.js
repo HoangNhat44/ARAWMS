@@ -9,12 +9,34 @@ export const getInboundPlans = async (req, res, next) => {
   }
 };
 
+export const getInboundPlanById = async (req, res, next) => {
+  try {
+    const data = await inboundPlanningService.getInboundPlanById(req.params.id);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getContractInboundSummary = async (req, res, next) => {
+  try {
+    const data = await inboundPlanningService.getContractInboundSummary(req.params.contractId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createInboundPlan = async (req, res, next) => {
   try {
     const data = await inboundPlanningService.scheduleInboundPlan(req.body, req.user?._id);
+    const batchCount = data.batches?.length || data.totalBatches || 1;
+    const message = batchCount > 1
+      ? `Lập kế hoạch tiếp nhận nguyên liệu thành công (${batchCount} đợt giao hàng gộp chung trong kế hoạch ${data.planCode})`
+      : 'Lập kế hoạch lịch trình tiếp nhận nguyên liệu thành công';
     res.status(201).json({
       success: true,
-      message: 'Lập kế hoạch lịch trình tiếp nhận nguyên vật liệu thành công',
+      message,
       data,
     });
   } catch (error) {
@@ -35,9 +57,63 @@ export const updateInboundPlanStatus = async (req, res, next) => {
   }
 };
 
-export default {
-  getInboundPlans,
-  createInboundPlan,
-  updateInboundPlanStatus,
+export const amendInboundPlan = async (req, res, next) => {
+  try {
+    const data = await inboundPlanningService.amendInboundPlanVersion(
+      req.params.id,
+      req.body,
+      req.user?._id
+    );
+    res.status(201).json({
+      success: true,
+      message: `Đã tạo thành công Phiên bản mới ${data.planCode} (v${data.versionNumber}) cho kế hoạch tiếp nhận nguyên liệu`,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
+export const getPlanVersions = async (req, res, next) => {
+  try {
+    const data = await inboundPlanningService.getInboundPlanVersions(req.params.id);
+    res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const verifyInboundPlanDelivery = async (req, res, next) => {
+  try {
+    const data = await inboundPlanningService.recordTechnicianVerification(
+      req.params.id,
+      req.body,
+      req.user?._id
+    );
+    const msg =
+      data.deliveryComplianceStatus === 'MATCHED'
+        ? 'Ghi nhận giao nhận thành công: Đúng kế hoạch.'
+        : 'Đã ghi nhận giao nhận SAI KẾ HOẠCH và gửi cảnh báo sang mục "Xử lý sai lệch hợp đồng".';
+    res.status(200).json({
+      success: true,
+      message: msg,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export default {
+  getInboundPlans,
+  getInboundPlanById,
+  getContractInboundSummary,
+  createInboundPlan,
+  updateInboundPlanStatus,
+  amendInboundPlan,
+  getPlanVersions,
+  verifyInboundPlanDelivery,
+};

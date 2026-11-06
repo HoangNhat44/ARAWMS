@@ -37,8 +37,17 @@ export const updateSupplier = async (req, res, next) => {
 
 export const getMaterialsCatalog = async (req, res, next) => {
   try {
-    const data = await contractWorkspaceService.listRawMaterialsCatalog();
+    const data = await contractWorkspaceService.listRawMaterialsCatalog(req.query);
     res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createRawMaterial = async (req, res, next) => {
+  try {
+    const data = await contractWorkspaceService.createRawMaterialQuick(req.body);
+    res.status(201).json({ success: true, message: 'Đã thêm nguyên phụ liệu mới thành công.', data });
   } catch (error) {
     next(error);
   }
@@ -75,12 +84,45 @@ export const draftContract = async (req, res, next) => {
   }
 };
 
+export const getContractVersions = async (req, res, next) => {
+  try {
+    const data = await contractWorkspaceService.getContractVersions(req.params.id);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const amendContract = async (req, res, next) => {
+  try {
+    const data = await contractWorkspaceService.amendContractVersion(
+      req.params.id,
+      req.body,
+      req.user?._id
+    );
+    res.status(201).json({
+      success: true,
+      message: `Đã khởi tạo phiên bản mới v${data.versionNumber} (${data.contractCode}) thành công`,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updateContract = async (req, res, next) => {
   try {
-    const data = await contractWorkspaceService.updateContractFramework(req.params.id, req.body);
+    const data = await contractWorkspaceService.updateContractFramework(
+      req.params.id,
+      req.body,
+      req.user?._id
+    );
     res.status(200).json({
       success: true,
-      message: 'Đã cập nhật khung hợp đồng thành công',
+      message:
+        data.versionNumber && data.parentSupersededContractId
+          ? `Đã tạo phiên bản điều chỉnh mới v${data.versionNumber} (${data.contractCode})`
+          : 'Đã cập nhật khung hợp đồng thành công',
       data,
     });
   } catch (error) {
@@ -105,15 +147,36 @@ export const updateContractStatus = async (req, res, next) => {
   }
 };
 
+export const terminateContract = async (req, res, next) => {
+  try {
+    const data = await contractWorkspaceService.terminateContract(
+      req.params.id,
+      req.body,
+      req.user?._id
+    );
+    res.status(200).json({
+      success: true,
+      message: `Đã chấm dứt hợp đồng [${data.contractCode}] thành công.`,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   getSuppliers,
   createSupplier,
   updateSupplier,
   getMaterialsCatalog,
+  createRawMaterial,
   getContracts,
   getContractDetail,
+  getContractVersions,
   draftContract,
+  amendContract,
   updateContract,
   updateContractStatus,
+  terminateContract,
 };
 

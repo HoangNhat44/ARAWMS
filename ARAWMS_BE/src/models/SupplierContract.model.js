@@ -36,7 +36,7 @@ const supplierContractSchema = new Schema(
     contractCode: { type: String, required: true, unique: true, index: true },
     contractTitle: {
       type: String,
-      default: 'Hợp đồng khung cung ứng nguyên phụ liệu may mặc',
+      default: 'khung hợp đồng cung ứng nguyên phụ liệu may mặc',
     },
     contractType: {
       type: String,
@@ -45,9 +45,20 @@ const supplierContractSchema = new Schema(
     },
     signingDate: { type: Date, default: Date.now },
     effectiveFrom: { type: Date, default: Date.now },
-    effectiveTo: { type: Date },
+    effectiveTo: {
+      type: Date,
+      default: function () {
+        const base = this.effectiveFrom || this.signingDate || Date.now();
+        const d = new Date(base);
+        d.setMonth(d.getMonth() + 6);
+        return d;
+      },
+    },
     supplierId: { type: Schema.Types.ObjectId, ref: 'Supplier', required: true, index: true },
     parentSupersededContractId: { type: Schema.Types.ObjectId, ref: 'SupplierContract', default: null },
+    rootContractId: { type: Schema.Types.ObjectId, ref: 'SupplierContract', default: null, index: true },
+    versionNumber: { type: Number, default: 1, min: 1, index: true },
+    amendmentReason: { type: String, default: '' },
     status: { type: String, enum: CONTRACT_STATUS, default: 'DRAFT_FRAMEWORK', index: true },
     draftedByAccountantId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     finalizedByOwnerId: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -72,6 +83,16 @@ const supplierContractSchema = new Schema(
       vatAmount: { type: Number, default: 0, min: 0 },
       depositPercent: { type: Number, default: 30, min: 0, max: 100 },
       depositAmount: { type: Number, default: 0, min: 0 },
+      paymentInstallmentsCount: { type: Number, default: 1, min: 0, max: 12 },
+      paymentSchedule: [
+        {
+          installmentNumber: { type: Number, required: true, min: 1 },
+          dueDate: { type: Date, required: true },
+          paymentPercent: { type: Number, required: true, min: 0, max: 100 },
+          paymentAmount: { type: Number, default: 0, min: 0 },
+          note: { type: String, default: '' },
+        },
+      ],
       paymentMethod: {
         type: String,
         enum: ['BANK_TRANSFER', 'CASH', 'LETTER_OF_CREDIT'],
@@ -112,6 +133,10 @@ const supplierContractSchema = new Schema(
         'Mọi tranh chấp phát sinh được ưu tiên giải quyết qua thương lượng trên cơ sở Biên bản KCS thực tế tại kho Bên A; nếu không đạt thỏa thuận sẽ đưa ra Tòa án Kinh tế có thẩm quyền tại TP.HCM.',
     },
     notes: { type: String, default: '' },
+    terminatedAt: { type: Date, default: null },
+    terminatedByUserId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    terminationReason: { type: String, default: '' },
+    isAutoTerminated: { type: Boolean, default: false },
     contractedMaterials: [contractedMaterialSchema],
   },
   { collection: 'supplier_contracts' }
