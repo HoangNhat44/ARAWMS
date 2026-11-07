@@ -316,9 +316,20 @@ const QuickOrderModal = ({
               </span>
             </div>
             {successOrder.status === 'PENDING' && (
-              <Alert variant="info" className="small text-start mx-auto py-2 px-3 mb-4" style={{ maxWidth: 540 }}>
+              <Alert variant="info" className="small text-start mx-auto py-2 px-3 mb-3" style={{ maxWidth: 540 }}>
                 <Icon name="info-circle" className="me-2 text-primary" />
                 Hệ thống đã gửi <strong>Phiếu xác nhận đơn hàng</strong> vào Messenger của khách. Khi khách nhắn <em>"OK"</em> hoặc xác nhận, đơn sẽ tự động chốt và chuyển sang giữ chỗ tồn kho!
+              </Alert>
+            )}
+            {Array.isArray(successOrder.stockWarnings) && successOrder.stockWarnings.length > 0 && (
+              <Alert variant="warning" className="small text-start mx-auto py-2 px-3 mb-4" style={{ maxWidth: 540 }}>
+                <div className="fw-bold mb-1"><Icon name="exclamation-triangle-fill" className="me-1" />Cảnh báo tồn kho cho Sale:</div>
+                <ul className="mb-1 ps-3">
+                  {successOrder.stockWarnings.map((w) => (
+                    <li key={w.skuCode}>{w.message}</li>
+                  ))}
+                </ul>
+                <div className="text-muted">Hướng dẫn: báo khách thời gian chờ hàng, giảm số lượng hoặc đổi sang SKU khác trước khi chốt đơn.</div>
               </Alert>
             )}
             <div>

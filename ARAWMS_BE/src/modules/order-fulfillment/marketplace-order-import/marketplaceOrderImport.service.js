@@ -14,13 +14,13 @@
 
 import ExcelJS from 'exceljs';
 import SalesOrder from '../../../models/SalesOrder.model.js';
-import SalesChannel from '../../../models/SalesChannel.model.js';
 import Sku from '../../../models/Sku.model.js';
 import Product from '../../../models/Product.model.js';
 import Customer from '../../../models/Customer.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
 import { emitMarketplaceOrdersImported } from '../../../config/socket.js';
+import { evaluateStockForItems } from '../order-management/orderManagement.service.js';
 
 /**
  * Hàm chuẩn hoá chuỗi tiêu đề cột (bỏ dấu tiếng Việt, ký tự đặc biệt, đưa về chữ thường)
@@ -193,140 +193,58 @@ export const findMatchingSku = async (rawInput) => {
 };
 
 /**
- * Khởi tạo dữ liệu các kênh bán hàng thực tế vào MongoDB Atlas nếu bộ sưu tập đang trống
+ * Danh sách cấu hình các kênh / gian hàng bán hàng
  */
-export const seedDefaultChannelsIfEmpty = async () => {
-  const count = await SalesChannel.countDocuments();
-  if (count > 0) return;
-
-  const defaultChannels = [
-    {
-      channel: 'FACEBOOK',
-      channelName: 'Facebook Fanpages',
-      sourceType: 'FANPAGE',
-      sourceId: '1450121658175891',
-      sourceName: 'Fanpage - AraStore (Chính)',
-      badgeLabel: 'FB Fanpages',
-      chipClass: 'fb-chip',
-      connectionStatus: 'CONNECTED',
-      isActive: true,
-      lastSyncAt: new Date(),
-    },
-    {
-      channel: 'FACEBOOK',
-      channelName: 'Facebook Fanpages',
-      sourceType: 'FANPAGE',
-      sourceId: '1162149123628872',
-      sourceName: 'Fanpage - Learnmate (Đầm Thiết Kế)',
-      badgeLabel: 'FB Fanpages',
-      chipClass: 'fb-chip',
-      connectionStatus: 'CONNECTED',
-      isActive: true,
-      lastSyncAt: new Date(),
-    },
-    {
-      channel: 'TIKTOK',
-      channelName: 'TikTok Shop',
-      sourceType: 'TIKTOK_SHOP',
-      sourceId: 'tiktok_shop_01',
-      sourceName: 'TikTok Shop - ARA Official Store',
-      badgeLabel: 'TikTok Shop',
-      chipClass: 'tiktok-chip',
-      connectionStatus: 'CONNECTED',
-      isActive: true,
-      lastSyncAt: new Date(),
-    },
-    {
-      channel: 'TIKTOK',
-      channelName: 'TikTok Shop',
-      sourceType: 'TIKTOK_SHOP',
-      sourceId: 'tiktok_shop_02',
-      sourceName: 'TikTok Shop - ARA Studio Outlet',
-      badgeLabel: 'TikTok Shop',
-      chipClass: 'tiktok-chip',
-      connectionStatus: 'CONNECTED',
-      isActive: true,
-      lastSyncAt: new Date(),
-    },
-    {
-      channel: 'SHOPEE',
-      channelName: 'Shopee Mall',
-      sourceType: 'SHOPEE_STORE',
-      sourceId: 'shopee_mall_01',
-      sourceName: 'Shopee Mall - ARA Flagship Store',
-      badgeLabel: 'Shopee Mall',
-      chipClass: 'shopee-chip',
-      connectionStatus: 'CONNECTED',
-      isActive: true,
-      lastSyncAt: new Date(),
-    },
-    {
-      channel: 'EXCEL_IMPORT',
-      channelName: 'File Excel',
-      sourceType: 'EXCEL_CUSTOM',
-      sourceId: 'excel_general',
-      sourceName: 'File Excel Tổng Hợp Nội Bộ',
-      badgeLabel: 'Import Excel',
-      chipClass: 'excel-chip',
-      connectionStatus: 'CONNECTED',
-      isActive: true,
-      lastSyncAt: new Date(),
-    },
-  ];
-
-  await SalesChannel.insertMany(defaultChannels);
-  console.log('[SalesChannel] Đã tự động khởi tạo 6 kênh bán hàng liên kết thực tế vào MongoDB Atlas!');
-};
+export const CONFIGURED_SALES_CHANNELS = [
+  {
+    channel: 'FACEBOOK',
+    sourceType: 'FANPAGE',
+    sourceId: '1450121658175891',
+    sourceName: 'Fanpage - AraStore (Chính)',
+    isActive: true,
+  },
+  {
+    channel: 'FACEBOOK',
+    sourceType: 'FANPAGE',
+    sourceId: '1162149123628872',
+    sourceName: 'Fanpage - Learnmate (Đầm Thiết Kế)',
+    isActive: true,
+  },
+  {
+    channel: 'TIKTOK',
+    sourceType: 'TIKTOK_SHOP',
+    sourceId: 'tiktok_shop_01',
+    sourceName: 'TikTok Shop - ARA Official Store',
+    isActive: true,
+  },
+  {
+    channel: 'TIKTOK',
+    sourceType: 'TIKTOK_SHOP',
+    sourceId: 'tiktok_shop_02',
+    sourceName: 'TikTok Shop - ARA Studio Outlet',
+    isActive: true,
+  },
+  {
+    channel: 'SHOPEE',
+    sourceType: 'SHOPEE_STORE',
+    sourceId: 'shopee_mall_01',
+    sourceName: 'Shopee Mall - ARA Flagship Store',
+    isActive: true,
+  },
+  {
+    channel: 'EXCEL_IMPORT',
+    sourceType: 'EXCEL_CUSTOM',
+    sourceId: 'excel_general',
+    sourceName: 'File Excel Tổng Hợp Nội Bộ',
+    isActive: true,
+  },
+];
 
 /**
- * Lấy danh sách các kênh / nguồn bán hàng thực tế từ Database
+ * Lấy danh sách các kênh / nguồn bán hàng có sẵn
  */
-export const getSalesChannels = async () => {
-  await seedDefaultChannelsIfEmpty();
-  return await SalesChannel.find({ isActive: true }).lean();
-};
-
-/**
- * Lấy tóm tắt trạng thái kết nối đa kênh từ DB (dùng cho thanh TopHeader Chips)
- */
-export const getChannelsSummary = async () => {
-  await seedDefaultChannelsIfEmpty();
-  const channels = await SalesChannel.find({ isActive: true }).lean();
-
-  const channelConfigs = [
-    { channel: 'FACEBOOK', label: 'FB Fanpages', chipClass: 'fb-chip' },
-    { channel: 'TIKTOK', label: 'TikTok Shop', chipClass: 'tiktok-chip' },
-    { channel: 'SHOPEE', label: 'Shopee Mall', chipClass: 'shopee-chip' },
-  ];
-
-  return channelConfigs.map((cfg) => {
-    const matched = channels.filter((c) => c.channel === cfg.channel);
-    const connected = matched.filter((c) => c.connectionStatus === 'CONNECTED');
-    const count = connected.length;
-    const isConnected = count > 0;
-
-    let display = cfg.label;
-    if (cfg.channel === 'SHOPEE') {
-      display = count > 1 ? `Shopee Mall (${count})` : 'Shopee Mall';
-    } else {
-      display = `${cfg.label} (${count})`;
-    }
-
-    return {
-      channel: cfg.channel,
-      label: cfg.label,
-      count,
-      display,
-      chipClass: cfg.chipClass,
-      isConnected,
-      stores: matched.map((s) => ({
-        id: s.sourceId,
-        name: s.sourceName,
-        status: s.connectionStatus,
-        lastSyncAt: s.lastSyncAt,
-      })),
-    };
-  });
+export const getSalesChannels = () => {
+  return CONFIGURED_SALES_CHANNELS;
 };
 
 /**
@@ -723,6 +641,8 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
 
   const batchCode = await CounterSequence.getNextSequence('IMPORT_BATCH', 'BATCH', 4);
   const createdOrders = [];
+  let autoApprovedCount = 0;
+  let pendingApprovalCount = 0;
 
   for (const ord of orders) {
     // 1. Tạo hoặc lấy thông tin khách hàng (xử lý trường hợp số điện thoại bị ẩn sao từ sàn TMĐT)
@@ -780,6 +700,15 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
 
     if (processedItems.length === 0) continue;
 
+    // 2b. [Quy tắc duyệt theo ngưỡng tồn] Chỉ đơn có mặt hàng thiếu hàng / dưới ngưỡng cảnh báo
+    //     (Sku.safetyStockThreshold) mới cần Kho duyệt. Đơn còn lại tự động giữ chỗ tồn kho.
+    const stockCheck = await evaluateStockForItems(processedItems);
+    const riskyItems = stockCheck.filter((r) => r.shortage || r.belowThreshold);
+    const needsWarehouseApproval = riskyItems.length > 0;
+    const approvalReason = needsWarehouseApproval
+      ? riskyItems.map((r) => r.message).join(' | ')
+      : '';
+
     // 3. Tạo mã đơn hàng hệ thống ARA
     const orderCode = await CounterSequence.getNextSequence('ORDER_CODE', 'ARA', 6);
     const totalOrderAmount = ord.totalAmount > 0 ? ord.totalAmount : itemsSubtotal;
@@ -798,10 +727,13 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
         externalTrackingCode: ord.trackingCode || '',
         importBatchCode: batchCode,
       },
-      status: 'PENDING',
-      importStatus: 'PENDING_WAREHOUSE_APPROVAL',
+      status: needsWarehouseApproval ? 'PENDING' : 'CONFIRMED_RESERVED',
+      importStatus: needsWarehouseApproval ? 'PENDING_WAREHOUSE_APPROVAL' : 'APPROVED',
+      importApprovalReason: needsWarehouseApproval ? approvalReason : 'Đủ tồn kho, trên ngưỡng cảnh báo - hệ thống tự động duyệt',
+      importAutoApproved: !needsWarehouseApproval,
       importedBySellerId: user._id,
       importedAt: new Date(),
+      ...(needsWarehouseApproval ? {} : { approvedAt: new Date(), confirmedAt: new Date() }),
       paymentMethod: 'COD',
       paymentStatus: 'PENDING',
       notes: ord.notes ? `[Import Sàn]: ${ord.notes}` : `[Import Sàn ${channel}]`,
@@ -812,6 +744,7 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
       },
       warehouseFulfillment: {
         waybillCode: ord.trackingCode || '',
+        ...(needsWarehouseApproval ? {} : { stockReservedAt: new Date() }),
       },
       items: processedItems,
       financialSummary: {
@@ -823,19 +756,31 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
       },
     });
 
+    // Đơn tự động duyệt: giữ chỗ tồn kho ngay (không cần Kho thao tác)
+    if (!needsWarehouseApproval) {
+      for (const it of processedItems) {
+        await Sku.findByIdAndUpdate(it.skuId, { $inc: { reservedQty: it.orderedQty } });
+      }
+      autoApprovedCount += 1;
+    } else {
+      pendingApprovalCount += 1;
+    }
+
     createdOrders.push(newSalesOrder);
   }
 
-  // Bắn thông báo Realtime tự động gửi đến Kho (Warehouse) qua Socket.io
-  emitMarketplaceOrdersImported({
-    batchCode,
-    channel,
-    sourceName: sourceName || channel,
-    orderCount: createdOrders.length,
-    importedBy: user.fullName || user.username,
-    message: `Seller vừa import ${createdOrders.length} đơn hàng từ ${sourceName || channel} (Mã lô: ${batchCode}). Kho cần duyệt lại!`,
-    createdAt: new Date(),
-  });
+  // Chỉ báo Kho khi có đơn thực sự cần duyệt (thiếu hàng / dưới ngưỡng tồn)
+  if (pendingApprovalCount > 0) {
+    emitMarketplaceOrdersImported({
+      batchCode,
+      channel,
+      sourceName: sourceName || channel,
+      orderCount: pendingApprovalCount,
+      importedBy: user.fullName || user.username,
+      message: `Lô ${batchCode} (${sourceName || channel}): ${pendingApprovalCount} đơn cần Kho duyệt do thiếu hàng / dưới ngưỡng tồn, ${autoApprovedCount} đơn đã tự động duyệt.`,
+      createdAt: new Date(),
+    });
+  }
 
   // Ghi SystemLog kiểm toán
   try {
@@ -863,6 +808,8 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
   return {
     batchCode,
     totalCreated: createdOrders.length,
+    autoApprovedCount,
+    pendingApprovalCount,
     orders: createdOrders,
   };
 };
@@ -877,7 +824,7 @@ export const approveImportedOrder = async (orderId, warehouseUser) => {
   }
 
   if (order.importStatus !== 'PENDING_WAREHOUSE_APPROVAL') {
-    throw new Error(`Đơn hàng không ở trạng thái chờ kho duyệt (Hiện tại: ${order.importStatus})`);
+    throw new Error(`Đơn ${order.orderCode} không ở trạng thái chờ Kho duyệt (hiện tại: ${order.importStatus}). Hướng dẫn: đơn này ${order.importStatus === 'APPROVED' ? 'đã được duyệt (có thể do hệ thống tự duyệt vì đủ tồn kho)' : 'không thuộc luồng duyệt'}, không cần thao tác thêm.`);
   }
 
   // Kiểm tra tồn kho khả dụng và giữ chỗ (Reserve)
@@ -889,7 +836,10 @@ export const approveImportedOrder = async (orderId, warehouseUser) => {
 
     const available = (sku.onHandQty || 0) - (sku.reservedQty || 0);
     if (available < item.orderedQty) {
-      throw new Error(`SKU ${sku.skuCode} không đủ tồn kho khả dụng (Còn ${available}, cần ${item.orderedQty})`);
+      throw new Error(
+        `Không thể duyệt đơn ${order.orderCode}: SKU ${sku.skuCode} không đủ tồn kho khả dụng (còn ${available}, cần ${item.orderedQty}). ` +
+        'Hướng dẫn: nhập thêm hàng cho SKU này, hoặc báo Seller giảm số lượng / hủy đơn rồi duyệt lại.'
+      );
     }
 
     // Tăng số lượng giữ chỗ

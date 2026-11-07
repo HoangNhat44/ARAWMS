@@ -399,9 +399,12 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
               </p>
               <Alert variant="warning" className="small text-start border">
                 <div className="fw-bold text-dark mb-1 d-flex align-items-center gap-1">
-                  <Icon name="shield-exclamation" /> Quy trình vận hành Kho (Warehouse Approval):
+                  <Icon name="shield-exclamation" /> Quy tắc duyệt đơn theo ngưỡng tồn kho:
                 </div>
-                Các đơn hàng vừa import đang ở trạng thái <strong>PENDING_WAREHOUSE_APPROVAL</strong>. Hệ thống đã bắn thông báo tự động cho bộ phận Kho để duyệt số lượng tồn kho khả dụng trước khi đóng hàng xuất kho.
+                <ul className="mb-0 ps-3">
+                  <li><strong>{successInfo.autoApprovedCount ?? 0} đơn</strong> đủ hàng, trên ngưỡng cảnh báo → hệ thống <strong>tự động duyệt &amp; giữ chỗ tồn kho</strong>.</li>
+                  <li><strong>{successInfo.pendingApprovalCount ?? 0} đơn</strong> thiếu hàng hoặc làm tồn thấp hơn ngưỡng → chờ <strong>Kho duyệt</strong> (đã báo Kho tự động).</li>
+                </ul>
               </Alert>
               <Button className="btn-wms-primary px-4 mt-2" onClick={onClose}>
                 Hoàn Tất & Đóng
