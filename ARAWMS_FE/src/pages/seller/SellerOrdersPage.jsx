@@ -50,19 +50,19 @@ const detectTelco = (phone = '') => {
  * Danh sách trạng thái Pancake và cấu hình nhãn đếm
  */
 const PANCAKE_STATUSES = [
-  { key: '',                    label: 'Tất cả',           countKey: 'ALL' },
-  { key: 'PENDING',             label: 'Mới',              countKey: 'PENDING' },
-  { key: 'CONFIRMED_RESERVED',  label: 'Đã xác nhận',      countKey: 'CONFIRMED_RESERVED' },
-  { key: 'PICKING',             label: 'Chờ chuyển hàng',  countKey: 'PICKING' },
-  { key: 'PACKED',              label: 'Đang đóng hàng',   countKey: 'PACKED' },
-  { key: 'HANDED_OVER_CARRIER', label: 'Đã gửi hàng',      countKey: 'HANDED_OVER_CARRIER' },
-  { key: 'DELIVERED',           label: 'Đã nhận',          countKey: 'DELIVERED' },
-  { key: 'EXCHANGE_REQUESTED',  label: 'Đang đổi hàng',    countKey: 'EXCHANGE_REQUESTED' },
-  { key: 'PARTIALLY_RETURNED',  label: 'Trả 1 phần',       countKey: 'PARTIALLY_RETURNED' },
-  { key: 'RETURN_REQUESTED',    label: 'Đang hoàn',        countKey: 'RETURN_REQUESTED' },
-  { key: 'COMPLETED',           label: 'Hoàn thành / POS', countKey: 'COMPLETED' },
-  { key: 'CANCELLED',           label: 'Đã hủy',           countKey: 'CANCELLED' },
-  { key: 'RETURNED',            label: 'Đã trả hàng',      countKey: 'RETURNED' },
+  { key: '',                    label: 'Tất cả',                         countKey: 'ALL' },
+  { key: 'PENDING',             label: 'Mới (Chờ chốt)',                 countKey: 'PENDING' },
+  { key: 'CONFIRMED_RESERVED',  label: 'Chờ lấy hàng (ready_to_pick)',   countKey: 'CONFIRMED_RESERVED' },
+  { key: 'PICKING',             label: 'Đang lấy hàng (picking)',        countKey: 'PICKING' },
+  { key: 'PACKED',              label: 'Đã lấy hàng (picked)',           countKey: 'PACKED' },
+  { key: 'HANDED_OVER_CARRIER', label: 'Đang giao GHN (delivering)',     countKey: 'HANDED_OVER_CARRIER' },
+  { key: 'DELIVERED',           label: 'Đã giao (delivered)',            countKey: 'DELIVERED' },
+  { key: 'EXCHANGE_REQUESTED',  label: 'Đang đổi hàng',                  countKey: 'EXCHANGE_REQUESTED' },
+  { key: 'PARTIALLY_RETURNED',  label: 'Trả 1 phần',                     countKey: 'PARTIALLY_RETURNED' },
+  { key: 'RETURN_REQUESTED',    label: 'Đang hoàn (return)',             countKey: 'RETURN_REQUESTED' },
+  { key: 'COMPLETED',           label: 'Hoàn thành / POS',               countKey: 'COMPLETED' },
+  { key: 'CANCELLED',           label: 'Đã hủy (cancel)',                countKey: 'CANCELLED' },
+  { key: 'RETURNED',            label: 'Đã hoàn về kho (returned)',      countKey: 'RETURNED' },
 ];
 
 /**
@@ -745,10 +745,42 @@ const SellerOrdersPage = () => {
                         </div>
                       </td>
 
-                      {/* Mã vận đơn */}
-                      <td>
+                      {/* Mã vận đơn (Tự động lấy từ GHN API) */}
+                      <td onClick={(e) => e.stopPropagation()}>
                         {waybill ? (
-                          <span className="fw-semibold text-primary" style={{ fontSize: '0.82rem' }}>{waybill}</span>
+                          <div className="d-flex flex-column lh-sm">
+                            <span className="fw-semibold text-primary font-monospace" style={{ fontSize: '0.82rem' }}>
+                              {waybill}
+                            </span>
+                            <span className="text-muted" style={{ fontSize: '0.68rem' }}>
+                              GHN: {ord.warehouseFulfillment?.ghnStatus || 'ready_to_pick'}
+                            </span>
+                          </div>
+                        ) : ord.orderType !== 'POS_DIRECT' && !['CANCELLED', 'RETURNED'].includes(ord.status) ? (
+                          <Button
+                            size="sm"
+                            variant="outline-primary"
+                            className="py-0 px-2"
+                            style={{ fontSize: '0.72rem' }}
+                            onClick={async () => {
+                              try {
+                                const res = await sellerService.syncOrderWithGhn(id);
+                                if (res?.success) {
+                                  const waybill = res.data?.warehouseFulfillment?.waybillCode || '';
+                                  const chatNotified = res.data?.chatNotified;
+                                  const msg = chatNotified
+                                    ? `Đã lấy mã vận đơn GHN: ${waybill} và đã gửi tin nhắn cho khách!`
+                                    : `Đã lấy mã vận đơn GHN: ${waybill}! (Đơn sàn TMĐT / chưa có kênh Chat nên bỏ qua gửi tin)`;
+                                  showSuccess(msg, 'Đồng bộ GHN');
+                                  fetchOrders(currentPage);
+                                }
+                              } catch (err) {
+                                showWarning(err.message || 'Không lấy được mã vận đơn GHN');
+                              }
+                            }}
+                          >
+                            <Icon name="truck" className="me-1" /> Lấy mã GHN
+                          </Button>
                         ) : (
                           <span className="text-muted opacity-50">-</span>
                         )}
@@ -835,6 +867,21 @@ const SellerOrdersPage = () => {
                       <td className="text-center">
                         <div className="d-flex flex-column align-items-center gap-1">
                           {renderStatusBadge(ord.status)}
+                          {ord.warehouseFulfillment?.ghnStatus && (
+                            <span
+                              className="badge rounded-pill font-monospace border"
+                              style={{
+                                backgroundColor: '#EEF2FF',
+                                color: '#3730A3',
+                                borderColor: '#C7D2FE',
+                                fontSize: '0.66rem',
+                                padding: '2px 6px',
+                              }}
+                              title={ord.warehouseFulfillment?.ghnStatusName || ord.warehouseFulfillment?.ghnStatus}
+                            >
+                              GHN: {ord.warehouseFulfillment.ghnStatus}
+                            </span>
+                          )}
                           {ord.importStatus === 'PENDING_WAREHOUSE_APPROVAL' && (
                             <span
                               className="badge rounded-pill fw-semibold border"

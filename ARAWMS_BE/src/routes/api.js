@@ -1,5 +1,5 @@
 import express from 'express';
-import ghnRoutes from './ghn.routes.js';
+import ghnRoutes from '../modules/ghn/ghn.routes.js';
 import authRoutes from '../modules/system-administration/authentication/auth.routes.js';
 import accountRoutes from '../modules/system-administration/account-governance/accountGovernance.routes.js';
 

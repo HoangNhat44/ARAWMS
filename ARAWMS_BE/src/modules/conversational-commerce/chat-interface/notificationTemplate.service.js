@@ -89,11 +89,126 @@ export const buildPackingCompletedText = (order, waybillCode) => {
   return (
     `📦 ĐƠN HÀNG #${order.orderCode} ĐÃ ĐƯỢC ĐÓNG GÓI XONG!\n` +
     `━━━━━━━━━━━━━━━━━━━━━\n` +
-    `Mã vận đơn: ${waybillCode}\n` +
+    `Mã vận đơn GHN: ${waybillCode}\n` +
     `Đơn vị vận chuyển: Giao Hàng Nhanh (GHN)\n` +
     `Kiện hàng của bạn đang được bàn giao cho bưu tá. Thời gian giao hàng dự kiến từ 2-3 ngày làm việc.\n` +
     `Quý khách vui lòng chú ý điện thoại để bưu tá liên hệ giao hàng nhé!`
   );
+};
+
+/**
+ * Tạo mẫu tin nhắn tự động gửi cho khách hàng theo từng trạng thái Realtime của Giao Hàng Nhanh (GHN)
+ * @param {Object} order - Bản ghi SalesOrder
+ * @param {string} ghnStatus - Trạng thái từ GHN (ready_to_pick, picking, storing, delivering, delivered, cancel, return, returned...)
+ * @param {string} [waybillCode] - Mã vận đơn GHN
+ * @returns {string}
+ */
+export const buildGhnStatusUpdateText = (order, ghnStatus, waybillCode) => {
+  const code = waybillCode || order?.warehouseFulfillment?.waybillCode || 'Đang cập nhật';
+  const normalized = String(ghnStatus || '').toLowerCase().trim();
+  const cod = formatMoney(order?.financialSummary?.expectedCodAmount || order?.financialSummary?.totalOrderAmount || 0);
+
+  switch (normalized) {
+    case 'ready_to_pick':
+      return (
+        `🚚 ĐÃ TẠO VẬN ĐƠN GIAO HÀNG NHANH (GHN)\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Mã đơn hàng: #${order.orderCode}\n` +
+        `Mã vận đơn GHN: ${code}\n` +
+        `Trạng thái GHN: Chờ lấy hàng (ready_to_pick)\n` +
+        `Tổng thu hộ (COD): ${cod}\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Đơn hàng của quý khách đã được đẩy lên hệ thống GHN và cấp mã vận đơn tự động. AraStore đang chuẩn bị bàn giao kiện hàng cho bưu tá!`
+      );
+
+    case 'picking':
+    case 'money_collect_picking':
+      return (
+        `📦 BƯU TÁ GHN ĐANG ĐẾN KHO LẤY HÀNG\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Mã đơn hàng: #${order.orderCode}\n` +
+        `Mã vận đơn GHN: ${code}\n` +
+        `Trạng thái GHN: Đang lấy hàng (${normalized})\n` +
+        `Bưu tá Giao Hàng Nhanh đang tiếp nhận kiện hàng của bạn tại kho AraStore.`
+      );
+
+    case 'picked':
+    case 'storing':
+    case 'transporting':
+    case 'sorting':
+      return (
+        `🏢 KIỆN HÀNG ĐÃ NHẬP KHO TRUNG CHUYỂN GHN\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Mã đơn hàng: #${order.orderCode}\n` +
+        `Mã vận đơn GHN: ${code}\n` +
+        `Trạng thái GHN: Đang luân chuyển tại bưu cục (${normalized})\n` +
+        `Kiện hàng đã được GHN揽 nhận và đang phân loại để chuyển đến khu vực của quý khách.`
+      );
+
+    case 'delivering':
+    case 'money_collect_delivering':
+      return (
+        `🛵 SHIPPER GHN ĐANG GIAO HÀNG ĐẾN BẠN!\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Mã đơn hàng: #${order.orderCode}\n` +
+        `Mã vận đơn GHN: ${code}\n` +
+        `Trạng thái GHN: Nhân viên đang giao hàng (${normalized})\n` +
+        `Số tiền cần thanh toán (COD): ${cod}\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `📞 Quý khách vui lòng chú ý điện thoại để nhận cuộc gọi từ bưu tá GHN nhé!`
+      );
+
+    case 'delivered':
+      return (
+        `✅ ĐƠN HÀNG #${order.orderCode} ĐÃ GIAO THÀNH CÔNG!\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Mã vận đơn GHN: ${code}\n` +
+        `Trạng thái GHN: Giao hàng thành công (delivered)\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Cảm ơn quý khách đã tin tưởng và mua sắm tại AraStore! Nếu cần hỗ trợ đổi size hoặc phản hồi về sản phẩm, quý khách cứ nhắn tin tại đây nhé ❤️`
+      );
+
+    case 'delivery_fail':
+      return (
+        `⚠️ GIAO HÀNG CHƯA THÀNH CÔNG - ĐƠN #${order.orderCode}\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Mã vận đơn GHN: ${code}\n` +
+        `Trạng thái GHN: Giao hàng thất bại (delivery_fail)\n` +
+        `Bưu tá GHN chưa liên hệ được với quý khách. Quý khách vui lòng kiểm tra điện thoại hoặc phản hồi lại để AraStore hỗ trợ hẹn lịch giao lại nhé!`
+      );
+
+    case 'waiting_to_return':
+    case 'return':
+    case 'return_transporting':
+    case 'return_sorting':
+    case 'returning':
+    case 'returned':
+      return (
+        `↩️ THÔNG BÁO CHUYỂN HOÀN ĐƠN HÀNG #${order.orderCode}\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Mã vận đơn GHN: ${code}\n` +
+        `Trạng thái GHN: ${normalized === 'returned' ? 'Đã hoàn về kho (returned)' : `Đang chuyển hoàn (${normalized})`}\n` +
+        `Nếu quý khách cần hỗ trợ gửi lại đơn hàng, vui lòng nhắn tin cho AraStore nhé!`
+      );
+
+    case 'cancel':
+      return (
+        `❌ THÔNG BÁO HỦY ĐƠN VẬN CHUYỂN #${order.orderCode}\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Mã vận đơn GHN: ${code}\n` +
+        `Trạng thái GHN: Đã hủy (cancel)\n` +
+        `Đơn hàng của quý khách đã được hủy trên hệ thống vận chuyển. Hẹn gặp lại quý khách ở đơn hàng tiếp theo!`
+      );
+
+    default:
+      return (
+        `🔔 CẬP NHẬT TRẠNG THÁI VẬN ĐƠN #${order.orderCode}\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Mã vận đơn GHN: ${code}\n` +
+        `Trạng thái GHN mới nhất: ${normalized}\n` +
+        `AraStore sẽ tiếp tục cập nhật hành trình đơn hàng tới quý khách!`
+      );
+  }
 };
 
 /**
@@ -263,5 +378,6 @@ export default {
   buildOrderConfirmationText,
   buildOrderConfirmedSuccessText,
   buildPackingCompletedText,
+  buildGhnStatusUpdateText,
   sendOrderNotificationToChat,
 };

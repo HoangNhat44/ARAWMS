@@ -21,6 +21,8 @@ import {
   createPosDirectOrder,
   sendOrderConfirmationReceipt,
   simulateCustomerConfirm,
+  syncOrderWithGhn,
+  switchOrderGhnStatus,
   getOrderList,
   getOrderById,
 } from './orderManagement.controller.js';
@@ -68,6 +70,12 @@ router.post('/:id/send-confirmation', authorizeRole('SELLER', 'OWNER'), sendOrde
 
 // Sandbox Simulator: Giả lập khách hàng nhắn "OK chốt đơn"
 router.post('/:id/simulate-confirm', authorizeRole('SELLER', 'OWNER'), simulateCustomerConfirm);
+
+// Đồng bộ mã vận đơn & trạng thái Realtime trực tiếp từ GHN API (GBR-10)
+router.post('/:id/sync-ghn', authorizeRole('SELLER', 'OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'), syncOrderWithGhn);
+
+// Chuyển trạng thái vận đơn theo GHN (Sandbox / Webhook) và tự động bắn tin cho khách
+router.post('/:id/ghn-status', authorizeRole('SELLER', 'OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'), switchOrderGhnStatus);
 
 // UC-80: Cập nhật thông tin nhận hàng / trạng thái
 router.patch('/:id/status', authorizeRole('SELLER', 'OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'), updateOrderStatus);

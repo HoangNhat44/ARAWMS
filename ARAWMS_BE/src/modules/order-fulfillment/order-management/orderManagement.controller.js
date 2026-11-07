@@ -148,11 +148,55 @@ export const simulateCustomerConfirm = async (req, res) => {
   }
 };
 
+/**
+ * Tự động tạo/lấy mã vận đơn từ GHN API và đồng bộ trạng thái Realtime từ GHN
+ * POST /api/orders/:id/sync-ghn
+ */
+export const syncOrderWithGhn = async (req, res) => {
+  try {
+    const order = await orderManagementService.syncOrderWithGhn(req.params.id, req.user, req);
+    const chatInfo = order.chatNotified
+      ? ' và đã gửi tin nhắn cập nhật cho khách'
+      : ' (đơn sàn/không có kênh Chat nên không gửi tin)';
+    return successResponse(
+      res,
+      order,
+      `Đã đồng bộ vận đơn GHN (${order.warehouseFulfillment?.waybillCode || 'GHN'}) - Trạng thái: ${order.warehouseFulfillment?.ghnStatusName || order.status}${chatInfo}`
+    );
+  } catch (error) {
+    return errorResponse(res, error.message, 400);
+  }
+};
+
+/**
+ * Chuyển trạng thái vận đơn theo chuẩn GHN (ready_to_pick, picking, storing, delivering, delivered, cancel, return, returned)
+ * và tự động bắn tin nhắn cho khách qua khung Chat
+ * POST /api/orders/:id/ghn-status
+ */
+export const switchOrderGhnStatus = async (req, res) => {
+  try {
+    const { ghnStatus } = req.body;
+    const order = await orderManagementService.switchOrderGhnStatus(req.params.id, ghnStatus, req.user, req);
+    const chatInfo = order.chatNotified
+      ? ' và đã gửi tin thông báo cho khách qua Chat!'
+      : ' (đơn sàn/không có kênh Chat nên không gửi tin)';
+    return successResponse(
+      res,
+      order,
+      `Đã cập nhật trạng thái GHN [${ghnStatus}]${chatInfo}`
+    );
+  } catch (error) {
+    return errorResponse(res, error.message, 400);
+  }
+};
+
 export default {
   createDirectOrder,
   updateOrderItems,
   confirmOrderReserve,
   updateOrderStatus,
+  syncOrderWithGhn,
+  switchOrderGhnStatus,
   cancelOrder,
   createPosDirectOrder,
   sendOrderConfirmationReceipt,

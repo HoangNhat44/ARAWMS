@@ -124,6 +124,14 @@ export const emitMarketplaceOrdersImported = (data) => {
   io.emit('marketplace_orders_imported', data);
 };
 
+/**
+ * Phát sự kiện cập nhật trạng thái đơn hàng / vận đơn GHN Realtime tới Seller & Warehouse
+ */
+export const emitOrderStatusUpdated = (orderData) => {
+  if (!io) return;
+  io.emit('order_status_updated', orderData);
+};
+
 export default {
   initSocket,
   getIO,
@@ -132,4 +140,5 @@ export default {
   emitConversationRead,
   emitRmaAlert,
   emitMarketplaceOrdersImported,
+  emitOrderStatusUpdated,
 };
