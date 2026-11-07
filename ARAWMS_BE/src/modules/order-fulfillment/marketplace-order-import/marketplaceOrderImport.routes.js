@@ -12,7 +12,6 @@ import express from 'express';
 import multer from 'multer';
 import {
   getSalesChannels,
-  getChannelsSummary,
   previewExcelImport,
   processImportOrders,
   approveImportedOrder,
@@ -32,11 +31,8 @@ const router = express.Router();
 
 router.use(authenticate);
 
-// 1. Lấy danh sách kênh bán hàng đa nguồn thực tế từ DB
+// 1. Lấy danh sách kênh bán hàng đa nguồn
 router.get('/channels', getSalesChannels);
-
-// 1.1 Lấy tóm tắt trạng thái kết nối đa kênh từ DB (dùng cho TopHeader Chips)
-router.get('/channels/summary', getChannelsSummary);
 
 // 2. Tải file template Excel mẫu
 router.get('/template', downloadExcelTemplate);

@@ -907,48 +907,6 @@ h1, h2, h3, h4, .brand-title {
   gap: 0.85rem;
 }
 
-.ara-channel-chips {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.channel-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 0.18rem 0.5rem;
-  border-radius: 20px;
-  border: 1px solid transparent;
-}
-
-.fb-chip {
-  background: #EBF5FF;
-  color: #1E40AF;
-  border-color: #BFDBFE;
-}
-
-.tiktok-chip {
-  background: #F3F4F6;
-  color: #111827;
-  border-color: #E5E7EB;
-}
-
-.shopee-chip {
-  background: #FFF7ED;
-  color: #C2410C;
-  border-color: #FFEDD5;
-}
-
-.chip-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #10B981;
-}
-
 .ara-icon-btn {
   background: none;
   border: 1px solid var(--ara-border, #E3D9CD);
