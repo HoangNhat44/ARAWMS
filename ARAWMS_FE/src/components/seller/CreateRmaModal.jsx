@@ -21,6 +21,13 @@ import {
 import { sellerService } from '../../services/sellerService';
 import { Icon, formatVnd } from './SellerUi';
 
+/**
+ * Lấy ID SKU dạng chuỗi từ dòng sản phẩm của đơn hàng.
+ * API danh sách đơn populate items.skuId thành object nên phải lấy _id,
+ * nếu không key bị trùng "[object Object]" và gửi lên server lỗi ObjectId.
+ */
+const skuKeyOf = (it) => String(it?.skuId?._id || it?.skuId || '');
+
 const RETURN_TYPES = [
   { value: 'RETURN_FOR_REFUND', label: 'Trả Hàng Hoàn Tiền' },
   { value: 'EXCHANGE_PRODUCT', label: 'Đổi Sản Phẩm Mới' },
@@ -46,7 +53,8 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
   const [reasonDescription, setReasonDescription] = useState(COMMON_REASONS[0]);
   const [selectedItems, setSelectedItems] = useState({});
 
-  // Refund banking
+  // Refund banking & Customer name (luôn viết chữ IN HOA mặc định dù không bật CapsLock)
+  const [customerReturnName, setCustomerReturnName] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountHolder, setAccountHolder] = useState('');
@@ -60,23 +68,46 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successResult, setSuccessResult] = useState(null);
+  const [sendingRefund, setSendingRefund] = useState(false);
+  const [refundSent, setRefundSent] = useState(false);
 
   useEffect(() => {
     if (initialOrder) {
       setCurrentOrder(initialOrder);
+      const initName = (initialOrder.shippingRecipient?.name || initialOrder.customerId?.fullName || '').toUpperCase();
+      setCustomerReturnName(initName);
+      setAccountHolder(initName);
       // Mặc định chọn 1 món đầu tiên
       if (initialOrder.items && initialOrder.items.length > 0) {
-        setSelectedItems({ [initialOrder.items[0].skuId]: 1 });
+        setSelectedItems({ [skuKeyOf(initialOrder.items[0])]: 1 });
       }
     } else {
       setCurrentOrder(null);
+      setCustomerReturnName('');
       setSelectedItems({});
     }
     setError('');
     setSuccessResult(null);
+    setRefundSent(false);
   }, [initialOrder, isOpen]);
 
   if (!isOpen) return null;
+
+  // Gửi yêu cầu hoàn tiền cho Kế toán duyệt lập phiếu chi (GBR-14)
+  const handleSendRefundRequest = async () => {
+    const rmaId = successResult?.rma?._id;
+    if (!rmaId) return;
+    try {
+      setSendingRefund(true);
+      setError('');
+      const res = await sellerService.submitRefundRequest(rmaId, { note: reasonDescription });
+      if (res.success) setRefundSent(true);
+    } catch (err) {
+      setError(err.message || 'Không gửi được yêu cầu hoàn tiền');
+    } finally {
+      setSendingRefund(false);
+    }
+  };
 
   // Tìm kiếm đơn hàng cũ
   const handleSearchOldOrders = async () => {
@@ -100,10 +131,13 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
 
   const handleSelectOrder = (ord) => {
     setCurrentOrder(ord);
+    const initName = (ord.shippingRecipient?.name || ord.customerId?.fullName || '').toUpperCase();
+    setCustomerReturnName(initName);
+    if (!accountHolder) setAccountHolder(initName);
     setFoundOrders([]);
     setOrderSearch('');
     if (ord.items && ord.items.length > 0) {
-      setSelectedItems({ [ord.items[0].skuId]: 1 });
+      setSelectedItems({ [skuKeyOf(ord.items[0])]: 1 });
     }
   };
 
@@ -118,9 +152,16 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
 
   // Tính tổng tiền hàng trả lại
   const calculatedReturnedValue = (currentOrder?.items || []).reduce((sum, item) => {
-    const qty = selectedItems[item.skuId] || 0;
+    const qty = selectedItems[skuKeyOf(item)] || 0;
     return sum + qty * (Number(item.unitSalePrice) || 0);
   }, 0);
+
+  // Phân loại lỗi theo chuẩn BR.md: GBR-12 (Lỗi cửa hàng/xưởng -> miễn 100% phí) vs GBR-11 (Lỗi khách hàng -> phụ phí 10%)
+  const isStoreFault = /lỗi vải|sút chỉ|đứt nút|lỗi xưởng|nhà sản xuất|giao nhầm|sai mẫu|sai màu|nhầm màu|nhầm mã|hư hỏng/i.test(
+    reasonDescription || ''
+  );
+  const surchargeAmount = isStoreFault ? 0 : Math.round(calculatedReturnedValue * 0.1);
+  const netRefundAmount = Math.max(0, calculatedReturnedValue - surchargeAmount);
 
   // Tra cứu SKU mới để đổi
   const handleSearchExchangeSkus = async (query) => {
@@ -187,10 +228,10 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
 
     const returnItems = [];
     for (const item of currentOrder.items || []) {
-      const qty = selectedItems[item.skuId] || 0;
+      const qty = selectedItems[skuKeyOf(item)] || 0;
       if (qty > 0) {
         returnItems.push({
-          skuId: item.skuId,
+          skuId: skuKeyOf(item),
           skuBarcode: item.skuBarcode,
           returnedQty: qty,
           condition: 'GOOD_INTACT',
@@ -216,10 +257,18 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
       const payload = {
         originalOrderId: currentOrder._id || currentOrder.id,
         returnType,
-        returnWaybillCode,
+        returnWaybillCode: (returnWaybillCode || '').toUpperCase().trim(),
         reasonDescription,
+        faultType: isStoreFault ? 'STORE_FAULT' : 'CUSTOMER_FAULT',
         returnItems,
-        refundBanking: returnType === 'RETURN_FOR_REFUND' ? { bankName, accountNumber, accountHolder } : undefined,
+        refundBanking:
+          returnType === 'RETURN_FOR_REFUND'
+            ? {
+                bankName: bankName.trim(),
+                accountNumber: accountNumber.trim(),
+                accountHolder: (accountHolder || customerReturnName || '').toUpperCase().trim(),
+              }
+            : undefined,
       };
 
       const res = await sellerService.createReturnRequest(payload);
@@ -236,7 +285,10 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                 orderedQty: s.qty,
                 unitSalePrice: s.retailPrice,
               })),
-              shippingRecipient: currentOrder.shippingRecipient,
+              shippingRecipient: {
+                ...currentOrder.shippingRecipient,
+                name: (customerReturnName || currentOrder.shippingRecipient?.name || '').toUpperCase().trim(),
+              },
               shippingFee: 0,
             });
             if (exRes.success) {
@@ -300,6 +352,27 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
               </div>
               Phiếu RMA đang ở trạng thái <strong>REQUESTED</strong>. Nhân viên Kho đã nhận được thông báo để sẵn sàng quét mã vận đơn hoàn và kiểm đếm nhập lại kệ khi hàng về.
             </Alert>
+
+            {successResult.returnType === 'RETURN_FOR_REFUND' && (
+              <Alert variant={refundSent ? 'success' : 'warning'} className="text-start small border">
+                <div className="fw-bold text-dark mb-1 d-flex align-items-center gap-1">
+                  <Icon name="cash-coin" /> Hoàn tiền cho khách:
+                </div>
+                {refundSent ? (
+                  <>Đã gửi yêu cầu hoàn tiền cho <strong>Kế toán</strong>. Kế toán sẽ duyệt và lập phiếu chi chuyển khoản cho khách.</>
+                ) : (
+                  <>
+                    Seller <strong>không tự hoàn tiền</strong>. Bấm nút bên dưới để gửi yêu cầu cho Kế toán duyệt và tạo phiếu chi.
+                    <div className="mt-2">
+                      <Button size="sm" variant="dark" disabled={sendingRefund} onClick={handleSendRefundRequest}>
+                        {sendingRefund ? <Spinner size="sm" animation="border" className="me-1" /> : <Icon name="send" className="me-1" />}
+                        Gửi yêu cầu hoàn tiền cho Kế toán
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </Alert>
+            )}
 
             <Button className="btn-wms-primary px-4 mt-2" onClick={onClose}>
               Đóng Cửa Sổ
@@ -406,16 +479,16 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                   </Card.Header>
                   <ListGroup variant="flush">
                     {currentOrder.items?.map((it) => {
-                      const selectedQty = selectedItems[it.skuId] || 0;
+                      const selectedQty = selectedItems[skuKeyOf(it)] || 0;
                       const isChecked = selectedQty > 0;
                       return (
-                        <ListGroup.Item key={it.skuId} className="d-flex align-items-center justify-content-between gap-2 py-2">
+                        <ListGroup.Item key={skuKeyOf(it)} className="d-flex align-items-center justify-content-between gap-2 py-2">
                           <div className="d-flex align-items-center gap-2">
                             <Form.Check
                               type="checkbox"
                               checked={isChecked}
                               onChange={(e) => {
-                                handleQtyChange(it.skuId, e.target.checked ? 1 : 0, it.orderedQty);
+                                handleQtyChange(skuKeyOf(it), e.target.checked ? 1 : 0, it.orderedQty);
                               }}
                             />
                             <div>
@@ -434,7 +507,7 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                               min="0"
                               max={it.orderedQty}
                               value={selectedQty}
-                              onChange={(e) => handleQtyChange(it.skuId, e.target.value, it.orderedQty)}
+                              onChange={(e) => handleQtyChange(skuKeyOf(it), e.target.value, it.orderedQty)}
                               className="text-center"
                               style={{ width: 60 }}
                             />
@@ -571,56 +644,118 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                   </Card>
                 )}
 
-                {/* 5. Thông tin hoàn tiền (Nếu là RETURN_FOR_REFUND) */}
-                {returnType === 'RETURN_FOR_REFUND' && (
-                  <Card body className="border shadow-sm bg-white">
-                    <div className="fw-bold mb-2 text-dark">5. Thông tin tài khoản nhận hoàn tiền:</div>
-                    <Row className="g-2">
-                      <Col md={4}>
-                        <Form.Label className="small text-muted mb-1">Ngân hàng</Form.Label>
-                        <Form.Control
-                          size="sm"
-                          placeholder="VD: Vietcombank, MB, Techcombank..."
-                          value={bankName}
-                          onChange={(e) => setBankName(e.target.value)}
-                        />
-                      </Col>
-                      <Col md={4}>
-                        <Form.Label className="small text-muted mb-1">Số tài khoản</Form.Label>
-                        <Form.Control
-                          size="sm"
-                          placeholder="Số tài khoản nhận..."
-                          value={accountNumber}
-                          onChange={(e) => setAccountNumber(e.target.value)}
-                        />
-                      </Col>
-                      <Col md={4}>
-                        <Form.Label className="small text-muted mb-1">Tên chủ tài khoản</Form.Label>
-                        <Form.Control
-                          size="sm"
-                          placeholder="NGUYEN VAN A..."
-                          value={accountHolder}
-                          onChange={(e) => setAccountHolder(e.target.value)}
-                        />
-                      </Col>
-                    </Row>
-                  </Card>
-                )}
+                 {/* 5. Thông tin người đổi trả & tài khoản hoàn tiền (Tên mặc định luôn IN HOA) */}
+                <Card body className="border shadow-sm bg-white">
+                  <div className="fw-bold mb-2 text-dark d-flex justify-content-between align-items-center">
+                    <span>5. Thông tin khách hàng đổi / trả &amp; Tài khoản nhận hoàn tiền:</span>
+                    <Badge bg="secondary" className="fw-normal">Tên tự động viết IN HOA</Badge>
+                  </div>
+                  <Row className="g-2 mb-2">
+                    <Col md={12}>
+                      <Form.Label className="small text-muted mb-1">
+                        Họ tên người đổi / trả (tự động viết chữ IN HOA ngay cả khi tắt CapsLock)
+                      </Form.Label>
+                      <Form.Control
+                        size="sm"
+                        placeholder="NGUYEN VAN A..."
+                        style={{ textTransform: 'uppercase', fontWeight: 600 }}
+                        value={customerReturnName}
+                        onChange={(e) => {
+                          const upper = e.target.value.toUpperCase();
+                          setCustomerReturnName(upper);
+                          if (!accountHolder || accountHolder === customerReturnName) {
+                            setAccountHolder(upper);
+                          }
+                        }}
+                        required
+                      />
+                    </Col>
+                  </Row>
 
-                {/* 6. Lý do đổi trả & Vận đơn chiều về */}
+                  {returnType === 'RETURN_FOR_REFUND' && (
+                    <>
+                      <Row className="g-2">
+                        <Col md={4}>
+                          <Form.Label className="small text-muted mb-1">Ngân hàng</Form.Label>
+                          <Form.Control
+                            size="sm"
+                            placeholder="VD: Vietcombank, MB, Techcombank..."
+                            value={bankName}
+                            onChange={(e) => setBankName(e.target.value)}
+                            required
+                          />
+                        </Col>
+                        <Col md={4}>
+                          <Form.Label className="small text-muted mb-1">Số tài khoản</Form.Label>
+                          <Form.Control
+                            size="sm"
+                            placeholder="Số tài khoản nhận..."
+                            value={accountNumber}
+                            onChange={(e) => setAccountNumber(e.target.value)}
+                            required
+                          />
+                        </Col>
+                        <Col md={4}>
+                          <Form.Label className="small text-muted mb-1">Tên chủ tài khoản (IN HOA)</Form.Label>
+                          <Form.Control
+                            size="sm"
+                            placeholder="NGUYEN VAN A..."
+                            style={{ textTransform: 'uppercase', fontWeight: 600 }}
+                            value={accountHolder}
+                            onChange={(e) => setAccountHolder(e.target.value.toUpperCase())}
+                            required
+                          />
+                        </Col>
+                      </Row>
+
+                      {/* Bảng tính hoàn tiền tự động theo chuẩn BR.md (GBR-11 vs GBR-12) */}
+                      <div className="mt-2 p-2 rounded bg-light border small">
+                        <div className="d-flex justify-content-between align-items-center mb-1">
+                          <span className="fw-semibold text-dark">Quy tắc nghiệp vụ áp dụng (BR.md):</span>
+                          <Badge bg={isStoreFault ? 'success' : 'warning'} text={isStoreFault ? 'light' : 'dark'}>
+                            {isStoreFault
+                              ? 'GBR-12: Lỗi xưởng/cửa hàng (Miễn 100% phụ phí)'
+                              : 'GBR-11: Lỗi khách/Đổi ý/Nhầm size (Phụ phí 10%)'}
+                          </Badge>
+                        </div>
+                        <div className="d-flex justify-content-between text-muted">
+                          <span>Tổng giá trị sản phẩm trả:</span>
+                          <strong>{formatVnd(calculatedReturnedValue)}</strong>
+                        </div>
+                        <div className="d-flex justify-content-between text-muted">
+                          <span>Phụ phí hoàn trả ({isStoreFault ? '0% - GBR-12' : '10% - GBR-11'}):</span>
+                          <strong className={surchargeAmount > 0 ? 'text-danger' : 'text-success'}>
+                            -{formatVnd(surchargeAmount)}
+                          </strong>
+                        </div>
+                        <div className="d-flex justify-content-between border-top pt-1 mt-1 fw-bold text-dark">
+                          <span>Số tiền hoàn thực nhận (Kế toán lập phiếu chi theo GBR-14):</span>
+                          <span className="text-primary fs-6">{formatVnd(netRefundAmount)}</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </Card>
+
+                {/* 6. Lý do đổi trả & Vận đơn chiều về (GBR-23) */}
                 <Card body className="border shadow-sm bg-white">
                   <Form.Group className="mb-2">
-                    <Form.Label className="fw-bold text-dark mb-1">Mã vận đơn chiều khách gửi về (Nếu có)</Form.Label>
+                    <Form.Label className="fw-bold text-dark mb-1">
+                      Mã vận đơn chiều khách gửi về (GBR-23: Kho quét mã &amp; quay video mở hộp)
+                    </Form.Label>
                     <Form.Control
                       size="sm"
                       placeholder="VD: GHN-RET-109284..."
+                      style={{ textTransform: 'uppercase' }}
                       value={returnWaybillCode}
-                      onChange={(e) => setReturnWaybillCode(e.target.value)}
+                      onChange={(e) => setReturnWaybillCode(e.target.value.toUpperCase())}
                     />
                   </Form.Group>
 
                   <Form.Group>
-                    <Form.Label className="fw-bold text-dark mb-1">Lý do đổi / trả hàng</Form.Label>
+                    <Form.Label className="fw-bold text-dark mb-1">
+                      Lý do đổi / trả hàng (Xác định GBR-11 / GBR-12 &amp; cách ly hàng lỗi GBR-13)
+                    </Form.Label>
                     <Form.Select
                       size="sm"
                       className="mb-1"

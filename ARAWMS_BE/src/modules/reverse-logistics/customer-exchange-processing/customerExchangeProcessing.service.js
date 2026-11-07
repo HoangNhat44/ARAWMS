@@ -16,6 +16,7 @@ import SalesOrder from '../../../models/SalesOrder.model.js';
 import Sku from '../../../models/Sku.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
+import { ghnService } from '../../ghn/ghn.service.js';
 
 /**
  * Ghi SystemLog kiểm toán
@@ -112,7 +113,7 @@ export const createExchangeOrder = async (rmaId, exchangeData, user, req) => {
     linkedReturnRequestId: rma._id,
     status: 'PENDING',
     shippingRecipient: {
-      name: shippingRecipient?.name || '',
+      name: (shippingRecipient?.name || '').toUpperCase().trim(),
       phone: shippingRecipient?.phone || '',
       address: shippingRecipient?.address || '',
     },
@@ -124,9 +125,28 @@ export const createExchangeOrder = async (rmaId, exchangeData, user, req) => {
       totalOrderAmount,
       expectedCodAmount: Math.max(0, varianceAmount),
     },
-    warehouseFulfillment: {},
+    warehouseFulfillment: {
+      carrierName: 'GHN',
+    },
     codReconciliationStatus: 'UNRECONCILED',
   });
+
+  // Tự động lấy mã vận đơn GHN cho đơn đổi hàng (GBR-10)
+  try {
+    const ghnRes = await ghnService.createShippingOrderFromSalesOrder(exchangeOrder);
+    if (ghnRes?.waybillCode) {
+      exchangeOrder.warehouseFulfillment = {
+        carrierName: 'GHN',
+        waybillCode: ghnRes.waybillCode,
+        ghnStatus: ghnRes.ghnStatus || 'ready_to_pick',
+        ghnStatusName: ghnRes.ghnStatusName || 'Chờ lấy hàng (ready_to_pick)',
+        ghnUpdatedAt: new Date(),
+      };
+      await exchangeOrder.save();
+    }
+  } catch (ghnErr) {
+    console.warn('⚠️ [GHN Exchange Waybill]:', ghnErr.message);
+  }
 
   rma.financialAccounting = {
     ...rma.financialAccounting,

@@ -41,6 +41,22 @@ const returnRequestSchema = new Schema(
       default: 'REQUESTED',
       index: true,
     },
+    refundRequest: {
+      status: {
+        type: String,
+        enum: ['NONE', 'PENDING_ACCOUNTANT', 'APPROVED', 'REJECTED'],
+        default: 'NONE',
+        index: true,
+      },
+      requestedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+      requestedAt: Date,
+      requestedAmount: { type: Number, default: 0 },
+      requestNote: { type: String, trim: true },
+      reviewedByAccountantId: { type: Schema.Types.ObjectId, ref: 'User' },
+      reviewedAt: Date,
+      rejectReason: { type: String, trim: true },
+      voucherId: { type: Schema.Types.ObjectId, ref: 'CashFlowVoucher' },
+    },
     warehouseInspection: {
       inspectedByStaffId: { type: Schema.Types.ObjectId, ref: 'User' },
       inspectedAt: Date,

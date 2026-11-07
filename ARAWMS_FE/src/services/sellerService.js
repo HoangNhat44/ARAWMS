@@ -49,18 +49,25 @@ export const sellerService = {
   confirmOrderReserve: (id) => api.post(`/orders/${id}/confirm`),
   sendOrderConfirmationReceipt: (id) => api.post(`/orders/${id}/send-confirmation`),
   simulateCustomerConfirm: (id) => api.post(`/orders/${id}/simulate-confirm`),
+  syncOrderWithGhn: (id) => api.post(`/orders/${id}/sync-ghn`),
+  switchOrderGhnStatus: (id, ghnStatus) => api.post(`/orders/${id}/ghn-status`, { ghnStatus }),
   updateOrderStatus: (id, data) => api.patch(`/orders/${id}/status`, data),
   cancelOrder: (id, cancelReason) => api.post(`/orders/${id}/cancel`, { cancelReason }),
 
-  // === REVERSE LOGISTICS RMA (UC-82, UC-83) ===
+  // === REVERSE LOGISTICS RMA (UC-82, UC-83 - GBR-11, GBR-12, GBR-13, GBR-23) ===
   getRmaList: (params) => api.get('/returns/rma', { params }),
   getRmaById: (id) => api.get(`/returns/rma/${id}`),
   createReturnRequest: (data) => api.post('/returns/rma', data),
   createExchangeOrder: (rmaId, data) => api.post(`/returns/rma/${rmaId}/create-exchange-order`, data),
 
+  // === HOÀN TIỀN: Seller gửi yêu cầu -> Kế toán duyệt -> lập phiếu chi (GBR-14) ===
+  submitRefundRequest: (rmaId, data) => api.post(`/returns/rma/${rmaId}/refund-request`, data),
+  getRefundRequests: (params) => api.get('/returns/rma/refund-requests', { params }),
+  approveRefundRequest: (rmaId, data) => api.post(`/returns/rma/${rmaId}/refund-approve`, data),
+  rejectRefundRequest: (rmaId, data) => api.post(`/returns/rma/${rmaId}/refund-reject`, data),
+
   // === MARKETPLACE IMPORT & PROCESS (Mentor Feedback 4.3.3) ===
   getMarketplaceChannels: () => api.get('/orders/marketplace/channels'),
-  getChannelsSummary: () => api.get('/orders/marketplace/channels/summary'),
   downloadExcelTemplate: (channel) => api.get('/orders/marketplace/template', { params: { channel }, responseType: 'blob' }),
   previewExcelImport: (formData) => api.post('/orders/marketplace/preview-excel', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
