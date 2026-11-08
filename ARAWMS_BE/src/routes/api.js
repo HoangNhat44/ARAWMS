@@ -25,7 +25,6 @@ import settingsRoutes from '../modules/system-administration/system-settings/sys
 import stockAdjustmentRoutes from '../modules/inventory-auditing/stock-adjustment/stockAdjustment.routes.js';
 
 import productCatalogRoutes from '../modules/master-data/product-catalog/productCatalog.routes.js';
-import contractWorkspaceRoutes from '../modules/supplier-contracts/contract-workspace/contractWorkspace.routes.js';
 const router = express.Router();
 router.use('/owner/contracts', contractWorkspaceRoutes);
 router.use('/owner/products', productCatalogRoutes);
