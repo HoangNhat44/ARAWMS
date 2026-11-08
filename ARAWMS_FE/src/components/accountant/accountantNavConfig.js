@@ -99,14 +99,6 @@ export const ACCOUNTANT_NAV_GROUPS = [
         description: 'Manage Debts (Theo dõi công nợ phải trả NCC và công nợ phải thu GHN)',
       },
       {
-        key: 'supplier-payments',
-        label: 'Lập phiếu chi trả nợ NCC',
-        path: '/accountant/supplier-payments',
-        icon: Receipt,
-        ucCode: 'UC 08',
-        description: 'Create Supplier Payment Slip (Tạo phiếu thanh toán/đặt cọc cho NCC)',
-      },
-      {
         key: 'cash-flow-vouchers',
         label: 'Lập phiếu thu / chi',
         path: '/accountant/cash-flow-vouchers',
@@ -128,15 +120,15 @@ export const ACCOUNTANT_NAV_GROUPS = [
         ucCode: 'UC 16–17',
         description: 'Upload & Reconcile Carrier COD Statement (Tải bảng kê & chạy đối soát tự động)',
       },
-      
-      
+
+
     ],
   },
   {
     groupKey: 'valuation_and_pnl',
     groupTitle: 'Giá vốn, Định giá & P&L',
     items: [
-      
+
       {
         key: 'inventory-valuation',
         label: 'Tổng định giá tồn kho',
@@ -153,11 +145,11 @@ export const ACCOUNTANT_NAV_GROUPS = [
         ucCode: 'UC 11',
         description: 'View Total Raw Material Inventory Value (Định giá kho vải cuộn & phụ liệu)',
       },
-    
+
     ],
   },
-  
-  
+
+
 ];
 
 /**
