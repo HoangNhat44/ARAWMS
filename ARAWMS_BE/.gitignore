@@ -1,2 +1,6 @@
 # Local QA scripts and experiments; keep them out of repository commits.
 /test/
+
+# Personal test files - not for repository
+tests/materialLegacyRequestLines.test.mjs
+tests/remnantReturn.test.mjs
