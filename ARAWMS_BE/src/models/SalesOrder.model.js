@@ -79,7 +79,7 @@ const salesOrderSchema = new Schema(
     },
     importStatus: {
       type: String,
-      enum: ['NONE', 'PENDING_WAREHOUSE_APPROVAL', 'APPROVED', 'REJECTED'],
+      enum: ['NONE', 'APPROVED', 'REJECTED', 'PENDING_WAREHOUSE_APPROVAL'],
       default: 'NONE',
       index: true,
     },
@@ -90,6 +90,25 @@ const salesOrderSchema = new Schema(
     approvedByWarehouseStaffId: { type: Schema.Types.ObjectId, ref: 'User' },
     approvedAt: Date,
     linkedReturnRequestId: { type: Schema.Types.ObjectId, ref: 'ReturnRequest', default: null },
+    // Lưu vết đơn đổi hàng: đơn đổi là một đơn mới hoàn toàn, tham chiếu về đơn gốc
+    originalOrderId: { type: Schema.Types.ObjectId, ref: 'SalesOrder', default: null, index: true },
+    originalOrderSnapshot: {
+      orderCode: String,
+      waybillCode: String,
+      status: String,
+      deliveredAt: Date,
+      items: [{
+        _id: false,
+        skuId: { type: Schema.Types.ObjectId, ref: 'Sku' },
+        skuCode: String,
+        productName: String,
+        orderedQty: Number,
+        unitSalePrice: Number,
+      }],
+      totalOrderAmount: Number,
+    },
+    // Đơn gốc: danh sách đơn đổi mới được sinh ra từ đơn này
+    exchangeOrderIds: [{ type: Schema.Types.ObjectId, ref: 'SalesOrder' }],
     status: { type: String, enum: ORDER_STATUS, default: 'PENDING', index: true },
     isCustomerConfirmed: { type: Boolean, default: false, index: true },
     customerConfirmedAt: Date,
@@ -111,6 +130,7 @@ const salesOrderSchema = new Schema(
     statusHistory: [{
       from: String, to: String,
       by: { type: Schema.Types.ObjectId, ref: 'User' }, at: Date,
+      note: String,
     }],
     shippingRecipient: {
       name: String,
@@ -141,6 +161,7 @@ const salesOrderSchema = new Schema(
       ghnExpectedDeliveryTime: { type: Date },
       handoverReportCode: { type: String, index: true },
       handedOverAt: Date,
+      deliveredAt: Date,
     },
     codReconciliationStatus: {
       type: String,
@@ -157,6 +178,14 @@ const salesOrderSchema = new Schema(
 );
 
 salesOrderSchema.plugin(baseSchemaPlugin);
+
+// Tự động chuẩn hóa các đơn hàng import cũ từ PENDING_WAREHOUSE_APPROVAL sang APPROVED (bỏ luồng kho duyệt)
+salesOrderSchema.pre('validate', function (next) {
+  if (this.importStatus === 'PENDING_WAREHOUSE_APPROVAL') {
+    this.importStatus = 'APPROVED';
+  }
+  next();
+});
 
 // Compound indexes phục vụ tối ưu truy vấn danh sách đơn hàng của Seller (UC-80)
 salesOrderSchema.index({ sellerId: 1, status: 1, createdAt: -1 });

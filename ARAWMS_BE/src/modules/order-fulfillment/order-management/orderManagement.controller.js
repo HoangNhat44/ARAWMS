@@ -157,11 +157,14 @@ export const syncOrderWithGhn = async (req, res) => {
     const order = await orderManagementService.syncOrderWithGhn(req.params.id, req.user, req);
     const chatInfo = order.chatNotified
       ? ' và đã gửi tin nhắn cập nhật cho khách'
-      : ' (đơn sàn/không có kênh Chat nên không gửi tin)';
+      : '';
+    const waybill = order.warehouseFulfillment?.waybillCode || '';
     return successResponse(
       res,
       order,
-      `Đã đồng bộ vận đơn GHN (${order.warehouseFulfillment?.waybillCode || 'GHN'}) - Trạng thái: ${order.warehouseFulfillment?.ghnStatusName || order.status}${chatInfo}`
+      waybill
+        ? `Đã lấy mã vận đơn GHN: ${waybill}${chatInfo}`
+        : `Đã đồng bộ trạng thái đơn hàng từ GHN${chatInfo}`
     );
   } catch (error) {
     return errorResponse(res, error.message, 400);
@@ -179,11 +182,12 @@ export const switchOrderGhnStatus = async (req, res) => {
     const order = await orderManagementService.switchOrderGhnStatus(req.params.id, ghnStatus, req.user, req);
     const chatInfo = order.chatNotified
       ? ' và đã gửi tin thông báo cho khách qua Chat!'
-      : ' (đơn sàn/không có kênh Chat nên không gửi tin)';
+      : '';
+    const statusLabel = order.warehouseFulfillment?.ghnStatusName || ghnStatus;
     return successResponse(
       res,
       order,
-      `Đã cập nhật trạng thái GHN [${ghnStatus}]${chatInfo}`
+      `Đã cập nhật trạng thái GHN: ${statusLabel}${chatInfo}`
     );
   } catch (error) {
     return errorResponse(res, error.message, 400);

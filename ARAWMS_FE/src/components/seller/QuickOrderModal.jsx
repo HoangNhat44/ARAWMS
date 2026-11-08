@@ -199,21 +199,27 @@ const QuickOrderModal = ({
    */
   const handleCreateOrder = async (sendConfirmationReceipt = true) => {
     const customerId = customer?._id || customer?.id;
-    if (!customerId && orderChannel !== 'POS') {
-      setError('Thiếu thông tin khách hàng. Vui lòng chọn khách hàng hợp lệ trước khi tạo đơn.');
-      return;
-    }
+
     if (items.length === 0) {
-      setError('Vui lòng chọn ít nhất một sản phẩm vào đơn hàng.');
+      setError('Vui lòng chọn ít nhất một sản phẩm ở mục "Chọn sản phẩm" trước khi tạo đơn.');
       return;
     }
+
     if (orderChannel === 'ONLINE') {
+      if (!recipient.name || !recipient.name.trim()) {
+        setError('Vui lòng nhập Họ và tên người nhận ở mục "Thông tin người nhận hàng".');
+        return;
+      }
       if (!recipient.phone || !recipient.phone.trim()) {
-        setError('Vui lòng nhập số điện thoại người nhận hàng.');
+        setError('Vui lòng nhập Số điện thoại người nhận ở mục "Thông tin người nhận hàng".');
         return;
       }
       if (!isValidVnPhone(recipient.phone)) {
-        setError('Số điện thoại không hợp lệ. Vui lòng nhập đúng 10 chữ số (đầu số 03, 05, 07, 08, 09).');
+        setError('Số điện thoại không đúng định dạng. Vui lòng nhập đúng 10 chữ số (đầu số 03, 05, 07, 08, 09) ở mục "Số điện thoại".');
+        return;
+      }
+      if (!recipient.address || !recipient.address.trim()) {
+        setError('Vui lòng nhập Địa chỉ giao hàng chi tiết ở mục "Thông tin người nhận hàng".');
         return;
       }
     }
@@ -227,6 +233,8 @@ const QuickOrderModal = ({
       const orderPayload = {
         customerId,
         conversationId: orderChannel === 'ONLINE' ? conversationId : undefined,
+        orderType: orderChannel === 'POS' ? 'POS_DIRECT' : 'ONLINE',
+        channel: orderChannel === 'POS' ? 'POS' : 'FACEBOOK_MESSENGER',
         shippingRecipient: {
           name: recipient.name || (orderChannel === 'POS' ? 'Khách tại quầy AraStore' : 'Khách vãng lai'),
           phone: cleanPhone || (orderChannel === 'POS' ? '0900000000' : ''),
@@ -354,7 +362,7 @@ const QuickOrderModal = ({
                   checked={orderChannel === 'ONLINE'}
                   onChange={() => { setOrderChannel('ONLINE'); setShippingFee(30000); }}
                 >
-                  <Icon name="truck" className="me-1" /> Online (Giao hàng)
+                  <Icon name="truck" className="me-1" /> Giao hàng tận nơi
                 </ToggleButton>
                 <ToggleButton
                   id="qom-mode-pos"
@@ -366,7 +374,7 @@ const QuickOrderModal = ({
                   checked={orderChannel === 'POS'}
                   onChange={() => { setOrderChannel('POS'); setShippingFee(0); }}
                 >
-                  <Icon name="shop" className="me-1" /> Tại quầy (POS - Lấy ngay)
+                  <Icon name="shop" className="me-1" /> Bán tại quầy
                 </ToggleButton>
               </ButtonGroup>
             </div>
@@ -386,7 +394,7 @@ const QuickOrderModal = ({
               <Card.Body>
                 <div className="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
                   <Card.Title as="h6" className="d-flex align-items-center gap-2 mb-0" style={{ color: 'var(--wms-text-primary, #141210)' }}>
-                    <Icon name="box-seam" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> Chọn sản phẩm ({items.length} món đã chọn)
+                    <Icon name="box-seam" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> Chọn sản phẩm - {items.length} món đã chọn
                   </Card.Title>
                   <span className="badge rounded px-2 py-0.5" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', color: 'var(--wms-secondary, #574F46)', border: '1px solid var(--wms-border, #C8B9A6)' }}>
                     {availableSkus.length} sản phẩm có sẵn
@@ -401,8 +409,8 @@ const QuickOrderModal = ({
                   onShowChange={setShowDropdown}
                   list={dropdownList}
                   header={searchQuery.trim()
-                    ? `KẾT QUẢ TÌM KIẾM (${searchResults.length})`
-                    : `SẢN PHẨM CÓ SẴN TRONG KHO (${availableSkus.length})`}
+                    ? `KẾT QUẢ TÌM KIẾM: ${searchResults.length}`
+                    : `SẢN PHẨM CÓ SẴN TRONG KHO: ${availableSkus.length}`}
                   onPick={addItem}
                 />
 
@@ -413,7 +421,7 @@ const QuickOrderModal = ({
                   /* Gợi ý sản phẩm khi chưa có sản phẩm nào được chọn */
                   <div className="mt-2">
                     <div className="fw-semibold small mb-2" style={{ color: 'var(--wms-secondary, #574F46)' }}>
-                      Sản phẩm có sẵn trong kho (Bấm "+ Thêm" để đưa vào đơn):
+                      Sản phẩm có sẵn trong kho:
                     </div>
                     <AvailableSkuList
                       skus={availableSkus}
@@ -457,7 +465,7 @@ const QuickOrderModal = ({
               className="d-flex align-items-center gap-2 fw-bold btn-wms-primary"
             >
               {loading ? <Spinner animation="border" size="sm" /> : <Icon name="cart-check-fill" />}
-              Xuất Kho &amp; Thanh Toán Ngay (POS)
+              Xuất Kho &amp; Thanh Toán Ngay
             </Button>
           ) : (
             <>

@@ -50,7 +50,7 @@ export const RecipientFields = ({ recipient, onChange }) => {
         <Col xs={12} sm={6}>
           <Form.Group controlId="order-recipient-name">
             <Form.Label className="small fw-semibold mb-1" style={{ fontSize: '12px', color: 'var(--wms-text-primary, #141210)' }}>
-              Họ và tên
+              Họ và tên <span style={{ color: 'var(--wms-error, #A62626)' }}>*</span>
             </Form.Label>
             <Form.Control
               size="sm"
@@ -85,7 +85,7 @@ export const RecipientFields = ({ recipient, onChange }) => {
       </Row>
       <Form.Group controlId="order-recipient-address">
         <Form.Label className="small fw-semibold mb-1" style={{ fontSize: '12px', color: 'var(--wms-text-primary, #141210)' }}>
-          Địa chỉ giao hàng
+          Địa chỉ giao hàng <span style={{ color: 'var(--wms-error, #A62626)' }}>*</span>
         </Form.Label>
         <Form.Control
           size="sm"
@@ -120,7 +120,7 @@ export const SkuSearchBox = ({ query, onQueryChange, searching, show, onShowChan
           <Icon name="search" />
         </InputGroup.Text>
         <Form.Control
-          placeholder="Tìm sản phẩm theo tên, mã SKU... (bấm để xem danh sách có sẵn)"
+          placeholder="Tìm sản phẩm theo tên, mã SKU hoặc bấm để xem danh sách có sẵn"
           style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
           value={query}
           onFocus={() => onShowChange(true)}
@@ -269,7 +269,7 @@ export const AvailableSkuList = ({ skus, loading, limit = 10, selectedItems = []
  */
 export const PaymentSummary = ({
   subtotal, shippingFee, onShippingFeeChange, discountAmount, onDiscountChange, total,
-  totalLabel = 'Tổng thanh toán (COD)',
+  totalLabel = 'Tổng thanh toán',
 }) => (
   <div className="small p-3 rounded" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', border: '1px solid var(--wms-border, #C8B9A6)' }}>
     <div className="d-flex justify-content-between mb-2" style={{ color: 'var(--wms-secondary, #574F46)' }}>

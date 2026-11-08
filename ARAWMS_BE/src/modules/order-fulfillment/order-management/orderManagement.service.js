@@ -20,12 +20,14 @@ import Customer from '../../../models/Customer.model.js';
 import InventoryTransaction from '../../../models/InventoryTransaction.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
-import { ORDER_STATUS } from '../../../common/constants/enums.js';
+import { ORDER_STATUS, getOrderStatusLabel } from '../../../common/constants/enums.js';
 import notificationTemplateService from '../../conversational-commerce/chat-interface/notificationTemplate.service.js';
 import {
   ghnService,
   DEFAULT_INTERNAL_SHIPPING_FEE,
   mapGhnStatusToOrderStatus,
+  getGhnStatusLabel,
+  GHN_PICKED_UP_STATUSES,
 } from '../../ghn/ghn.service.js';
 import { applyGhnStatusToSalesOrder } from '../../ghn/ghn.webhook.controller.js';
 
@@ -91,10 +93,37 @@ export const evaluateStockForItems = async (items = []) => {
 export const createDirectOrder = async (orderData, user, req) => {
   const { customerId, conversationId, shippingRecipient, items, financialSummary = {} } = orderData;
 
-  // 1. Kiểm tra khách hàng
-  const customer = await Customer.findById(customerId);
+  // 1. Kiểm tra khách hàng hoặc tự động liên kết / tạo mới theo số điện thoại
+  let customer = null;
+  if (customerId) {
+    customer = await Customer.findById(customerId);
+  }
+  if (!customer && shippingRecipient?.phone) {
+    const cleanPhone = String(shippingRecipient.phone).replace(/\D/g, '');
+    if (cleanPhone) {
+      customer = await Customer.findOne({ phone: cleanPhone });
+      if (!customer) {
+        // Tự động tạo hồ sơ khách hàng mới nếu tạo đơn ngoài chat
+        const customerCode = await CounterSequence.getNextSequence('CUSTOMER_CODE', 'CUST', 5);
+        customer = await Customer.create({
+          customerCode,
+          fullName: (shippingRecipient.name || 'Khách Hàng Mới').trim(),
+          phone: cleanPhone,
+          addresses: shippingRecipient.address
+            ? [{
+                recipientName: (shippingRecipient.name || 'Khách Hàng').trim(),
+                phone: cleanPhone,
+                fullAddress: shippingRecipient.address.trim(),
+                isDefault: true,
+              }]
+            : [],
+        });
+      }
+    }
+  }
+
   if (!customer) {
-    throw new Error('Khách hàng không tồn tại');
+    throw new Error('Vui lòng nhập đầy đủ Số điện thoại và Họ tên người nhận ở mục "Thông tin người nhận hàng".');
   }
 
   if (!items || items.length === 0) {
@@ -199,7 +228,7 @@ export const createDirectOrder = async (orderData, user, req) => {
           carrierName: 'GHN',
           waybillCode: ghnRes.waybillCode,
           ghnStatus: ghnRes.ghnStatus || 'ready_to_pick',
-          ghnStatusName: ghnRes.ghnStatusName || 'Chờ lấy hàng (ready_to_pick)',
+          ghnStatusName: ghnRes.ghnStatusName || 'Chờ lấy hàng',
           ghnUpdatedAt: new Date(),
           ghnExpectedDeliveryTime: ghnRes.expectedDeliveryTime ? new Date(ghnRes.expectedDeliveryTime) : undefined,
         };
@@ -263,7 +292,7 @@ export const updateOrderItemsAndDetails = async (orderId, updateData, user, req)
 
   // [BR: GBR-08] Chỉ cho phép sửa sản phẩm khi PENDING
   if (order.status !== 'PENDING') {
-    throw new Error(`[BR: GBR-08] Chỉ có thể chỉnh sửa sản phẩm khi đơn hàng ở trạng thái PENDING (chưa chốt). Trạng thái hiện tại: ${order.status}`);
+    throw new Error(`Chỉ có thể chỉnh sửa sản phẩm khi đơn hàng ở trạng thái Chờ xác nhận (chưa chốt đơn). Trạng thái hiện tại: ${getOrderStatusLabel(order.status)}.`);
   }
 
   const beforeSnapshot = order.toObject();
@@ -436,7 +465,7 @@ export const confirmOrderReserve = async (orderId, user, req) => {
         if (ghnRes?.waybillCode) {
           order.warehouseFulfillment.waybillCode = ghnRes.waybillCode;
           order.warehouseFulfillment.ghnStatus = ghnRes.ghnStatus || 'ready_to_pick';
-          order.warehouseFulfillment.ghnStatusName = ghnRes.ghnStatusName || 'Chờ lấy hàng (ready_to_pick)';
+          order.warehouseFulfillment.ghnStatusName = ghnRes.ghnStatusName || 'Chờ lấy hàng';
           order.warehouseFulfillment.ghnUpdatedAt = new Date();
           if (ghnRes.expectedDeliveryTime) {
             order.warehouseFulfillment.ghnExpectedDeliveryTime = new Date(ghnRes.expectedDeliveryTime);
@@ -460,7 +489,7 @@ export const confirmOrderReserve = async (orderId, user, req) => {
   // Gửi thông báo tự động xác nhận chốt đơn kèm mã vận đơn GHN vào chat
   try {
     const waybillText = order.warehouseFulfillment?.waybillCode
-      ? `\nMã vận đơn GHN: ${order.warehouseFulfillment.waybillCode} (${order.warehouseFulfillment.ghnStatusName || 'ready_to_pick'})`
+      ? `\nMã vận đơn GHN: ${order.warehouseFulfillment.waybillCode}`
       : '';
     await notificationTemplateService.sendOrderNotificationToChat({
       order,
@@ -498,11 +527,10 @@ export const ORDER_STATUS_TRANSITIONS = {
   CONFIRMED_RESERVED: ['PICKING', 'PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'CANCELLED'],
   PICKING: ['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'CANCELLED'],
   PACKED: ['HANDED_OVER_CARRIER', 'DELIVERED', 'RETURN_REQUESTED'],
-  HANDED_OVER_CARRIER: ['DELIVERED', 'RETURN_REQUESTED', 'RETURNED', 'CANCELLED'],
-  DELIVERED: ['RETURN_REQUESTED', 'PARTIALLY_RETURNED', 'EXCHANGE_REQUESTED', 'RETURNED'],
-  COMPLETED: ['RETURN_REQUESTED', 'PARTIALLY_RETURNED', 'EXCHANGE_REQUESTED', 'RETURNED'],
+  HANDED_OVER_CARRIER: ['DELIVERED', 'RETURN_REQUESTED', 'RETURNED'],
+  DELIVERED: ['RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED'],
+  COMPLETED: ['RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED'],
   RETURN_REQUESTED: ['RETURNED'],
-  PARTIALLY_RETURNED: ['RETURNED'],
   EXCHANGE_REQUESTED: ['RETURNED'],
   CANCELLED: [],
   RETURNED: [],
@@ -533,16 +561,19 @@ export const updateOrderStatus = async (orderId, updateData, user, req) => {
   if (nextStatus && nextStatus !== order.status) {
     // 1. Trạng thái phải thuộc danh mục hệ thống
     if (!ORDER_STATUS.includes(nextStatus)) {
-      throw new Error(`Trạng thái "${nextStatus}" không hợp lệ`);
+      throw new Error(`Trạng thái "${getOrderStatusLabel(nextStatus)}" không tồn tại trong danh mục hệ thống.`);
     }
     // 2. Kiểm tra ma trận chuyển trạng thái
     const allowed = ORDER_STATUS_TRANSITIONS[order.status] || [];
     if (!allowed.includes(nextStatus)) {
+      const currentLabel = getOrderStatusLabel(order.status);
+      const nextLabel = getOrderStatusLabel(nextStatus);
+      const allowedLabels = allowed.map((s) => `"${getOrderStatusLabel(s)}"`).join(', ');
       throw new Error(
-        `Không thể chuyển đơn ${order.orderCode} từ ${order.status} sang ${nextStatus}` +
+        `Không thể chuyển trạng thái đơn hàng ${order.orderCode} từ "${currentLabel}" sang "${nextLabel}". ` +
           (allowed.length
-            ? `. Hướng dẫn: từ trạng thái ${order.status} chỉ được chuyển sang: ${allowed.join(', ')}.`
-            : '. Hướng dẫn: đơn đã ở trạng thái kết thúc, không thể thay đổi; nếu cần hãy tạo đơn mới.')
+            ? `Chức năng này chỉ có thể chuyển sang các trạng thái: ${allowedLabels} để đảm bảo quy trình luân chuyển đơn hàng đúng trình tự thực tế.`
+            : 'Đơn hàng này đã kết thúc vòng đời xử lý và không thể chuyển trạng thái khác.')
       );
     }
     // 3. [GBR-07] / [GBR-08] Uỷ quyền cho luồng chuyên biệt để xử lý tồn kho
@@ -573,7 +604,7 @@ export const updateOrderStatus = async (orderId, updateData, user, req) => {
           order.warehouseFulfillment.waybillCode = waybill;
           order.warehouseFulfillment.carrierName = 'GHN';
           order.warehouseFulfillment.ghnStatus = ghnRes.ghnStatus || 'ready_to_pick';
-          order.warehouseFulfillment.ghnStatusName = ghnRes.ghnStatusName || 'Chờ lấy hàng (ready_to_pick)';
+          order.warehouseFulfillment.ghnStatusName = ghnRes.ghnStatusName || 'Chờ lấy hàng';
           order.warehouseFulfillment.ghnUpdatedAt = new Date();
         }
       } catch (ghnErr) {
@@ -668,14 +699,14 @@ export const syncOrderWithGhn = async (orderId, user, req) => {
 
   let waybillCode = (order.warehouseFulfillment?.waybillCode || '').trim();
   let ghnStatus = 'ready_to_pick';
-  let ghnStatusName = 'Chờ lấy hàng (ready_to_pick)';
+  let ghnStatusName = 'Chờ lấy hàng';
   let codAmount = undefined;
 
   if (!waybillCode) {
     const createRes = await ghnService.createShippingOrderFromSalesOrder(order);
     waybillCode = createRes.waybillCode;
     ghnStatus = createRes.ghnStatus || 'ready_to_pick';
-    ghnStatusName = createRes.ghnStatusName || 'Chờ lấy hàng (ready_to_pick)';
+    ghnStatusName = createRes.ghnStatusName || 'Chờ lấy hàng';
   } else {
     const detailRes = await ghnService.getOrderDetail(waybillCode);
     ghnStatus = detailRes.status || order.warehouseFulfillment?.ghnStatus || 'ready_to_pick';
@@ -686,7 +717,6 @@ export const syncOrderWithGhn = async (orderId, user, req) => {
   const syncRes = await applyGhnStatusToSalesOrder({
     order,
     ghnStatus,
-    ghnStatusName,
     waybillCode,
     codAmount,
     sendChatNotification: true,
@@ -769,12 +799,25 @@ export const cancelOrder = async (orderId, cancelReason, user, req) => {
   }
 
   if (!cancelReason || !cancelReason.trim()) {
-    throw new Error('[BR: GBR-08] Bắt buộc phải nhập lý do hủy đơn hàng.');
+    throw new Error('Vui lòng nhập lý do hủy đơn hàng.');
   }
 
-  // Không cho phép hủy khi đã đóng gói, đang giao, đã giao hoặc đã hoàn thành
-  if (['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'COMPLETED', 'CANCELLED'].includes(order.status)) {
-    throw new Error(`[BR: GBR-08] Không thể hủy đơn hàng ở trạng thái ${order.status}. Chỉ có thể hủy đơn trước khi đóng gói (PENDING, CONFIRMED_RESERVED, PICKING).`);
+  if (order.status === 'CANCELLED') {
+    throw new Error('Đơn hàng này đã bị hủy trước đó.');
+  }
+
+  // Đơn chỉ hủy khi shipper chưa lấy hàng (PENDING, CONFIRMED_RESERVED, PICKING và GHN chưa lấy hàng)
+  const ghnStatus = String(order.warehouseFulfillment?.ghnStatus || '').toLowerCase().trim();
+  const isPickedByCarrier =
+    GHN_PICKED_UP_STATUSES.includes(ghnStatus) ||
+    ['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'COMPLETED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED'].includes(order.status);
+
+  if (isPickedByCarrier) {
+    throw new Error('Không thể hủy đơn hàng vì shipper đã lấy kiện hàng đi giao. Chức năng hủy đơn chỉ có thể thực hiện khi hàng chưa rời kho (trước khi shipper lấy hàng). Nếu muốn thu hồi đơn này, vui lòng liên hệ trực tiếp với bộ phận vận chuyển để hỗ trợ.');
+  }
+
+  if (!['PENDING', 'CONFIRMED_RESERVED', 'PICKING'].includes(order.status)) {
+    throw new Error(`Không thể hủy đơn hàng đang ở trạng thái "${getOrderStatusLabel(order.status)}". Chức năng hủy đơn chỉ có thể thực hiện đối với đơn hàng chưa xuất kho giao đi.`);
   }
 
   const beforeSnapshot = order.toObject();
@@ -811,6 +854,19 @@ export const cancelOrder = async (orderId, cancelReason, user, req) => {
   order.cancelReason = cancelReason.trim();
   order.canceledByUserId = user?._id;
   order.canceledAt = new Date();
+
+  // Đồng bộ trạng thái hủy sang GHN nếu đơn đã có mã vận đơn
+  if (order.warehouseFulfillment?.waybillCode) {
+    try {
+      await ghnService.devSwitchStatus(order.warehouseFulfillment.waybillCode, 'cancel');
+      order.warehouseFulfillment.ghnStatus = 'cancel';
+      order.warehouseFulfillment.ghnStatusName = 'Đã hủy';
+      order.warehouseFulfillment.ghnUpdatedAt = new Date();
+    } catch (swErr) {
+      console.warn('⚠️ [GHN devSwitchStatus Cancel]:', swErr.message);
+    }
+  }
+
   await order.save();
 
   // Hoàn lại tích lũy của khách hàng

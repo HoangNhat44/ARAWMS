@@ -17,20 +17,14 @@
  * @businessRule GBR-10 Đơn hàng phải chứa ít nhất 1 sản phẩm hợp lệ để giữ chỗ tồn kho
  */
 export const validateCreateOrder = (req, res, next) => {
-  const { customerId, items } = req.body;
+  const { customerId, items, shippingRecipient, orderType, channel } = req.body;
+  const isPos = req.originalUrl?.includes('pos-direct') || req.path?.includes('pos-direct') || orderType === 'POS_DIRECT' || channel === 'POS';
 
-  if (!customerId) {
-    return res.status(400).json({
-      success: false,
-      message: 'Thiếu trường customerId',
-    });
-  }
-
-  // [BR: GBR-10] Đơn hàng bán lẻ phải có ít nhất một sản phẩm
+  // 1. Kiểm tra danh sách sản phẩm
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({
       success: false,
-      message: 'Đơn hàng phải chứa ít nhất một sản phẩm hợp lệ',
+      message: 'Vui lòng chọn ít nhất một sản phẩm ở mục "Chọn sản phẩm" trước khi tạo đơn hàng.',
     });
   }
 
@@ -38,27 +32,46 @@ export const validateCreateOrder = (req, res, next) => {
     if (!item.skuId || !item.orderedQty || Number(item.orderedQty) < 1) {
       return res.status(400).json({
         success: false,
-        message: 'Mỗi sản phẩm phải có skuId và số lượng đặt (orderedQty) >= 1',
+        message: 'Số lượng đặt mua của mỗi sản phẩm phải từ 1 trở lên.',
       });
     }
   }
 
-  // Validate số điện thoại người nhận (Bắt buộc 10 số di động VN nếu có hoặc là đơn Online)
-  const phone = req.body?.shippingRecipient?.phone?.trim();
-  const VN_PHONE_REGEX = /^(0[35789])[0-9]{8}$/;
+  // 2. Với đơn Online giao hàng: Bắt buộc thông tin người nhận nếu không có sẵn khách hàng từ Chat
+  if (!isPos) {
+    const phone = shippingRecipient?.phone?.trim();
+    const name = shippingRecipient?.name?.trim();
+    const address = shippingRecipient?.address?.trim();
 
-  if (phone && phone !== '0900000000') {
-    if (!VN_PHONE_REGEX.test(phone)) {
+    if (!phone && !customerId) {
       return res.status(400).json({
         success: false,
-        message: 'Số điện thoại người nhận không hợp lệ. Vui lòng nhập đúng 10 chữ số (đầu số 03, 05, 07, 08, 09).',
+        message: 'Vui lòng nhập Số điện thoại người nhận ở mục "Thông tin người nhận hàng".',
       });
     }
-  } else if (req.body?.orderType !== 'POS_DIRECT' && req.body?.channel !== 'POS' && !phone) {
-    return res.status(400).json({
-      success: false,
-      message: 'Vui lòng cung cấp số điện thoại người nhận hợp lệ cho đơn hàng Online.',
-    });
+
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
+    const VN_PHONE_REGEX = /^(0[35789])[0-9]{8}$/;
+    if (cleanPhone && cleanPhone !== '0900000000' && !VN_PHONE_REGEX.test(cleanPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Số điện thoại người nhận không đúng định dạng. Vui lòng nhập đúng 10 chữ số (đầu số 03, 05, 07, 08, 09).',
+      });
+    }
+
+    if (!name && !customerId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập Họ và tên người nhận ở mục "Thông tin người nhận hàng".',
+      });
+    }
+
+    if (!address) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập Địa chỉ giao hàng chi tiết ở mục "Thông tin người nhận hàng".',
+      });
+    }
   }
 
   next();

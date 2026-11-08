@@ -189,15 +189,22 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
    * @param {boolean} sendConfirmationReceipt - Nếu true, tự động gửi Phiếu xác nhận đơn hàng vào chat cho khách.
    */
   const handleCreate = async (sendConfirmationReceipt = true) => {
-    if (!customer?._id && channel !== 'POS') { setError('Vui lòng chọn khách hàng'); return; }
-    if (items.length === 0) { setError('Vui lòng thêm ít nhất 1 sản phẩm'); return; }
+    if (items.length === 0) { setError('Vui lòng chọn ít nhất một sản phẩm ở mục "Chọn sản phẩm"'); return; }
     if (channel === 'ONLINE') {
+      if (!recipient.name || !recipient.name.trim()) {
+        setError('Vui lòng nhập Họ và tên người nhận ở mục "Thông tin người nhận hàng"');
+        return;
+      }
       if (!recipient.phone || !recipient.phone.trim()) {
-        setError('Vui lòng nhập SĐT người nhận');
+        setError('Vui lòng nhập Số điện thoại người nhận ở mục "Thông tin người nhận hàng"');
         return;
       }
       if (!isValidVnPhone(recipient.phone)) {
-        setError('Số điện thoại không hợp lệ. Vui lòng nhập đúng 10 chữ số (đầu số 03, 05, 07, 08, 09).');
+        setError('Số điện thoại không đúng định dạng. Vui lòng nhập đúng 10 chữ số (đầu số 03, 05, 07, 08, 09)');
+        return;
+      }
+      if (!recipient.address || !recipient.address.trim()) {
+        setError('Vui lòng nhập Địa chỉ giao hàng chi tiết ở mục "Thông tin người nhận hàng"');
         return;
       }
     }
@@ -210,6 +217,8 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
       const payload = {
         customerId: customer?._id,
         conversationId: channel === 'ONLINE' ? conversationId : undefined,
+        orderType: channel === 'POS' ? 'POS_DIRECT' : 'ONLINE',
+        channel: channel === 'POS' ? 'POS' : 'FACEBOOK_MESSENGER',
         shippingRecipient: {
           name: recipient.name || (channel === 'POS' ? 'Khách tại quầy AraStore' : 'Khách vãng lai'),
           phone: cleanPhone || (channel === 'POS' ? '0900000000' : ''),
@@ -323,7 +332,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
               checked={channel === 'POS'}
               onChange={() => { setChannel('POS'); setShippingFee(0); }}
             >
-              <Icon name="shop" className="me-1" /> Tại Quầy (POS)
+              <Icon name="shop" className="me-1" /> Bán tại quầy
             </ToggleButton>
           </ButtonGroup>
         </Card.Body>
@@ -437,7 +446,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
           onClick={() => handleCreate(false)}
         >
           {loading ? <Spinner animation="border" size="sm" /> : <Icon name="cart-check-fill" />}
-          Xuất Kho &amp; Thanh Toán Ngay (POS)
+          Xuất Kho &amp; Thanh Toán Ngay
         </Button>
       ) : (
         <Stack direction="horizontal" gap={2}>

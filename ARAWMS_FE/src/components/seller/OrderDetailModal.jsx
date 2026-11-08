@@ -24,32 +24,16 @@ import { Icon, formatVnd, ORDER_STATUS_VARIANT } from './SellerUi';
  */
 const ORDER_STATUSES = [
   { value: 'PENDING',             label: 'Chờ xác nhận' },
-  { value: 'CONFIRMED_RESERVED',  label: 'Chờ lấy hàng (GHN: ready_to_pick)' },
-  { value: 'PICKING',             label: 'Đang lấy hàng (GHN: picking)' },
-  { value: 'PACKED',              label: 'Đã lấy hàng (GHN: picked)' },
-  { value: 'HANDED_OVER_CARRIER', label: 'Đang giao hàng (GHN: storing/delivering)' },
-  { value: 'DELIVERED',           label: 'Đã giao hàng (GHN: delivered)' },
-  { value: 'COMPLETED',           label: 'Hoàn thành / POS' },
-  { value: 'RETURN_REQUESTED',    label: 'Chuyển hoàn (GHN: return)' },
-  { value: 'RETURNED',            label: 'Đã hoàn về kho (GHN: returned)' },
-  { value: 'CANCELLED',           label: 'Đã hủy đơn (GHN: cancel)' },
-];
-
-/**
- * Danh sách trạng thái chuẩn theo Giao Hàng Nhanh (GHN API)
- * Khi chuyển trạng thái sẽ đồng bộ từ GHN và bắn tin nhắn tự động cho khách qua Chat
- */
-const GHN_FLOW_STATUSES = [
-  { ghnStatus: 'ready_to_pick', label: 'Chờ lấy hàng (ready_to_pick)', variant: 'secondary' },
-  { ghnStatus: 'picking',       label: 'Đang lấy hàng (picking)',      variant: 'info' },
-  { ghnStatus: 'picked',        label: 'Đã lấy hàng (picked)',         variant: 'primary' },
-  { ghnStatus: 'storing',       label: 'Nhập kho GHN (storing)',       variant: 'primary' },
-  { ghnStatus: 'delivering',    label: 'Đang giao hàng (delivering)',  variant: 'warning' },
-  { ghnStatus: 'delivered',     label: 'Đã giao thành công (delivered)', variant: 'success' },
-  { ghnStatus: 'delivery_fail', label: 'Giao thất bại (delivery_fail)', variant: 'warning' },
-  { ghnStatus: 'return',        label: 'Đang hoàn hàng (return)',      variant: 'danger' },
-  { ghnStatus: 'returned',      label: 'Đã trả hàng (returned)',       variant: 'dark' },
-  { ghnStatus: 'cancel',        label: 'Hủy vận đơn (cancel)',         variant: 'danger' },
+  { value: 'CONFIRMED_RESERVED',  label: 'Chờ lấy hàng' },
+  { value: 'PICKING',             label: 'Đang lấy hàng' },
+  { value: 'PACKED',              label: 'Đã lấy hàng' },
+  { value: 'HANDED_OVER_CARRIER', label: 'Đang giao hàng' },
+  { value: 'DELIVERED',           label: 'Đã giao thành công' },
+  { value: 'COMPLETED',           label: 'Hoàn thành' },
+  { value: 'RETURN_REQUESTED',    label: 'Đang hoàn hàng' },
+  { value: 'EXCHANGE_REQUESTED',  label: 'Đang đổi hàng' },
+  { value: 'RETURNED',            label: 'Đã hoàn về kho' },
+  { value: 'CANCELLED',           label: 'Đã hủy' },
 ];
 
 /** Tiêu đề nhỏ cho từng khối thông tin trong modal. */
@@ -151,7 +135,11 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
 
   const currentStatusObj = ORDER_STATUSES.find((s) => s.value === status) || { value: status, label: status };
   const isPending = status === 'PENDING';
-  const isCancelable = ['PENDING', 'CONFIRMED_RESERVED', 'PICKING'].includes(status);
+  const pickedStatuses = ['picked', 'storing', 'transporting', 'sorting', 'delivering', 'delivered', 'return', 'returned'];
+  const isShipperPicked =
+    pickedStatuses.includes(String(ghnStatus || '').toLowerCase()) ||
+    ['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'COMPLETED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED'].includes(status);
+  const isCancelable = ['PENDING', 'CONFIRMED_RESERVED', 'PICKING'].includes(status) && !isShipperPicked && status !== 'CANCELLED';
 
   // Tính toán tổng tiền realtime theo items hiện tại
   const financial = order.financialSummary || {};
@@ -249,7 +237,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
         setStatus('CONFIRMED_RESERVED');
         const updated = res.data || { ...order, status: 'CONFIRMED_RESERVED' };
         if (onStatusUpdated) onStatusUpdated(updated);
-        showSuccess('Đã xác nhận chốt đơn và kích hoạt giữ chỗ tồn kho thành công! [BR: GBR-07]', 'Chốt đơn thành công');
+        showSuccess('Đã xác nhận chốt đơn và kích hoạt giữ chỗ tồn kho thành công!', 'Chốt đơn thành công');
       }
     } catch (err) {
       showError(err.message || 'Lỗi khi xác nhận đơn hàng', 'Thất bại');
@@ -290,54 +278,6 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
   };
 
   /**
-   * Chuyển trạng thái vận đơn theo chuẩn GHN và tự động bắn tin nhắn cho khách qua Chat
-   */
-  const handleSwitchGhnStatus = async (targetGhnStatus) => {
-    if (targetGhnStatus === 'cancel') {
-      if (!isCancelable) {
-        showError(`Không thể hủy đơn hàng ở trạng thái "${currentStatusObj.label}". Chỉ được phép hủy trước khi đóng gói [GBR-08].`, 'Bị chặn bởi nghiệp vụ');
-        return;
-      }
-      setPromptDialog({
-        isOpen: true,
-        title: 'Hủy Đơn Hàng & Giải Phóng Tồn Kho (GBR-08)',
-        label: 'Vui lòng nhập lý do hủy đơn hàng (bắt buộc):',
-        value: 'Khách đổi ý hủy đơn',
-        targetStatus: 'CANCELLED',
-        field: 'cancelReason',
-      });
-      return;
-    }
-
-    try {
-      setUpdating(true);
-      setError('');
-      const orderId = order._id || order.id;
-      const res = await sellerService.switchOrderGhnStatus(orderId, targetGhnStatus);
-      if (res.success && res.data) {
-        const updated = res.data;
-        setStatus(updated.status);
-        setWaybillCode(updated.warehouseFulfillment?.waybillCode || '');
-        setGhnStatus(updated.warehouseFulfillment?.ghnStatus || targetGhnStatus);
-        setGhnStatusName(updated.warehouseFulfillment?.ghnStatusName || targetGhnStatus);
-        if (onStatusUpdated) onStatusUpdated(updated);
-        const chatNotified = updated.chatNotified;
-        const statusLabel = updated.warehouseFulfillment?.ghnStatusName || targetGhnStatus;
-        const msg = chatNotified
-          ? `Đã cập nhật trạng thái GHN [${statusLabel}] và gửi tin nhắn tự động cho khách!`
-          : `Đã cập nhật trạng thái GHN [${statusLabel}]! (Đơn sàn TMĐT / chưa có kênh Chat nên bỏ qua gửi tin)`;
-        showSuccess(msg, 'Cập nhật GHN');
-      }
-    } catch (err) {
-      const msg = err.message || 'Lỗi chuyển trạng thái GHN';
-      setError(msg);
-      showError(msg, 'Lỗi cập nhật GHN');
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  /**
    * Thực hiện gọi API cập nhật trạng thái
    */
   const executeStatusUpdate = async (newStatus, extraPayload = {}) => {
@@ -372,16 +312,15 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
   const handleUpdateStatus = async (newStatus) => {
     if (newStatus === status) return;
 
-    // [GBR-08] Hủy đơn yêu cầu lý do
     if (newStatus === 'CANCELLED') {
       if (!isCancelable) {
-        showError(`Không thể hủy đơn hàng ở trạng thái "${currentStatusObj.label}". Chỉ được phép hủy trước khi đóng gói [GBR-08].`, 'Bị chặn bởi nghiệp vụ');
+        showError('Shipper đã lấy hàng, không thể hủy đơn hàng này.', 'Không thể hủy đơn');
         return;
       }
       setPromptDialog({
         isOpen: true,
-        title: 'Hủy Đơn Hàng & Giải Phóng Tồn Kho (GBR-08)',
-        label: 'Vui lòng nhập lý do hủy đơn hàng (bắt buộc):',
+        title: 'Hủy Đơn Hàng',
+        label: 'Vui lòng nhập lý do hủy đơn hàng:',
         value: 'Khách đổi ý hủy đơn',
         targetStatus: 'CANCELLED',
         field: 'cancelReason',
@@ -527,7 +466,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
                 <SectionTitle icon="cash-coin">Tóm Tắt Thanh Toán</SectionTitle>
                 <Card.Body className="small">
                   <div className="d-flex justify-content-between text-secondary mb-1">
-                    <span>Tiền hàng ({items.length} món)</span>
+                    <span>Tiền hàng</span>
                     <span className="fw-semibold text-body">{formatVnd(currentSubtotal)}</span>
                   </div>
                   <div className="d-flex justify-content-between text-secondary mb-1">
@@ -541,7 +480,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
                     </div>
                   )}
                   <div className="d-flex justify-content-between align-items-center pt-2 mt-2 border-top fw-bold">
-                    <span>{order.paymentMethod === 'BANK_TRANSFER' ? 'Tổng thanh toán (Đã CK):' : 'Tổng thu hộ (COD):'}</span>
+                    <span>{order.paymentMethod === 'BANK_TRANSFER' ? 'Tổng thanh toán chuyển khoản:' : 'Tổng thu hộ COD:'}</span>
                     <span className="fs-5 text-warning-emphasis">{formatVnd(currentTotal)}</span>
                   </div>
                 </Card.Body>
@@ -549,14 +488,14 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
             </Col>
           </Row>
 
-          {/* Khối 2: Danh sách sản phẩm & Cho phép sửa sản phẩm khi PENDING (Phase 1) */}
+          {/* Khối 2: Danh sách sản phẩm */}
           <Card className="shadow-sm">
             <SectionTitle
               icon="box-seam"
               right={
                 isPending ? (
                   <Badge bg="warning" text="dark" className="d-flex align-items-center gap-1">
-                    <Icon name="pencil" /> Cho phép sửa số lượng / mẫu (PENDING)
+                    <Icon name="pencil" /> Cho phép sửa khi chờ xác nhận
                   </Badge>
                 ) : (
                   <Badge bg="secondary" className="d-flex align-items-center gap-1">
@@ -565,7 +504,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
                 )
               }
             >
-              Danh Sách Kiện Hàng ({items.length})
+              Danh Sách Kiện Hàng
             </SectionTitle>
 
             <ListGroup variant="flush">
@@ -657,7 +596,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
             )}
           </Card>
 
-          {/* Khối 3: Vận đơn & Trạng thái Realtime Giao Hàng Nhanh (GHN API - GBR-10) */}
+          {/* Khối 3: Vận đơn & Trạng thái Realtime Giao Hàng Nhanh */}
           {order.orderType !== 'POS_DIRECT' && (
             <Card className="shadow-sm">
               <SectionTitle
@@ -671,16 +610,16 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
                     className="d-flex align-items-center gap-1 py-0 px-2"
                   >
                     {syncingGhn ? <Spinner animation="border" size="sm" /> : <Icon name="arrow-repeat" />}
-                    {waybillCode ? 'Đồng bộ Realtime GHN' : 'Lấy mã vận đơn từ GHN'}
+                    {waybillCode ? 'Đồng bộ từ GHN' : 'Lấy mã vận đơn từ GHN'}
                   </Button>
                 }
               >
-                Vận Đơn &amp; Trạng Thái Realtime Giao Hàng Nhanh (GHN API)
+                Vận Đơn &amp; Trạng Thái Giao Hàng Nhanh
               </SectionTitle>
               <Card.Body className="d-flex flex-column gap-2 small">
                 <div className="d-flex flex-wrap justify-content-between align-items-center p-2 rounded bg-light border gap-2">
                   <div>
-                    <span className="text-secondary me-1">Mã vận đơn GHN (Tự động từ API):</span>
+                    <span className="text-secondary me-1">Mã vận đơn GHN tự động:</span>
                     {waybillCode ? (
                       <strong className="font-monospace fs-6 text-primary">{waybillCode}</strong>
                     ) : (
@@ -690,39 +629,26 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
                   <div>
                     <span className="text-secondary me-1">Trạng thái GHN:</span>
                     <Badge bg="info" text="dark" className="font-monospace">
-                      {ghnStatusName || ghnStatus || 'ready_to_pick'}
+                      {ghnStatusName || ghnStatus || 'Chờ lấy hàng'}
                     </Badge>
                   </div>
                 </div>
 
                 <div className="text-muted" style={{ fontSize: '11.5px' }}>
                   <Icon name="info-circle" className="me-1" />
-                  Phí vận chuyển mặc định nội bộ: <strong>30.000 đ</strong> (Không đẩy tiền ship lên API GHN — Shop trả cước GHN). Khi trạng thái GHN thay đổi, hệ thống tự động đồng bộ trạng thái đơn và bắn tin nhắn vào khung Chat cho khách hàng.
+                  Phí vận chuyển mặc định nội bộ: <strong>30.000 đ</strong> (Shop trả cước GHN). Khi trạng thái GHN thay đổi, hệ thống tự động đồng bộ trạng thái đơn và gửi thông báo cho khách hàng qua Chat.
                 </div>
 
-                <div className="fw-semibold text-dark mt-1">
-                  Chuyển trạng thái theo chuẩn GHN (Tự động đồng bộ &amp; bắn tin cho khách):
-                </div>
-                <div className="d-flex flex-wrap gap-2">
-                  {GHN_FLOW_STATUSES.map((gs) => {
-                    const isCurrentGhn = ghnStatus === gs.ghnStatus;
-                    const isCancelBtn = gs.ghnStatus === 'cancel';
-                    const isBtnDisabled = updating || syncingGhn || (isCancelBtn && !isCancelable);
-
-                    return (
-                      <Button
-                        key={gs.ghnStatus}
-                        size="sm"
-                        className="rounded-pill d-flex align-items-center gap-1"
-                        variant={isCurrentGhn ? gs.variant : `outline-${gs.variant}`}
-                        disabled={isBtnDisabled}
-                        onClick={() => handleSwitchGhnStatus(gs.ghnStatus)}
-                      >
-                        {isCurrentGhn && <Icon name="check-circle-fill" />}
-                        {gs.label}
-                      </Button>
-                    );
-                  })}
+                {/* Kiểm soát trạng thái đơn: Không cho đổi trạng thái tự ý, chỉ có thể hủy đơn khi shipper chưa lấy */}
+                <div className="p-2 rounded border mt-1" style={{ backgroundColor: '#FAF8F5' }}>
+                  <div className="fw-semibold text-dark">Thao tác đơn hàng:</div>
+                  <div className="text-muted" style={{ fontSize: '11.5px' }}>
+                    {status === 'CANCELLED'
+                      ? `Đơn hàng đã hủy lúc: ${formatDate(order.canceledAt || order.updatedAt)}. Lý do: ${order.cancelReason || 'Không có lý do'}`
+                      : isCancelable
+                      ? 'Đơn chỉ được phép hủy khi shipper chưa lấy hàng (sử dụng nút "Hủy Đơn Hàng" ở góc dưới modal).'
+                      : 'Shipper đã lấy hàng / đang vận chuyển nên không thể hủy đơn hàng này.'}
+                  </div>
                 </div>
               </Card.Body>
             </Card>
@@ -750,17 +676,28 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
             )}
           </div>
           <Stack direction="horizontal" gap={2}>
+            {isCancelable && (
+              <Button
+                size="sm"
+                variant="outline-danger"
+                className="d-flex align-items-center gap-1"
+                disabled={updating}
+                onClick={() => handleUpdateStatus('CANCELLED')}
+              >
+                <Icon name="x-circle" /> Hủy Đơn Hàng
+              </Button>
+            )}
             <Button size="sm" className="btn-wms-default" onClick={onClose}>
               Đóng
             </Button>
-            {/* [GBR-11 / GBR-12] Cho phép tạo yêu cầu RMA nếu đơn đã giao hoặc hoàn thành */}
-            {onOpenRma && ['HANDED_OVER_CARRIER', 'DELIVERED', 'COMPLETED'].includes(status) && (
+            {/* Chỉ đơn giao thành công (DELIVERED hoặc COMPLETED) mới hiển thị nút Đổi / Trả */}
+            {onOpenRma && ['DELIVERED', 'COMPLETED'].includes(status) && (
               <Button
                 size="sm"
                 className="btn-wms-accent d-flex align-items-center gap-1"
                 onClick={() => { onClose(); onOpenRma(order); }}
               >
-                <Icon name="arrow-counterclockwise" /> Tạo Đổi / Trả Hàng (RMA)
+                <Icon name="arrow-counterclockwise" /> Tạo Đổi / Trả Hàng
               </Button>
             )}
           </Stack>
