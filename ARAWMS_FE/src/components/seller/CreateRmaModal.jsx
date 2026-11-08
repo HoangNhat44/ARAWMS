@@ -26,6 +26,20 @@ import { Icon, formatVnd } from './SellerUi';
  * API danh sách đơn populate items.skuId thành object nên phải lấy _id,
  * nếu không key bị trùng "[object Object]" và gửi lên server lỗi ObjectId.
  */
+const STATUS_LABELS = {
+  DRAFT: 'Bản nháp',
+  PENDING: 'Chờ xử lý',
+  CONFIRMED_RESERVED: 'Đã xác nhận',
+  PACKED: 'Đã đóng gói',
+  HANDED_OVER_CARRIER: 'Đang giao hàng',
+  DELIVERED: 'Giao thành công',
+  COMPLETED: 'Hoàn tất',
+  CANCELLED: 'Đã hủy',
+  RETURN_REQUESTED: 'Chờ đổi trả',
+  EXCHANGE_REQUESTED: 'Đã tạo đơn đổi',
+  RETURNED: 'Đã hoàn hàng',
+};
+
 const skuKeyOf = (it) => String(it?.skuId?._id || it?.skuId || '');
 
 const RETURN_TYPES = [
@@ -34,10 +48,10 @@ const RETURN_TYPES = [
 ];
 
 const COMMON_REASONS = [
-  'Khách mặc không vừa size (Muốn đổi size khác)',
-  'Sản phẩm bị lỗi vải / sút chỉ / đứt nút (Lỗi xưởng)',
-  'Giao nhầm màu / nhầm mã sản phẩm',
-  'Khách không ưng phom dáng (Muốn trả hàng)',
+  'Khách mặc không vừa size',
+  'Sản phẩm bị lỗi vải, sút chỉ, đứt nút',
+  'Giao nhầm màu, nhầm mã sản phẩm',
+  'Khách không ưng phom dáng',
   'Hàng bị hư hỏng trong quá trình vận chuyển',
   'Khách đổi ý sang mẫu khác',
 ];
@@ -73,6 +87,11 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
 
   useEffect(() => {
     if (initialOrder) {
+      if (!['DELIVERED', 'COMPLETED'].includes(initialOrder.status)) {
+        setError('Không thể tạo yêu cầu đổi trả cho đơn hàng này vì đơn chưa giao thành công. Chức năng đổi hoặc trả hàng chỉ có thể thực hiện khi khách hàng đã nhận được hàng để đảm bảo có sản phẩm thực tế đối chiếu.');
+        setCurrentOrder(null);
+        return;
+      }
       setCurrentOrder(initialOrder);
       const initName = (initialOrder.shippingRecipient?.name || initialOrder.customerId?.fullName || '').toUpperCase();
       setCustomerReturnName(initName);
@@ -93,7 +112,7 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
 
   if (!isOpen) return null;
 
-  // Gửi yêu cầu hoàn tiền cho Kế toán duyệt lập phiếu chi (GBR-14)
+  // Gửi yêu cầu hoàn tiền cho Kế toán duyệt lập phiếu chi
   const handleSendRefundRequest = async () => {
     const rmaId = successResult?.rma?._id;
     if (!rmaId) return;
@@ -130,6 +149,10 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
   };
 
   const handleSelectOrder = (ord) => {
+    if (!['DELIVERED', 'COMPLETED'].includes(ord.status)) {
+      setError(`Đơn hàng ${ord.orderCode} chưa giao thành công. Chức năng đổi hoặc trả hàng chỉ có thể thực hiện khi khách hàng đã nhận được hàng để đảm bảo có sản phẩm thực tế đối chiếu.`);
+      return;
+    }
     setCurrentOrder(ord);
     const initName = (ord.shippingRecipient?.name || ord.customerId?.fullName || '').toUpperCase();
     setCustomerReturnName(initName);
@@ -321,7 +344,7 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
       <Modal.Header closeButton style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderBottom: '1px solid var(--wms-border, #C8B9A6)' }}>
         <Modal.Title as="h6" className="d-flex align-items-center gap-2 fw-bold text-dark">
           <Icon name="arrow-counterclockwise" style={{ color: 'var(--wms-accent, #8A6A46)' }} />
-          Xử Lý Yêu Cầu Đổi / Trả Hàng (RMA - Mentor 4.3.2)
+          Xử Lý Yêu Cầu Đổi / Trả Hàng
         </Modal.Title>
       </Modal.Header>
 
@@ -335,22 +358,22 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
               Đã Tiếp Nhận Yêu Cầu Đổi / Trả Hàng!
             </h4>
             <div className="mb-3">
-              Mã phiếu RMA: <strong className="font-monospace fs-5 text-primary">{successResult.rma?.rmaCode}</strong>
+              Mã phiếu: <strong className="font-monospace fs-5 text-primary">{successResult.rma?.rmaCode}</strong>
             </div>
 
             {successResult.exchangeOrder && (
               <Alert variant="info" className="small text-start">
                 <div className="fw-bold">Đã tạo đơn hàng đổi mới thành công:</div>
                 <div>Mã đơn mới: <strong className="font-monospace">{successResult.exchangeOrder.orderCode}</strong></div>
-                <div>Trạng thái: <strong>CONFIRMED_RESERVED (Đã giữ chỗ tồn kho)</strong></div>
+                <div>Trạng thái: <strong>{STATUS_LABELS[successResult.exchangeOrder.status] || 'Đã xác nhận'}</strong></div>
               </Alert>
             )}
 
             <Alert variant="light" className="text-start small border">
               <div className="fw-bold text-dark mb-1 d-flex align-items-center gap-1">
-                <Icon name="broadcast-pin" /> Hệ thống đã gửi thông báo Realtime cho Kho:
+                <Icon name="broadcast-pin" /> Hệ thống đã gửi thông báo cho Kho:
               </div>
-              Phiếu RMA đang ở trạng thái <strong>REQUESTED</strong>. Nhân viên Kho đã nhận được thông báo để sẵn sàng quét mã vận đơn hoàn và kiểm đếm nhập lại kệ khi hàng về.
+              Phiếu đổi trả đang ở trạng thái <strong>Chờ xử lý</strong>. Nhân viên Kho đã nhận được thông báo để sẵn sàng kiểm đếm nhập lại kệ khi hàng về.
             </Alert>
 
             {successResult.returnType === 'RETURN_FOR_REFUND' && (
@@ -403,7 +426,7 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                   <div className="d-flex justify-content-between align-items-center">
                     <div>
                       <span className="font-monospace fw-bold fs-6 text-dark">{currentOrder.orderCode}</span>
-                      <Badge bg="secondary" className="ms-2">{currentOrder.status}</Badge>
+                      <Badge bg="secondary" className="ms-2">{STATUS_LABELS[currentOrder.status] || currentOrder.status}</Badge>
                     </div>
                     <div className="fw-semibold text-danger">
                       {formatVnd(currentOrder.financialSummary?.totalOrderAmount || 0)}
@@ -441,9 +464,9 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                         >
                           <div>
                             <span className="font-monospace fw-bold">{ord.orderCode}</span>
-                            <span className="text-muted ms-2">({ord.shippingRecipient?.name} - {ord.shippingRecipient?.phone})</span>
+                            <span className="text-muted ms-2">{ord.shippingRecipient?.name} - {ord.shippingRecipient?.phone}</span>
                           </div>
-                          <Badge bg="primary">{ord.status}</Badge>
+                          <Badge bg="primary">{STATUS_LABELS[ord.status] || ord.status}</Badge>
                         </ListGroup.Item>
                       ))}
                     </ListGroup>
@@ -471,7 +494,7 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                   </ButtonGroup>
                 </Card>
 
-                {/* 3. Chọn sản phẩm cụ thể cần đổi / trả (Partial selection) */}
+                {/* 3. Chọn sản phẩm cụ thể cần đổi / trả */}
                 <Card className="border shadow-sm bg-white overflow-hidden">
                   <Card.Header className="fw-bold py-2 bg-light d-flex justify-content-between align-items-center">
                     <span>3. Chọn sản phẩm cần {returnType === 'EXCHANGE_PRODUCT' ? 'đổi' : 'trả'} trong đơn:</span>
@@ -526,13 +549,13 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                 {returnType === 'EXCHANGE_PRODUCT' && (
                   <Card className="border shadow-sm bg-white">
                     <Card.Header className="fw-bold py-2 bg-light d-flex justify-content-between align-items-center">
-                      <span>4. Chọn sản phẩm mới gửi cho khách (Đổi sang mã/size mới):</span>
+                      <span>4. Chọn sản phẩm mới gửi cho khách:</span>
                       <Badge bg="success">Tồn kho Realtime</Badge>
                     </Card.Header>
                     <Card.Body>
                       <InputGroup size="sm" className="mb-2">
                         <Form.Control
-                          placeholder="Gõ mã SKU hoặc tên sản phẩm mới (VD: DAM-L, AO-XL...)"
+                          placeholder="Gõ mã SKU hoặc tên sản phẩm mới..."
                           value={exchangeSearch}
                           onChange={(e) => handleSearchExchangeSkus(e.target.value)}
                         />
@@ -555,7 +578,7 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                               >
                                 <div>
                                   <span className="fw-bold">{sku.skuCode}</span> - {sku.styleName || sku.productName}
-                                  <span className="text-muted ms-2">({formatVnd(sku.retailPrice)})</span>
+                                  <span className="text-muted ms-2">{formatVnd(sku.retailPrice)}</span>
                                 </div>
                                 <Badge bg={avail > 0 ? 'success' : 'danger'}>
                                   {avail > 0 ? `Còn ${avail}` : 'Hết hàng'}
@@ -636,7 +659,7 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                               Hoàn lại khách: {formatVnd(Math.abs(priceDifference))}
                             </span>
                           ) : (
-                            <span className="fw-bold text-muted fs-6">Ngang giá (0 đ)</span>
+                            <span className="fw-bold text-muted fs-6">Ngang giá</span>
                           )}
                         </div>
                       </div>
@@ -644,7 +667,7 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                   </Card>
                 )}
 
-                 {/* 5. Thông tin người đổi trả & tài khoản hoàn tiền (Tên mặc định luôn IN HOA) */}
+                 {/* 5. Thông tin người đổi trả & tài khoản hoàn tiền */}
                 <Card body className="border shadow-sm bg-white">
                   <div className="fw-bold mb-2 text-dark d-flex justify-content-between align-items-center">
                     <span>5. Thông tin khách hàng đổi / trả &amp; Tài khoản nhận hoàn tiền:</span>
@@ -653,7 +676,7 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                   <Row className="g-2 mb-2">
                     <Col md={12}>
                       <Form.Label className="small text-muted mb-1">
-                        Họ tên người đổi / trả (tự động viết chữ IN HOA ngay cả khi tắt CapsLock)
+                        Họ tên người đổi / trả
                       </Form.Label>
                       <Form.Control
                         size="sm"
@@ -696,7 +719,7 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                           />
                         </Col>
                         <Col md={4}>
-                          <Form.Label className="small text-muted mb-1">Tên chủ tài khoản (IN HOA)</Form.Label>
+                          <Form.Label className="small text-muted mb-1">Tên chủ tài khoản</Form.Label>
                           <Form.Control
                             size="sm"
                             placeholder="NGUYEN VAN A..."
@@ -708,14 +731,14 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                         </Col>
                       </Row>
 
-                      {/* Bảng tính hoàn tiền tự động theo chuẩn BR.md (GBR-11 vs GBR-12) */}
+                      {/* Bảng tính hoàn tiền tự động */}
                       <div className="mt-2 p-2 rounded bg-light border small">
                         <div className="d-flex justify-content-between align-items-center mb-1">
-                          <span className="fw-semibold text-dark">Quy tắc nghiệp vụ áp dụng (BR.md):</span>
+                          <span className="fw-semibold text-dark">Quy tắc nghiệp vụ áp dụng:</span>
                           <Badge bg={isStoreFault ? 'success' : 'warning'} text={isStoreFault ? 'light' : 'dark'}>
                             {isStoreFault
-                              ? 'GBR-12: Lỗi xưởng/cửa hàng (Miễn 100% phụ phí)'
-                              : 'GBR-11: Lỗi khách/Đổi ý/Nhầm size (Phụ phí 10%)'}
+                              ? 'Lỗi xưởng hoặc cửa hàng - Miễn phí hoàn trả'
+                              : 'Lỗi khách hoặc đổi ý - Phụ phí 10%'}
                           </Badge>
                         </div>
                         <div className="d-flex justify-content-between text-muted">
@@ -723,13 +746,13 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                           <strong>{formatVnd(calculatedReturnedValue)}</strong>
                         </div>
                         <div className="d-flex justify-content-between text-muted">
-                          <span>Phụ phí hoàn trả ({isStoreFault ? '0% - GBR-12' : '10% - GBR-11'}):</span>
+                          <span>Phụ phí hoàn trả:</span>
                           <strong className={surchargeAmount > 0 ? 'text-danger' : 'text-success'}>
                             -{formatVnd(surchargeAmount)}
                           </strong>
                         </div>
                         <div className="d-flex justify-content-between border-top pt-1 mt-1 fw-bold text-dark">
-                          <span>Số tiền hoàn thực nhận (Kế toán lập phiếu chi theo GBR-14):</span>
+                          <span>Số tiền hoàn thực nhận:</span>
                           <span className="text-primary fs-6">{formatVnd(netRefundAmount)}</span>
                         </div>
                       </div>
@@ -737,24 +760,26 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                   )}
                 </Card>
 
-                {/* 6. Lý do đổi trả & Vận đơn chiều về (GBR-23) */}
+                {/* 6. Lý do đổi trả & Vận đơn chiều về */}
                 <Card body className="border shadow-sm bg-white">
-                  <Form.Group className="mb-2">
-                    <Form.Label className="fw-bold text-dark mb-1">
-                      Mã vận đơn chiều khách gửi về (GBR-23: Kho quét mã &amp; quay video mở hộp)
-                    </Form.Label>
-                    <Form.Control
-                      size="sm"
-                      placeholder="VD: GHN-RET-109284..."
-                      style={{ textTransform: 'uppercase' }}
-                      value={returnWaybillCode}
-                      onChange={(e) => setReturnWaybillCode(e.target.value.toUpperCase())}
-                    />
-                  </Form.Group>
+                  {returnType === 'RETURN_FOR_REFUND' && (
+                    <Form.Group className="mb-2">
+                      <Form.Label className="fw-bold text-dark mb-1">
+                        Mã vận đơn đối chiếu gửi về
+                      </Form.Label>
+                      <Form.Control
+                        size="sm"
+                        placeholder="Nhập mã vận đơn đối chiếu gửi về..."
+                        style={{ textTransform: 'uppercase' }}
+                        value={returnWaybillCode}
+                        onChange={(e) => setReturnWaybillCode(e.target.value.toUpperCase())}
+                      />
+                    </Form.Group>
+                  )}
 
                   <Form.Group>
                     <Form.Label className="fw-bold text-dark mb-1">
-                      Lý do đổi / trả hàng (Xác định GBR-11 / GBR-12 &amp; cách ly hàng lỗi GBR-13)
+                      Lý do đổi / trả hàng
                     </Form.Label>
                     <Form.Select
                       size="sm"

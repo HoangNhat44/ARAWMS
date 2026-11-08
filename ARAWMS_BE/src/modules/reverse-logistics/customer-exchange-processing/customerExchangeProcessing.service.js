@@ -55,7 +55,7 @@ export const createExchangeOrder = async (rmaId, exchangeData, user, req) => {
   }
 
   if (rma.returnType !== 'EXCHANGE_PRODUCT') {
-    throw new Error('Chỉ có thể tạo đơn hàng đổi mới cho phiếu RMA có loại EXCHANGE_PRODUCT');
+    throw new Error('Không thể tạo đơn hàng đổi mới vì phiếu yêu cầu này được đăng ký là Trả hàng hoàn tiền. Chức năng tạo đơn đổi mới chỉ có thể thực hiện khi khách hàng có nhu cầu đổi sản phẩm khác.');
   }
 
   if (rma.financialAccounting?.exchangeOrderId) {
@@ -103,6 +103,25 @@ export const createExchangeOrder = async (rmaId, exchangeData, user, req) => {
   const returnedValue = rma.financialAccounting?.returnedMerchandiseValue || 0;
   const varianceAmount = totalOrderAmount - returnedValue;
 
+  const originalOrder = await SalesOrder.findById(rma.originalOrderId);
+  const originalWaybill = originalOrder?.warehouseFulfillment?.waybillCode || 'Không có';
+  const originalOrderSnapshot = originalOrder
+    ? {
+        orderCode: originalOrder.orderCode,
+        waybillCode: originalWaybill,
+        status: originalOrder.status,
+        deliveredAt: originalOrder.warehouseFulfillment?.deliveredAt || originalOrder.updatedAt,
+        items: (originalOrder.items || []).map((it) => ({
+          skuId: it.skuId,
+          skuCode: it.skuCode,
+          productName: it.productName,
+          orderedQty: it.orderedQty,
+          unitSalePrice: it.unitSalePrice,
+        })),
+        totalOrderAmount: originalOrder.financialSummary?.totalOrderAmount || 0,
+      }
+    : null;
+
   const orderCode = await CounterSequence.getNextSequence('ORDER_CODE', 'ORD', 5);
 
   const exchangeOrder = await SalesOrder.create({
@@ -111,11 +130,24 @@ export const createExchangeOrder = async (rmaId, exchangeData, user, req) => {
     sellerId: user._id,
     orderType: 'EXCHANGE_ORDER',
     linkedReturnRequestId: rma._id,
-    status: 'PENDING',
+    originalOrderId: rma.originalOrderId,
+    originalOrderSnapshot,
+    status: 'CONFIRMED_RESERVED',
+    confirmedAt: new Date(),
+    notes: `Đơn đổi hàng từ đơn gốc #${originalOrder?.orderCode || ''} - Mã vận đơn trước: ${originalWaybill}. Lý do: ${rma.reasonDescription || 'Đổi sản phẩm'}`,
+    statusHistory: [
+      {
+        from: 'ORIGINAL_ORDER',
+        to: 'CONFIRMED_RESERVED',
+        by: user._id,
+        at: new Date(),
+        note: `Khởi tạo đơn đổi mới từ đơn gốc #${originalOrder?.orderCode || ''}`,
+      },
+    ],
     shippingRecipient: {
-      name: (shippingRecipient?.name || '').toUpperCase().trim(),
-      phone: shippingRecipient?.phone || '',
-      address: shippingRecipient?.address || '',
+      name: (shippingRecipient?.name || originalOrder?.shippingRecipient?.name || '').toUpperCase().trim(),
+      phone: shippingRecipient?.phone || originalOrder?.shippingRecipient?.phone || '',
+      address: shippingRecipient?.address || originalOrder?.shippingRecipient?.address || '',
     },
     items: processedItems,
     financialSummary: {
@@ -127,11 +159,17 @@ export const createExchangeOrder = async (rmaId, exchangeData, user, req) => {
     },
     warehouseFulfillment: {
       carrierName: 'GHN',
+      stockReservedAt: new Date(),
     },
     codReconciliationStatus: 'UNRECONCILED',
   });
 
-  // Tự động lấy mã vận đơn GHN cho đơn đổi hàng (GBR-10)
+  // Tự động giữ chỗ tồn kho cho sản phẩm trong đơn đổi mới
+  for (const it of processedItems) {
+    await Sku.findByIdAndUpdate(it.skuId, { $inc: { reservedQty: it.orderedQty } });
+  }
+
+  // Tự động tạo mã vận đơn GHN mới độc lập cho đơn đổi mới (GBR-10)
   try {
     const ghnRes = await ghnService.createShippingOrderFromSalesOrder(exchangeOrder);
     if (ghnRes?.waybillCode) {
@@ -139,13 +177,31 @@ export const createExchangeOrder = async (rmaId, exchangeData, user, req) => {
         carrierName: 'GHN',
         waybillCode: ghnRes.waybillCode,
         ghnStatus: ghnRes.ghnStatus || 'ready_to_pick',
-        ghnStatusName: ghnRes.ghnStatusName || 'Chờ lấy hàng (ready_to_pick)',
+        ghnStatusName: ghnRes.ghnStatusName || 'Chờ lấy hàng',
         ghnUpdatedAt: new Date(),
+        stockReservedAt: new Date(),
       };
       await exchangeOrder.save();
     }
   } catch (ghnErr) {
     console.warn('⚠️ [GHN Exchange Waybill]:', ghnErr.message);
+  }
+
+  // Cập nhật liên kết 2 chiều trong đơn gốc
+  if (originalOrder) {
+    originalOrder.exchangeOrderIds = [...(originalOrder.exchangeOrderIds || []), exchangeOrder._id];
+    originalOrder.status = 'EXCHANGE_REQUESTED';
+    originalOrder.statusHistory = [
+      ...(originalOrder.statusHistory || []),
+      {
+        from: originalOrder.status,
+        to: 'EXCHANGE_REQUESTED',
+        by: user._id,
+        at: new Date(),
+        note: `Đã sinh đơn đổi mới #${exchangeOrder.orderCode} - Vận đơn mới: ${exchangeOrder.warehouseFulfillment?.waybillCode || 'Đang tạo'}`,
+      },
+    ];
+    await originalOrder.save();
   }
 
   rma.financialAccounting = {

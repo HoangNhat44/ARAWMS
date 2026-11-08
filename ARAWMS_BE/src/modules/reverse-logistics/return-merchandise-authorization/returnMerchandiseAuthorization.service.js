@@ -80,20 +80,14 @@ export const createReturnRequest = async (rmaData, user, req) => {
     throw new Error('Yêu cầu đổi/trả phải có ít nhất một sản phẩm. Hướng dẫn: tick chọn sản phẩm và nhập số lượng trả.');
   }
 
-  // Kiểm tra trạng thái đơn: đơn chưa xuất kho thì dùng luồng Hủy đơn theo GBR-08
+  // Chỉ đơn hàng đã giao thành công mới được tạo yêu cầu đổi/trả
   if (!RMA_ELIGIBLE_ORDER_STATUSES.includes(originalOrder.status)) {
-    const isBeforeShipping = ['PENDING', 'CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(originalOrder.status);
-    throw new Error(
-      `Đơn ${originalOrder.orderCode} đang ở trạng thái ${originalOrder.status} nên chưa thể tạo phiếu đổi/trả. ` +
-      (isBeforeShipping
-        ? 'Hướng dẫn: theo GBR-08, đơn chưa bàn giao vận chuyển thì thực hiện HỦY ĐƠN để giải phóng tồn kho giữ chỗ thay vì đổi/trả.'
-        : `Hướng dẫn: chỉ đơn đã giao vận chuyển hoặc đã nhận (${RMA_ELIGIBLE_ORDER_STATUSES.join(', ')}) mới được đổi/trả.`)
-    );
+    throw new Error(`Không thể tạo yêu cầu đổi trả vì đơn hàng ${originalOrder.orderCode} chưa giao thành công. Chức năng đổi hoặc trả hàng chỉ có thể thực hiện khi khách hàng đã nhận được sản phẩm thành công nhằm đảm bảo có sản phẩm thực tế để kiểm tra và đối chiếu.`);
   }
 
-  // Bắt buộc có lý do để phân định lỗi theo GBR-11 / GBR-12
+  // Bắt buộc có lý do
   if (!reasonDescription || reasonDescription.trim().length < RMA_BUSINESS_RULES.REASON_MIN_LENGTH) {
-    throw new Error('[BR: GBR-11 / GBR-12] Vui lòng nhập lý do đổi/trả. Hướng dẫn: chọn lý do có sẵn hoặc mô tả cụ thể để hệ thống xác định miễn phụ phí (GBR-12) hay tính phụ phí 10% (GBR-11).');
+    throw new Error('Vui lòng nhập lý do đổi hoặc trả hàng rõ ràng.');
   }
 
   // Chuẩn hóa thông tin tài khoản nhận hoàn tiền (Chủ tài khoản luôn viết IN HOA)
@@ -105,10 +99,10 @@ export const createReturnRequest = async (rmaData, user, req) => {
       }
     : {};
 
-  // [GBR-14] Trả hàng hoàn tiền cần thông tin tài khoản để Kế toán lập phiếu chi
+  // Trả hàng hoàn tiền cần thông tin tài khoản để Kế toán lập phiếu chi
   if (returnType === 'RETURN_FOR_REFUND') {
     if (!normalizedRefundBanking.bankName || !normalizedRefundBanking.accountNumber || !normalizedRefundBanking.accountHolder) {
-      throw new Error('[BR: GBR-14] Thiếu thông tin tài khoản nhận hoàn tiền. Hướng dẫn: nhập đầy đủ Ngân hàng, Số tài khoản và Tên chủ tài khoản (viết hoa) để Kế toán duyệt lập phiếu chi.');
+      throw new Error('Thiếu thông tin tài khoản nhận hoàn tiền. Vui lòng nhập đầy đủ Ngân hàng, Số tài khoản và Tên chủ tài khoản.');
     }
   }
 
@@ -157,7 +151,7 @@ export const createReturnRequest = async (rmaData, user, req) => {
     const remaining = orderItem.orderedQty - alreadyReturned;
     if (retQty > remaining) {
       throw new Error(
-        `Sản phẩm ${orderItem.skuCode}: số lượng trả (${retQty}) vượt quá số còn được trả (${Math.max(remaining, 0)}/${orderItem.orderedQty}, đã trả ${alreadyReturned}). ` +
+        `Sản phẩm ${orderItem.skuCode}: số lượng yêu cầu trả là ${retQty}, vượt quá số lượng còn được phép trả là ${Math.max(remaining, 0)} trong tổng số ${orderItem.orderedQty} sản phẩm đã mua, số lượng đã trả trước đó là ${alreadyReturned}. ` +
         'Hướng dẫn: giảm số lượng trả xuống bằng hoặc thấp hơn số còn lại.'
       );
     }
@@ -214,12 +208,11 @@ export const createReturnRequest = async (rmaData, user, req) => {
     },
   });
 
-  // Thống nhất trạng thái đơn hàng gốc sau khi đổi/trả
-  const isFullReturn = totalReturnedQty >= totalOrderQty;
+  // Thống nhất trạng thái đơn hàng gốc sau khi đổi/trả (không còn trạng thái trả 1 phần)
   if (returnType === 'EXCHANGE_PRODUCT') {
     originalOrder.status = 'EXCHANGE_REQUESTED';
   } else {
-    originalOrder.status = isFullReturn ? 'RETURN_REQUESTED' : 'PARTIALLY_RETURNED';
+    originalOrder.status = 'RETURN_REQUESTED';
   }
   originalOrder.linkedReturnRequestId = newRma._id;
   await originalOrder.save();
@@ -232,7 +225,7 @@ export const createReturnRequest = async (rmaData, user, req) => {
     appliedRule: financials.appliedRule,
     itemsCount: inspectedItems.length,
     reasonDescription: reasonDescription || 'Không có ghi chú',
-    message: `Đơn ${originalOrder.orderCode} vừa tạo phiếu ${newRma.returnType === 'EXCHANGE_PRODUCT' ? 'đổi hàng' : 'trả hàng'} (${newRma.rmaCode} - ${financials.appliedRule})`,
+    message: `Đơn ${originalOrder.orderCode} vừa tạo phiếu ${newRma.returnType === 'EXCHANGE_PRODUCT' ? 'đổi hàng' : 'trả hàng'}: ${newRma.rmaCode} - ${financials.appliedRule}`,
     createdAt: new Date(),
   });
 

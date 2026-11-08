@@ -40,14 +40,13 @@ export const RMA_BUSINESS_RULES = Object.freeze({
 });
 
 /**
- * Các trạng thái đơn hàng đủ điều kiện tạo phiếu Đổi/Trả (đơn đã giao cho vận chuyển hoặc đã nhận).
- * Đơn chưa xuất kho (PENDING, CONFIRMED_RESERVED, PICKING) sử dụng luồng Hủy đơn theo GBR-08.
+ * Các trạng thái đơn hàng đủ điều kiện tạo phiếu Đổi/Trả:
+ * Chỉ những đơn hàng đã giao thành công (DELIVERED hoặc đơn hoàn thành tại quầy COMPLETED)
+ * mới được phép tạo yêu cầu đổi/trả hàng.
  */
 export const RMA_ELIGIBLE_ORDER_STATUSES = Object.freeze([
-  'HANDED_OVER_CARRIER',
   'DELIVERED',
   'COMPLETED',
-  'PARTIALLY_RETURNED',
 ]);
 
 /** Trạng thái phiếu RMA đang hoạt động */
