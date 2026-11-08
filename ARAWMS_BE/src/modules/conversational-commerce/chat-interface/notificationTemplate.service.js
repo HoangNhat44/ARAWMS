@@ -19,6 +19,7 @@ import ChatMessage from '../../../models/ChatMessage.model.js';
 import Customer from '../../../models/Customer.model.js';
 import { ENV } from '../../../config/env.js';
 import { emitNewMessage, emitConversationUpdated } from '../../../config/socket.js';
+import { getGhnStatusLabel } from '../../ghn/ghn.service.js';
 
 /**
  * Định dạng tiền tệ VND
@@ -111,12 +112,12 @@ export const buildGhnStatusUpdateText = (order, ghnStatus, waybillCode) => {
   switch (normalized) {
     case 'ready_to_pick':
       return (
-        `🚚 ĐÃ TẠO VẬN ĐƠN GIAO HÀNG NHANH (GHN)\n` +
+        `🚚 ĐÃ TẠO VẬN ĐƠN GIAO HÀNG NHANH\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `Mã đơn hàng: #${order.orderCode}\n` +
         `Mã vận đơn GHN: ${code}\n` +
-        `Trạng thái GHN: Chờ lấy hàng (ready_to_pick)\n` +
-        `Tổng thu hộ (COD): ${cod}\n` +
+        `Trạng thái: Chờ lấy hàng\n` +
+        `Tổng thu hộ COD: ${cod}\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `Đơn hàng của quý khách đã được đẩy lên hệ thống GHN và cấp mã vận đơn tự động. AraStore đang chuẩn bị bàn giao kiện hàng cho bưu tá!`
       );
@@ -128,32 +129,32 @@ export const buildGhnStatusUpdateText = (order, ghnStatus, waybillCode) => {
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `Mã đơn hàng: #${order.orderCode}\n` +
         `Mã vận đơn GHN: ${code}\n` +
-        `Trạng thái GHN: Đang lấy hàng (${normalized})\n` +
+        `Trạng thái: Đang lấy hàng\n` +
         `Bưu tá Giao Hàng Nhanh đang tiếp nhận kiện hàng của bạn tại kho AraStore.`
       );
 
     case 'picked':
+      return (
+        `📦 BƯU TÁ GHN ĐÃ LẤY HÀNG\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Mã đơn hàng: #${order.orderCode}\n` +
+        `Mã vận đơn GHN: ${code}\n` +
+        `Trạng thái: Đã lấy hàng\n` +
+        `Kiện hàng đã được bàn giao cho GHN và sẽ sớm được chuyển đến quý khách.`
+      );
+
     case 'storing':
     case 'transporting':
     case 'sorting':
-      return (
-        `🏢 KIỆN HÀNG ĐÃ NHẬP KHO TRUNG CHUYỂN GHN\n` +
-        `━━━━━━━━━━━━━━━━━━━━━\n` +
-        `Mã đơn hàng: #${order.orderCode}\n` +
-        `Mã vận đơn GHN: ${code}\n` +
-        `Trạng thái GHN: Đang luân chuyển tại bưu cục (${normalized})\n` +
-        `Kiện hàng đã được GHN揽 nhận và đang phân loại để chuyển đến khu vực của quý khách.`
-      );
-
     case 'delivering':
     case 'money_collect_delivering':
       return (
-        `🛵 SHIPPER GHN ĐANG GIAO HÀNG ĐẾN BẠN!\n` +
+        `🛵 ĐƠN HÀNG ĐANG ĐƯỢC GIAO ĐẾN BẠN\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `Mã đơn hàng: #${order.orderCode}\n` +
         `Mã vận đơn GHN: ${code}\n` +
-        `Trạng thái GHN: Nhân viên đang giao hàng (${normalized})\n` +
-        `Số tiền cần thanh toán (COD): ${cod}\n` +
+        `Trạng thái: Đang giao hàng\n` +
+        `Số tiền cần thanh toán COD: ${cod}\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `📞 Quý khách vui lòng chú ý điện thoại để nhận cuộc gọi từ bưu tá GHN nhé!`
       );
@@ -163,7 +164,7 @@ export const buildGhnStatusUpdateText = (order, ghnStatus, waybillCode) => {
         `✅ ĐƠN HÀNG #${order.orderCode} ĐÃ GIAO THÀNH CÔNG!\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `Mã vận đơn GHN: ${code}\n` +
-        `Trạng thái GHN: Giao hàng thành công (delivered)\n` +
+        `Trạng thái: Đã giao thành công\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `Cảm ơn quý khách đã tin tưởng và mua sắm tại AraStore! Nếu cần hỗ trợ đổi size hoặc phản hồi về sản phẩm, quý khách cứ nhắn tin tại đây nhé ❤️`
       );
@@ -173,7 +174,7 @@ export const buildGhnStatusUpdateText = (order, ghnStatus, waybillCode) => {
         `⚠️ GIAO HÀNG CHƯA THÀNH CÔNG - ĐƠN #${order.orderCode}\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `Mã vận đơn GHN: ${code}\n` +
-        `Trạng thái GHN: Giao hàng thất bại (delivery_fail)\n` +
+        `Trạng thái: Giao hàng thất bại\n` +
         `Bưu tá GHN chưa liên hệ được với quý khách. Quý khách vui lòng kiểm tra điện thoại hoặc phản hồi lại để AraStore hỗ trợ hẹn lịch giao lại nhé!`
       );
 
@@ -187,16 +188,16 @@ export const buildGhnStatusUpdateText = (order, ghnStatus, waybillCode) => {
         `↩️ THÔNG BÁO CHUYỂN HOÀN ĐƠN HÀNG #${order.orderCode}\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `Mã vận đơn GHN: ${code}\n` +
-        `Trạng thái GHN: ${normalized === 'returned' ? 'Đã hoàn về kho (returned)' : `Đang chuyển hoàn (${normalized})`}\n` +
+        `Trạng thái: ${normalized === 'returned' ? 'Đã hoàn về kho' : 'Đang hoàn hàng'}\n` +
         `Nếu quý khách cần hỗ trợ gửi lại đơn hàng, vui lòng nhắn tin cho AraStore nhé!`
       );
 
     case 'cancel':
       return (
-        `❌ THÔNG BÁO HỦY ĐƠN VẬN CHUYỂN #${order.orderCode}\n` +
+        `❌ THÔNG BÁO HỦY ĐƠN HÀNG #${order.orderCode}\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `Mã vận đơn GHN: ${code}\n` +
-        `Trạng thái GHN: Đã hủy (cancel)\n` +
+        `Trạng thái: Đã hủy\n` +
         `Đơn hàng của quý khách đã được hủy trên hệ thống vận chuyển. Hẹn gặp lại quý khách ở đơn hàng tiếp theo!`
       );
 
@@ -205,7 +206,7 @@ export const buildGhnStatusUpdateText = (order, ghnStatus, waybillCode) => {
         `🔔 CẬP NHẬT TRẠNG THÁI VẬN ĐƠN #${order.orderCode}\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `Mã vận đơn GHN: ${code}\n` +
-        `Trạng thái GHN mới nhất: ${normalized}\n` +
+        `Trạng thái mới nhất: ${getGhnStatusLabel(normalized)}\n` +
         `AraStore sẽ tiếp tục cập nhật hành trình đơn hàng tới quý khách!`
       );
   }
@@ -240,7 +241,7 @@ export const sendOrderNotificationToChat = async ({
     }
 
     if (!convId) {
-      console.warn(`⚠️ Không tìm thấy conversationId cho đơn hàng #${order.orderCode}, bỏ qua gửi tin chat.`);
+      // Đơn hàng không có kênh Chat Facebook (đơn từ Shopee, TikTok, Excel, POS...) -> bỏ qua tự nhiên, không cần cảnh báo
       return null;
     }
 

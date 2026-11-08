@@ -32,7 +32,6 @@ const processedWebhookEvents = new Map();
 export const applyGhnStatusToSalesOrder = async ({
   order,
   ghnStatus,
-  ghnStatusName,
   waybillCode,
   codAmount,
   sendChatNotification = true,
@@ -43,6 +42,17 @@ export const applyGhnStatusToSalesOrder = async ({
   const mapped = mapGhnStatusToOrderStatus(normalizedGhnStatus);
   const previousGhnStatus = order.warehouseFulfillment?.ghnStatus;
   const previousOrderStatus = order.status;
+
+  // Đơn đã kết thúc hoặc đang được xử lý đổi/trả nội bộ: không để GHN ghi đè trạng thái
+  const isLockedOrder =
+    ['CANCELLED', 'RETURNED', 'EXCHANGE_REQUESTED', 'COMPLETED'].includes(previousOrderStatus) ||
+    (previousOrderStatus === 'RETURN_REQUESTED' && Boolean(order.linkedReturnRequestId));
+  // Chống lùi trạng thái: dữ liệu GHN cũ hơn trạng thái đã ghi nhận thì bỏ qua
+  const previousRank = previousGhnStatus ? mapGhnStatusToOrderStatus(previousGhnStatus).rank : 0;
+  const isRegression = previousGhnStatus && mapped.rank < previousRank;
+  if (isLockedOrder || isRegression) {
+    return { order, chatMessage: null, statusChanged: false, skipped: true };
+  }
 
   const effectiveWaybill =
     waybillCode ||
@@ -77,11 +87,13 @@ export const applyGhnStatusToSalesOrder = async ({
         performedByUserId: order.sellerId,
       });
     }
-    order.cancelReason = order.cancelReason || 'Đơn vận chuyển GHN chuyển trạng thái Hủy (cancel)';
+    order.cancelReason = order.cancelReason || 'Đơn vận chuyển GHN đã bị hủy';
     order.canceledAt = new Date();
   }
 
-  // Khi GHN đã lấy hàng / nhập kho / đang giao -> cập nhật handedOverAt
+  if (!order.warehouseFulfillment) order.warehouseFulfillment = {};
+
+  // Khi GHN đã lấy hàng / đang giao -> cập nhật handedOverAt
   if (
     ['picked', 'storing', 'transporting', 'sorting', 'delivering', 'money_collect_delivering'].includes(normalizedGhnStatus) &&
     !order.warehouseFulfillment?.handedOverAt
@@ -91,6 +103,7 @@ export const applyGhnStatusToSalesOrder = async ({
 
   // [GBR-15 & GBR-16] Khi GHN giao thành công (delivered) -> cập nhật thanh toán & đối soát COD
   if (normalizedGhnStatus === 'delivered') {
+    order.warehouseFulfillment.deliveredAt = order.warehouseFulfillment.deliveredAt || new Date();
     order.paymentStatus = 'PAID';
     const expectedCod = Number(order.financialSummary?.expectedCodAmount || 0);
     if (codAmount !== undefined && codAmount !== null && codAmount > 0 && expectedCod > 0) {
@@ -112,7 +125,7 @@ export const applyGhnStatusToSalesOrder = async ({
     carrierName: 'GHN',
     waybillCode: effectiveWaybill,
     ghnStatus: mapped.ghnStatus,
-    ghnStatusName: ghnStatusName || mapped.ghnStatusName,
+    ghnStatusName: mapped.ghnStatusName,
     ghnUpdatedAt: new Date(),
   };
 
@@ -124,6 +137,7 @@ export const applyGhnStatusToSalesOrder = async ({
         to: mapped.orderStatus,
         by: order.sellerId,
         at: new Date(),
+        note: `Đồng bộ từ GHN: ${mapped.ghnStatusName}`,
       },
     ];
     order.status = mapped.orderStatus;

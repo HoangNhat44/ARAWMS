@@ -3,120 +3,43 @@ import { ENV } from '../../config/env.js';
 
 /**
  * Bảng ánh xạ đồng nhất trạng thái từ Giao Hàng Nhanh (GHN) sang trạng thái chuẩn của SalesOrder
- * Giúp đồng bộ 100% trạng thái đơn hàng theo trạng thái thực tế của GHN
+ * Giúp đồng bộ 100% trạng thái đơn hàng theo trạng thái thực tế của GHN.
+ * - Tên hiển thị chỉ dùng tiếng Việt (không kèm mã tiếng Anh trong ngoặc).
+ * - Các trạng thái trung chuyển (nhập kho, luân chuyển, phân loại, đang giao) gộp chung "Đang giao hàng".
+ * - rank: thứ tự tiến trình, dùng để chống lùi trạng thái khi đồng bộ.
  */
+const DELIVERING_LABEL = 'Đang giao hàng';
+const RETURNING_LABEL = 'Đang hoàn hàng';
+
 export const GHN_STATUS_MAP = Object.freeze({
-  ready_to_pick: {
-    ghnStatus: 'ready_to_pick',
-    ghnStatusName: 'Chờ lấy hàng (ready_to_pick)',
-    orderStatus: 'CONFIRMED_RESERVED',
-  },
-  picking: {
-    ghnStatus: 'picking',
-    ghnStatusName: 'Nhân viên đang lấy hàng (picking)',
-    orderStatus: 'PICKING',
-  },
-  money_collect_picking: {
-    ghnStatus: 'money_collect_picking',
-    ghnStatusName: 'Đang tương tác với người gửi (money_collect_picking)',
-    orderStatus: 'PICKING',
-  },
-  picked: {
-    ghnStatus: 'picked',
-    ghnStatusName: 'Nhân viên đã lấy hàng (picked)',
-    orderStatus: 'PACKED',
-  },
-  storing: {
-    ghnStatus: 'storing',
-    ghnStatusName: 'Hàng đang nằm ở kho GHN (storing)',
-    orderStatus: 'HANDED_OVER_CARRIER',
-  },
-  transporting: {
-    ghnStatus: 'transporting',
-    ghnStatusName: 'Đang luân chuyển hàng (transporting)',
-    orderStatus: 'HANDED_OVER_CARRIER',
-  },
-  sorting: {
-    ghnStatus: 'sorting',
-    ghnStatusName: 'Đang phân loại hàng hóa (sorting)',
-    orderStatus: 'HANDED_OVER_CARRIER',
-  },
-  delivering: {
-    ghnStatus: 'delivering',
-    ghnStatusName: 'Nhân viên đang giao cho người nhận (delivering)',
-    orderStatus: 'HANDED_OVER_CARRIER',
-  },
-  money_collect_delivering: {
-    ghnStatus: 'money_collect_delivering',
-    ghnStatusName: 'Nhân viên đang thu tiền người nhận (money_collect_delivering)',
-    orderStatus: 'HANDED_OVER_CARRIER',
-  },
-  delivered: {
-    ghnStatus: 'delivered',
-    ghnStatusName: 'Nhân viên đã giao hàng thành công (delivered)',
-    orderStatus: 'DELIVERED',
-  },
-  delivery_fail: {
-    ghnStatus: 'delivery_fail',
-    ghnStatusName: 'Nhân viên giao hàng thất bại (delivery_fail)',
-    orderStatus: 'HANDED_OVER_CARRIER',
-  },
-  waiting_to_return: {
-    ghnStatus: 'waiting_to_return',
-    ghnStatusName: 'Đang đợi trả hàng về cho người gửi (waiting_to_return)',
-    orderStatus: 'RETURN_REQUESTED',
-  },
-  return: {
-    ghnStatus: 'return',
-    ghnStatusName: 'Trả hàng (return)',
-    orderStatus: 'RETURN_REQUESTED',
-  },
-  return_transporting: {
-    ghnStatus: 'return_transporting',
-    ghnStatusName: 'Đang luân chuyển hàng trả (return_transporting)',
-    orderStatus: 'RETURN_REQUESTED',
-  },
-  return_sorting: {
-    ghnStatus: 'return_sorting',
-    ghnStatusName: 'Đang phân loại hàng trả (return_sorting)',
-    orderStatus: 'RETURN_REQUESTED',
-  },
-  returning: {
-    ghnStatus: 'returning',
-    ghnStatusName: 'Nhân viên đang đi trả hàng (returning)',
-    orderStatus: 'RETURN_REQUESTED',
-  },
-  return_fail: {
-    ghnStatus: 'return_fail',
-    ghnStatusName: 'Nhân viên trả hàng thất bại (return_fail)',
-    orderStatus: 'RETURN_REQUESTED',
-  },
-  returned: {
-    ghnStatus: 'returned',
-    ghnStatusName: 'Nhân viên trả hàng thành công (returned)',
-    orderStatus: 'RETURNED',
-  },
-  cancel: {
-    ghnStatus: 'cancel',
-    ghnStatusName: 'Đơn hủy (cancel)',
-    orderStatus: 'CANCELLED',
-  },
-  exception: {
-    ghnStatus: 'exception',
-    ghnStatusName: 'Đơn hàng ngoại lệ (exception)',
-    orderStatus: 'HANDED_OVER_CARRIER',
-  },
-  damage: {
-    ghnStatus: 'damage',
-    ghnStatusName: 'Hàng bị hư hỏng (damage)',
-    orderStatus: 'RETURN_REQUESTED',
-  },
-  lost: {
-    ghnStatus: 'lost',
-    ghnStatusName: 'Hàng bị mất (lost)',
-    orderStatus: 'RETURN_REQUESTED',
-  },
+  ready_to_pick: { ghnStatus: 'ready_to_pick', ghnStatusName: 'Chờ lấy hàng', orderStatus: 'CONFIRMED_RESERVED', rank: 1 },
+  picking: { ghnStatus: 'picking', ghnStatusName: 'Đang lấy hàng', orderStatus: 'PICKING', rank: 2 },
+  money_collect_picking: { ghnStatus: 'money_collect_picking', ghnStatusName: 'Đang lấy hàng', orderStatus: 'PICKING', rank: 2 },
+  picked: { ghnStatus: 'picked', ghnStatusName: 'Đã lấy hàng', orderStatus: 'PACKED', rank: 3 },
+  storing: { ghnStatus: 'storing', ghnStatusName: DELIVERING_LABEL, orderStatus: 'HANDED_OVER_CARRIER', rank: 4 },
+  transporting: { ghnStatus: 'transporting', ghnStatusName: DELIVERING_LABEL, orderStatus: 'HANDED_OVER_CARRIER', rank: 4 },
+  sorting: { ghnStatus: 'sorting', ghnStatusName: DELIVERING_LABEL, orderStatus: 'HANDED_OVER_CARRIER', rank: 4 },
+  delivering: { ghnStatus: 'delivering', ghnStatusName: DELIVERING_LABEL, orderStatus: 'HANDED_OVER_CARRIER', rank: 4 },
+  money_collect_delivering: { ghnStatus: 'money_collect_delivering', ghnStatusName: DELIVERING_LABEL, orderStatus: 'HANDED_OVER_CARRIER', rank: 4 },
+  delivery_fail: { ghnStatus: 'delivery_fail', ghnStatusName: 'Giao hàng thất bại', orderStatus: 'HANDED_OVER_CARRIER', rank: 4 },
+  exception: { ghnStatus: 'exception', ghnStatusName: 'Đơn hàng gặp sự cố', orderStatus: 'HANDED_OVER_CARRIER', rank: 4 },
+  delivered: { ghnStatus: 'delivered', ghnStatusName: 'Đã giao thành công', orderStatus: 'DELIVERED', rank: 5 },
+  waiting_to_return: { ghnStatus: 'waiting_to_return', ghnStatusName: RETURNING_LABEL, orderStatus: 'RETURN_REQUESTED', rank: 6 },
+  return: { ghnStatus: 'return', ghnStatusName: RETURNING_LABEL, orderStatus: 'RETURN_REQUESTED', rank: 6 },
+  return_transporting: { ghnStatus: 'return_transporting', ghnStatusName: RETURNING_LABEL, orderStatus: 'RETURN_REQUESTED', rank: 6 },
+  return_sorting: { ghnStatus: 'return_sorting', ghnStatusName: RETURNING_LABEL, orderStatus: 'RETURN_REQUESTED', rank: 6 },
+  returning: { ghnStatus: 'returning', ghnStatusName: RETURNING_LABEL, orderStatus: 'RETURN_REQUESTED', rank: 6 },
+  return_fail: { ghnStatus: 'return_fail', ghnStatusName: 'Hoàn hàng thất bại', orderStatus: 'RETURN_REQUESTED', rank: 6 },
+  damage: { ghnStatus: 'damage', ghnStatusName: 'Hàng bị hư hỏng', orderStatus: 'RETURN_REQUESTED', rank: 6 },
+  lost: { ghnStatus: 'lost', ghnStatusName: 'Hàng bị thất lạc', orderStatus: 'RETURN_REQUESTED', rank: 6 },
+  returned: { ghnStatus: 'returned', ghnStatusName: 'Đã hoàn về kho', orderStatus: 'RETURNED', rank: 7 },
+  cancel: { ghnStatus: 'cancel', ghnStatusName: 'Đã hủy', orderStatus: 'CANCELLED', rank: 9 },
 });
+
+/** Các trạng thái GHN cho biết shipper đã lấy hàng (không thể hủy đơn nữa) */
+export const GHN_PICKED_UP_STATUSES = Object.freeze(
+  Object.values(GHN_STATUS_MAP).filter((s) => s.rank >= 3 && s.ghnStatus !== 'cancel').map((s) => s.ghnStatus)
+);
 
 /**
  * Tra cứu thông tin ánh xạ trạng thái từ mã status của GHN
@@ -127,11 +50,15 @@ export const mapGhnStatusToOrderStatus = (rawStatus) => {
   return (
     GHN_STATUS_MAP[key] || {
       ghnStatus: key,
-      ghnStatusName: `Trạng thái GHN (${key})`,
+      ghnStatusName: DELIVERING_LABEL,
       orderStatus: 'HANDED_OVER_CARRIER',
+      rank: 4,
     }
   );
 };
+
+/** Lấy tên tiếng Việt của trạng thái GHN */
+export const getGhnStatusLabel = (rawStatus) => mapGhnStatusToOrderStatus(rawStatus).ghnStatusName;
 
 /** Phí vận chuyển mặc định nội bộ (30.000đ) - KHÔNG đẩy lên API GHN */
 export const DEFAULT_INTERNAL_SHIPPING_FEE = 30000;
@@ -384,7 +311,7 @@ class GhnService {
         if (detailRes?.status) {
           detailStatus = String(detailRes.status).toLowerCase().trim();
           const mapped = mapGhnStatusToOrderStatus(detailStatus);
-          detailStatusName = detailRes.statusName || mapped.ghnStatusName;
+          detailStatusName = mapped.ghnStatusName;
         }
       } catch (detailErr) {
         console.warn(`⚠️ [GHN Detail Sync] Không lấy được chi tiết ngay cho ${waybillCode}:`, detailErr.message);
@@ -431,7 +358,8 @@ class GhnService {
         order_code: d.order_code,
         orderCode: d.order_code,
         status: ghnStatus,
-        statusName: d.status_name || mapped.ghnStatusName,
+        statusName: mapped.ghnStatusName,
+        ghnRawStatusName: d.status_name,
         mappedOrderStatus: mapped.orderStatus,
         codAmount: d.cod_amount,
         isCodCollected: d.is_cod_collected,
@@ -521,7 +449,7 @@ class GhnService {
         mode: 'SIMULATION_FALLBACK',
         orderCode: cleanCode,
         status: cleanStatus,
-        message: `Đã chuyển trạng thái vận đơn GHN ${cleanCode} sang [${cleanStatus}] thành công`,
+        message: `Đã chuyển trạng thái vận đơn GHN ${cleanCode} sang "${getGhnStatusLabel(cleanStatus)}" thành công`,
       };
     }
   }

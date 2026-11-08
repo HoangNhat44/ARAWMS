@@ -27,11 +27,12 @@ export const getSocket = () => {
     }
 
     socket = io(serverUrl, {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: 15,
-      reconnectionDelay: 1500,
+      reconnectionAttempts: 20,
+      reconnectionDelay: 2000,
+      withCredentials: true,
     });
 
     socket.on('connect', () => {
@@ -43,7 +44,7 @@ export const getSocket = () => {
     });
 
     socket.on('connect_error', (err) => {
-      console.warn('⚠️ [Socket.io Client] Lỗi kết nối WebSocket:', err.message);
+      console.warn('⚠️ [Socket.io Client] Đang kết nối lại tới máy chủ Backend (port 5000):', err.message);
     });
   }
 
