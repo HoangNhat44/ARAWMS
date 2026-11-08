@@ -575,3 +575,22 @@ h1, h2, h3, h4, .brand-title {
 .btn-ara-gold:disabled, .btn-ara-primary:disabled, .btn-ara-secondary:disabled { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
 @media (max-width: 900px) { .product-layout { grid-template-columns: 1fr; } .product-side-column { grid-template-columns: repeat(2, minmax(0, 1fr)); } .product-action-bar { grid-column: 1; } }
 @media (max-width: 640px) { .product-workspace { width: min(100% - 1rem, 1280px); margin-top: 1rem; } .product-mode-grid, .product-fields, .product-side-column { grid-template-columns: 1fr; } .product-steps { gap: .2rem; } .product-steps li { display: block; padding: .55rem; font-size: .7rem; } .product-steps li span { display: block; } .product-card { padding: 1rem; } .product-card-head { flex-wrap: wrap; } .product-identity { flex-wrap: wrap; } .product-identity > button { width: 100%; } .product-result { flex-wrap: wrap; } .product-result-action { width: 100%; } .product-sku-table thead { display: none; } .product-sku-table, .product-sku-table tbody, .product-sku-table tr, .product-sku-table td { display: block; } .product-sku-table tr { position: relative; padding: .75rem .7rem .75rem 2.6rem; border: 1px solid var(--ara-border); border-radius: 8px; margin: .55rem 0; } .product-sku-table td { border: 0; padding: .15rem; } .product-sku-table td:first-child { position: absolute; left: .55rem; top: .8rem; } .product-sku-table td[data-label]::before { content: attr(data-label) ': '; color: var(--ara-text-muted); font-size: .73rem; } .product-action-bar { flex-direction: column; align-items: stretch; } .product-action-bar > div > * { flex: 1; } .product-price-list > div { grid-template-columns: 1fr 1fr; } .product-price-list > div span { grid-column: 1 / -1; } }
+/* Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 30-10-2026 | Token nền dùng chung theo UI_DESIGN_SYSTEM. */
+:root {
+  --wms-primary:#141210; --wms-primary-hover:#24201C; --wms-accent:#8A6A46; --wms-accent-light:#D4B48C; --wms-accent-hover:#6E5233; --wms-primary-subtle:#EFE6DA;
+  --wms-secondary:#574F46; --wms-bg-app:#E8DFD3; --wms-bg-subtle:#F3EDE4; --wms-bg-surface:#FFFFFF; --wms-bg-muted:#DDD2C4; --wms-border:#C8B9A6; --wms-border-strong:#AE9C86;
+  --wms-text-primary:#141210; --wms-text-body:#26221E; --wms-text-light:#786E63;
+  --wms-success:#1E6B47; --wms-success-bg:#E3F5EC; --wms-success-border:#86CFA8; --wms-warning:#9A5B06; --wms-warning-bg:#FEF0C7; --wms-warning-border:#F5B95F; --wms-error:#A62626; --wms-error-bg:#FCE4E4; --wms-error-border:#EDA1A1;
+  --ara-bg:var(--wms-bg-app); --ara-bg-surface:var(--wms-bg-subtle); --ara-bg-card:var(--wms-bg-surface); --ara-bg-muted:var(--wms-bg-muted); --ara-bg-soft:var(--wms-primary-subtle);
+  --ara-noir:var(--wms-primary); --ara-noir-soft:var(--wms-primary-hover); --ara-text:var(--wms-text-body); --ara-text-muted:var(--wms-secondary); --ara-text-light:var(--wms-text-light);
+  --ara-gold:var(--wms-accent); --ara-gold-light:var(--wms-accent-light); --ara-gold-hover:var(--wms-accent-hover); --ara-gold-subtle:var(--wms-primary-subtle); --ara-border:var(--wms-border);
+  --ara-success:var(--wms-success); --ara-success-bg:var(--wms-success-bg); --ara-error:var(--wms-error); --ara-error-bg:var(--wms-error-bg);
+  --ara-shadow-sm:none; --ara-shadow-md:none; --ara-shadow-lg:0 12px 32px #1412101f; --font-serif:Inter, sans-serif; --font-sans:Inter, sans-serif;
+  --radius-sm:4px; --radius-md:8px; --radius-lg:12px; --radius-full:24px;
+}
+* { box-sizing:border-box; }
+body { margin:0; font:400 14px/1.6 Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--wms-bg-app); color:var(--wms-text-body); }
+h1,h2,h3,h4,p { margin:0; } h1 { font-size:28px;line-height:1.35;font-weight:600; } h2 { font-size:20px;line-height:1.4;font-weight:600; } h3 {font-size:18px;line-height:1.4;font-weight:600;}
+a {color:var(--wms-accent-hover);} button,input,textarea,select {font:inherit;} a,button,input,textarea,select { -webkit-tap-highlight-color:transparent; }
+#root,.wms-application,.app-container {min-height:100dvh;} .app-container {display:flex;flex-direction:column;} .main-content {flex:1;min-width:0;outline:none;}
+@media(max-width:575px){h1{font-size:24px;}}

@@ -1,12 +1,14 @@
 /*
- * File: AuthContext.jsx
- * Author: Duy Anh
- * Date: 2026-10-26
- * Description: Owns browser authentication state and its provider. Restores saved sessions and exposes login and logout actions.
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-01, UC-02, UC-03, UC-04 - Quản lý tài khoản và phiên đăng
+ * nhập trên giao diện.
  */
-import { createContext, useState, useEffect } from 'react';
-import { STORAGE_KEYS } from '../utils/constants';
+
+import { createContext, useState, useEffect, useCallback, useRef } from 'react';
 import { authService } from '../services/authService';
+import { AUTH_EXPIRED_EVENT, clearAuth, getToken, saveAuth, saveProfile } from '../utils/authStorage';
+import { STORAGE_KEYS } from '../utils/constants';
 
 export const AuthContext = createContext(null);
 
@@ -15,75 +17,74 @@ export const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState('');
+  /*
+   * UC-01, UC-02: Đánh dấu lần cập nhật để kết quả API cũ không ghi đè phiên
+   * mới.
+   */
+  const revision = useRef(0);
 
-  useEffect(() => {
-    let active = true;
-    let request = 0;
-    /** Rechecks the token so the displayed account always matches API requests. */
-    const syncAuth = async () => {
-      const currentRequest = ++request;
-      const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-      if (!token) {
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-      try {
-        const res = await authService.getMe();
-        if (!active || currentRequest !== request) return;
-        if (token !== localStorage.getItem(STORAGE_KEYS.TOKEN)) return syncAuth();
-        const verifiedUser = res.success && res.data?.user ? res.data.user : null;
-        if (verifiedUser) localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(verifiedUser));
-        setUser(verifiedUser);
-      } catch (err) {
-        if (!active || currentRequest !== request) return;
-        // Axios can clear an expired token before this handler runs.
-        if (token !== localStorage.getItem(STORAGE_KEYS.TOKEN)) return syncAuth();
-        if (err.status === 401 || err.status === 403) logout();
-        else {
-          // Keep the last verified identity for local drafts while the API is unreachable.
-          try {
-            const cached = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER) || 'null');
-            setUser(cached?.id || cached?._id ? cached : null);
-          } catch { setUser(null); }
-        }
-      } finally {
-        if (active && currentRequest === request) setLoading(false);
-      }
-    };
-
-    syncAuth();
-    // A second tab may replace the token while this tab still shows the old user.
-    const onStorage = (event) => {
-      if (event.key === STORAGE_KEYS.TOKEN || event.key === null) {
-        setLoading(true);
-        syncAuth();
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    const onExpired = () => setUser(null);
-    window.addEventListener('arawms-auth-expired', onExpired);
-    return () => { active = false; window.removeEventListener('storage', onStorage);
-      window.removeEventListener('arawms-auth-expired', onExpired); };
+  /*
+   * UC-02: Xóa token và hồ sơ khỏi trình duyệt, đồng thời cập nhật trạng thái
+   * FE.
+   */
+  const clearSession = useCallback(() => {
+    revision.current += 1;
+    clearAuth(); setUser(null); setAuthError('');
   }, []);
 
-  /** Persists the authenticated user and token for subsequent API requests. */
-  const login = (userData, token) => {
-    localStorage.setItem(STORAGE_KEYS.TOKEN, token);
-    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
-    setUser(userData);
+  // UC-01, UC-03: Kiểm tra phiên đã lưu và tải hồ sơ khi mở lại trang.
+  const refreshSession = useCallback(async () => {
+    const currentRevision = ++revision.current;
+    setLoading(true); setAuthError('');
+    try {
+      const response = getToken() ? await authService.getMe() : null;
+      if (revision.current === currentRevision) setUser(response?.data?.user || null);
+    } catch (error) {
+      if (revision.current === currentRevision) {
+        setUser(null);
+        if (error.status !== 401) setAuthError(error.message);
+      }
+    } finally {
+      if (revision.current === currentRevision) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshSession();
+    const expire = () => { clearSession(); setLoading(false); };
+    const sync = (event) => { if (event.key === STORAGE_KEYS.TOKEN || event.key === null) refreshSession(); };
+    window.addEventListener(AUTH_EXPIRED_EVENT, expire);
+    window.addEventListener('storage', sync);
+    return () => {
+      revision.current += 1;
+      window.removeEventListener(AUTH_EXPIRED_EVENT, expire);
+      window.removeEventListener('storage', sync);
+    };
+  }, [clearSession, refreshSession]);
+
+  // UC-01, UC-05: Nhận kết quả xác thực từ BE và lưu theo lựa chọn ghi nhớ.
+  const login = (profile, token, rememberMe = false) => {
+    revision.current += 1;
+    saveAuth(profile, token, rememberMe);
+    setUser(profile); setAuthError(''); setLoading(false);
   };
 
-  /** Clears credentials and user state for every consumer of the context. */
-  const logout = () => {
-    localStorage.removeItem(STORAGE_KEYS.TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.USER);
-    setUser(null);
+  // UC-02: Yêu cầu BE thu hồi phiên trước khi xóa trạng thái đăng nhập trên FE.
+  const logout = async () => {
+    // Lỗi mạng thì giữ trạng thái để có thể gửi lại yêu cầu đăng xuất.
+    try { await authService.logout(); }
+    catch (error) { if (error.status !== 401) throw error; }
+    clearSession();
   };
 
-  return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  /*
+   * UC-03, UC-04: Giữ hồ sơ trong bộ nhớ và bộ lưu trữ khớp với kết quả cập
+   * nhật.
+   */
+  const updateUser = (profile) => { saveProfile(profile); setUser(profile); };
+
+  return <AuthContext.Provider value={{ user, loading, authError, refreshSession, login, logout, clearSession, updateUser }}>
+    {children}
+  </AuthContext.Provider>;
 };

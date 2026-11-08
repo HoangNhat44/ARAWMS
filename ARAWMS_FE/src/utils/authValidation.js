@@ -1,0 +1,33 @@
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-01/04/06 - Nhãn và hướng dẫn tiếng Việt phổ thông.
+/*
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-01, UC-04; GBR-02 - Kiểm tra mật khẩu và xác nhận mật khẩu
+ * trên giao diện.
+ */
+
+export const identifierError = (value) => {
+  if (typeof value !== 'string') return 'Nhập địa chỉ thư điện tử hoặc mã nhân viên hợp lệ.';
+  const identifier = value.trim();
+  const email = identifier.length <= 254
+    && /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/i.test(identifier)
+    && !identifier.startsWith('.') && !identifier.includes('..') && !identifier.includes('.@');
+  return (identifier.includes('@') ? email : /^[A-Z0-9_-]{1,50}$/i.test(identifier))
+    ? '' : 'Nhập email hợp lệ hoặc mã nhân viên chỉ gồm chữ, số, gạch nối và gạch dưới.';
+};
+
+// UC-01, UC-04: Chặn mật khẩu trống hoặc vượt quá giới hạn bcrypt.
+export const passwordError = (value, label = 'Mật khẩu') => {
+  if (typeof value !== 'string' || !value.trim()) return label + ' không được để trống.';
+  if (new TextEncoder().encode(value).length > 72) return label + ' không được vượt quá 72 byte.';
+  return '';
+};
+
+// UC-04, GBR-02: Kiểm tra độ dài mật khẩu mới và ô xác nhận.
+export const newPasswordError = (password, confirmation) => {
+  const invalid = passwordError(password, 'Mật khẩu mới');
+  if (invalid) return invalid;
+  if (!password.trim() || password.length < 8) return 'Mật khẩu mới phải có ít nhất 8 ký tự.';
+  if (password !== confirmation) return 'Xác nhận mật khẩu mới không khớp.';
+  return '';
+};

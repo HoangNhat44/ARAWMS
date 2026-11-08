@@ -12,20 +12,30 @@ export const notFoundHandler = (req, res, next) => {
   next(error);
 };
 
-export const errorHandler = (error, req, res, next) => {
-  if (res.headersSent) return next(error);
-  const status = error.statusCode || error.status || (res.statusCode !== 200 ? res.statusCode : 500);
-  if (status >= 500) console.error(error);
-  return sendError(
-    res,
-    status >= 500 ? 'Lỗi máy chủ nội bộ' : error.message,
-    {
-      code: error.code || (status >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_ERROR'),
-      details: error.details || null,
-      stack: process.env.NODE_ENV === 'production' ? null : error.stack,
-    },
-    status
-  );
+export const errorHandler = (err, req, res, next) => {
+  if (res.headersSent) return next(err);
+
+  const candidate = err.statusCode || err.status || (res.statusCode >= 400 ? res.statusCode : 500);
+  const statusCode = Number.isInteger(candidate) && candidate >= 400 && candidate <= 599 ? candidate : 500;
+
+  if (statusCode >= 500) console.error(err);
+
+  const message = statusCode >= 500 && process.env.NODE_ENV === 'production'
+    ? 'Lỗi máy chủ nội bộ'
+    : err.message || 'Lỗi máy chủ nội bộ';
+
+  const errorPayload = {
+    code: err.code || (statusCode >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_ERROR'),
+    details: err.details || null,
+    stack: process.env.NODE_ENV === 'production' ? null : err.stack,
+  };
+
+  return res.status(statusCode).json({
+    success: false,
+    message,
+    ...errorPayload,
+    error: errorPayload,
+  });
 };
 
 export const globalErrorHandler = errorHandler;

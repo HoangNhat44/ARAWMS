@@ -1,3 +1,7 @@
+/*
+ * File: contractWorkspace.routes.js
+ * Description: Routes for Supplier Management, Contract Drafting, and Owner Contract Details.
+ */
 import express from 'express';
 import * as contractWorkspaceController from './contractWorkspace.controller.js';
 import {
@@ -8,6 +12,8 @@ import {
   validateContractStatusUpdate,
   validateTerminateContract,
 } from './contractWorkspace.validation.js';
+import { asyncHandler } from '../../../common/utils/httpError.js';
+import { contractDetail } from './contractWorkspace.service.js';
 
 const router = express.Router();
 
@@ -52,6 +58,18 @@ router.post(
   validateContractIdParam,
   validateTerminateContract,
   contractWorkspaceController.terminateContract
+);
+
+// Support Owner contract detail view mounted at /api/owner/contracts/:id
+router.get(
+  '/:id',
+  asyncHandler(async (req, res, next) => {
+    if (['suppliers', 'materials-catalog', 'contracts'].includes(req.params.id)) {
+      return next();
+    }
+    const data = await contractDetail(req.params.id);
+    return res.json({ success: true, data });
+  })
 );
 
 export default router;

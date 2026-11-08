@@ -5,6 +5,7 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
+    "seed:demo": "node scripts/seedOwnerDemo.js",
     "start": "node server.js",
     "dev": "nodemon server.js",
     "migrate:sku-index": "node scripts/drop-obsolete-sku-index.mjs",
@@ -18,7 +19,8 @@
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "test:packing": "node --test test/packingBarcodeScan.test.js tests/warehouseCollectionMerge.test.mjs",
-    "test:inbound": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.finishedGoodsInbound.config.cjs --runInBand"
+    "test:inbound": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.finishedGoodsInbound.config.cjs --runInBand",
+    "provision:employee": "node scripts/provisionEmployee.js"
   },
   "keywords": [
     "express",
@@ -38,10 +40,12 @@
     "dotenv": "^16.4.5",
     "exceljs": "^4.4.0",
     "express": "^4.19.2",
+    "google-auth-library": "^11.3.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.5.1",
     "morgan": "^1.10.0",
-    "socket.io": "^4.8.4"
+    "socket.io": "^4.8.4",
+    "nodemailer": "^10.2.1"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

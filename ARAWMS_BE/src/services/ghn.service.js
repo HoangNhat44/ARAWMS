@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { ENV } from '../config/env.js';
+import { runtimeGhnConfig } from '../modules/system-administration/system-settings/systemSettings.service.js';
 
 /**
  * GhnService - Wrapper tích hợp GHN API (Sandbox / Production)
@@ -137,6 +138,13 @@ class GhnService {
     } catch (error) {
       return this._handleError(error, 'Tạo đơn hàng GHN thất bại');
     }
+  }
+
+  /**
+   * Alias cho createShippingOrder
+   */
+  async createOrder(orderData, customShopId = null) {
+    return this.createShippingOrder(orderData, customShopId);
   }
 
   /**
@@ -319,5 +327,29 @@ class GhnService {
   }
 }
 
-export const ghnService = new GhnService();
+// Export singleton instance as well as the class
+// Nguyễn Ngọc Huy-HE171157, 30-10-2026: OWNER-EXT-02 - Dùng cấu hình Owner vừa lưu cho yêu cầu tiếp theo.
+// Mỗi lần gọi tạo client riêng, tránh yêu cầu đồng thời dùng nhầm token hoặc shop của nhau.
+const runtimeClient = async () => {
+  try {
+    if (typeof runtimeGhnConfig === 'function') {
+      const cfg = await runtimeGhnConfig();
+      if (cfg) return new GhnService(cfg);
+    }
+  } catch (error) {
+    // Fallback nếu chưa kết nối DB hoặc cấu hình chưa sẵn sàng
+  }
+  return new GhnService();
+};
+
+export const ghnService = {
+  createOrder: async (...args) => (await runtimeClient()).createOrder(...args),
+  createShippingOrder: async (...args) => (await runtimeClient()).createShippingOrder(...args),
+  getOrderDetail: async (...args) => (await runtimeClient()).getOrderDetail(...args),
+  getShops: async (...args) => (await runtimeClient()).getShops(...args),
+  getWards: async (...args) => (await runtimeClient()).getWards(...args),
+  getAvailableServices: async (...args) => (await runtimeClient()).getAvailableServices(...args),
+  registerWebhook: async (...args) => (await runtimeClient()).registerWebhook(...args),
+  devSwitchStatus: async (...args) => (await runtimeClient()).devSwitchStatus(...args),
+};
 export default GhnService;

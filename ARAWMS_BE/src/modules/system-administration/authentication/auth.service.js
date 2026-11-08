@@ -1,113 +1,110 @@
 /*
- * File: auth.service.js
- * Author: Duy Anh
- * Date: 2026-10-26
- * Description: Validates login credentials and seller registration against MongoDB, creates signed tokens, and limits authentication responses to public account fields.
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Cập nhật chú thích: Nguyễn Ngọc Huy-HE171157, 30-10-2026 - UC-10/11 là nhật ký/truy vết; GBR-23 là video hàng trả.
+ * Chức năng: UC-01, UC-02; GBR-01, GBR-02 - Đăng nhập, đăng xuất và kiểm tra
+ * trạng thái tài khoản.
  */
+
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../../../models/User.model.js';
-import Role from '../../../models/Role.model.js';
+import { ENV } from '../../../config/env.js';
+import { httpError } from '../../../common/utils/httpError.js';
+import { accountProfile } from '../account-governance/accountProfile.js';
+import { recordAccountActivity } from '../systemAudit.js';
 
-const authError = (message, statusCode, code) => Object.assign(new Error(message), { statusCode, code });
+// GBR-01: Chỉ lấy tài khoản đang hoạt động và chưa bị xóa.
+export const activeAccountFilter = { status: 'ACTIVE', isDeleted: { $ne: true } };
+// GBR-01: Kiểm tra thêm role còn hoạt động và đúng với role của tài khoản.
+export const isActiveAccount = (user) => Boolean(user && user.status === 'ACTIVE' && !user.isDeleted
+  && user.roleId?.isActive && !user.roleId.isDeleted && user.roleId.roleCode === user.roleCode);
 
-/**
- * Builds the account profile returned by authentication endpoints.
- * The password hash and internal role document are never included in the response.
- *
- * @param {import('mongoose').Document} user - The authenticated or newly registered user.
- * @returns {object} Public identity, role, status, and avatar fields.
- */
-export const publicUser = (user) => ({
-  id: String(user._id),
-  employeeCode: user.employeeCode,
-  fullName: user.fullName,
-  email: user.email,
-  roles: [user.roleCode],
-  status: user.status,
-  avatarUrl: user.avatarUrl,
+const dummyHash = bcrypt.hashSync('arawms-invalid-credential', 12);
+const credentialsError = () => httpError(401, 'Thông tin đăng nhập không đúng hoặc tài khoản không được phép truy cập.');
+const recoveryError = () => Object.assign(httpError(403,
+  'Bạn đã nhập sai mật khẩu 5 lần liên tiếp. Chọn Quên mật khẩu để đặt lại mật khẩu qua email.'), {
+  details: { code: 'PASSWORD_RESET_REQUIRED' },
 });
-
-/**
- * Signs a token containing only the user ID so authorization loads current account data.
- *
- * @param {import('mongoose').Document} user - The account receiving the token.
- * @returns {string} Signed JWT using the configured expiration policy.
- * @throws {Error} When JWT_SECRET is not configured.
- */
-const createToken = (user) => {
-  if (!process.env.JWT_SECRET) throw new Error('Thiếu cấu hình JWT_SECRET');
-  return jwt.sign({ id: String(user._id) }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  });
+// GBR-02: Tài khoản đã sai 5 lần cần đặt lại mật khẩu qua Quên mật khẩu.
+export const passwordAccessFilter = {
+  passwordResetRequired: { $ne: true },
+  $or: [{ failedLoginAttempts: { $lt: 5 } }, { failedLoginAttempts: { $exists: false } }],
 };
 
-/**
- * Authenticates an employee by email or employee code without exposing which field failed.
- * A deleted account or mismatched password receives the same 401 response. Locked
- * accounts receive 403 only after their password has been verified.
- *
- * @param {object} credentials - Login fields submitted by the client.
- * @param {string} credentials.usernameOrEmail - Email or employee code, matched without case sensitivity.
- * @param {string} credentials.password - Plaintext password to compare with the stored hash.
- * @returns {Promise<object>} Public account profile and signed JWT.
- * @throws {Error} For missing fields, invalid credentials, or a locked account.
- */
-export const loginUser = async ({ usernameOrEmail, password } = {}) => {
-  if (typeof usernameOrEmail !== 'string' || !usernameOrEmail.trim() || typeof password !== 'string' || !password) {
-    throw authError('Vui lòng nhập email hoặc mã nhân viên và mật khẩu', 400, 'INVALID_INPUT');
-  }
-
-  const input = usernameOrEmail.trim();
+// UC-01: Kiểm tra email hoặc mã nhân viên, mật khẩu và quyền truy cập.
+export const verifyCredentials = async ({ identifier, password }) => {
+  /*
+   * UC-01, GBR-01: Tìm tài khoản được phép đăng nhập theo email hoặc mã nhân
+   * viên.
+   */
   const user = await User.findOne({
-    $or: [{ email: input.toLowerCase() }, { employeeCode: input.toUpperCase() }],
-    isDeleted: { $ne: true },
-  }).select('+passwordHash');
-
-  if (!user || !user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
-    throw authError('Tài khoản hoặc mật khẩu không chính xác', 401, 'INVALID_CREDENTIALS');
+    ...activeAccountFilter,
+    $or: [{ email: identifier.toLowerCase() }, { employeeCode: identifier.toUpperCase() }],
+  }).select('+passwordHash +failedLoginAttempts +passwordResetRequired +googleLinkVersion')
+    .populate('roleId', 'roleName roleCode isActive isDeleted');
+  // UC-01: Đối chiếu mật khẩu nhập vào với hash đang lưu trong DB.
+  const validPassword = await bcrypt.compare(password, user?.passwordHash || dummyHash);
+  if (!isActiveAccount(user)) throw credentialsError();
+  // GBR-02: Hướng người dùng sang Quên mật khẩu khi đã sai 5 lần liên tiếp.
+  if (user.passwordResetRequired || user.failedLoginAttempts >= 5) throw recoveryError();
+  /*
+   * GBR-02: Tăng số lần nhập sai trong một lần cập nhật để tránh đếm lệch khi
+   * gửi nhiều yêu cầu.
+   */
+  if (!validPassword) {
+    // Bỏ yêu cầu dùng mật khẩu cũ nếu mật khẩu trong DB đã được đổi.
+    const result = await User.findOneAndUpdate({
+      _id: user._id, ...activeAccountFilter, passwordHash: user.passwordHash,
+      passwordResetRequired: { $ne: true },
+    }, [{
+      $set: { failedLoginAttempts: { $min: [5, { $add: [{ $ifNull: ['$failedLoginAttempts', 0] }, 1] }] } },
+    }, {
+      $set: { passwordResetRequired: { $gte: ['$failedLoginAttempts', 5] }, loginLockedUntil: null },
+    }], { new: true }).select('+failedLoginAttempts');
+    if (result?.failedLoginAttempts >= 5) throw recoveryError();
+    throw credentialsError();
   }
-  if (user.status !== 'ACTIVE') throw authError('Tài khoản đang bị khóa', 403, 'ACCOUNT_LOCKED');
-
-  user.lastLoginAt = new Date();
-  await user.save();
-  return { user: publicUser(user), token: createToken(user) };
+  // UC-01, GBR-02: Nhập đúng trước lần sai thứ 5 thì đưa bộ đếm về 0.
+  const confirmed = await User.findOneAndUpdate({
+    _id: user._id, ...activeAccountFilter, passwordHash: user.passwordHash, ...passwordAccessFilter,
+  }, { $set: { failedLoginAttempts: 0, loginLockedUntil: null } }, { new: true })
+    .select('+passwordHash +googleLinkVersion').populate('roleId', 'roleName roleCode isActive isDeleted');
+  if (!isActiveAccount(confirmed)) throw credentialsError();
+  return confirmed;
 };
 
-/**
- * Registers a seller using the configured active SELLER role.
- * Warehouse employee accounts are provisioned separately and are not created here.
- *
- * @param {object} details - Name, email, and password supplied by the registrant.
- * @returns {Promise<object>} Public account profile and signed JWT.
- * @throws {Error} For invalid input, an existing email, or a missing SELLER role.
- */
-export const registerUser = async ({ name, fullName, email, password } = {}) => {
-  const cleanName = typeof (fullName || name) === 'string' ? (fullName || name).trim() : '';
-  const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
-  if (!cleanName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) || typeof password !== 'string' || password.length < 8) {
-    throw authError('Nhập họ tên, email hợp lệ và mật khẩu ít nhất 8 ký tự', 400, 'INVALID_INPUT');
-  }
-  if (await User.exists({ email: cleanEmail })) {
-    throw authError('Email này đã được đăng ký', 409, 'EMAIL_EXISTS');
-  }
+// UC-01, UC-05: Tạo phiên đăng nhập sau khi xác thực tài khoản hoặc Google.
+export const createSession = async (user, rememberMe, req, method = 'PASSWORD') => {
+  const sessionId = randomUUID();
+  // UC-01: Phiên thường kéo dài 8 giờ; chọn ghi nhớ thì kéo dài 7 ngày.
+  const lifetime = rememberMe ? 7 * 24 * 60 * 60 : 8 * 60 * 60;
+  const expiresAt = new Date(Date.now() + lifetime * 1000);
+  const token = jwt.sign({ sid: sessionId }, ENV.JWT_SECRET, {
+    subject: String(user._id), expiresIn: lifetime, algorithm: 'HS256', issuer: 'arawms', audience: 'arawms-web',
+  });
+  /*
+   * GBR-01: Kiểm tra lại trạng thái trước khi lưu phiên để tránh cấp quyền cho
+   * tài khoản vừa bị khóa.
+   */
+  const updated = await User.findOneAndUpdate({
+    _id: user._id, ...activeAccountFilter, roleCode: user.roleCode,
+    ...(method === 'GOOGLE' ? { googleId: user.googleId } : { passwordHash: user.passwordHash, ...passwordAccessFilter }),
+  }, {
+    $set: { lastLoginAt: new Date(), failedLoginAttempts: 0, loginLockedUntil: null },
+    $push: { sessions: { $each: [{ sessionId, expiresAt }], $slice: -10 } },
+  }, { new: true }).populate('roleId', 'roleName roleCode isActive isDeleted');
+  if (!isActiveAccount(updated)) throw credentialsError();
+  // UC-10, UC-11: Ghi nhận tài khoản đã đăng nhập và cách đăng nhập.
+  await recordAccountActivity(req, updated, 'Authentication', method === 'GOOGLE' ? 'GOOGLE_LOGIN' : 'LOGIN');
+  return { user: accountProfile(updated), token, expiresAt };
+};
 
-  const role = await Role.findOne({ roleCode: 'SELLER', isActive: true, isDeleted: { $ne: true } });
-  if (!role) throw authError('Chưa cấu hình vai trò cho tài khoản mới', 503, 'ROLE_NOT_CONFIGURED');
+export const login = async (input, req) => createSession(await verifyCredentials(input), input.rememberMe, req);
 
-  try {
-    const user = await User.create({
-      employeeCode: `SELF-${randomUUID().slice(0, 12)}`,
-      fullName: cleanName,
-      email: cleanEmail,
-      passwordHash: await bcrypt.hash(password, 10),
-      roleId: role._id,
-      roleCode: role.roleCode,
-    });
-    return { user: publicUser(user), token: createToken(user) };
-  } catch (error) {
-    if (error.code === 11000) throw authError('Email này đã được đăng ký', 409, 'EMAIL_EXISTS');
-    throw error;
-  }
+// UC-02: Xóa đúng phiên hiện tại khỏi DB và ghi nhận lần đăng xuất.
+export const logout = async (req) => {
+  await User.updateOne({ _id: req.user._id }, { $pull: { sessions: { sessionId: req.auth.sessionId } } });
+  await recordAccountActivity(req, req.user, 'Authentication', 'LOGOUT');
 };

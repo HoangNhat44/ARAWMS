@@ -30,12 +30,15 @@ const stocktakeSessionSchema = new Schema(
     },
     totalItemsExpected: { type: Number, default: 0 },
     totalDiscrepancyCount: { type: Number, default: 0 },
+    approvalRevision: { type: Number, default: 0, min: 0 },
     approvalInfo: {
       approvalLevelRequired: { type: String, enum: ['MINOR_MANAGER', 'MAJOR_OWNER'] },
       approvedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
       approvedAt: Date,
       adjustmentReason: String,
       agingStockActionPlan: String,
+      // GBR-18: Lưu dấu báo cáo đã duyệt để module điều chỉnh đối chiếu trước khi ghi sổ.
+      approvedReportHash: String,
     },
   },
   { collection: 'stocktake_sessions' }

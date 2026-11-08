@@ -1,44 +1,25 @@
 /*
- * File: auth.controller.js
- * Author: Duy Anh
- * Date: 2026-10-26
- * Description: Handles registration, login, and current-user HTTP requests. Delegates account rules to the authentication service and returns the shared API response format.
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-01, UC-02, UC-03 - Nhận yêu cầu đăng nhập, đăng xuất và trả
+ * thông tin tài khoản.
  */
-import { sendSuccess } from '../../../common/utils/responseHandler.js';
-import { loginUser, publicUser, registerUser } from './auth.service.js';
 
-/**
- * Registers a seller using the request body and returns its public profile and token.
- * Validation and duplicate-email errors are passed to the shared error handler.
- *
- * @param {import('express').Request} req - Request containing registration fields.
- * @param {import('express').Response} res - Response receiving the 201 result.
- * @param {import('express').NextFunction} next - Error handler callback.
- */
-export const register = async (req, res, next) => {
-  try {
-    return sendSuccess(res, 'Đăng ký thành công', await registerUser(req.body), 201);
-  } catch (error) { next(error); }
+import * as authService from './auth.service.js';
+import { accountProfile } from '../account-governance/accountProfile.js';
+
+// UC-01: Gọi xử lý đăng nhập rồi trả hồ sơ và token cho FE.
+export const login = async (req, res) => {
+  const data = await authService.login(req.loginInput, req);
+  res.json({ success: true, message: 'Đăng nhập thành công.', data });
 };
 
-/**
- * Authenticates submitted credentials and returns a public profile and token.
- * Invalid credentials are reported by the service as 401 through the error handler.
- *
- * @param {import('express').Request} req - Request containing usernameOrEmail and password.
- * @param {import('express').Response} res - Response receiving the login result.
- * @param {import('express').NextFunction} next - Error handler callback.
- */
-export const login = async (req, res, next) => {
-  try {
-    return sendSuccess(res, 'Đăng nhập thành công', await loginUser(req.body));
-  } catch (error) { next(error); }
+// UC-02: Kết thúc phiên hiện tại rồi báo đăng xuất thành công.
+export const logout = async (req, res) => {
+  await authService.logout(req);
+  res.json({ success: true, message: 'Đã kết thúc phiên làm việc.' });
 };
 
-/**
- * Returns the account selected by authentication middleware as public fields only.
- *
- * @param {import('express').Request} req - Request with the authenticated user attached.
- * @param {import('express').Response} res - Response receiving the public account profile.
- */
-export const me = (req, res) => sendSuccess(res, 'Thông tin tài khoản', { user: publicUser(req.user) });
+// UC-03: Giữ API lấy hồ sơ để FE kiểm tra lại phiên đã lưu.
+// UC-03: Trả thông tin hồ sơ của tài khoản đang đăng nhập.
+export const getMe = (req, res) => res.json({ success: true, data: { user: accountProfile(req.user) } });

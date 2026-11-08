@@ -1,9 +1,10 @@
 /*
- * File: useAuth.js
- * Author: Duy Anh
- * Date: 2026-10-26
- * Description: Reads the authentication context for React components. Rejects use outside the provider so callers always receive valid state.
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-01 đến UC-05 - Cung cấp trạng thái xác thực cho các thành
+ * phần giao diện.
  */
+
 import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 

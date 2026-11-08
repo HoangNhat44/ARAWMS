@@ -1,0 +1,192 @@
+/* Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 30-10-2026 | Khung Owner theo UI_DESIGN_SYSTEM, ưu tiên nội dung và thao tác. */
+.owner-shell { width:100%;min-width:0;min-height:100dvh;background:var(--wms-bg-subtle);--owner-gutter:clamp(12px,1.5vw,24px); }
+.owner-sider {position:fixed!important;inset:0 auto 0 0;height:100dvh;z-index:30;overflow:hidden;border-right:1px solid var(--wms-primary-hover);}
+.owner-sider .ant-layout-sider-children {display:flex;flex-direction:column;height:100%;}
+.owner-brand {display:flex;align-items:center;gap:12px;min-height:80px;padding:16px 20px;text-decoration:none;color:var(--wms-accent-light);overflow:hidden;}
+.owner-brand img {width:40px;height:40px;object-fit:contain;background:white;border-radius:8px;flex-shrink:0;}
+.owner-brand strong {display:block;color:white;font-size:18px;line-height:1.4;letter-spacing:.02em;} .owner-brand small {display:block;font-size:12px;color:var(--wms-accent-light);white-space:nowrap;}
+.owner-sider nav {overflow-y:auto;overflow-x:hidden;flex:1;scrollbar-width:thin;scrollbar-color:var(--wms-accent) var(--wms-primary);padding:0 8px 16px;}
+.owner-sider .ant-menu-item-group-title {font-size:12px;font-weight:600;padding:20px 16px 8px;}
+.owner-sider-footer {display:flex;gap:8px;align-items:center;padding:16px 24px;color:var(--wms-accent-light);border-top:1px solid var(--wms-primary-hover);font-size:12px;white-space:nowrap;}
+.owner-sider.ant-layout-sider-collapsed .owner-brand {padding:20px;}.owner-sider.ant-layout-sider-collapsed .owner-brand span,.owner-sider.ant-layout-sider-collapsed .ant-menu-item-group-title,.owner-sider.ant-layout-sider-collapsed .owner-sider-footer span {display:none;}
+.owner-sider.ant-layout-sider-collapsed .owner-sider-footer {justify-content:center;padding:16px;}.owner-sider.ant-layout-sider-collapsed nav {padding-inline:0;}
+.owner-workspace {flex:1 1 0;min-width:0;max-width:100%;background:var(--wms-bg-subtle);}.owner-workspace-expanded {margin-left:248px;}.owner-workspace-collapsed {margin-left:80px;}
+.owner-header {height:72px;line-height:normal;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px var(--owner-gutter);background:var(--wms-bg-subtle);border-bottom:1px solid var(--wms-border);position:sticky;top:0;z-index:20;}
+.owner-header-context,.owner-header-actions {display:flex;align-items:center;gap:12px;min-width:0;}.owner-header-context .ant-breadcrumb {font-size:13px;}.owner-header-context .ant-breadcrumb li:last-child {font-weight:500;}
+.owner-icon-button {width:44px!important;height:44px!important;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;}
+.owner-profile-button {height:auto!important;min-height:44px;display:flex;align-items:center;gap:12px;padding:4px 8px;}.owner-profile-button>span:last-child {display:flex;flex-direction:column;align-items:flex-start;}.owner-profile-button strong {font-size:13px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;}.owner-profile-button small {font-size:12px;color:var(--wms-secondary);}
+.owner-main {width:100%;max-width:none;min-width:0;margin:0;padding:24px var(--owner-gutter) 32px;display:flex;flex-direction:column;gap:24px;}
+.owner-page-context {display:flex;justify-content:space-between;gap:16px;color:var(--wms-secondary);font-size:12px;}
+.owner-page-heading {display:flex;align-items:flex-start;justify-content:space-between;gap:24px;}.owner-page-heading h1{font-size:28px;line-height:1.35;}.owner-page-heading p:not(.owner-eyebrow) {color:var(--wms-secondary);margin-top:8px;max-width:800px;line-height:1.7;font-size:14px;}
+.owner-eyebrow {font-size:12px;font-weight:600;color:var(--wms-accent-hover);margin-bottom:8px;}.owner-main h2 {font-size:20px;}.owner-main h3 {font-size:18px;}
+.owner-filters {display:flex;align-items:flex-end;flex-wrap:wrap;gap:16px;padding:20px 24px;background:white;border:1px solid var(--wms-border);border-radius:8px;}
+.owner-filters>.wms-form-item {flex:1 1 180px;max-width:320px;}.owner-filters>.ant-alert {flex:1 0 100%;}.owner-filters>button {flex-shrink:0;}
+.owner-form {display:flex;flex-direction:column;gap:20px;}.owner-form p {font-size:14px;line-height:1.7;}.owner-form>.wms-form-item {width:100%;}.owner-form>button {align-self:flex-start;}
+.owner-form-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 24px;}.owner-form-grid>* {min-width:0;}
+.owner-settings,.owner-detail-body,.owner-content-panel {background:white;border:1px solid var(--wms-border);padding:24px;border-radius:8px;min-width:0;}
+.owner-detail-body {display:flex;flex-direction:column;gap:24px;}.owner-detail-body section {display:flex;flex-direction:column;gap:16px;min-width:0;}
+.owner-detail-body>h3 {font-size:20px;}.owner-detail-body>.owner-status {align-self:flex-start;}.owner-modal .owner-detail-body {border:0;padding:0;}
+.owner-table-region {min-width:0;max-width:100%;border-radius:8px;background:white;outline-offset:4px;}.owner-table .ant-table {border:1px solid var(--wms-border);border-radius:8px;overflow:hidden;}
+.owner-table .ant-table-thead>tr>th {font-size:13px;font-weight:600;white-space:normal;}.owner-table .ant-table-tbody>tr>td {font-size:14px;vertical-align:top;min-width:112px;max-width:280px;overflow-wrap:anywhere;}
+.owner-table .ant-table-tbody>tr>td:first-child {min-width:160px;}.owner-table small,.owner-data-cards small {display:block;margin-top:4px;color:var(--wms-secondary);font-size:12px;}
+.owner-table .ant-table-cell .ant-btn {white-space:normal;}.owner-table .ant-table-cell .owner-actions {min-width:140px;}.owner-table .ant-table-cell-scrollbar {box-shadow:none;}
+.owner-numeric {font-variant-numeric:tabular-nums;text-align:right;}.owner-id {overflow-wrap:anywhere;font-size:12px;}.owner-discrepancy {font-weight:600;color:var(--wms-error);background:var(--wms-error-bg);}
+.owner-status {display:inline-flex;gap:6px;align-items:center;max-width:100%;white-space:normal;border-radius:4px;padding:4px 8px;line-height:1.5;font-size:12px;margin:0;}
+.owner-status-success {color:var(--wms-success);background:var(--wms-success-bg);border-color:var(--wms-success-border);}.owner-status-warning {color:var(--wms-warning);background:var(--wms-warning-bg);border-color:var(--wms-warning-border);}
+.owner-status-error {color:var(--wms-error);background:var(--wms-error-bg);border-color:var(--wms-error-border);}.owner-status-info {color:var(--wms-accent-hover);background:var(--wms-primary-subtle);border-color:var(--wms-border);}.owner-status-neutral {color:var(--wms-secondary);background:var(--wms-bg-muted);border-color:var(--wms-border-strong);}
+.owner-actions {display:flex;gap:8px;align-items:center;flex-wrap:wrap;}.owner-actions>a {display:inline-flex;min-height:44px;align-items:center;gap:8px;padding:8px 12px;border-radius:4px;text-decoration:underline;text-underline-offset:3px;}
+.owner-pagination {display:flex;align-items:center;justify-content:flex-end;gap:16px;flex-wrap:wrap;}.owner-pagination>span {font-size:13px;color:var(--wms-secondary);}.owner-pagination .ant-pagination {margin:0;}
+.owner-metrics {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:16px;}.owner-metric {min-width:0;border-color:var(--wms-border);}.owner-metric .ant-card-body {padding:20px;}.owner-metric .ant-statistic-title {font-size:13px;color:var(--wms-secondary);margin-bottom:12px;}.owner-metric .ant-statistic-content {font-size:24px;line-height:1.4;font-weight:600;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;}
+.owner-method {font-size:12px;line-height:1.7;color:var(--wms-secondary);}.owner-warning {color:var(--wms-warning);}.owner-empty {padding:32px 24px;color:var(--wms-secondary);text-align:center;}
+.owner-notice {padding:16px;border:1px solid var(--wms-border);background:var(--wms-primary-subtle);border-radius:8px;font-size:14px;line-height:1.7;}.owner-error {color:var(--wms-error);background:var(--wms-error-bg);border-color:var(--wms-error-border);}.owner-success {color:var(--wms-success);background:var(--wms-success-bg);border-color:var(--wms-success-border);}
+.owner-permissions {max-height:none;overflow:visible;border:1px solid var(--wms-border);border-radius:8px;}.owner-permissions>.wms-form-item {padding:16px 20px;border-bottom:1px solid var(--wms-border);}.owner-permissions>.wms-form-item:last-child {border-bottom:0;}.owner-permissions small {display:block;font-size:12px;color:var(--wms-secondary);font-weight:400;margin-top:4px;}
+.owner-json {font:13px/1.7 Inter,sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--wms-bg-subtle);border:1px solid var(--wms-border);padding:16px;border-radius:8px;max-height:480px;overflow:auto;margin:0;}
+.owner-detail {display:grid;grid-template-columns:160px minmax(0,1fr);gap:12px 20px;margin:0;}.owner-detail dt {color:var(--wms-secondary);font-size:13px;}.owner-detail dd {margin:0;overflow-wrap:anywhere;}
+.owner-sample-images {display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;}.owner-sample-images a {border:1px solid var(--wms-border);border-radius:8px;overflow:hidden;}.owner-sample-images img {width:100%;height:240px;object-fit:contain;background:var(--wms-bg-subtle);display:block;}
+.owner-chart {padding:24px;background:white;border:1px solid var(--wms-border);border-radius:8px;display:grid;gap:16px;}.owner-bar-row {display:grid;grid-template-columns:96px minmax(32px,1fr) 140px;gap:16px;align-items:center;font-size:13px;}.owner-bar-row strong{text-align:right;font-weight:500;}.owner-bar-track {height:16px;background:var(--wms-bg-subtle);border-radius:4px;overflow:hidden;}.owner-bar-track>div {height:100%;background:var(--wms-accent);}
+.owner-data-cards {display:grid;gap:16px;min-width:0;}.owner-record-card {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:0;}.owner-record-card>div {min-width:0;}.owner-record-card dt {font-size:12px;color:var(--wms-secondary);margin-bottom:4px;}.owner-record-card dd {margin:0;font-size:14px;overflow-wrap:anywhere;}.owner-record-card-wide {grid-column:1/-1;}.owner-record-card-wide:first-child dd {font-weight:600;font-size:16px;}
+.owner-workspace-footer {margin-top:auto;padding:16px 32px;border-top:1px solid var(--wms-border);font-size:12px;color:var(--wms-secondary);}.owner-nav-drawer .ant-drawer-header,.owner-nav-drawer .ant-drawer-body {background:var(--wms-primary);}.owner-nav-drawer .ant-drawer-header {border-color:var(--wms-primary-hover);padding:0;}.owner-nav-drawer .ant-drawer-close {color:white;min-width:44px;min-height:44px;}.owner-nav-drawer .owner-brand {padding-left:8px;}.owner-nav-drawer .ant-menu {border:0;}
+.owner-detail-heading {display:flex;align-items:center;gap:16px;}.owner-detail-heading>div{min-width:0;}.owner-detail-heading h1{font-size:24px;}.owner-detail-heading p {margin-top:4px;color:var(--wms-secondary);font-size:14px;}.owner-page-form {max-width:920px;width:100%;}.owner-page-form .owner-form{padding:24px;background:white;border:1px solid var(--wms-border);border-radius:8px;}
+
+@media(max-width:1279px){.owner-metrics{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:767px){.owner-main{padding:20px var(--owner-gutter);gap:20px;}.owner-header{padding:12px 16px;height:68px;}.owner-header-context .ant-breadcrumb{max-width:220px;}.owner-profile-button>span:last-child{display:none;}.owner-header-actions{gap:4px;}.owner-workspace-label{display:none;}.owner-page-heading{flex-direction:column;gap:16px;}.owner-page-heading h1{font-size:24px;}.owner-page-heading>.ant-btn{width:100%;}.owner-filters{padding:16px;gap:16px;}.owner-filters>.wms-form-item{max-width:none;flex:1 1 200px;}.owner-settings,.owner-detail-body,.owner-content-panel{padding:20px;}.owner-form-grid{grid-template-columns:1fr;}.owner-form>button{width:100%;}.owner-modal .ant-modal-content{padding:20px!important;}.owner-detail{grid-template-columns:1fr;gap:4px;}.owner-detail dd{margin-bottom:12px;}.owner-workspace-footer{padding:16px;}.owner-page-form .owner-form{padding:20px;}.owner-bar-row{grid-template-columns:80px minmax(24px,1fr) 104px;gap:8px;font-size:12px;}}
+@media(max-width:575px){.owner-header-context .ant-breadcrumb{max-width:160px;font-size:12px;}.owner-header-context{gap:4px;}.owner-filters>.wms-form-item{flex-basis:100%;}.owner-filters>button{flex:1 1 100%;}.owner-metrics{gap:12px;}.owner-metric .ant-card-body{padding:16px;}.owner-metric .ant-statistic-content{font-size:20px;}.owner-page-context{font-size:12px;}.owner-pagination{justify-content:center;}.owner-chart{padding:16px;}.owner-bar-row{grid-template-columns:1fr 100px;}.owner-bar-track{grid-column:1;grid-row:auto;}.owner-bar-row>span{grid-column:1;}.owner-bar-row>strong{grid-column:2;grid-row:span 2;}.owner-actions{gap:8px;}.owner-record-card .owner-actions .ant-btn{flex:1 1 auto;}.owner-sample-images{grid-template-columns:repeat(2,minmax(0,1fr));}.owner-sample-images img{height:180px;}}
+@media(max-width:359px){.owner-metrics{grid-template-columns:1fr;}.owner-header-context .ant-breadcrumb{max-width:124px;}.owner-main{padding:16px var(--owner-gutter);}.owner-record-card{grid-template-columns:1fr;}}
+.owner-main .owner-metric .ant-statistic .ant-statistic-title{color:var(--wms-secondary);font-size:13px;}.owner-header .ant-breadcrumb .ant-breadcrumb-link>a{color:var(--wms-secondary);}
+/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Biểu đồ cột, bố cục rộng, thao tác máy tính bảng ít biểu tượng và không chuyển động. */
+.operations-columns{display:flex;gap:24px;align-items:flex-end;overflow-x:auto;padding:24px 8px 8px;min-height:280px;}
+.operations-column{flex:1 0 120px;max-width:220px;text-align:center;display:flex;flex-direction:column;gap:12px;font-size:13px;}
+.operations-column strong{font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
+.operations-column-track{height:170px;display:flex;align-items:flex-end;justify-content:center;border-bottom:1px solid #b8c8bf;background:#f5f8f6;}
+.operations-column-track>div{width:56%;min-height:1px;}.operations-column-track>.negative{background:#b74444!important;align-self:flex-start;}
+.owner-header-context>a{font-size:14px;white-space:nowrap;}.owner-content-panel>.owner-content-panel{margin-block:20px;}
+@media(min-width:768px) and (max-width:1199px){.owner-shell .ant-menu-item-icon,.owner-shell .owner-status svg{display:none!important;}.owner-shell *{animation:none!important;transition:none!important;}.owner-main{max-width:none;}.owner-table .ant-table-cell{padding:16px 12px;}}
+@media(max-width:767px){.owner-header-context>a{font-size:12px;}.owner-header-context{gap:8px;}.operations-column{flex-basis:110px;}.operations-columns{gap:12px;}}
+@media(prefers-reduced-motion:reduce){.owner-shell *{animation:none!important;transition:none!important;}}
+/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Giữ đủ mục điều hướng trên điện thoại nhỏ bằng cách cho thanh trên xuống dòng. */
+@media(max-width:359px){.owner-header{height:auto;min-height:92px;flex-wrap:wrap;gap:4px;padding:8px 12px;}.owner-header-context{flex:1 1 100%;justify-content:space-between;}.owner-header-actions{margin-left:auto;}.owner-header-context>a{font-size:12px;}.owner-content-panel{padding:16px;}}
+/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Tên chức năng dài xuống dòng để hiển thị đầy đủ trên thanh điều hướng. */
+.owner-sider:not(.ant-layout-sider-collapsed) .ant-menu-item,.owner-nav-drawer .ant-menu-item{height:auto;min-height:48px;line-height:1.5;padding-block:12px;}
+.owner-sider:not(.ant-layout-sider-collapsed) .ant-menu-title-content,.owner-nav-drawer .ant-menu-title-content{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.5;}
+/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13 - Biểu đồ tĩnh, trục rõ đơn vị, cuộn ngang được trên máy tính bảng và điện thoại. */
+.owner-chart-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-bottom:20px;}.owner-chart-heading .wms-form-item{min-width:220px;max-width:360px;}.owner-chart-scroll{max-width:100%;overflow-x:auto;outline-offset:4px;}.owner-series-svg{width:100%;height:340px;display:block;}.owner-series-svg text,.owner-donut-layout svg text{font:13px Inter,sans-serif;fill:#37453c;}.owner-chart-legend{display:flex;flex-wrap:wrap;gap:16px;margin:12px 0;}.owner-chart-legend>span{display:flex;align-items:center;gap:8px;font-size:13px;}.owner-chart-legend i,.owner-share-legend i{display:inline-block;width:14px;height:14px;flex-shrink:0;border-radius:2px;}.owner-horizontal-chart{display:grid;gap:20px;}.owner-horizontal-chart>div{display:grid;grid-template-columns:minmax(130px,1fr) minmax(70px,2fr) minmax(100px,1fr);align-items:center;gap:16px;font-size:13px;}.owner-horizontal-track{height:22px;background:#f0f4f1;}.owner-horizontal-track>div{height:100%;}.owner-horizontal-chart strong{text-align:right;overflow-wrap:anywhere;}.owner-donut-layout{display:flex;flex-wrap:wrap;align-items:center;gap:28px;}.owner-donut-layout svg{width:260px;max-width:100%;flex:0 1 260px;}.owner-share-legend{list-style:none;padding:0;margin:0;display:grid;gap:16px;flex:1 1 230px;}.owner-share-legend li{display:flex;align-items:flex-start;gap:10px;font-size:13px;}.owner-annual-analytics{display:flex;flex-direction:column;gap:20px;}.owner-annual-analytics summary{cursor:pointer;min-height:44px;display:flex;align-items:center;text-decoration:underline;}.owner-annual-analytics .owner-filters{padding:16px;}
+@media(max-width:767px){.owner-chart-heading .wms-form-item{width:100%;max-width:none;}.owner-horizontal-chart>div{grid-template-columns:1fr 110px;gap:8px;}.owner-horizontal-chart>div>span{grid-column:1/-1;}.owner-horizontal-chart strong{font-size:12px;}.owner-chart-heading{gap:12px;}.owner-chart-scroll{width:100%;}}
+/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi giao diện - Header cố định 72px, chữ lớn hơn, bỏ dòng phụ khỏi báo cáo. */
+html{scrollbar-gutter:stable;}
+.owner-shell{font-size:17px;}
+.owner-shell .owner-header{height:72px;min-height:72px;max-height:72px;position:sticky;top:0;flex-wrap:nowrap;gap:16px;padding:12px var(--owner-gutter);}
+.owner-shell .owner-header-context{flex:1 1 auto;justify-content:flex-start;gap:12px;}
+.owner-shell .owner-header-actions{flex:0 0 auto;gap:12px;margin-left:0;}
+.owner-header-brand{font-size:20px;font-weight:600;line-height:1;white-space:nowrap;}
+.owner-shell .owner-main{gap:24px;}
+.owner-shell .owner-eyebrow{display:none;}
+.owner-shell .owner-page-heading h1{font-size:30px;}
+.owner-shell .owner-page-heading p{font-size:16px;}
+.owner-shell .owner-table .ant-table-thead>tr>th,.owner-shell .owner-table .ant-table-tbody>tr>td{font-size:16px;}
+.owner-shell .owner-metric .ant-statistic .ant-statistic-title{font-size:16px;line-height:1.6;}
+.owner-shell .owner-metric .ant-statistic-content{font-size:28px;}
+.owner-shell .ant-menu-item,.owner-nav-drawer .ant-menu-item{font-size:17px;}
+.owner-shell .ant-menu-item-group-title,.owner-nav-drawer .ant-menu-item-group-title{font-size:14px;}
+.owner-shell .ant-form-item-label>label,.owner-shell .ant-select,.owner-shell .ant-btn,.owner-shell .ant-input,.owner-shell .ant-picker-input>input{font-size:17px;}
+.owner-shell .owner-status,.owner-shell .owner-record-card dt,.owner-shell .owner-detail dt{font-size:15px;}
+.owner-shell .owner-record-card dd{font-size:17px;}
+.owner-shell .owner-chart-legend>span,.owner-shell .owner-share-legend li,.owner-shell .owner-horizontal-chart>div{font-size:16px;}
+.owner-shell .owner-series-svg text,.owner-shell .owner-donut-layout svg text{font-size:15px;}
+.owner-shell .owner-series-svg .owner-axis-title{font-size:16px;font-weight:600;}
+.owner-shell .owner-chart-heading{gap:16px;margin-bottom:16px;}
+.owner-shell .owner-chart-heading .wms-form-item{max-width:400px;}
+.owner-chart-results{display:flex;flex-direction:column;gap:20px;}
+@media(max-width:767px){.owner-shell .owner-header{padding:12px var(--owner-gutter);gap:8px;}.owner-shell .owner-header-actions{gap:4px;}.owner-header-brand{font-size:18px;}.owner-shell .owner-page-heading h1{font-size:26px;}.owner-shell .owner-metric .ant-statistic-content{font-size:24px;}.owner-shell .owner-chart-heading .wms-form-item{min-width:0;max-width:none;width:100%;}.owner-shell .owner-chart-heading{display:block;}.owner-shell .owner-chart-heading h2{margin-bottom:16px;}}
+/* Nguyễn Ngọc Huy-HE171157, 2-11-2026: Chỉ giữ hướng dẫn nghiệp vụ cần thiết ở cỡ dễ đọc. */
+.owner-shell .owner-method{font-size:15px;}
+.owner-shell .owner-profile-button strong{font-size:15px;}
+.owner-shell .owner-profile-button small{font-size:14px;}
+
+/* Header: tìm nhanh chức năng và đọc từng thông báo trước khi mở chi tiết. */
+.owner-header-search{width:280px;max-width:calc(100vw - 56px);}
+.owner-header-search .ant-input-affix-wrapper{border-radius:24px;background:#f4f6f5;min-height:40px;}
+.owner-header-search .ant-input-prefix{color:var(--wms-secondary);margin-right:8px;}
+.owner-header-search-mobile{display:none;}
+.owner-notifications{width:360px;max-width:calc(100vw - 48px);color:var(--wms-text);line-height:1.5;}
+.owner-notifications-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:4px 4px 14px;border-bottom:1px solid var(--wms-border);}
+.owner-notifications-heading h2{margin:0;font-size:22px;font-weight:700;}
+.owner-notifications-heading>span{font-size:13px;color:var(--wms-secondary);}
+.owner-notifications-list{max-height:min(440px,calc(100dvh - 230px));overflow-y:auto;overscroll-behavior:contain;}
+.owner-notifications-list ul{list-style:none;margin:0;padding:6px 0;}
+.owner-notification-item{display:flex;align-items:center;gap:12px;padding:12px 8px;border-radius:8px;color:inherit;text-decoration:none;}
+.owner-notification-item:hover,.owner-notification-item:focus-visible{background:#edf5f0;color:inherit;}
+.owner-notification-item:focus-visible{outline:2px solid var(--wms-primary);outline-offset:-2px;}
+.owner-notification-icon{display:flex;align-items:center;justify-content:center;flex:0 0 44px;height:44px;border-radius:50%;color:var(--wms-primary);background:#e6f0e9;}
+.owner-notification-copy{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;overflow-wrap:anywhere;}
+.owner-notification-copy strong{font-size:14px;}
+.owner-notification-copy>span{font-size:13px;color:var(--wms-secondary);}
+.owner-notification-copy time{font-size:12px;color:var(--wms-primary);}
+.owner-notification-dot{flex:0 0 8px;height:8px;border-radius:50%;background:var(--wms-primary);}
+.owner-notifications-state{padding:20px 8px;}
+.owner-notifications-footer{display:block;text-align:center;padding:12px 4px 0;border-top:1px solid var(--wms-border);font-weight:600;font-size:14px;}
+.owner-shell .owner-notifications-active{background:#e6f0e9;color:var(--wms-primary);}
+@media(max-width:1199px){.owner-header-search{width:230px;}}
+@media(max-width:767px){.owner-header-search-desktop{display:none;}.owner-header-search-mobile{display:block;}.owner-header-search{width:280px;}.owner-shell .owner-header-context{min-width:0;}.owner-header-brand{overflow:hidden;text-overflow:ellipsis;}}
+
+/* Owner reports: clear hierarchy, compact controls and bounded tables. */
+.owner-shell .owner-main{background:var(--wms-bg-subtle);}
+.owner-shell .owner-page-heading h1{font-size:28px;letter-spacing:-.5px;}
+.owner-shell .owner-page-heading p{color:#64748b;}
+.owner-shell .owner-filters{background:#fff;border:1px solid #e5e9f0;border-radius:12px;box-shadow:0 2px 4px #182c4504;}
+.owner-shell .owner-metric{border:1px solid #e5e9f0;border-radius:12px;box-shadow:0 3px 12px #182c4505;overflow:hidden;}
+.owner-shell .owner-metric .ant-statistic-title{font-size:16px;color:#64748b;}
+.owner-shell .owner-metric .ant-statistic-content{font-size:28px;font-weight:650;font-variant-numeric:tabular-nums;}
+.owner-shell .owner-chart,.owner-shell .owner-content-panel{border:1px solid #e5e9f0;border-radius:12px;background:white;}
+.owner-shell .owner-table-region{border:1px solid #e5e9f0;border-radius:10px;overflow:hidden;background:white;}
+.owner-shell .owner-table .ant-table-thead>tr>th{background:#f8fafc;color:#475569;font-size:16px;font-weight:600;}
+.owner-shell .owner-table .ant-table-tbody>tr>td{font-size:16px;padding:14px 12px;border-color:#eef1f5;}
+.owner-shell .owner-table small{font-size:14px;display:block;margin-top:4px;color:#64748b;}
+.owner-shell .owner-pagination{display:flex;align-items:center;justify-content:flex-end;gap:16px;flex-wrap:wrap;padding:12px 0;color:#64748b;font-size:14px;}
+.owner-shell details>summary{cursor:pointer;color:var(--wms-primary);padding:8px 0;}
+.owner-shell .owner-actions{display:flex;gap:12px;flex-wrap:wrap;}
+.owner-shell .owner-actions>a{background:white;border:1px solid #e5e9f0;padding:12px 18px;border-radius:8px;}
+@media(max-width:575px){.owner-shell .owner-pagination{justify-content:center;}.owner-shell .owner-page-heading h1{font-size:24px;}}
+
+.owner-report-chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:stretch;}
+.owner-report-chart-grid>*{min-width:0;}
+.owner-report-chart-grid>div{display:flex;flex-direction:column;gap:12px;}
+.owner-report-chart-grid .owner-content-panel{margin:0;}
+.owner-report-chart-grid .owner-chart-heading{display:block;}
+.owner-report-chart-grid .owner-chart-heading h2{margin-bottom:12px;}
+@media(max-width:1199px){.owner-report-chart-grid{grid-template-columns:1fr;}}
+
+/* Keep wide reports inside their own scroll region at every viewport size. */
+.owner-main>*,.owner-header-context>*,.owner-chart-results{min-width:0;}
+.owner-table-region,.owner-chart-scroll{width:100%;max-width:100%;}
+.owner-page-heading>div{min-width:0;overflow-wrap:anywhere;}
+.owner-nav-drawer .ant-drawer-content-wrapper{max-width:calc(100vw - 24px);}
+.owner-shell .ant-pagination{flex-wrap:wrap;row-gap:8px;}
+@media(max-width:575px){.owner-main h2{overflow-wrap:anywhere;}.owner-shell .owner-metrics{grid-template-columns:1fr;}.owner-page-heading>.ant-btn{width:auto;}.owner-shell .owner-filters{padding:16px;}.owner-record-card{gap:12px;}}
+
+.owner-contract-field{display:contents;}
+.owner-contract-terms{display:grid;gap:16px;}
+.owner-contract-terms>div{padding:12px;border:1px solid var(--wms-border);border-radius:8px;}
+.owner-contract-field dd>.owner-detail{grid-template-columns:1fr;gap:4px;}
+.owner-content-panel>.owner-metrics,.owner-content-panel>.owner-detail{margin-block:20px;}
+.owner-content-panel>h3{margin-top:20px;margin-bottom:12px;}
+
+/* Hai biểu đồ Tổng quan dùng cùng cấu trúc tiêu đề -> bộ lọc -> vùng vẽ.
+ * Grid kéo giãn hai thẻ bằng chiều cao; flex cho vùng vẽ lấp phần còn lại.
+ * Desktop chia hai bộ lọc trên một hàng; mobile chuyển một cột và bỏ chiều cao tối thiểu
+ * để tránh khoảng trống lớn khi hai biểu đồ xếp dọc.
+ */
+.owner-chart-panel{display:flex;flex-direction:column;}
+.owner-chart-panel .owner-chart-heading{display:flex;flex-direction:column;gap:16px;align-items:stretch;}
+.owner-chart-controls{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}
+.owner-shell .owner-chart-controls>.wms-form-item{flex:1 1 180px;min-width:0;max-width:none;width:auto;}
+.owner-chart-body{min-width:0;}
+.owner-report-chart-grid>.owner-chart-panel{height:100%;}
+.owner-report-chart-grid>.owner-chart-panel .owner-chart-heading{margin-bottom:20px;}
+.owner-report-chart-grid>.owner-chart-panel .owner-chart-heading h2{margin:0;}
+.owner-report-chart-grid>.owner-chart-panel .owner-chart-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;}
+.owner-report-chart-grid>.owner-chart-panel .owner-chart-body{display:flex;flex-direction:column;justify-content:center;flex:1;min-height:380px;}
+@media(max-width:1199px){.owner-report-chart-grid>.owner-chart-panel{height:auto;}.owner-report-chart-grid>.owner-chart-panel .owner-chart-body{min-height:0;}}
+@media(max-width:575px){.owner-report-chart-grid>.owner-chart-panel .owner-chart-controls{grid-template-columns:1fr;}.owner-chart-controls{flex-direction:column;align-items:stretch;}.owner-shell .owner-chart-controls>.wms-form-item{flex-basis:auto;width:100%;}}
+
+.owner-inbound-batches{display:flex;flex-direction:column;gap:20px;}
+.owner-inbound-batches>.owner-content-panel{margin:0;}

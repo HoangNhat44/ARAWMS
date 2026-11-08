@@ -22,6 +22,8 @@ const stocktakeRecordSchema = new Schema(
     systemSnapshotQty: { type: Number, required: true },
     actualScannedQty: { type: Number, default: 0 },
     varianceQty: { type: Number, default: 0 },
+    // Nguyễn Ngọc Huy-HE171157, 30-10-2026: OWNER-EXT-06, GBR-19 - Chốt đơn giá khi lập kiểm kê để đánh giá giá trị chênh lệch.
+    unitCostSnapshot: { type: Number, min: 0 },
     fifoInboundTimestamp: { type: Date },
     agingDaysAtCount: { type: Number, default: 0 },
     isAgingThresholdExceeded: { type: Boolean, default: false, index: true },

@@ -1,326 +1,147 @@
+// Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-01/04/06 - Nhãn và hướng dẫn tiếng Việt phổ thông.
 /*
- * File: LoginPage.jsx
- * Author: Duy Anh
- * Date: 2026-10-26
- * Description: Renders employee login and handles credential submission. Shows validation and server errors while updating authentication state.
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157
+ * Ngày thực hiện: 22-10-2026
+ * Chức năng: UC-01, UC-05 - Ghép phần giới thiệu và biểu mẫu đăng nhập.
  */
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { authService } from '../services/authService';
-import { useAuth } from '../hooks/useAuth';
-import { 
-  User, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  ArrowRight, 
-  ShieldCheck, 
-  CheckCircle2, 
-  AlertCircle 
-} from 'lucide-react';
+import { WmsButton, WmsField, WmsInput } from '../components/ui/WmsControls';
 
-/** Presents the employee sign-in form and its validation state.
- * Successful authentication updates shared user state before returning home. */
-const LoginPage = () => {
-  const [formData, setFormData] = useState({
-    usernameOrEmail: '',
-    password: '',
-  });
-  const [showPassword, setShowPassword] = useState(false);
+import { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { User, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
+import { useAuth } from "../hooks/useAuth";
+import { authService } from "../services/authService";
+import { passwordError, identifierError } from "../utils/authValidation";
+import "../styles/accountAuth.css";
+import GoogleIdentityButton from "./GoogleIdentityButton";
+
+export function LoginBrandPanel() {
+  return <section className="ara-login-brand" aria-label="Giới thiệu hệ thống">
+    <img src="/logo.png" alt="AraStore" />
+    <div><span className="ara-eyebrow">AraStore · Quản trị nội bộ</span><h2>Quản lý kho và xưởng may</h2></div>
+    <p>Theo dõi nguyên liệu, thành phẩm và vận hành tại một nơi. Thông tin được truy cập theo vai trò của bạn.</p>
+    <ul><li>Quản lý nguyên vật liệu và thành phẩm</li><li>Theo dõi sản xuất và kiểm kê kho</li><li>Kiểm soát tài khoản và quyền truy cập</li></ul>
+  </section>;
+}
+
+function LoginForm() {
+  const [form, setForm] = useState({ usernameOrEmail: '', password: '', rememberMe: true });
+  const [visible, setVisible] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
-
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [resetRequired, setResetRequired] = useState(false);
+  const busy = submitting || googleBusy;
   const { login } = useAuth();
   const navigate = useNavigate();
-
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (error) setError('');
+  const location = useLocation();
+  const change = (event) => { setError(''); setResetRequired(false); setForm({ ...form, [event.target.name]: event.target.value }); };
+  // GBR-02: Mở Quên mật khẩu và điền sẵn tài khoản vừa nhập.
+  const forgot = () => navigate('/forgot-password', { state: { usernameOrEmail: form.usernameOrEmail.trim() } });
+  // UC-01, UC-05: Lưu hồ sơ và token rồi chuyển về trang người dùng muốn mở.
+  const authenticated = (response) => {
+    login(response.data.user, response.data.token, form.rememberMe);
+    const destination = location.state?.from;
+    navigate(typeof destination === 'string' && destination.startsWith('/') && !destination.startsWith('//')
+      ? destination : '/', { replace: true });
   };
-
-  /** Validates required credentials, calls the login API, and reports failures in the form. */
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  /*
+   * UC-01: Kiểm tra ô nhập trước khi gửi email hoặc mã nhân viên và mật khẩu
+   * lên BE.
+   */
+  const submit = async (event) => {
+    event.preventDefault();
+    if (busy) return;
+    const invalidIdentifier = identifierError(form.usernameOrEmail);
+    if (invalidIdentifier) return setError(invalidIdentifier);
+    const invalidPassword = passwordError(form.password);
+    if (invalidPassword) return setError(invalidPassword);
     setError('');
-
-    if (!formData.usernameOrEmail.trim() || !formData.password) {
-      setError('Vui lòng nhập đầy đủ tên đăng nhập/email và mật khẩu');
-      return;
-    }
-
     setSubmitting(true);
-
     try {
-      const res = await authService.login({
-        usernameOrEmail: formData.usernameOrEmail.trim(),
-        password: formData.password,
-      });
-
-      if (res.success && res.data) {
-        login(res.data.user, res.data.token);
-        navigate('/');
-      } else {
-        setError(res.message || 'Đăng nhập không thành công');
-      }
-    } catch (err) {
-      setError(err.message || 'Tài khoản hoặc mật khẩu không chính xác');
-    } finally {
-      setSubmitting(false);
-    }
+      const response = await authService.login({ ...form, usernameOrEmail: form.usernameOrEmail.trim() });
+      authenticated(response);
+    } catch (err) { setError(err.message); setResetRequired(err.code === 'PASSWORD_RESET_REQUIRED'); }
+    finally { setSubmitting(false); }
   };
-
-  return (
-    <div style={{
-      minHeight: 'calc(100vh - 120px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '2rem 1.5rem',
-    }}>
-      <div style={{
-        maxWidth: '980px',
-        width: '100%',
-        background: '#FFFFFF',
-        borderRadius: 'var(--radius-lg)',
-        border: '1px solid var(--ara-border)',
-        boxShadow: 'var(--ara-shadow-lg)',
-        overflow: 'hidden',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-      }}>
-
-        {/* CỘT TRÁI: BRAND SHOWCASE & LOGO ARA */}
-        <div style={{
-          background: 'linear-gradient(145deg, #F5F0E8 0%, #EAE2D5 100%)',
-          padding: '3.5rem 2.5rem',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          borderRight: '1px solid var(--ara-border)',
-          position: 'relative',
-        }}>
-          <div>
-            {/* Logo ARA hình vuông bo tròn cao cấp */}
-            <div style={{
-              display: 'inline-flex',
-              padding: '0.85rem',
-              background: '#FFFFFF',
-              borderRadius: '16px',
-              border: '1px solid rgba(159, 131, 101, 0.25)',
-              boxShadow: 'var(--ara-shadow-sm)',
-              marginBottom: '2rem',
-            }}>
-              <img 
-                src="/logo.png" 
-                alt="ARA Atelier Logo" 
-                style={{ height: '70px', width: 'auto', display: 'block' }}
-              />
-            </div>
-
-            <div style={{
-              display: 'inline-block',
-              padding: '0.35rem 0.85rem',
-              background: 'rgba(159, 131, 101, 0.15)',
-              color: 'var(--ara-gold-hover)',
-              borderRadius: 'var(--radius-full)',
-              fontSize: '0.78rem',
-              fontWeight: 700,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              marginBottom: '1rem',
-            }}>
-              Atelier & Warehouse Solution
-            </div>
-
-            <h1 style={{
-              fontSize: '2.5rem',
-              lineHeight: 1.15,
-              marginBottom: '1rem',
-              color: 'var(--ara-noir)',
-            }}>
-              Hệ thống Quản lý Kho & Xưởng May ARA
-            </h1>
-
-            <p style={{
-              color: 'var(--ara-text-muted)',
-              fontSize: '0.98rem',
-              lineHeight: 1.6,
-              marginBottom: '2rem',
-            }}>
-              Nền tảng kiểm soát nguyên phụ liệu, cây vải, đơn sản xuất và chuỗi cung ứng thời trang may mặc chính xác, tinh tế và đồng bộ thời gian thực.
-            </p>
-          </div>
-
-          {/* Feature Highlights */}
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.85rem',
-            background: 'rgba(255, 255, 255, 0.6)',
-            backdropFilter: 'blur(8px)',
-            padding: '1.25rem',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid rgba(159, 131, 101, 0.18)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.88rem', color: 'var(--ara-noir-soft)' }}>
-              <CheckCircle2 size={18} color="var(--ara-gold)" />
-              <span>Quản lý danh mục vải, phụ liệu & định mức BOM</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.88rem', color: 'var(--ara-noir-soft)' }}>
-              <CheckCircle2 size={18} color="var(--ara-gold)" />
-              <span>Theo dõi tiến độ lệnh may & kiểm kê tồn kho chính xác</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.88rem', color: 'var(--ara-noir-soft)' }}>
-              <ShieldCheck size={18} color="var(--ara-gold)" />
-              <span>Bảo mật dữ liệu đám mây MongoDB Atlas phân quyền đa cấp</span>
-            </div>
-          </div>
-        </div>
-
-        {/* CỘT PHẢI: FORM ĐĂNG NHẬP */}
-        <div style={{
-          padding: '3.5rem 3rem',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          background: '#FFFFFF',
-        }}>
-          <div style={{ marginBottom: '2rem' }}>
-            <span style={{
-              fontSize: '0.82rem',
-              fontWeight: 600,
-              color: 'var(--ara-gold)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.1em',
-            }}>
-              Cổng Đăng Nhập Nội Bộ
-            </span>
-            <h2 style={{ fontSize: '1.9rem', marginTop: '0.25rem', color: 'var(--ara-noir)' }}>
-              Chào mừng trở lại
-            </h2>
-            <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.92rem', marginTop: '0.35rem' }}>
-              Vui lòng nhập thông tin xác thực để truy cập hệ thống
-            </p>
-          </div>
-
-          {error && (
-            <div className="ara-alert ara-alert-error">
-              <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
-              <div>{error}</div>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit}>
-            {/* Tên đăng nhập hoặc Email */}
-            <div className="form-group">
-              <label className="form-label" htmlFor="usernameOrEmail">
-                Tài khoản hoặc Email
-              </label>
-              <div className="input-wrapper">
-                <User size={18} className="input-icon" />
-                <input
-                  id="usernameOrEmail"
-                  name="usernameOrEmail"
-                  type="text"
-                  className="form-input"
-                  placeholder="Tên đăng nhập hoặc email"
-                  value={formData.usernameOrEmail}
-                  onChange={handleChange}
-                  autoComplete="username"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Mật khẩu */}
-            <div className="form-group">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <label className="form-label" htmlFor="password" style={{ margin: 0 }}>
-                  Mật khẩu
-                </label>
-                <a 
-                  href="#forgot" 
-                  onClick={(e) => { e.preventDefault(); alert('Vui lòng liên hệ Quản trị viên để khôi phục mật khẩu tài khoản.'); }}
-                  style={{ fontSize: '0.82rem', color: 'var(--ara-gold)', textDecoration: 'none', fontWeight: 500 }}
-                >
-                  Quên mật khẩu?
-                </a>
-              </div>
-              <div className="input-wrapper">
-                <Lock size={18} className="input-icon" />
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  className="form-input"
-                  placeholder="Nhập mật khẩu..."
-                  value={formData.password}
-                  onChange={handleChange}
-                  autoComplete="current-password"
-                  required
-                />
-                <button
-                  type="button"
-                  className="input-action-btn"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Ghi nhớ đăng nhập */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '1.75rem' }}>
-              <input
-                id="remember"
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                style={{ accentColor: 'var(--ara-noir)', width: '16px', height: '16px', cursor: 'pointer' }}
-              />
-              <label htmlFor="remember" style={{ fontSize: '0.88rem', color: 'var(--ara-text-muted)', cursor: 'pointer', userSelect: 'none' }}>
-                Ghi nhớ đăng nhập trên thiết bị này
-              </label>
-            </div>
-
-            {/* Nút Đăng nhập */}
-            <button
-              type="submit"
-              className="btn-ara-primary"
-              style={{ width: '100%', padding: '0.95rem' }}
-              disabled={submitting}
-            >
-              {submitting ? (
-                'Đang xác thực...'
-              ) : (
-                <>
-                  <span>Đăng nhập hệ thống</span>
-                  <ArrowRight size={18} />
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Đăng ký */}
-          <div style={{
-            marginTop: '1.5rem',
-            textAlign: 'center',
-            fontSize: '0.88rem',
-            color: 'var(--ara-text-muted)',
-          }}>
-            Chưa có tài khoản nội bộ?{' '}
-            <Link to="/register" style={{ color: 'var(--ara-noir)', fontWeight: 600, textDecoration: 'none' }}>
-              Yêu cầu cấp quyền
-            </Link>
-          </div>
-
-        </div>
-
-      </div>
+  /*
+   * UC-01, GBR-02: Hiển thị form và nút đặt lại mật khẩu khi BE báo đã sai 5
+   * lần.
+   */
+  return <div className="ara-login-form">
+    <div className="ara-login-heading">
+      <span className="ara-eyebrow">Cổng Đăng Nhập Nội Bộ</span>
+      <h1>Đăng nhập hệ thống</h1><p>Vui lòng nhập thông tin xác thực để truy cập hệ thống</p>
     </div>
-  );
-};
+    {location.state?.message && <div role="status" className="ara-alert ara-alert-success">{location.state.message}</div>}
+    {error && <div role="alert" className="ara-alert ara-alert-error"><AlertCircle size={18} /><span>{error}</span></div>}
+    {resetRequired && <WmsButton type="button" className="btn-ara-secondary ara-recovery-action" onClick={forgot}>Đặt lại mật khẩu qua thư điện tử</WmsButton>}
+    <form onSubmit={submit}>
+      <div className="form-group"><WmsField required className="form-label" htmlFor="usernameOrEmail">Mã nhân viên hoặc thư điện tử</WmsField>
+        <div className="input-wrapper"><User size={18} className="input-icon" />
+          <WmsInput id="usernameOrEmail" name="usernameOrEmail" className="form-input" placeholder="NV001 hoặc email của bạn"
+            value={form.usernameOrEmail} onChange={change} autoComplete="username" maxLength={254} required disabled={busy} />
+        </div>
+      </div>
+      <div className="form-group"><div className="ara-password-label">
+        <WmsField required className="form-label" htmlFor="password">Mật khẩu</WmsField>
+        <WmsButton type="button" className="ara-text-button" disabled={busy} onClick={forgot}>Quên mật khẩu?</WmsButton>
+      </div>
+        <div className="input-wrapper"><Lock size={18} className="input-icon" />
+          <WmsInput id="password" name="password" type={visible ? 'text' : 'password'} className="form-input ara-password-input"
+            placeholder="Nhập mật khẩu..." value={form.password} onChange={change} autoComplete="current-password" required disabled={busy} />
+          <WmsButton type="button" className="input-action-btn" onClick={() => setVisible(!visible)} aria-label={visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}>
+            {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+          </WmsButton>
+        </div>
+      </div>
+      <WmsField className="ara-remember"><WmsInput type="checkbox" checked={form.rememberMe} disabled={busy}
+        onChange={(event) => setForm({ ...form, rememberMe: event.target.checked })} />Ghi nhớ đăng nhập trên thiết bị này</WmsField>
+      <WmsButton type="submit" className="btn-ara-primary ara-submit" disabled={busy}>
+        {submitting ? 'Đang xác thực...' : <>Đăng nhập hệ thống <ArrowRight size={18} /></>}
+      </WmsButton>
+    </form>
+    <GoogleLogin rememberMe={form.rememberMe} disabled={submitting} onSuccess={authenticated} onBusyChange={setGoogleBusy} />
+  </div>;
+}
 
-export default LoginPage;
+export default function LoginPage() {
+  return <div className="ara-login-page"><div className="ara-login-card">
+    <LoginBrandPanel /><LoginForm />
+  </div></div>;
+}
+
+function GoogleLogin({ rememberMe, disabled, onSuccess, onBusyChange }) {
+  const [config, setConfig] = useState(null);
+  const [challenge, setChallenge] = useState(null);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  // UC-05: Đọc cấu hình Google và xin mã xác thực từ BE trước khi hiển thị nút.
+  useEffect(() => {
+    let active = true;
+    setError(''); setChallenge(null);
+    authService.googleConfig().then(async (response) => {
+      if (!active) return;
+      setConfig(response.data);
+      if (response.data.enabled) {
+        const result = await authService.googleChallenge();
+        if (active) setChallenge(result.data);
+      }
+    }).catch((err) => { if (active) setError(err.message); });
+    return () => { active = false; };
+  }, [attempt]);
+  // UC-05: Bỏ mã đang dùng khi xác thực lỗi để lần thử lại nhận mã mới.
+  const failed = (err) => { setError(err.message); setChallenge(null); };
+  return <section className="ara-google-login" aria-label="Đăng nhập bằng Google">
+    <div className="ara-auth-divider"><span>Hoặc đăng nhập bằng Google</span></div>
+    {error && <div role="alert" className="ara-alert ara-alert-error">{error}</div>}
+    {config?.enabled === false && <p className="ara-section-note">Google chưa được cấu hình. Bạn có thể đăng nhập bằng thư điện tử hoặc mã nhân viên và mật khẩu.</p>}
+    {challenge && <GoogleIdentityButton challenge={challenge} disabled={disabled} onError={failed} onBusyChange={onBusyChange}
+      onCredential={async (input) => {
+        const response = await authService.googleLogin({ ...input, rememberMe });
+        onSuccess(response);
+      }} />}
+    {!error && config?.enabled && !challenge && <p role="status" className="ara-section-note">Đang chuẩn bị đăng nhập Google...</p>}
+    {error && <WmsButton type="button" className="ara-text-button" disabled={disabled} onClick={() => setAttempt(attempt + 1)}>Thử lại Google</WmsButton>}
+  </section>;
+}
