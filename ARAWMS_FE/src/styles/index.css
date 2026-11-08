@@ -384,6 +384,38 @@ h1, h2, h3, h4, .brand-title {
   margin-top: auto;
 }
 
+/* ========================================================
+   SKELETON LOADING – ARA SHIMMER SYSTEM
+   ======================================================== */
+
+@keyframes ara-shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+
+.ara-skeleton {
+  display: block;
+  background: linear-gradient(
+    90deg,
+    #EBE4DA 25%,
+    #F4EFEB 50%,
+    #EBE4DA 75%
+  );
+  background-size: 600px 100%;
+  animation: ara-shimmer 1.6s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+.ara-skeleton-avatar {
+  border-radius: 50% !important;
+}
+
+/* Skeleton for table rows */
+.ara-skeleton-row td {
+  padding: 0.9rem 1rem;
+  vertical-align: middle;
+}
+
 .packing-detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -594,3 +626,549 @@ h1,h2,h3,h4,p { margin:0; } h1 { font-size:28px;line-height:1.35;font-weight:600
 a {color:var(--wms-accent-hover);} button,input,textarea,select {font:inherit;} a,button,input,textarea,select { -webkit-tap-highlight-color:transparent; }
 #root,.wms-application,.app-container {min-height:100dvh;} .app-container {display:flex;flex-direction:column;} .main-content {flex:1;min-width:0;outline:none;}
 @media(max-width:575px){h1{font-size:24px;}}
+
+/* ========================================================
+   ENTERPRISE SIDEBAR & TOPHEADER DESIGN SYSTEM
+   ======================================================== */
+.ara-enterprise-shell {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  background: var(--ara-bg, #F4EFEB);
+  overflow-x: hidden;
+}
+
+.ara-sidebar {
+  width: 250px;
+  background: #141210;
+  color: #FAF7F2;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  z-index: 100;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border-right: 1px solid rgba(200, 185, 166, 0.2);
+  flex-shrink: 0;
+}
+
+.ara-sidebar.ara-sidebar-collapsed {
+  width: 68px;
+}
+
+.ara-sidebar-header {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.85rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ara-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  text-decoration: none;
+  color: #FAF7F2;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ara-sidebar-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.brand-title {
+  font-family: var(--font-serif, serif);
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: 0.08em;
+  color: #FAF7F2;
+  display: block;
+  line-height: 1;
+}
+
+.brand-subtitle {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  color: #9F8365;
+  text-transform: uppercase;
+}
+
+.ara-sidebar-toggle-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #C8B9A6;
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ara-sidebar-toggle-btn:hover {
+  background: #9F8365;
+  color: #141210;
+}
+
+.ara-sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ara-sidebar-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.ara-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.ara-nav-group-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #8A6A46;
+  padding: 0 0.6rem 0.35rem;
+  text-transform: uppercase;
+}
+
+.ara-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ara-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  color: #C8B9A6;
+  text-decoration: none;
+  font-size: 0.83rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.ara-nav-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #FAF7F2;
+}
+
+.ara-nav-item.active {
+  background: #9F8365;
+  color: #141210;
+  font-weight: 600;
+}
+
+.ara-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.badge-new-nav {
+  font-size: 0.6rem;
+  background: rgba(20, 18, 16, 0.7);
+  color: #D4B48C;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.ara-sidebar-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.65rem;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.ara-sidebar-user-block {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.ara-sidebar-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #9F8365;
+  color: #141210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.ara-sidebar-user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.ara-sidebar-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ara-sidebar-user-info .user-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #FAF7F2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ara-sidebar-user-info .user-role-badge {
+  font-size: 0.62rem;
+  color: #9F8365;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.ara-sidebar-logout-btn {
+  background: transparent;
+  border: 0;
+  color: #A49C92;
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.ara-sidebar-logout-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+/* Main Area & TopHeader */
+.ara-main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.ara-top-header {
+  height: 52px;
+  background: rgba(250, 247, 242, 0.95);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--ara-border, #E3D9CD);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.25rem;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  flex-shrink: 0;
+}
+
+.ara-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.ara-btn-toggle-menu {
+  background: none;
+  border: 1px solid var(--ara-border, #E3D9CD);
+  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--ara-noir, #1C1A17);
+}
+
+.ara-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.84rem;
+}
+
+.crumb-section {
+  color: var(--ara-text-muted, #7E766D);
+}
+
+.crumb-separator {
+  color: var(--ara-text-light, #A49C92);
+}
+
+.crumb-title {
+  font-weight: 600;
+  color: var(--ara-noir, #1C1A17);
+}
+
+.ara-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.ara-icon-btn {
+  background: none;
+  border: 1px solid var(--ara-border, #E3D9CD);
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--ara-noir, #1C1A17);
+  transition: all 0.2s;
+}
+
+.ara-icon-btn:hover {
+  background: var(--ara-bg-surface, #FAF7F2);
+  border-color: var(--ara-gold, #9F8365);
+}
+
+.ara-notification-wrapper {
+  position: relative;
+}
+
+.ara-notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #EF4444;
+  color: white;
+  font-size: 0.62rem;
+  font-weight: 700;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid white;
+}
+
+.ara-notification-dropdown {
+  position: absolute;
+  top: 40px;
+  right: 0;
+  width: 320px;
+  background: #FFFFFF;
+  border: 1px solid var(--ara-border, #E3D9CD);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.notif-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid #F3F4F6;
+  background: #F9FAFB;
+}
+
+.notif-title {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: #111827;
+}
+
+.notif-mark-read {
+  background: none;
+  border: 0;
+  font-size: 0.72rem;
+  color: #2563EB;
+  cursor: pointer;
+}
+
+.notif-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.notif-item {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid #F3F4F6;
+  font-size: 0.76rem;
+  transition: background 0.2s;
+}
+
+.notif-item.unread {
+  background: #FEF9F2;
+}
+
+.notif-item-title {
+  font-weight: 600;
+  color: #111827;
+}
+
+.notif-item-desc {
+  color: #4B5563;
+  margin-top: 2px;
+}
+
+.notif-item-time {
+  font-size: 0.65rem;
+  color: #9CA3AF;
+  margin-top: 3px;
+}
+
+.notif-empty {
+  padding: 1.5rem;
+  text-align: center;
+  color: #9CA3AF;
+  font-size: 0.8rem;
+}
+
+.ara-user-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.7rem 0.2rem 0.3rem;
+  background: var(--ara-bg-surface, #FAF7F2);
+  border: 1px solid var(--ara-border, #E3D9CD);
+  border-radius: 999px;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.2s;
+}
+
+.ara-user-pill:hover {
+  border-color: var(--ara-gold, #9F8365);
+}
+
+.user-pill-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #141210;
+  color: #9F8365;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.75rem;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.user-pill-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.user-pill-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-pill-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ara-noir, #1C1A17);
+  line-height: 1.2;
+}
+
+.user-pill-role {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #9F8365;
+  letter-spacing: 0.04em;
+}
+
+.ara-workspace-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ========================================================
+   ENTERPRISE RESPONSIVE MOBILE DRAWER & LAYOUT RULES
+   ======================================================== */
+@media (max-width: 991.98px) {
+  .ara-sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: 280px !important;
+    max-width: 86vw !important;
+    height: 100vh !important;
+    z-index: 1055 !important;
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: none;
+  }
+
+  .ara-sidebar.mobile-open {
+    transform: translateX(0) !important;
+    box-shadow: 0 0 35px rgba(0, 0, 0, 0.6) !important;
+  }
+
+  .ara-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 14, 12, 0.55);
+    backdrop-filter: blur(2px);
+    z-index: 1050;
+    animation: araBackdropFade 0.2s ease;
+  }
+
+  .ara-main-area {
+    width: 100% !important;
+    min-width: 0 !important;
+    margin-left: 0 !important;
+    height: 100vh;
+  }
+
+  .ara-top-header {
+    padding: 0 0.85rem;
+  }
+
+  .ara-notification-dropdown {
+    width: min(320px, calc(100vw - 20px));
+    right: -10px;
+  }
+}
+
+@keyframes araBackdropFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

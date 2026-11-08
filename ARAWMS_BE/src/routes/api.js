@@ -1,7 +1,7 @@
 import express from 'express';
 // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13/19, phản hồi 1–7; GBR-01 - Báo cáo và kế hoạch có xác thực.
 import operationsReportRoutes from '../modules/managerial-financial-analytics/operations-report/operationsReport.routes.js';
-import ghnRoutes from './ghn.routes.js';
+import ghnRoutes from '../modules/ghn/ghn.routes.js';
 import contractWorkspaceRoutes from '../modules/supplier-contracts/contract-workspace/contractWorkspace.routes.js';
 import inboundPlanningRoutes from '../modules/supplier-contracts/inbound-planning/inboundPlanning.routes.js';
 import deviationResolutionRoutes from '../modules/supplier-contracts/deviation-resolution/deviationResolution.routes.js';
@@ -25,6 +25,21 @@ import settingsRoutes from '../modules/system-administration/system-settings/sys
 import stockAdjustmentRoutes from '../modules/inventory-auditing/stock-adjustment/stockAdjustment.routes.js';
 
 import productCatalogRoutes from '../modules/master-data/product-catalog/productCatalog.routes.js';
+
+// 1. Major Feature: Conversational Commerce
+import chatRoutingRoutes from '../modules/conversational-commerce/chat-routing/chatRouting.routes.js';
+import crmProfileRoutes from '../modules/conversational-commerce/crm-profile/crmProfile.routes.js';
+import chatInterfaceRoutes from '../modules/conversational-commerce/chat-interface/chatInterface.routes.js';
+import inventoryWidgetRoutes from '../modules/conversational-commerce/inventory-widget/inventoryWidget.routes.js';
+
+// 2. Major Feature: Order Fulfillment
+import orderManagementRoutes from '../modules/order-fulfillment/order-management/orderManagement.routes.js';
+import marketplaceOrderImportRoutes from '../modules/order-fulfillment/marketplace-order-import/marketplaceOrderImport.routes.js';
+
+// 3. Major Feature: Reverse Logistics
+import returnMerchandiseAuthorizationRoutes from '../modules/reverse-logistics/return-merchandise-authorization/returnMerchandiseAuthorization.routes.js';
+import customerExchangeProcessingRoutes from '../modules/reverse-logistics/customer-exchange-processing/customerExchangeProcessing.routes.js';
+
 const router = express.Router();
 router.use('/owner/contracts', contractWorkspaceRoutes);
 router.use('/owner/products', productCatalogRoutes);
@@ -76,5 +91,41 @@ router.use('/financial/cod-reconciliation', codReconciliationRoutes);
 
 // Debt Management routes (Supplier Debt AP & Carrier Debt AR)
 router.use('/financial/debts', debtManagementRoutes);
+
+// ====================================================================
+// MAJOR FEATURE 1: CONVERSATIONAL COMMERCE
+// ====================================================================
+// Sub Feature: Chat Routing (UC-69)
+router.use('/conversations/routing', chatRoutingRoutes);
+
+// Sub Feature: CRM Profile (UC-70, UC-71, UC-75, UC-76)
+router.use('/conversations/crm-profile', crmProfileRoutes);
+router.use('/conversations/customers', crmProfileRoutes); // Alias linh hoạt
+
+// Sub Feature: Inventory Widget (UC-77)
+router.use('/conversations/inventory-widget', inventoryWidgetRoutes);
+router.use('/conversations/inventory', inventoryWidgetRoutes); // Alias linh hoạt
+
+// Sub Feature: Chat Interface (UC-72, UC-73, UC-74)
+router.use('/conversations/chat-interface', chatInterfaceRoutes);
+router.use('/conversations', chatInterfaceRoutes); // Base chat routes
+
+// ====================================================================
+// MAJOR FEATURE 2: ORDER FULFILLMENT
+// ====================================================================
+// Sub Feature: Order Management (UC-78, UC-79, UC-80, UC-81)
+router.use('/orders/marketplace', marketplaceOrderImportRoutes);
+router.use('/orders', orderManagementRoutes);
+
+// ====================================================================
+// MAJOR FEATURE 3: REVERSE LOGISTICS
+// ====================================================================
+// Sub Feature: Return Merchandise Authorization (UC-82)
+router.use('/returns/rma', returnMerchandiseAuthorizationRoutes);
+router.use('/returns/return-merchandise-authorization', returnMerchandiseAuthorizationRoutes);
+
+// Sub Feature: Customer Exchange Processing (UC-83)
+router.use('/returns/customer-exchange', customerExchangeProcessingRoutes);
+router.use('/returns/rma', customerExchangeProcessingRoutes); // Alias tiện lợi cho /api/returns/rma/:id/create-exchange-order
 
 export default router;

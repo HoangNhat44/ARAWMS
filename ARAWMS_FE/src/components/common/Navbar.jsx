@@ -1,9 +1,15 @@
 /*
  * File: Navbar.jsx
- * Author: Duy Anh & Antigravity
- * Date: 2026-10-29
- * Description: Clean top navigation bar with role modules (Phân hệ Kỹ thuật, Quản lý kho, Nhân viên kho, Kế toán),
- *              user profile dropdown, and logout.
+ * Author: Duy Anh & Antigravity (merged with Nguyễn Ngọc Huy-HE171157 & Nguyễn Quang Huy)
+ * Date: 2026-11-08
+ * Description: Clean top navigation bar with all role modules:
+ *              - Bán hàng & CSKH (Seller)
+ *              - Phân hệ Kỹ thuật (Garment Technician)
+ *              - Quản lý kho (Warehouse Manager)
+ *              - Nhân viên kho (Warehouse Staff)
+ *              - Phân hệ Kế toán (Accountant)
+ *              - Phân hệ Chủ xưởng (Owner)
+ *              user profile dropdown, status badge, and logout.
  */
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -17,6 +23,8 @@ import {
   Box,
   Calculator,
   Crown,
+  MessageSquareText,
+  ShoppingBag,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -41,6 +49,7 @@ export default function Navbar() {
   };
 
   const isHomeActive = location.pathname === '/';
+  const isSellerActive = location.pathname.startsWith('/seller');
   const isGarmentActive = location.pathname.startsWith('/garment');
   const isManagerActive =
     location.pathname.startsWith('/warehouse/raw-materials') ||
@@ -78,6 +87,18 @@ export default function Navbar() {
       label: 'Tài khoản & bảo mật',
       icon: <UserIcon size={16} />,
       onClick: () => navigate(user?.roleCode === 'OWNER' ? '/owner/account' : '/account'),
+    },
+    {
+      key: 'seller-chat',
+      label: 'Hội thoại bán hàng',
+      icon: <MessageSquareText size={16} />,
+      onClick: () => navigate('/seller/chat'),
+    },
+    {
+      key: 'seller-orders',
+      label: 'Quản lý đơn hàng',
+      icon: <ShoppingBag size={16} />,
+      onClick: () => navigate('/seller/orders'),
     },
     ...(user?.roleCode === 'OWNER'
       ? [
@@ -129,7 +150,37 @@ export default function Navbar() {
               </Link>
             </li>
 
-            {/* 1. Phân hệ Kỹ thuật */}
+            {/* 1. Bán hàng & CSKH (Seller / Omnichannel) */}
+            {user && (
+              <>
+                <li>
+                  <Link
+                    to="/seller/chat"
+                    style={navLinkStyle(location.pathname === '/seller/chat')}
+                  >
+                    <MessageSquareText
+                      size={16}
+                      color={location.pathname === '/seller/chat' ? 'var(--ara-gold)' : 'var(--ara-text-muted)'}
+                    />
+                    <span>Bán hàng</span>
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to="/seller/orders"
+                    style={navLinkStyle(location.pathname === '/seller/orders')}
+                  >
+                    <ShoppingBag
+                      size={16}
+                      color={location.pathname === '/seller/orders' ? 'var(--ara-gold)' : 'var(--ara-text-muted)'}
+                    />
+                    <span>Đơn hàng</span>
+                  </Link>
+                </li>
+              </>
+            )}
+
+            {/* 2. Phân hệ Kỹ thuật */}
             <li>
               <Link
                 to="/garment/material-inbound-verification"
@@ -143,7 +194,7 @@ export default function Navbar() {
               </Link>
             </li>
 
-            {/* 2. Quản lý kho */}
+            {/* 3. Quản lý kho */}
             <li>
               <Link
                 to="/warehouse/raw-materials/inbound"
@@ -157,7 +208,7 @@ export default function Navbar() {
               </Link>
             </li>
 
-            {/* 3. Nhân viên kho */}
+            {/* 4. Nhân viên kho */}
             <li>
               <Link
                 to="/warehouse/putaway"
@@ -171,7 +222,7 @@ export default function Navbar() {
               </Link>
             </li>
 
-            {/* 4. Phân hệ Kế toán */}
+            {/* 5. Phân hệ Kế toán */}
             <li>
               <Link
                 to="/accountant"
@@ -185,7 +236,7 @@ export default function Navbar() {
               </Link>
             </li>
 
-            {/* 5. Phân hệ Chủ xưởng (nếu có role OWNER) */}
+            {/* 6. Phân hệ Chủ xưởng (nếu có role OWNER) */}
             {user?.roleCode === 'OWNER' && (
               <li>
                 <Link

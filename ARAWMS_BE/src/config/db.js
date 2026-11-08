@@ -1,9 +1,4 @@
-/*
- * File: db.js
- * Author: Duy Anh
- * Date: 2026-10-26
- * Description: Connects the backend to MongoDB using the configured URI. Reports connection failure and stops production startup when the database is unavailable.
- */
+import 'dotenv/config';
 import mongoose from 'mongoose';
 
 /**

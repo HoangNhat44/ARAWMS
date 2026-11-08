@@ -1,0 +1,209 @@
+/**
+ * ============================================================================
+ * @title        : Conversation List Component (Pancake-style)
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-10-28
+ * @description  : Danh sách cuộc hội thoại khách hàng Messenger của Seller (UC-72),
+ *                 tích hợp thanh lọc thẻ tag nhanh (Pancake Quick Tag Filter) và tìm kiếm khách hàng.
+ *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
+ * @module       : Conversational Commerce / Chat Interface
+ * @layer        : Front-end
+ * ============================================================================
+ */
+
+import React, { useState } from 'react';
+import { Form, InputGroup, ListGroup, Badge, Button } from 'react-bootstrap';
+import { SkeletonConversationItem } from '../common/Skeleton';
+import { Icon, Avatar, EmptyState } from './SellerUi';
+
+/**
+ * Component hiển thị danh sách hội thoại khách hàng kèm bộ lọc nhãn màu.
+ *
+ * @component
+ * @param {Object} props - Thuộc tính truyền vào component.
+ * @param {Array<Object>} props.conversations - Danh sách các cuộc hội thoại.
+ * @param {string} props.selectedId - ID cuộc hội thoại đang được kích hoạt.
+ * @param {Function} props.onSelect - Callback khi chọn một cuộc hội thoại.
+ * @param {Function} props.onTagFilter - Callback kích hoạt lọc theo thẻ tag.
+ * @param {string} props.activeFilterTag - Tên thẻ tag đang được chọn lọc.
+ * @param {boolean} props.loading - Trạng thái đang tải dữ liệu.
+ * @param {Array<Object>} props.allTags - Danh sách thẻ phân loại từ DB.
+ * @returns {JSX.Element} Giao diện danh sách hội thoại.
+ */
+const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilter, activeFilterTag, loading, allTags = [] }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredConversations = conversations.filter((c) => {
+    const cust = c.customerId;
+    const nameMatch = cust?.fullName?.toLowerCase().includes(searchTerm.toLowerCase());
+    const phoneMatch = cust?.phone?.includes(searchTerm);
+    const codeMatch = cust?.customerCode?.toLowerCase().includes(searchTerm.toLowerCase());
+    const previewMatch = c.lastMessagePreview?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesSearch = !searchTerm || nameMatch || phoneMatch || codeMatch || previewMatch;
+    const matchesTag = !activeFilterTag || (c.tags && c.tags.includes(activeFilterTag));
+
+    return matchesSearch && matchesTag;
+  });
+
+  return (
+    <div className="d-flex flex-column h-100 bg-white">
+      {/* Search Header */}
+      <div className="p-2 border-bottom" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
+        <InputGroup size="sm" className="ara-search-capsule">
+          <InputGroup.Text><Icon name="search" /></InputGroup.Text>
+          <Form.Control
+            placeholder="Tìm theo tên, SĐT, mã khách..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </InputGroup>
+      </div>
+
+      {/* Quick Tag Pills Bar - dùng allTags từ DB */}
+      <div className="d-flex flex-wrap gap-1 p-2 border-bottom" style={{ borderColor: 'var(--wms-border, #C8B9A6)', backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)' }}>
+        <button
+          type="button"
+          className={`ara-status-pill-btn ${!activeFilterTag ? 'active' : ''}`}
+          onClick={() => onTagFilter && onTagFilter('')}
+        >
+          <span>Tất cả</span>
+        </button>
+        {allTags.slice(0, 6).map((tag) => {
+          const isActive = activeFilterTag === tag.name;
+          return (
+            <button
+              key={tag._id || tag.name}
+              type="button"
+              className="ara-status-pill-btn"
+              style={isActive
+                ? { background: tag.color, borderColor: tag.color, color: tag.textColor || '#fff' }
+                : { borderColor: tag.color, color: tag.color, background: 'transparent' }}
+              onClick={() => onTagFilter && onTagFilter(isActive ? '' : tag.name)}
+            >
+              <span>{tag.name}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Conversation Stream List */}
+      <div className="flex-grow-1 overflow-auto">
+        {loading ? (
+          [1, 2, 3, 4, 5].map((i) => <SkeletonConversationItem key={i} />)
+        ) : filteredConversations.length === 0 ? (
+          <EmptyState icon="chat-square" title="Chưa có hội thoại nào">
+            Tin nhắn Messenger của khách sẽ hiển thị tại đây
+          </EmptyState>
+        ) : (
+          <ListGroup variant="flush">
+            {filteredConversations.map((conv) => {
+              const customer = conv.customerId;
+              const isSelected = selectedId === conv._id;
+
+              return (
+                <ListGroup.Item
+                  key={conv._id}
+                  action
+                  active={isSelected}
+                  onClick={() => onSelect(conv)}
+                  className="d-flex gap-2 py-3"
+                  style={{
+                    backgroundColor: isSelected ? 'var(--wms-primary-subtle, #EFE6DA)' : 'transparent',
+                    borderLeft: isSelected ? '4px solid var(--wms-accent, #8A6A46)' : '4px solid transparent',
+                    color: 'var(--wms-text-primary, #141210)',
+                    borderColor: 'var(--wms-border, #C8B9A6)',
+                    transition: 'all 0.12s ease',
+                  }}
+                >
+                  {/* Avatar Icon */}
+                  <div className="position-relative">
+                    <Avatar name={customer?.fullName} size={40} />
+                    {conv.unreadCount > 0 && !isSelected && (
+                      <span
+                        className="position-absolute top-0 start-100 translate-middle badge rounded-pill"
+                        style={{ backgroundColor: '#A62626', color: '#FFFFFF', fontSize: '10px' }}
+                      >
+                        {conv.unreadCount}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Conversation Details */}
+                  <div className="flex-grow-1 overflow-hidden">
+                    <div className="d-flex align-items-center justify-content-between mb-1">
+                      <div className="d-flex align-items-center gap-1 overflow-hidden me-1">
+                        <span className="fw-bold text-truncate small" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+                          {customer?.fullName || 'Khách chưa đặt tên'}
+                        </span>
+                        {conv.pageName && (
+                          <span
+                            className="badge rounded-pill px-1.5 py-0.5 flex-shrink-0"
+                            style={{
+                              backgroundColor: 'var(--wms-primary-subtle, #EFE6DA)',
+                              color: 'var(--wms-accent-hover, #6E5233)',
+                              border: '1px solid var(--wms-border, #C8B9A6)',
+                              fontSize: '10px',
+                            }}
+                          >
+                            {conv.pageName}
+                          </span>
+                        )}
+                      </div>
+                      <span className="small flex-shrink-0 ms-1" style={{ color: 'var(--wms-secondary, #574F46)', fontSize: '11px' }}>
+                        {conv.lastMessageAt
+                          ? new Date(conv.lastMessageAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                          : ''}
+                      </span>
+                    </div>
+
+                    {/* Last Message Preview */}
+                    <p className="small mb-1 text-truncate" style={{ color: 'var(--wms-secondary, #574F46)' }}>
+                      {conv.lastMessagePreview || 'Bắt đầu cuộc trò chuyện...'}
+                    </p>
+
+                    {/* Tags */}
+                    {conv.tags && conv.tags.length > 0 && (
+                      <div className="d-flex flex-wrap gap-1">
+                        {conv.tags.slice(0, 2).map((tg, idx) => (
+                          <span
+                            key={idx}
+                            className="badge rounded px-1.5 py-0.5"
+                            style={{
+                              backgroundColor: '#FEF0C7',
+                              color: '#9A5B06',
+                              border: '1px solid #F5B95F',
+                              fontSize: '10.5px',
+                            }}
+                          >
+                            {tg}
+                          </span>
+                        ))}
+                        {conv.tags.length > 2 && (
+                          <span
+                            className="badge rounded px-1.5 py-0.5"
+                            style={{
+                              backgroundColor: '#FEF0C7',
+                              color: '#9A5B06',
+                              border: '1px solid #F5B95F',
+                              fontSize: '10.5px',
+                            }}
+                          >
+                            +{conv.tags.length - 2}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </ListGroup.Item>
+              );
+            })}
+          </ListGroup>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ConversationList;

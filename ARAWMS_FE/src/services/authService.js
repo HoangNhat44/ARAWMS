@@ -1,7 +1,6 @@
 /*
  * File: authService.js
- * Author: Duy Anh
- * Date: 2026-10-26
+ * Author: Duy Anh & Nguyễn Ngọc Huy
  * Description: Wraps registration, login, current-user, and health API calls. Exposes authentication requests to React components.
  */
 import api from './api';
@@ -21,3 +20,5 @@ export const authService = {
   googleChallenge: () => api.post('/auth/google/challenge'),
   googleLogin: (input) => api.post('/auth/google/login', input),
 };
+
+export default authService;

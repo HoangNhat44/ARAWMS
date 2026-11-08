@@ -1,16 +1,15 @@
 /*
  * File: server.js
- * Author: Duy Anh
+ * Author: Duy Anh & Nguyễn Quang Huy
  * Date: 2026-10-27
- * Description: Loads backend configuration, connects MongoDB, and starts the API server.
+ * Description: Loads backend configuration, connects MongoDB, initializes WebSockets, and starts the API server.
  */
 import dotenv from 'dotenv';
 import { createServer } from 'node:http';
 import app from './src/app.js';
 import connectDB from './src/config/db.js';
-import { attachRealtime } from './src/common/services/realtime.js';
+import { initSocket } from './src/config/socket.js';
 
-// Load the local environment before the database connection is created.
 dotenv.config();
 
 const PORT = process.env.PORT || 5000;
@@ -18,9 +17,11 @@ const PORT = process.env.PORT || 5000;
 // Start accepting requests only after MongoDB connects successfully.
 const startServer = async () => {
   await connectDB();
-  const server = createServer(app);
-  attachRealtime(server);
-  server.listen(PORT, () => {
+
+  const httpServer = createServer(app);
+  initSocket(httpServer);
+
+  httpServer.listen(PORT, () => {
     console.log(`=================================`);
     console.log(`🚀 Server đang chạy tại: http://localhost:${PORT}`);
     console.log(`⚙️  Môi trường: ${process.env.NODE_ENV || 'development'}`);

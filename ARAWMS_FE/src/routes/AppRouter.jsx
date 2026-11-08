@@ -1,7 +1,8 @@
 /*
  * File: AppRouter.jsx
- * Author: Duy Anh & Antigravity (merged with Nguyễn Ngọc Huy-HE171157)
+ * Author: Duy Anh & Antigravity (merged with Nguyễn Ngọc Huy-HE171157 & Nguyễn Quang Huy)
  * Description: Unified routing for all modules:
+ *              - Bán hàng đa kênh & CSKH (Seller Workspace: Chat, Orders, Marketplace, RMA)
  *              - Phân hệ Kỹ thuật may (Garment Technician)
  *              - Phân hệ Quản lý kho (Warehouse Manager)
  *              - Phân hệ Nhân viên kho (Warehouse Staff)
@@ -16,7 +17,10 @@ import LoginPage from '../pages/LoginPage';
 import AccountPage from '../pages/AccountPage';
 import ForgotPasswordPage from '../pages/ForgotPasswordPage';
 import ResetPasswordPage from '../pages/ResetPasswordPage';
+import RegisterPage from '../pages/RegisterPage';
 import NotFoundPage from '../pages/NotFoundPage';
+import SellerChatPage from '../pages/seller/SellerChatPage';
+import SellerOrdersPage from '../pages/seller/SellerOrdersPage';
 import OrderQrPage from '../pages/OrderQrPage';
 import WarehousePackingPage from '../pages/WarehousePackingPage';
 import ProductConfigurationPage from '../pages/ProductConfigurationPage';
@@ -106,9 +110,14 @@ export default function AppRouter() {
 
         {/* Auth & Tài khoản */}
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+        <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
         <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/account" element={<ProtectedRoute><AccountEntry /></ProtectedRoute>} />
+
+        {/* Phân hệ Seller Workspace (Bán hàng & CSKH đa kênh, Quản lý đơn hàng, TMĐT, RMA) */}
+        <Route path="/seller/chat" element={<ProtectedRoute><SellerChatPage /></ProtectedRoute>} />
+        <Route path="/seller/orders" element={<ProtectedRoute><SellerOrdersPage /></ProtectedRoute>} />
 
         {/* Phân hệ Kế toán (Accountant) */}
         <Route path="/accountant/*" element={<AccountantRoutes />} />
@@ -301,7 +310,6 @@ export default function AppRouter() {
           <Route path="*" element={<NotFoundPage />} />
         </Route>
 
-        <Route path="/register" element={<Navigate to="/login" replace />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>

@@ -1,14 +1,14 @@
 /*
  * File: baseSchema.plugin.js
- * Author: Duy Anh
- * Date: 2026-10-26
- * Description: Adds timestamps and soft-delete fields to Mongoose schemas. Normalizes serialized documents by exposing a string ID and omitting internal fields.
+ * Author: Duy Anh & Nguyễn Ngọc Huy
+ * Description: Adds timestamps and soft-delete fields to Mongoose schemas. Normalizes serialized documents by exposing a string ID and omitting internal/sensitive fields.
  */
+
 /**
  * Base Schema Plugin for Mongoose
  * - timestamps: true (createdAt, updatedAt)
  * - Soft-delete support (isDeleted, deletedAt)
- * - Clean JSON/Object serialization (transforms _id to id, removes __v and passwordHash)
+ * - Clean JSON/Object serialization (transforms _id to id, removes __v and sensitive auth fields)
  */
 export const baseSchemaPlugin = (schema) => {
   // GBR-01: Thêm cờ xóa mềm để phần đăng nhập loại tài khoản đã bị xóa.
@@ -20,7 +20,7 @@ export const baseSchemaPlugin = (schema) => {
   // GBR-23: Bổ sung thời điểm tạo và cập nhật cho dữ liệu, gồm cả nhật ký.
   schema.set('timestamps', true);
 
-  /** Removes database internals and password hashes from serialized output. */
+  /** Removes database internals and sensitive authentication fields from serialized output. */
   const cleanTransform = (doc, ret) => {
     if (ret._id) {
       const idStr = ret._id.toString();

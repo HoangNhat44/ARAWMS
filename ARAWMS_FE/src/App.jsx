@@ -1,13 +1,14 @@
 /*
  * File: App.jsx
  * Description: Composes global theme (Ant Design wmsTheme), routers, role layouts,
- *              and background sync runners (packing, catalog, finished goods, realtime).
+ *              notification toast provider, and background sync runners (packing, catalog, finished goods, realtime).
  */
 import React from 'react';
 import { BrowserRouter, useLocation } from 'react-router-dom';
 import { App as AntApp, ConfigProvider } from 'antd';
 import viVN from 'antd/locale/vi_VN';
 import { AuthProvider } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 import AppRouter from './routes/AppRouter';
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
@@ -22,9 +23,10 @@ import { wmsTheme } from './theme/wmsTheme';
 function AppChrome() {
   const { pathname } = useLocation();
   const isOwner = pathname === '/owner' || pathname.startsWith('/owner/');
+  const isSellerWorkspace = pathname.startsWith('/seller');
 
   return (
-    <div className={`app-container ${isOwner ? 'wms-owner-app' : 'wms-public-app'}`}>
+    <div className={`app-container ${isOwner ? 'wms-owner-app' : 'wms-public-app'} ${isSellerWorkspace ? 'seller-workspace-active' : ''}`}>
       {!isOwner && <Navbar />}
       <a className="wms-skip-link" href="#main-content">Bỏ qua điều hướng, đến nội dung</a>
       <main id="main-content" className="main-content" tabIndex={-1}>
@@ -42,12 +44,14 @@ function App() {
       <AntApp className="wms-application">
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <AuthProvider>
-            <PackingUploadRunner />
-            <CatalogSyncRunner />
-            <FinishedGoodsSyncRunner />
-            <RealtimeBridge />
-            <QuickNav />
-            <AppChrome />
+            <ToastProvider>
+              <PackingUploadRunner />
+              <CatalogSyncRunner />
+              <FinishedGoodsSyncRunner />
+              <RealtimeBridge />
+              <QuickNav />
+              <AppChrome />
+            </ToastProvider>
           </AuthProvider>
         </BrowserRouter>
       </AntApp>

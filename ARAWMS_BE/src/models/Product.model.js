@@ -35,5 +35,9 @@ productSchema.plugin(baseSchemaPlugin);
 productSchema.index({ sampleCode: 1 }, { unique: true,
   partialFilterExpression: { sampleCode: { $gt: '' } } });
 
+// Tối ưu tìm kiếm sản phẩm theo tên và danh mục
+productSchema.index({ productName: 1, isActive: 1 });
+productSchema.index({ category: 1, isActive: 1 });
+
 const Product = mongoose.model('Product', productSchema);
 export default Product;

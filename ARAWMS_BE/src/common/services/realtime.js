@@ -1,20 +1,14 @@
-import { Server } from 'socket.io';
+import { getIO, initSocket } from '../../config/socket.js';
 
-let io;
+let localIo = null;
 
 export function attachRealtime(httpServer) {
-  // Socket.IO shares the HTTP server so browser API and live updates use one origin.
-  io = new Server(httpServer, {
-    cors: { origin: process.env.CLIENT_URL || '*', credentials: true },
-    path: '/socket.io',
-  });
-  io.on('connection', (socket) => {
-    socket.emit('realtime:ready', { connectedAt: new Date().toISOString() });
-  });
-  return io;
+  localIo = initSocket(httpServer);
+  return localIo;
 }
 
 export function publishRealtime(event, payload) {
+  const io = localIo || getIO();
   if (!io) return false;
   io.emit(event, { ...payload, occurredAt: new Date().toISOString() });
   return true;

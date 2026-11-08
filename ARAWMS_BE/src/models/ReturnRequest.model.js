@@ -31,11 +31,33 @@ const returnRequestSchema = new Schema(
     createdBySellerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     returnType: { type: String, enum: ['RETURN_FOR_REFUND', 'EXCHANGE_PRODUCT'], required: true },
     returnWaybillCode: { type: String, index: true },
+    reasonDescription: { type: String, trim: true },
+    refundBanking: {
+      bankName: { type: String, trim: true },
+      accountNumber: { type: String, trim: true },
+      accountHolder: { type: String, trim: true },
+    },
     status: {
       type: String,
       enum: ['REQUESTED', 'UNBOXED_INSPECTED', 'ACCOUNTANT_APPROVED', 'COMPLETED', 'REJECTED'],
       default: 'REQUESTED',
       index: true,
+    },
+    refundRequest: {
+      status: {
+        type: String,
+        enum: ['NONE', 'PENDING_ACCOUNTANT', 'APPROVED', 'REJECTED'],
+        default: 'NONE',
+        index: true,
+      },
+      requestedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+      requestedAt: Date,
+      requestedAmount: { type: Number, default: 0 },
+      requestNote: { type: String, trim: true },
+      reviewedByAccountantId: { type: Schema.Types.ObjectId, ref: 'User' },
+      reviewedAt: Date,
+      rejectReason: { type: String, trim: true },
+      voucherId: { type: Schema.Types.ObjectId, ref: 'CashFlowVoucher' },
     },
     warehouseInspection: {
       inspectedByStaffId: { type: Schema.Types.ObjectId, ref: 'User' },

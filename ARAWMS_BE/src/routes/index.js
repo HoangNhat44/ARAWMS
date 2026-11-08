@@ -1,7 +1,7 @@
 /*
  * File: index.js
  * Description: Mounts all backend API modules under their public paths.
- *              Combines warehouse, order, garment routes with accountant, carrier & contract routes.
+ *              Combines warehouse, order, garment routes with accountant, carrier, seller & contract routes.
  */
 import express from 'express';
 
@@ -21,8 +21,8 @@ import garmentFinishedInspectionRoutes from '../modules/garment-technical/finish
 import garmentStocktakeExecutionRoutes from '../modules/garment-technical/stocktake-execution/stocktakeExecution.routes.js';
 import garmentRemnantRecoveryRoutes from '../modules/garment-technical/remnant-recovery/remnantRecovery.routes.js';
 
-// Import carrier, contract & accountant financial routes
-import accountantApiRoutes from './api.js';
+// Import carrier, contract, accountant financial & seller routes
+import apiRoutes from './api.js';
 
 const router = express.Router();
 
@@ -49,7 +49,7 @@ router.use('/garment-technical/finished-inspection', garmentFinishedInspectionRo
 router.use('/garment-technical/stocktake-execution', garmentStocktakeExecutionRoutes);
 router.use('/garment-technical/remnant-recovery', garmentRemnantRecoveryRoutes);
 
-// Carrier, Contract Procurement & Financial Intelligence routes (from api.js)
-router.use('/', accountantApiRoutes);
+// Carrier, Contract Procurement, Financial Intelligence & Seller routes (from api.js)
+router.use('/', apiRoutes);
 
 export default router;

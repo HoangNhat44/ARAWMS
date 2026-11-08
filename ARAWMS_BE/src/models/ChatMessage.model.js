@@ -9,10 +9,15 @@ import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 
 const { Schema } = mongoose;
 
+// NOTE: Khai báo tường minh { type: { type: String } } để Mongoose không hiểu nhầm
+// trường "type" là từ khóa khai báo kiểu dữ liệu của cả sub-document.
 const chatAttachmentSchema = new Schema(
   {
-    type: String,
-    url: String,
+    type: { type: String, default: 'file' }, // image | video | audio | file | fallback | sticker ...
+    url: { type: String },
+    name: { type: String },
+    mimeType: { type: String },
+    size: { type: Number },
   },
   { _id: false }
 );
@@ -26,6 +31,12 @@ const chatMessageSchema = new Schema(
     messageText: { type: String },
     attachments: [chatAttachmentSchema],
     referencedSkuId: { type: Schema.Types.ObjectId, ref: 'Sku' },
+    deliveryStatus: {
+      type: String,
+      enum: ['DELIVERED', 'FAILED_24H_EXPIRED', 'FAILED_META_ERROR', 'NOT_CONNECTED'],
+      default: 'DELIVERED',
+    },
+    deliveryError: { type: String },
     sentAt: { type: Date, default: Date.now, index: true },
   },
   { collection: 'chat_messages' }
