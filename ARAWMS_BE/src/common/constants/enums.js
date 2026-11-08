@@ -84,10 +84,30 @@ export const ORDER_STATUS = [
   'COMPLETED',
   'CANCELLED',
   'RETURN_REQUESTED',
-  'PARTIALLY_RETURNED',
   'EXCHANGE_REQUESTED',
   'RETURNED',
 ];
+
+/**
+ * Nhãn hiển thị tiếng Việt cho trạng thái đơn hàng (dùng cho thông báo lỗi / tin nhắn).
+ * Không dùng tên tiếng Anh trong ngoặc để hiển thị cho người dùng.
+ */
+export const ORDER_STATUS_LABELS = {
+  PENDING: 'Chờ xác nhận',
+  CONFIRMED_RESERVED: 'Chờ lấy hàng',
+  PICKING: 'Đang lấy hàng',
+  PACKED: 'Đã lấy hàng',
+  HANDED_OVER_CARRIER: 'Đang giao hàng',
+  DELIVERED: 'Đã giao thành công',
+  COMPLETED: 'Hoàn thành',
+  CANCELLED: 'Đã hủy',
+  RETURN_REQUESTED: 'Đang hoàn hàng',
+  EXCHANGE_REQUESTED: 'Đang đổi hàng',
+  RETURNED: 'Đã hoàn về kho',
+};
+
+/** Lấy nhãn tiếng Việt của trạng thái đơn hàng */
+export const getOrderStatusLabel = (status) => ORDER_STATUS_LABELS[status] || status || '';
 
 export const RECONCILIATION_STATUS = [
   'UNRECONCILED',

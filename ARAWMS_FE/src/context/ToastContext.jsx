@@ -19,9 +19,50 @@ const ToastContext = createContext(null);
 
 const VARIANT_ICONS = {
   success: { icon: 'bi-check-circle-fill', color: 'text-success', title: 'Thành công' },
-  danger:  { icon: 'bi-x-circle-fill',     color: 'text-danger',  title: 'Lỗi' },
+  danger:  { icon: 'bi-x-circle-fill',     color: 'text-danger',  title: 'Thông báo lỗi' },
   warning: { icon: 'bi-exclamation-triangle-fill', color: 'text-warning', title: 'Cảnh báo' },
   info:    { icon: 'bi-info-circle-fill',  color: 'text-primary', title: 'Thông báo' },
+};
+
+/**
+ * Làm sạch thông điệp thông báo:
+ * - Loại bỏ các tiền tố kỹ thuật như [BR: GBR-xx], Error:, TypeError:...
+ * - Loại bỏ tên hàm, stack trace hoặc mã hàm hiển thị ra ngoài
+ * - Loại bỏ các mở ngoặc tiếng Anh không cần thiết
+ */
+const sanitizeToastMessage = (rawMsg) => {
+  if (!rawMsg) return 'Đã xảy ra sự cố, vui lòng thử lại.';
+  let str = typeof rawMsg === 'string' ? rawMsg : (rawMsg.message || String(rawMsg));
+
+  // Loại bỏ các mẫu [BR: ...] hoặc [GBR-...]
+  str = str.replace(/\[\s*(BR\s*:\s*)?[A-Z0-9_-]+\s*\]/gi, '').trim();
+
+  // Loại bỏ tiền tố Exception
+  str = str.replace(/^(Error|TypeError|ReferenceError|AxiosError|SyntaxError):\s*/i, '').trim();
+
+  // Nếu chuỗi chứa dấu vết stack trace hoặc lỗi hàm code (at function..., cannot read properties...)
+  if (/(\bat\s+[\w$./\\-]+\b|\bCannot read propert|\bis not a function|\bundefined is not|\bNetwork Error\b)/i.test(str)) {
+    return 'Đã xảy ra sự cố kết nối hoặc xử lý. Vui lòng thử lại sau.';
+  }
+
+  // Nếu chuỗi chứa lỗi validation kỹ thuật của Mongoose/MongoDB
+  if (/is not a valid enum value for path/i.test(str) || /validation failed/i.test(str)) {
+    return 'Dữ liệu hoặc trạng thái thao tác không hợp lệ với quy trình hiện tại. Vui lòng kiểm tra lại.';
+  }
+
+  // Loại bỏ các thông báo kỹ thuật dạng "Thiếu trường abcId"
+  if (/Thiếu trường \w+/i.test(str)) {
+    str = str.replace(/Thiếu trường customerId/i, 'Vui lòng nhập đầy đủ thông tin người nhận ở mục "Thông tin người nhận hàng"');
+    str = str.replace(/Thiếu trường \w+Id/i, 'Thiếu thông tin bắt buộc');
+  }
+
+  // Bỏ dấu nháy ngược kỹ thuật
+  str = str.replace(/[`]/g, '');
+
+  // Loại bỏ ngoặc tiếng Anh trạng thái GHN
+  str = str.replace(/\((ready_to_pick|picking|picked|storing|delivering|delivered|cancel|return|returned|TMĐT)\)/gi, '').trim();
+
+  return str || 'Thông báo hệ thống';
 };
 
 export const ToastProvider = ({ children }) => {
@@ -33,7 +74,9 @@ export const ToastProvider = ({ children }) => {
 
   const showToast = useCallback(({ message, title, variant = 'info', delay = 3500 }) => {
     const id = Date.now() + Math.random();
-    setToasts((prev) => [...prev, { id, message, title, variant, delay }]);
+    const cleanMessage = sanitizeToastMessage(message);
+    const cleanTitle = title ? String(title).replace(/\[\s*(BR\s*:\s*)?[A-Z0-9_-]+\s*\]/gi, '').trim() : undefined;
+    setToasts((prev) => [...prev, { id, message: cleanMessage, title: cleanTitle, variant, delay }]);
     return id;
   }, []);
 

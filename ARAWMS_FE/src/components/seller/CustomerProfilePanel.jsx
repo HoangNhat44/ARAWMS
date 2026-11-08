@@ -212,7 +212,7 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
             </Form.Group>
 
             <Form.Group controlId="crm-tag">
-              <Form.Label className="small mb-1" style={{ color: 'var(--wms-text-primary, #141210)', fontWeight: 600 }}>Thẻ phân loại (Tags)</Form.Label>
+              <Form.Label className="small mb-1" style={{ color: 'var(--wms-text-primary, #141210)', fontWeight: 600 }}>Thẻ phân loại</Form.Label>
               <InputGroup size="sm" className="mb-2">
                 <Form.Control placeholder="Thêm tag..." style={{ borderColor: 'var(--wms-border, #C8B9A6)' }} value={formData.tagInput} onChange={setField('tagInput')} />
                 <Button className="btn-wms-default" onClick={handleAddTag}><Icon name="plus-lg" /></Button>

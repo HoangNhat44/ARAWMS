@@ -662,3 +662,35 @@ Sprint 4: Hậu cần ngược Đổi/Trả & Hoàn thiện UI/UX (UC-82, 83)
   - JSDoc: Định nghĩa tham số, kiểu trả về và ánh xạ mã Use Case.
   - Inline comment: Chú thích rõ ràng từng bước nghiệp vụ và gắn mã quy tắc `[BR: GBR-xx]`.
 
+### 5. Cải Tiến & Hoàn Thiện Hệ Thống Quản Lý Đơn Hàng, Vận Chuyển GHN & Hậu Cần Đổi Trả (Cập nhật 11/2026)
+Dựa trên yêu cầu thực tế và phản hồi nghiệp vụ của người bán, toàn bộ luồng xử lý đơn hàng, giao vận GHN và hậu cần ngược (RMA/Exchange) đã được tái cấu trúc và hoàn thiện:
+
+1. **Tự động sinh mã GHN & Đồng bộ vận đơn realtime**:
+   - Khi tạo đơn giao hàng trực tiếp hoặc duyệt đơn từ sàn TMĐT/Excel, hệ thống tự động gọi API Giao Hàng Nhanh (GHN) để tạo đơn vận chuyển và nhận mã vận đơn thật.
+   - Khi đơn hàng không thuộc kênh Facebook (đơn sàn Shopee, TikTok Shop, Excel, POS), hệ thống tự động lấy mã vận đơn và thông báo ngắn gọn `Đã lấy mã vận đơn GHN: [Mã vận đơn]`, tự động bỏ qua gửi tin chat trong im lặng mà không phát sinh cảnh báo thiếu `conversationId`.
+2. **Khóa đổi trạng thái thủ công trên Web & Kiểm soát hủy đơn**:
+   - Trạng thái đơn hàng giao vận được khóa hoàn toàn trên giao diện web, chỉ đồng bộ tự động từ đơn vị vận chuyển GHN nhằm đảm bảo tính minh bạch và tránh sai lệch dữ liệu giữa Seller và Kho.
+   - Thao tác duy nhất Seller được phép thực hiện là **Hủy đơn hàng (`CANCELLED`)**, và chỉ được hủy khi **shipper GHN chưa lấy hàng**.
+   - Nếu shipper đã lấy hàng (`picked`, `storing`, `transporting`, `delivering`...), hệ thống chặn hủy và hiển thị thông báo nghiệp vụ rõ ràng, hướng dẫn liên hệ ĐVVC để thu hồi.
+3. **Bỏ hoàn toàn luồng "Chờ kho duyệt" đối với đơn sàn TMĐT & Excel**:
+   - Mọi đơn hàng import từ Shopee, TikTok Shop hoặc file Excel đều được hệ thống tự động duyệt (`APPROVED`) và giữ chỗ tồn kho ngay lập tức (`CONFIRMED_RESERVED`).
+   - Xóa bỏ sub-tab "Chờ kho duyệt (TMĐT)", huy hiệu và các nút duyệt thủ công trên giao diện.
+   - Tích hợp hook Mongoose `pre('validate')` tự động chuẩn hóa mọi đơn hàng cũ có `importStatus: 'PENDING_WAREHOUSE_APPROVAL'` sang `'APPROVED'`.
+4. **Bỏ trạng thái trả 1 phần (`PARTIALLY_RETURNED`)**:
+   - Loại bỏ `PARTIALLY_RETURNED` khỏi hệ thống. Khi tiếp nhận khiếu nại đổi trả, đơn hàng chuyển sang `RETURN_REQUESTED` (Chờ đổi trả) hoặc `EXCHANGE_REQUESTED` (Đã tạo đơn đổi).
+5. **Chỉ đơn giao thành công (`DELIVERED`, `COMPLETED`) mới được đổi/trả hàng**:
+   - Nút "Đổi / Trả Hàng" trên bảng danh sách đơn và trong modal chi tiết đơn chỉ xuất hiện khi đơn hàng đã giao thành công.
+   - Form RMA kiểm tra chặt chẽ điều kiện giao thành công trước khi cho phép chọn đơn.
+6. **Gộp trạng thái "Nhập kho" (`storing`) vào "Đang giao hàng" (`HANDED_OVER_CARRIER`)**:
+   - Đảm bảo các mốc vận chuyển của GHN khớp chính xác với luồng hiển thị cho Seller và khách hàng.
+7. **Bỏ ô "Mã vận đơn khách đối chiếu gửi về" khi đổi hàng**:
+   - Trong form xử lý đổi trả ([`CreateRmaModal.jsx`](file:///d:/ARAWMS/ARAWMS_FE/src/components/seller/CreateRmaModal.jsx)), khi chọn **"Đổi Sản Phẩm Mới"**, ô nhập mã vận đơn chiều về được ẩn đi hoàn toàn vì đơn đổi sẽ tự động được cấp mã vận đơn GHN mới đi giao. Ô này chỉ hiển thị khi chọn **"Trả Hàng Hoàn Tiền"**.
+8. **Bản chất tạo đơn đổi hàng là tạo đơn mới (`EXCHANGE_ORDER`)**:
+   - Đơn đổi mới được tạo ra độc lập với `orderCategory: 'EXCHANGE_ORDER'`.
+   - Tự động lưu bản chụp đơn cũ (`originalOrderSnapshot`), liên kết `originalOrderId` và cập nhật mảng `exchangeOrderIds` trên đơn cũ để đối soát 2 chiều.
+   - Tự động giữ chỗ kho cho SKU mới và sinh mã vận đơn GHN riêng cho đơn đổi.
+9. **Chuẩn hóa thông báo thân thiện và loại bỏ toàn bộ dấu ngoặc đơn `(...)` trên UI Seller**:
+   - 100% trạng thái hiển thị bằng tiếng Việt chuẩn, không để mở ngoặc mã tiếng Anh.
+   - Toàn bộ thông báo lỗi và cảnh báo đều nêu rõ **vì sao sai** và **giải thích điều kiện của chức năng**, tuyệt đối không để lộ mã code, tên hàm, lỗi enum hay stack trace.
+   - Quét sạch toàn bộ các dấu ngoặc đơn `(...)` trên tiêu đề, tab, nhãn, nút bấm, placeholder của Seller.
+

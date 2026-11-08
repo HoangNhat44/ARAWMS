@@ -68,7 +68,7 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
           className={`ara-status-pill-btn ${!activeFilterTag ? 'active' : ''}`}
           onClick={() => onTagFilter && onTagFilter('')}
         >
-          <span>Tất cả ({conversations.length})</span>
+          <span>Tất cả</span>
         </button>
         {allTags.slice(0, 6).map((tag) => {
           const isActive = activeFilterTag === tag.name;
