@@ -28,16 +28,17 @@ import { Icon, formatVnd } from './SellerUi';
  */
 const STATUS_LABELS = {
   DRAFT: 'Bản nháp',
-  PENDING: 'Chờ xử lý',
-  CONFIRMED_RESERVED: 'Đã xác nhận',
-  PACKED: 'Đã đóng gói',
+  PENDING: 'Mới',
+  CONFIRMED_RESERVED: 'Chờ lấy hàng',
+  PICKING: 'Đang lấy hàng',
+  PACKED: 'Đã lấy hàng',
   HANDED_OVER_CARRIER: 'Đang giao hàng',
-  DELIVERED: 'Giao thành công',
-  COMPLETED: 'Hoàn tất',
+  DELIVERED: 'Đã giao thành công',
+  COMPLETED: 'Hoàn thành',
   CANCELLED: 'Đã hủy',
-  RETURN_REQUESTED: 'Chờ đổi trả',
-  EXCHANGE_REQUESTED: 'Đã tạo đơn đổi',
-  RETURNED: 'Đã hoàn hàng',
+  RETURN_REQUESTED: 'Đang hoàn hàng',
+  EXCHANGE_REQUESTED: 'Đang đổi hàng',
+  RETURNED: 'Đã hoàn về kho',
 };
 
 const skuKeyOf = (it) => String(it?.skuId?._id || it?.skuId || '');

@@ -710,7 +710,7 @@ const SellerOrdersPage = () => {
                               GHN: {ord.warehouseFulfillment?.ghnStatus || 'ready_to_pick'}
                             </span>
                           </div>
-                        ) : ord.orderType !== 'POS_DIRECT' && !['CANCELLED', 'RETURNED'].includes(ord.status) ? (
+                        ) : ord.orderType !== 'POS_DIRECT' && ord.channel !== 'POS' && ord.channel !== 'POS_OFFLINE' && !['CANCELLED', 'RETURNED'].includes(ord.status) ? (
                           <Button
                             size="sm"
                             variant="outline-primary"

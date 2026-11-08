@@ -693,8 +693,12 @@ export const syncOrderWithGhn = async (orderId, user, req) => {
     throw new Error('Đơn hàng không tồn tại');
   }
 
-  if (order.orderType === 'POS_DIRECT') {
-    throw new Error('Đơn bán trực tiếp tại quầy (POS) khách nhận hàng ngay nên không tạo vận đơn GHN.');
+  if (order.orderType === 'POS_DIRECT' || order.channel === 'POS' || order.channel === 'POS_OFFLINE') {
+    const orderObj = order.toObject ? order.toObject() : order;
+    return {
+      ...orderObj,
+      chatNotified: false,
+    };
   }
 
   let waybillCode = (order.warehouseFulfillment?.waybillCode || '').trim();

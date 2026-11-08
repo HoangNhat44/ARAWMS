@@ -223,8 +223,11 @@ export const sendCustomerMessage = async (conversationId, { messageText, attachm
     throw new Error('Cuộc hội thoại không tồn tại');
   }
 
-  if (user.roleCode === 'SELLER' && String(conversation.assignedSellerId) !== String(user._id)) {
-    throw new Error('Bạn không được phân bổ phụ trách cuộc hội thoại này');
+  // Tự động tiếp nhận phụ trách cuộc hội thoại (Auto Take-over / Shared Inbox):
+  // Nếu cuộc hội thoại chưa có ai hoặc Seller khác đang trực tiếp trả lời, tự động gán cho Seller hiện tại
+  if (!conversation.assignedSellerId || String(conversation.assignedSellerId) !== String(user._id)) {
+    conversation.assignedSellerId = user._id;
+    await conversation.save();
   }
 
   const customer = conversation.customerId;
@@ -330,8 +333,11 @@ export const sendCustomerAttachments = async (conversationId, files = [], messag
   if (!conversation) throw new Error('Cuộc hội thoại không tồn tại');
 
   // 1. Seller chỉ được gửi trong hội thoại được phân công cho mình
-  if (user.roleCode === 'SELLER' && String(conversation.assignedSellerId) !== String(user._id)) {
-    throw new Error('Bạn không được phân bổ phụ trách cuộc hội thoại này');
+  // Tự động tiếp nhận phụ trách cuộc hội thoại (Auto Take-over / Shared Inbox):
+  // Nếu cuộc hội thoại chưa có ai hoặc Seller khác đang trực tiếp trả lời, tự động gán cho Seller hiện tại
+  if (!conversation.assignedSellerId || String(conversation.assignedSellerId) !== String(user._id)) {
+    conversation.assignedSellerId = user._id;
+    await conversation.save();
   }
 
   const customer = conversation.customerId;

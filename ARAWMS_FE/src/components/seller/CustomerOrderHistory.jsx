@@ -19,15 +19,21 @@ import { SkeletonOrderHistoryCard } from '../common/Skeleton';
 import { Icon, EmptyState, formatVnd, ORDER_STATUS_CLASS } from './SellerUi';
 
 /**
- * Nhãn + icon hiển thị cho từng trạng thái đơn trong lịch sử mua hàng.
+ * Nhãn + icon hiển thị cho từng trạng thái đơn trong lịch sử mua hàng (100% thuần tiếng Việt).
  * @constant {Object<string,{label:string, icon:string}>}
  */
 const HISTORY_STATUS_META = {
-  DELIVERED: { label: 'Đã giao thành công', icon: 'check-circle' },
-  CONFIRMED_RESERVED: { label: 'Đã giữ chỗ kho', icon: 'clock' },
-  PENDING: { label: 'Chờ xác nhận', icon: 'clock' },
+  PENDING: { label: 'Mới', icon: 'clock' },
+  CONFIRMED_RESERVED: { label: 'Chờ lấy hàng', icon: 'clock' },
+  PICKING: { label: 'Đang lấy hàng', icon: 'box-seam' },
+  PACKED: { label: 'Đã lấy hàng', icon: 'archive' },
   HANDED_OVER_CARRIER: { label: 'Đang giao hàng', icon: 'truck' },
+  DELIVERED: { label: 'Đã giao thành công', icon: 'check-circle' },
+  COMPLETED: { label: 'Hoàn thành', icon: 'check-circle-fill' },
+  EXCHANGE_REQUESTED: { label: 'Đang đổi hàng', icon: 'arrow-repeat' },
+  RETURN_REQUESTED: { label: 'Đang hoàn hàng', icon: 'arrow-counterclockwise' },
   CANCELLED: { label: 'Đã hủy', icon: 'x-circle' },
+  RETURNED: { label: 'Đã hoàn về kho', icon: 'box-arrow-in-down-left' },
 };
 
 /**
@@ -67,11 +73,24 @@ const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail }) => {
   };
 
   const getOrderStatusBadge = (status) => {
-    const meta = HISTORY_STATUS_META[status];
+    const meta = HISTORY_STATUS_META[status] || {
+      label: status === 'COMPLETED' ? 'Hoàn thành' :
+             status === 'RETURN_REQUESTED' ? 'Đang hoàn hàng' :
+             status === 'EXCHANGE_REQUESTED' ? 'Đang đổi hàng' :
+             status === 'DELIVERED' ? 'Đã giao thành công' :
+             status === 'HANDED_OVER_CARRIER' ? 'Đang giao hàng' :
+             status === 'CANCELLED' ? 'Đã hủy' :
+             status === 'RETURNED' ? 'Đã hoàn về kho' :
+             status === 'PACKED' ? 'Đã lấy hàng' :
+             status === 'PICKING' ? 'Đang lấy hàng' :
+             status === 'CONFIRMED_RESERVED' ? 'Chờ lấy hàng' :
+             status === 'PENDING' ? 'Mới' : (status || 'Mới'),
+      icon: 'clock',
+    };
     const badgeClass = ORDER_STATUS_CLASS[status] || 'ara-badge-secondary';
     return (
       <span className={`ara-badge ${badgeClass} d-inline-flex align-items-center gap-1`}>
-        {meta && <Icon name={meta.icon} />} {meta ? meta.label : status}
+        {meta.icon && <Icon name={meta.icon} />} {meta.label}
       </span>
     );
   };
@@ -144,8 +163,8 @@ const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail }) => {
                     <Icon name="eye" className="me-1" />Chi tiết
                   </Button>
                 )}
-                {/* RMA Button (UC-82) */}
-                {['DELIVERED', 'COMPLETED', 'CONFIRMED_RESERVED'].includes(ord.status) && (
+                {/* RMA Button (UC-82) - Chỉ đơn đã giao thành công hoặc hoàn tất mới có nút đổi trả */}
+                {['DELIVERED', 'COMPLETED'].includes(ord.status) && (
                   <Button size="sm" className="btn-wms-accent" onClick={() => onRequestRma && onRequestRma(ord)}>
                     <Icon name="arrow-counterclockwise" className="me-1" />Đổi/Trả
                   </Button>

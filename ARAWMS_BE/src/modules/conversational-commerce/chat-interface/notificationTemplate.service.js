@@ -39,8 +39,8 @@ export const buildOrderConfirmationText = (order) => {
   const itemsListStr = items
     .map((it, idx) => {
       const name = it.productName || it.skuCode;
-      const sizeStr = it.size ? ` (Size: ${it.size})` : '';
-      const colorStr = it.color ? ` (Màu: ${it.color})` : '';
+      const sizeStr = it.size ? ` - Size: ${it.size}` : '';
+      const colorStr = it.color ? ` - Màu: ${it.color}` : '';
       return `${idx + 1}. ${name}${colorStr}${sizeStr}\n   SL: ${it.orderedQty} × ${formatMoney(it.unitSalePrice)} = ${formatMoney(it.orderedQty * it.unitSalePrice)}`;
     })
     .join('\n');
@@ -59,7 +59,7 @@ export const buildOrderConfirmationText = (order) => {
     `Tạm tính: ${formatMoney(financial.itemsSubtotal)}\n` +
     `Phí vận chuyển: ${formatMoney(financial.shippingFee)}\n` +
     (financial.discountAmount > 0 ? `Giảm giá: -${formatMoney(financial.discountAmount)}\n` : '') +
-    `TỔNG THU HỘ (COD): ${formatMoney(financial.expectedCodAmount || financial.totalOrderAmount)}\n` +
+    `TỔNG THU HỘ: ${formatMoney(financial.expectedCodAmount || financial.totalOrderAmount)}\n` +
     `━━━━━━━━━━━━━━━━━━━━━\n` +
     `👉 Quý khách vui lòng kiểm tra thông tin trên. Nếu đã chính xác, hãy phản hồi "OK" hoặc "XÁC NHẬN" tại đây để AraStore tiến hành đóng gói và giao ngay cho bạn nhé! ❤️`
   );
@@ -91,7 +91,7 @@ export const buildPackingCompletedText = (order, waybillCode) => {
     `📦 ĐƠN HÀNG #${order.orderCode} ĐÃ ĐƯỢC ĐÓNG GÓI XONG!\n` +
     `━━━━━━━━━━━━━━━━━━━━━\n` +
     `Mã vận đơn GHN: ${waybillCode}\n` +
-    `Đơn vị vận chuyển: Giao Hàng Nhanh (GHN)\n` +
+    `Đơn vị vận chuyển: Giao Hàng Nhanh\n` +
     `Kiện hàng của bạn đang được bàn giao cho bưu tá. Thời gian giao hàng dự kiến từ 2-3 ngày làm việc.\n` +
     `Quý khách vui lòng chú ý điện thoại để bưu tá liên hệ giao hàng nhé!`
   );
@@ -117,7 +117,7 @@ export const buildGhnStatusUpdateText = (order, ghnStatus, waybillCode) => {
         `Mã đơn hàng: #${order.orderCode}\n` +
         `Mã vận đơn GHN: ${code}\n` +
         `Trạng thái: Chờ lấy hàng\n` +
-        `Tổng thu hộ COD: ${cod}\n` +
+        `Tổng thu hộ: ${cod}\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `Đơn hàng của quý khách đã được đẩy lên hệ thống GHN và cấp mã vận đơn tự động. AraStore đang chuẩn bị bàn giao kiện hàng cho bưu tá!`
       );
@@ -154,7 +154,7 @@ export const buildGhnStatusUpdateText = (order, ghnStatus, waybillCode) => {
         `Mã đơn hàng: #${order.orderCode}\n` +
         `Mã vận đơn GHN: ${code}\n` +
         `Trạng thái: Đang giao hàng\n` +
-        `Số tiền cần thanh toán COD: ${cod}\n` +
+        `Số tiền cần thanh toán: ${cod}\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `📞 Quý khách vui lòng chú ý điện thoại để nhận cuộc gọi từ bưu tá GHN nhé!`
       );
@@ -231,6 +231,11 @@ export const sendOrderNotificationToChat = async ({
   senderSellerId = null,
 }) => {
   try {
+    const cleanMessageText = String(messageText || '')
+      .replace(/\s*\((ready_to_pick|picking|money_collect_picking|picked|storing|transporting|sorting|delivering|money_collect_delivering|delivered|delivery_fail|waiting_to_return|return|returned|cancel|exception|GHN|COD|TMĐT)\)/gi, '')
+      .replace(/\s*\(GHN\)/gi, '')
+      .replace(/\s*\(COD\)/gi, '');
+
     let convId = conversationId || order.conversationId;
 
     // Nếu đơn hàng chưa lưu conversationId, thử tìm cuộc hội thoại gần nhất của khách
@@ -263,7 +268,7 @@ export const sendOrderNotificationToChat = async ({
         const standardPayload = {
           recipient: { id: customer.facebookPsid },
           message: {
-            text: messageText,
+            text: cleanMessageText,
             ...(notificationType === 'CONFIRM_REQUEST' && {
               quick_replies: [
                 {
@@ -315,7 +320,7 @@ export const sendOrderNotificationToChat = async ({
             messaging_type: 'MESSAGE_TAG',
             tag: 'POST_PURCHASE_UPDATE',
             message: {
-              text: messageText,
+              text: cleanMessageText,
             },
           };
 
@@ -349,13 +354,13 @@ export const sendOrderNotificationToChat = async ({
       fbMessageId: fbMessageId || `auto_notify_${Date.now()}`,
       senderType: 'SELLER',
       senderSellerId: senderSellerId || order.sellerId || null,
-      messageText,
+      messageText: cleanMessageText,
       deliveryStatus,
       deliveryError,
       sentAt: new Date(),
     });
 
-    conversation.lastMessagePreview = messageText.slice(0, 100) + '...';
+    conversation.lastMessagePreview = cleanMessageText.slice(0, 100) + '...';
     conversation.lastMessageAt = new Date();
     await conversation.save();
 

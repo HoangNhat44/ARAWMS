@@ -110,7 +110,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
       setError('');
 
       // Tự động lấy mã vận đơn GHN hoặc đồng bộ trạng thái realtime từ GHN khi mở chi tiết đơn Online
-      if (isOpen && order.orderType !== 'POS_DIRECT' && !['CANCELLED', 'RETURNED'].includes(order.status)) {
+      if (isOpen && order.orderType !== 'POS_DIRECT' && order.channel !== 'POS' && order.channel !== 'POS_OFFLINE' && !['CANCELLED', 'RETURNED'].includes(order.status)) {
         const orderId = order._id || order.id;
         if (orderId) {
           sellerService

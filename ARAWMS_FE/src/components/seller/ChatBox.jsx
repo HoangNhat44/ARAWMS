@@ -37,6 +37,20 @@ const getMediaUrl = (url) => {
 };
 
 /**
+ * Làm sạch nội dung tin nhắn chat hiển thị:
+ * - Loại bỏ các mã trạng thái kỹ thuật tiếng Anh trong ngoặc: (ready_to_pick), (picking), etc.
+ * - Loại bỏ các mở ngoặc (GHN), (COD)
+ */
+export const cleanChatMessageText = (rawText) => {
+  if (!rawText) return '';
+  let str = String(rawText);
+  str = str.replace(/\s*\((ready_to_pick|picking|money_collect_picking|picked|storing|transporting|sorting|delivering|money_collect_delivering|delivered|delivery_fail|waiting_to_return|return|returned|cancel|exception|GHN|COD|TMĐT)\)/gi, '');
+  str = str.replace(/\s*\(GHN\)/gi, '');
+  str = str.replace(/\s*\(COD\)/gi, '');
+  return str;
+};
+
+/**
  * Component hiển thị thông báo chốt đơn / phiếu xác nhận theo dạng thẻ tương tác (Rich Interactive Receipt Card)
  * thay thế cho khối đen ASCII thô sơ theo tiêu chuẩn thiết kế eCommerce quốc tế (Shopify Polaris, Intercom, Pancake).
  */
@@ -46,11 +60,11 @@ const OrderReceiptCard = ({ text, isSeller }) => {
   const isPackingNotice = text.includes('ĐÃ ĐƯỢC ĐÓNG GÓI XONG');
 
   if (!isConfirmSuccess && !isConfirmationRequest && !isPackingNotice) {
-    return <div style={{ whiteSpace: 'pre-wrap' }}>{text}</div>;
+    return <div style={{ whiteSpace: 'pre-wrap' }}>{cleanChatMessageText(text)}</div>;
   }
 
-  // Làm sạch các ký tự gạch nối ASCII thô
-  const lines = text
+  // Làm sạch các ký tự gạch nối ASCII thô và bỏ mã kỹ thuật trong ngoặc
+  const lines = cleanChatMessageText(text)
     .split('\n')
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith('━━━━') && !l.startsWith('----'));
@@ -703,7 +717,7 @@ const ChatBox = ({
                     )}
 
                     {/* Nội dung tin nhắn văn bản */}
-                    {m.messageText && <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.messageText}</div>}
+                    {m.messageText && <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{cleanChatMessageText(m.messageText)}</div>}
 
                     {/* Thời gian gửi: Chỉ hiện ở cuối cụm hoặc trên hover */}
                     {isLastInCluster && (

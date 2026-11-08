@@ -155,6 +155,13 @@ export const simulateCustomerConfirm = async (req, res) => {
 export const syncOrderWithGhn = async (req, res) => {
   try {
     const order = await orderManagementService.syncOrderWithGhn(req.params.id, req.user, req);
+    if (order.orderType === 'POS_DIRECT' || order.channel === 'POS' || order.channel === 'POS_OFFLINE') {
+      return successResponse(
+        res,
+        order,
+        'Đơn bán tại quầy nhận trực tiếp, không phát sinh vận đơn giao hàng.'
+      );
+    }
     const chatInfo = order.chatNotified
       ? ' và đã gửi tin nhắn cập nhật cho khách'
       : '';
