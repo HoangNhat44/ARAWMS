@@ -700,16 +700,7 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
 
     if (processedItems.length === 0) continue;
 
-    // 2b. [Quy tắc duyệt theo ngưỡng tồn] Chỉ đơn có mặt hàng thiếu hàng / dưới ngưỡng cảnh báo
-    //     (Sku.safetyStockThreshold) mới cần Kho duyệt. Đơn còn lại tự động giữ chỗ tồn kho.
-    const stockCheck = await evaluateStockForItems(processedItems);
-    const riskyItems = stockCheck.filter((r) => r.shortage || r.belowThreshold);
-    const needsWarehouseApproval = riskyItems.length > 0;
-    const approvalReason = needsWarehouseApproval
-      ? riskyItems.map((r) => r.message).join(' | ')
-      : '';
-
-    // 3. Tạo mã đơn hàng hệ thống ARA
+    // Bỏ chờ kho duyệt: Tất cả đơn import hợp lệ đều được duyệt tự động và giữ chỗ tồn kho ngay
     const orderCode = await CounterSequence.getNextSequence('ORDER_CODE', 'ARA', 6);
     const totalOrderAmount = ord.totalAmount > 0 ? ord.totalAmount : itemsSubtotal;
 
@@ -727,13 +718,14 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
         externalTrackingCode: ord.trackingCode || '',
         importBatchCode: batchCode,
       },
-      status: needsWarehouseApproval ? 'PENDING' : 'CONFIRMED_RESERVED',
-      importStatus: needsWarehouseApproval ? 'PENDING_WAREHOUSE_APPROVAL' : 'APPROVED',
-      importApprovalReason: needsWarehouseApproval ? approvalReason : 'Đủ tồn kho, trên ngưỡng cảnh báo - hệ thống tự động duyệt',
-      importAutoApproved: !needsWarehouseApproval,
+      status: 'CONFIRMED_RESERVED',
+      importStatus: 'APPROVED',
+      importApprovalReason: 'Hệ thống tự động duyệt, giữ chỗ tồn kho (không cần chờ kho duyệt)',
+      importAutoApproved: true,
       importedBySellerId: user._id,
       importedAt: new Date(),
-      ...(needsWarehouseApproval ? {} : { approvedAt: new Date(), confirmedAt: new Date() }),
+      approvedAt: new Date(),
+      confirmedAt: new Date(),
       paymentMethod: 'COD',
       paymentStatus: 'PENDING',
       notes: ord.notes ? `[Import Sàn]: ${ord.notes}` : `[Import Sàn ${channel}]`,
@@ -744,7 +736,7 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
       },
       warehouseFulfillment: {
         waybillCode: ord.trackingCode || '',
-        ...(needsWarehouseApproval ? {} : { stockReservedAt: new Date() }),
+        stockReservedAt: new Date(),
       },
       items: processedItems,
       financialSummary: {
@@ -756,31 +748,25 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
       },
     });
 
-    // Đơn tự động duyệt: giữ chỗ tồn kho ngay (không cần Kho thao tác)
-    if (!needsWarehouseApproval) {
-      for (const it of processedItems) {
-        await Sku.findByIdAndUpdate(it.skuId, { $inc: { reservedQty: it.orderedQty } });
-      }
-      autoApprovedCount += 1;
-    } else {
-      pendingApprovalCount += 1;
+    // Giữ chỗ tồn kho ngay lập tức
+    for (const it of processedItems) {
+      await Sku.findByIdAndUpdate(it.skuId, { $inc: { reservedQty: it.orderedQty } });
     }
+    autoApprovedCount += 1;
 
     createdOrders.push(newSalesOrder);
   }
 
-  // Chỉ báo Kho khi có đơn thực sự cần duyệt (thiếu hàng / dưới ngưỡng tồn)
-  if (pendingApprovalCount > 0) {
-    emitMarketplaceOrdersImported({
-      batchCode,
-      channel,
-      sourceName: sourceName || channel,
-      orderCount: pendingApprovalCount,
-      importedBy: user.fullName || user.username,
-      message: `Lô ${batchCode} (${sourceName || channel}): ${pendingApprovalCount} đơn cần Kho duyệt do thiếu hàng / dưới ngưỡng tồn, ${autoApprovedCount} đơn đã tự động duyệt.`,
-      createdAt: new Date(),
-    });
-  }
+  // Không cần chờ kho duyệt: báo thông tin tổng số đơn đã import
+  emitMarketplaceOrdersImported({
+    batchCode,
+    channel,
+    sourceName: sourceName || channel,
+    orderCount: createdOrders.length,
+    importedBy: user.fullName || user.username,
+    message: `Lô ${batchCode} (${sourceName || channel}): ${createdOrders.length} đơn đã được import và tự động giữ chỗ kho thành công.`,
+    createdAt: new Date(),
+  });
 
   // Ghi SystemLog kiểm toán
   try {
@@ -823,8 +809,8 @@ export const approveImportedOrder = async (orderId, warehouseUser) => {
     throw new Error('Đơn hàng không tồn tại');
   }
 
-  if (order.importStatus !== 'PENDING_WAREHOUSE_APPROVAL') {
-    throw new Error(`Đơn ${order.orderCode} không ở trạng thái chờ Kho duyệt (hiện tại: ${order.importStatus}). Hướng dẫn: đơn này ${order.importStatus === 'APPROVED' ? 'đã được duyệt (có thể do hệ thống tự duyệt vì đủ tồn kho)' : 'không thuộc luồng duyệt'}, không cần thao tác thêm.`);
+  if (order.importStatus === 'APPROVED' || order.status === 'CONFIRMED_RESERVED') {
+    return order;
   }
 
   // Kiểm tra tồn kho khả dụng và giữ chỗ (Reserve)

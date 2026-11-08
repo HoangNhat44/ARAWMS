@@ -152,12 +152,12 @@ const Sidebar = ({ collapsed, mobileOpen, onCloseMobile, onToggle, user, onLogou
                 to="/seller/orders?tab=rma_returns"
                 onClick={handleLinkClick}
                 className={`ara-nav-item ${isTabActive('/seller/orders', 'rma_returns') ? 'active' : ''}`}
-                title="Quản lý Đổi & Trả Hàng (RMA)"
+                title="Quản lý Đổi & Trả Hàng"
               >
                 <span className="ara-nav-icon">
                   <RotateCcw size={18} />
                 </span>
-                {(!collapsed || mobileOpen) && <span className="ara-nav-label">Đổi & Trả Hàng (RMA)</span>}
+                {(!collapsed || mobileOpen) && <span className="ara-nav-label">Đổi & Trả Hàng</span>}
               </NavLink>
             </nav>
           </div>

@@ -380,7 +380,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
         <Modal.Header closeButton style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderBottom: '1px solid var(--wms-border, #C8B9A6)' }}>
           <Modal.Title as="h6" className="fw-bold d-flex align-items-center gap-2 text-dark">
             <Icon name="cloud-arrow-up" style={{ color: 'var(--wms-accent, #8A6A46)' }} />
-            Import & Xử Lý Đơn Hàng Sàn TMĐT (Shopee / TikTok / Excel)
+            Import & Xử Lý Đơn Hàng Sàn TMĐT
           </Modal.Title>
         </Modal.Header>
 
@@ -397,14 +397,13 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
               <p className="small mb-3">
                 Tổng số đơn hàng đã nhập: <strong className="fs-6 text-success">{successInfo.totalCreated} đơn</strong>
               </p>
-              <Alert variant="warning" className="small text-start border">
+              <Alert variant="success" className="small text-start border">
                 <div className="fw-bold text-dark mb-1 d-flex align-items-center gap-1">
-                  <Icon name="shield-exclamation" /> Quy tắc duyệt đơn theo ngưỡng tồn kho:
+                  <Icon name="check-circle" /> Tự động duyệt đơn hàng:
                 </div>
-                <ul className="mb-0 ps-3">
-                  <li><strong>{successInfo.autoApprovedCount ?? 0} đơn</strong> đủ hàng, trên ngưỡng cảnh báo → hệ thống <strong>tự động duyệt &amp; giữ chỗ tồn kho</strong>.</li>
-                  <li><strong>{successInfo.pendingApprovalCount ?? 0} đơn</strong> thiếu hàng hoặc làm tồn thấp hơn ngưỡng → chờ <strong>Kho duyệt</strong> (đã báo Kho tự động).</li>
-                </ul>
+                <div className="mb-0">
+                  Tất cả <strong>{successInfo.totalCreated ?? successInfo.autoApprovedCount ?? 0} đơn hàng</strong> đã được hệ thống tự động xác nhận và giữ chỗ tồn kho thành công.
+                </div>
               </Alert>
               <Button className="btn-wms-primary px-4 mt-2" onClick={onClose}>
                 Hoàn Tất & Đóng
@@ -416,7 +415,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
               <Alert variant="info" className="py-2 px-3 small border mb-0 d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <div>
                   <Icon name="info-circle" className="me-1" />
-                  <strong>Linh hoạt:</strong> Hệ thống tự động nhận diện cả <strong>File xuất đơn giao hàng từ Shopee / TikTok Shop (14 cột)</strong> và <strong>File mẫu Tiêu chuẩn ARA (9 cột)</strong>:
+                  <strong>Linh hoạt:</strong> Hệ thống tự động nhận diện cả <strong>File xuất đơn giao hàng từ Shopee / TikTok Shop</strong> và <strong>File mẫu Tiêu chuẩn ARA</strong>:
                 </div>
                 <div className="d-flex gap-2 flex-wrap">
                   <Button
@@ -426,7 +425,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                     onClick={() => handleDownloadTemplate('SHOPEE')}
                     disabled={downloadingTemplate}
                   >
-                    <Icon name="file-earmark-spreadsheet" /> Mẫu Shopee (14 cột)
+                    <Icon name="file-earmark-spreadsheet" /> Mẫu Shopee
                   </Button>
                   <Button
                     size="sm"
@@ -435,7 +434,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                     onClick={() => handleDownloadTemplate('TIKTOK')}
                     disabled={downloadingTemplate}
                   >
-                    <Icon name="file-earmark-spreadsheet" /> Mẫu TikTok Shop (14 cột)
+                    <Icon name="file-earmark-spreadsheet" /> Mẫu TikTok Shop
                   </Button>
                   <Button
                     size="sm"
@@ -444,7 +443,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                     onClick={() => handleDownloadTemplate('ARA_STANDARD')}
                     disabled={downloadingTemplate}
                   >
-                    <Icon name="file-earmark-code" /> Mẫu ARA Chuẩn (9 cột)
+                    <Icon name="file-earmark-code" /> Mẫu ARA Chuẩn
                   </Button>
                 </div>
               </Alert>
@@ -452,7 +451,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
               {/* Bước 1: Chọn Kênh & Nguồn bán hàng */}
               <Card body className="border shadow-sm bg-white">
                 <div className="fw-bold text-dark mb-2">
-                  <Icon name="diagram-3" className="me-1" /> 1. Xác định nguồn và kênh đơn hàng (Multi-Channel):
+                  <Icon name="diagram-3" className="me-1" /> 1. Xác định nguồn và kênh đơn hàng:
                 </div>
                 <Row className="g-3">
                   <Col md={4}>
@@ -467,10 +466,10 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                         if (matching) setSelectedSourceId(matching.sourceId);
                       }}
                     >
-                      <option value="SHOPEE">Shopee (Mall / Flagship)</option>
+                      <option value="SHOPEE">Shopee</option>
                       <option value="TIKTOK">TikTok Shop</option>
                       <option value="FACEBOOK">Facebook Fanpages</option>
-                      <option value="EXCEL_IMPORT">File Excel Tổng Hợp / Khác</option>
+                      <option value="EXCEL_IMPORT">File Excel Tổng Hợp</option>
                     </Form.Select>
                   </Col>
 
@@ -546,7 +545,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                     <Alert variant="warning" className="d-flex align-items-center justify-content-between py-2 px-3 small border mb-0 flex-wrap gap-2">
                       <div>
                         <Icon name="exclamation-triangle-fill" className="text-warning me-2" />
-                        Có <strong>{previewData.invalidOrdersCount} đơn hàng</strong> chứa sản phẩm chưa có trong danh mục kho ARAWMS (ví dụ: CV68, VE29, V134...). <strong>Bạn không cần xóa file!</strong>
+                        Có <strong>{previewData.invalidOrdersCount} đơn hàng</strong> chứa sản phẩm chưa có trong danh mục kho ARAWMS. <strong>Bạn không cần xóa file!</strong>
                       </div>
                       <Button
                         size="sm"
@@ -584,7 +583,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                       {processing ? (
                         <><Spinner animation="border" size="sm" /> Đang xử lý...</>
                       ) : (
-                        <><Icon name="play-circle" /> Xử Lý Đơn ({previewData.validOrdersCount} đơn hợp lệ)</>
+                        <><Icon name="play-circle" /> Xử Lý Đơn</>
                       )}
                     </Button>
                   </Card.Header>
@@ -598,7 +597,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                           <th>Khách hàng & SĐT</th>
                           <th>Địa chỉ giao hàng</th>
                           <th>Sản phẩm & SKU Kho</th>
-                          <th>Tiền thu hộ (COD)</th>
+                          <th>Tiền thu hộ COD</th>
                           <th>Ghi chú / Vận đơn</th>
                           <th>Trạng thái hợp lệ</th>
                         </tr>
@@ -631,8 +630,8 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                                           {it.skuCode}
                                         </Badge>
                                         <span className="small text-muted">x{it.quantity}</span>
-                                        <span className="text-muted" style={{ fontSize: '0.72rem' }}>
-                                          (Tồn: {it.availableQty})
+                                        <span className="text-muted ms-1" style={{ fontSize: '0.72rem' }}>
+                                          Tồn: {it.availableQty}
                                         </span>
                                         <Button
                                           variant="link"
@@ -718,7 +717,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                 onClick={handleProcessOrders}
                 disabled={processing}
               >
-                {processing ? 'Đang xử lý đơn...' : `Tiến Hành Xử Lý (${previewData.validOrdersCount} đơn)`}
+                {processing ? 'Đang xử lý đơn...' : 'Tiến Hành Xử Lý Đơn'}
               </Button>
             )}
           </Modal.Footer>
@@ -737,7 +736,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
           <div className="mb-3">
             <div className="small text-muted mb-1">Tên sản phẩm trong file Excel:</div>
             <div className="p-2 bg-light rounded border fw-semibold text-dark">
-              {activeItemTarget?.rawName || '(Không xác định)'}
+              {activeItemTarget?.rawName || 'Chưa xác định'}
             </div>
           </div>
 
@@ -746,7 +745,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
             <InputGroup size="sm">
               <Form.Control
                 type="text"
-                placeholder="Nhập mã mẫu (VD: CV68, DAM-DA-HOI, AO-SO-MI...)"
+                placeholder="Nhập mã mẫu hoặc tên sản phẩm..."
                 value={skuSearchQuery}
                 onChange={(e) => setSkuSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && triggerSearchSku(skuSearchQuery)}
