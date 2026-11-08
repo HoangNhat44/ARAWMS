@@ -1,8 +1,8 @@
 /*
  * File: AppRouter.jsx
- * Author: Duy Anh
+ * Author: Duy Anh & Antigravity
  * Date: 2026-10-15
- * Description: Routes users to warehouse and order screens.
+ * Description: Routes users to role modules (Kỹ thuật may, Quản lý kho, Nhân viên kho) with dedicated sidebar layouts.
  */
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
@@ -26,60 +26,167 @@ import GarmentStocktakeExecutionPage from '../pages/garment/GarmentStocktakeExec
 import GarmentMaterialOutboundPage from '../pages/garment/GarmentMaterialOutboundPage';
 import GarmentCuttingAndRemnantPage from '../pages/garment/GarmentCuttingAndRemnantPage';
 import GarmentLayout from '../components/garment/GarmentLayout';
-// import { useAuth } from '../hooks/useAuth';
-// import LoadingSpinner from '../components/common/LoadingSpinner';
-
-// /** Restricts operational pages to an authenticated user.
-//  * Waits for session restoration before deciding whether to redirect. */
-// const ProtectedRoute = ({ children }) => {
-//   const { user, loading } = useAuth();
-
-//   if (loading) return <LoadingSpinner message="Đang xác thực thông tin đăng nhập..." />;
-//   if (!user) return <Navigate to="/login" replace />;
-
-//   return children;
-// };
-
-// /** Allows a page only when an authenticated user has one of its required roles. */
-// const RoleRoute = ({ children, roles }) => {
-//   const { user, loading } = useAuth();
-//   if (loading) return <LoadingSpinner message="Đang xác thực thông tin đăng nhập..." />;
-//   if (!user) return <Navigate to="/login" replace />;
-//   if (!roles.some((role) => user.roles?.includes(role))) return <Navigate to="/" replace />;
-//   return children;
-// };
-
-// /** Redirects signed-in users away from login and registration pages. */
-// const PublicRoute = ({ children }) => {
-//   const { user, loading } = useAuth();
-
-//   if (loading) return <LoadingSpinner message="Đang tải..." />;
-//   if (user) return <Navigate to="/" replace />;
-
-//   return children;
-// };
+import WarehouseManagerLayout from '../components/warehouse/WarehouseManagerLayout';
+import WarehouseStaffLayout from '../components/warehouse/WarehouseStaffLayout';
 
 /** Maps public, authenticated, and role-gated pages to application URLs. */
 const AppRouter = () => {
   return (
     <Routes>
+      {/* Trang chủ */}
       <Route path="/" element={<HomePage />} />
-      <Route path="/orders/qr" element={<OrderQrPage />} />
-      <Route path="/packing/qr" element={<WarehousePackingPage />} />
-      <Route path="/warehouse/products/new" element={<ProductConfigurationPage />} />
-      <Route path="/warehouse/products/:id/edit" element={<ProductConfigurationPage />} />
-      <Route path="/warehouse/finished-goods" element={<FinishedGoodsPage />} />
-      <Route path="/warehouse/raw-materials/inbound" element={<SupplierInboundPage />} />
-      <Route path="/warehouse/raw-materials/outbound" element={<MaterialOutboundPage />} />
-      <Route path="/warehouse/layout" element={<WarehouseLayoutPage />} />
-      <Route path="/warehouse/putaway" element={<WarehousePutawayPage />} />
-      <Route path="/warehouse/stocktake" element={<StocktakePage />} />
-      <Route path="/warehouse/shipping" element={<ShippingPage />} />
-      <Route path="/garment/material-inbound-verification" element={<GarmentLayout><MaterialInboundVerificationPage /></GarmentLayout>} />
-      <Route path="/garment/finished-goods-inspection" element={<GarmentLayout><FinishedGoodsInspectionPage /></GarmentLayout>} />
-      <Route path="/garment/stocktake-execution" element={<GarmentLayout><GarmentStocktakeExecutionPage /></GarmentLayout>} />
-      <Route path="/garment/material-outbound-request" element={<GarmentLayout><GarmentMaterialOutboundPage /></GarmentLayout>} />
-      <Route path="/garment/remnant-recovery" element={<GarmentLayout><GarmentCuttingAndRemnantPage /></GarmentLayout>} />
+
+      {/* Phân hệ Quản lý kho (Warehouse Manager) */}
+      <Route
+        path="/warehouse/raw-materials/inbound"
+        element={
+          <WarehouseManagerLayout>
+            <SupplierInboundPage />
+          </WarehouseManagerLayout>
+        }
+      />
+      <Route
+        path="/warehouse/raw-materials/outbound"
+        element={
+          <WarehouseManagerLayout>
+            <MaterialOutboundPage />
+          </WarehouseManagerLayout>
+        }
+      />
+      <Route
+        path="/warehouse/finished-goods"
+        element={
+          <WarehouseManagerLayout>
+            <FinishedGoodsPage />
+          </WarehouseManagerLayout>
+        }
+      />
+      <Route
+        path="/warehouse/products/new"
+        element={
+          <WarehouseManagerLayout>
+            <ProductConfigurationPage />
+          </WarehouseManagerLayout>
+        }
+      />
+      <Route
+        path="/warehouse/products/:id/edit"
+        element={
+          <WarehouseManagerLayout>
+            <ProductConfigurationPage />
+          </WarehouseManagerLayout>
+        }
+      />
+      <Route
+        path="/warehouse/layout"
+        element={
+          <WarehouseManagerLayout>
+            <WarehouseLayoutPage />
+          </WarehouseManagerLayout>
+        }
+      />
+      <Route
+        path="/warehouse/stocktake"
+        element={
+          <WarehouseManagerLayout>
+            <StocktakePage />
+          </WarehouseManagerLayout>
+        }
+      />
+
+      {/* Phân hệ Nhân viên kho (Warehouse Staff) */}
+      <Route
+        path="/warehouse/putaway"
+        element={
+          <WarehouseStaffLayout>
+            <WarehousePutawayPage />
+          </WarehouseStaffLayout>
+        }
+      />
+      <Route
+        path="/warehouse/staff/outbound"
+        element={
+          <WarehouseStaffLayout>
+            <MaterialOutboundPage isStaffMode={true} />
+          </WarehouseStaffLayout>
+        }
+      />
+      <Route
+        path="/warehouse/staff/finished-goods"
+        element={
+          <WarehouseStaffLayout>
+            <FinishedGoodsPage isStaffMode={true} />
+          </WarehouseStaffLayout>
+        }
+      />
+      <Route
+        path="/packing/qr"
+        element={
+          <WarehouseStaffLayout>
+            <WarehousePackingPage />
+          </WarehouseStaffLayout>
+        }
+      />
+      <Route
+        path="/orders/qr"
+        element={
+          <WarehouseStaffLayout>
+            <OrderQrPage />
+          </WarehouseStaffLayout>
+        }
+      />
+      <Route
+        path="/warehouse/shipping"
+        element={
+          <WarehouseStaffLayout>
+            <ShippingPage />
+          </WarehouseStaffLayout>
+        }
+      />
+
+      {/* Phân hệ Kỹ thuật may (Garment Technician) */}
+      <Route
+        path="/garment/material-inbound-verification"
+        element={
+          <GarmentLayout>
+            <MaterialInboundVerificationPage />
+          </GarmentLayout>
+        }
+      />
+      <Route
+        path="/garment/finished-goods-inspection"
+        element={
+          <GarmentLayout>
+            <FinishedGoodsInspectionPage />
+          </GarmentLayout>
+        }
+      />
+      <Route
+        path="/garment/stocktake-execution"
+        element={
+          <GarmentLayout>
+            <GarmentStocktakeExecutionPage />
+          </GarmentLayout>
+        }
+      />
+      <Route
+        path="/garment/material-outbound-request"
+        element={
+          <GarmentLayout>
+            <GarmentMaterialOutboundPage />
+          </GarmentLayout>
+        }
+      />
+      <Route
+        path="/garment/remnant-recovery"
+        element={
+          <GarmentLayout>
+            <GarmentCuttingAndRemnantPage />
+          </GarmentLayout>
+        }
+      />
+
+      {/* Auth & Fallback */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<Navigate to="/" replace />} />
       <Route path="*" element={<NotFoundPage />} />

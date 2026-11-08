@@ -5,7 +5,7 @@
  * Description: Displays stock, cached documents, local drafts, barcode labels, and receiving actions.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { ArrowUpRight, ArrowRightLeft, CirclePlus, RefreshCw } from 'lucide-react';
 import { productService } from '../services/productService';
 import { materialInboundService } from '../services/materialInboundService';
@@ -35,8 +35,10 @@ const money = (value) => new Intl.NumberFormat('vi-VN', { style: 'currency', cur
 
 /** Displays finished-goods stock and the receive or dispatch workflow.
  * Uses account-scoped cached data for offline viewing while keeping local work separate from server stock. */
-export default function FinishedGoodsPage() {
+export default function FinishedGoodsPage({ isStaffMode = false }) {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const isStaff = isStaffMode || location.pathname.includes('/staff');
   const { user: authenticatedUser } = useAuth();
   const localOperator = import.meta.env.DEV &&
     ['localhost', '127.0.0.1'].includes(window.location.hostname) &&
@@ -319,21 +321,49 @@ export default function FinishedGoodsPage() {
     finally { setSaving(false); }
   };
 
+  useEffect(() => {
+    if (isStaff && ['requests', 'outbound'].includes(activeTab)) {
+      setActiveTab('stock');
+    }
+  }, [isStaff, activeTab]);
+
   return <main className={`finished-goods-page${bulkDirection === 'IN' ? ' receiving-mode' : ''}`}>
-    <nav className="product-breadcrumb" aria-label="Đường dẫn"><Link to="/">Trang chủ</Link><span>/</span><strong>Kho thành phẩm</strong></nav>
+    <nav className="product-breadcrumb" aria-label="Đường dẫn">
+      <Link to="/">Trang chủ</Link>
+      <span>/</span>
+      {isStaff ? (
+        <>
+          <Link to="/warehouse/putaway">Nhân viên kho</Link>
+          <span>/</span>
+          <strong>Kho thành phẩm</strong>
+        </>
+      ) : (
+        <strong>Kho thành phẩm</strong>
+      )}
+    </nav>
     <div className="product-page-head finished-goods-hero">
-      <div className="finished-goods-intro"><p className="product-eyebrow">QUẢN LÝ KHO THÀNH PHẨM</p><h1>Kho thành phẩm</h1><p>Theo dõi tồn theo SKU, lượng tạm giữ và tiến độ xếp kệ. Kiểm nhận hàng từ xưởng và tra cứu phiếu nhập, xuất trong cùng một màn hình.</p></div>
+      <div className="finished-goods-intro">
+        <p className="product-eyebrow">{isStaff ? 'VẬN HÀNH KHO THÀNH PHẨM' : 'QUẢN LÝ KHO THÀNH PHẨM'}</p>
+        <h1>Kho thành phẩm</h1>
+        <p>
+          {isStaff
+            ? 'Theo dõi tồn kho theo SKU, lượng khả dụng trên kệ và tiến độ xếp kệ hàng nhập.'
+            : 'Theo dõi tồn theo SKU, lượng tạm giữ và tiến độ xếp kệ. Kiểm nhận hàng từ xưởng và tra cứu phiếu nhập, xuất trong cùng một màn hình.'}
+        </p>
+      </div>
       <div className="finished-goods-main-actions">
         <button className="btn-ara-secondary" type="button" disabled={loading} onClick={() => { loadProducts(); loadRecentStockDocuments(); loadPendingReceipts(); loadTechnicalRequests(); }}><RefreshCw size={17} />Làm mới</button>
-        <button className="btn-ara-secondary" type="button" onClick={() => { setActiveTab('requests'); loadTechnicalRequests(); }}><ArrowUpRight size={17} />Lệnh nhập từ kỹ thuật</button>
-        <button className="btn-ara-secondary" type="button" onClick={() => { setHandoffSkuIds([]); setInitialProductId(''); setBulkDirection('OUT'); setMovement(null); setError(''); setNotice(''); }}><ArrowRightLeft size={17} />Xuất kho hàng loạt</button>
-        <Link to="/warehouse/products/new" className="btn-ara-primary"><CirclePlus size={18} />Cấu hình sản phẩm</Link>
+        {!isStaff && <>
+          <button className="btn-ara-secondary" type="button" onClick={() => { setActiveTab('requests'); loadTechnicalRequests(); }}><ArrowUpRight size={17} />Lệnh nhập từ kỹ thuật</button>
+          <button className="btn-ara-secondary" type="button" onClick={() => { setHandoffSkuIds([]); setInitialProductId(''); setBulkDirection('OUT'); setMovement(null); setError(''); setNotice(''); }}><ArrowRightLeft size={17} />Tạo yêu cầu xuất kho hàng loạt</button>
+          <Link to="/warehouse/products/new" className="btn-ara-primary"><CirclePlus size={18} />Cấu hình sản phẩm</Link>
+        </>}
       </div>
     </div>
     {bulkDirection === 'IN' && <ol className="product-steps" aria-label="Tiến trình nhập kho"><li><span>01</span>Lệnh nhập kỹ thuật</li><li className="current"><span>02</span>Kiểm nhận và chọn kệ</li><li><span>03</span>Xác nhận nhập kho</li></ol>}
     {error && <p className="finished-goods-message error" role="alert">{error}</p>}
     {notice && <p className="finished-goods-message success" role="status">{notice}</p>}
-    {bulkDirection !== 'IN' && savedDrafts.OUT && <section style={panel} aria-label="Phiếu đang lưu trên thiết bị">
+    {!isStaff && bulkDirection !== 'IN' && savedDrafts.OUT && <section style={panel} aria-label="Phiếu đang lưu trên thiết bị">
       <h2>Phiếu đang lưu trên thiết bị</h2>
       {['OUT'].filter((direction) => savedDrafts[direction]).map((direction) =>
         <button key={direction} className="btn-ara-secondary" type="button" style={{ marginRight: '.5rem' }}
@@ -355,7 +385,9 @@ export default function FinishedGoodsPage() {
     {bulkDirection && <div className="fg-request-overlay"><div className="fg-bulk-dialog"><BulkStockForm key={`${bulkDirection}:${selectedRequest?.id || ''}:${initialProductId}`} direction={bulkDirection} products={products} ownerId={ownerId} sourceTicket={bulkDirection === 'IN' ? selectedRequest : null} initialSkuIds={handoffSkuIds} initialProductId={initialProductId} onCancel={() => setBulkDirection('')} onQueued={(message) => { setBulkDirection(''); setNotice(message); }} onDone={async (document) => {
       setBulkDirection('');
       setHandoffSkuIds([]);
-      setNotice(`Đã lưu phiếu ${document.documentCode}: ${document.lineCount} dòng, tổng ${document.totalQuantity} sản phẩm.`);
+      setNotice(bulkDirection === 'OUT'
+        ? `Đã tạo yêu cầu xuất kho hàng loạt ${document.documentCode} (${document.totalQuantity} sản phẩm). Yêu cầu đã được chuyển đến Nhân viên kho để lấy hàng và quét mã.`
+        : `Đã lưu phiếu ${document.documentCode}: ${document.lineCount} dòng, tổng ${document.totalQuantity} sản phẩm.`);
       setRecentDocuments((current) => [{ ...document, createdAt: new Date().toISOString(), items: document.items || [] }, ...current]);
       await loadProducts();
       await loadRecentStockDocuments();
@@ -365,7 +397,7 @@ export default function FinishedGoodsPage() {
       await loadInboundProgress();
     }} /></div></div>}
 
-    {localCatalog.length > 0 && <section className="finished-goods-catalog" aria-label="Sản phẩm trên thiết bị chờ đồng bộ">
+    {!isStaff && localCatalog.length > 0 && <section className="finished-goods-catalog" aria-label="Sản phẩm trên thiết bị chờ đồng bộ">
       <h2>Sản phẩm trên thiết bị</h2>
       <p>Các sản phẩm này chưa được dùng để nhập, xuất kho hoặc chốt đơn.</p>
       <div className="product-table-scroll"><table className="product-table"><thead><tr><th>Tên sản phẩm</th><th>Mã</th><th>Trạng thái</th></tr></thead><tbody>
@@ -377,15 +409,15 @@ export default function FinishedGoodsPage() {
     </section>}
     <div className="fg-tabs" role="tablist" aria-label="Nội dung kho thành phẩm">
       <button type="button" role="tab" aria-selected={activeTab === 'stock'} className={activeTab === 'stock' ? 'active' : ''} onClick={() => setActiveTab('stock')}>Tồn kho theo SKU</button>
-      <button type="button" role="tab" aria-selected={activeTab === 'requests'} className={activeTab === 'requests' ? 'active' : ''} onClick={() => { setActiveTab('requests'); loadTechnicalRequests(); }}>Lệnh nhập từ kỹ thuật <span>{technicalRequests.filter((item) => item.status === 'READY_TO_CONFIRM' && !item.receiptId).length + materialRequests.filter((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)).length}</span></button>
-      <button type="button" role="tab" aria-selected={activeTab === 'outbound'} className={activeTab === 'outbound' ? 'active' : ''} onClick={() => { setActiveTab('outbound'); loadOutbound(); }}>Lệnh xuất từ kỹ thuật</button>
+      {!isStaff && <button type="button" role="tab" aria-selected={activeTab === 'requests'} className={activeTab === 'requests' ? 'active' : ''} onClick={() => { setActiveTab('requests'); loadTechnicalRequests(); }}>Lệnh nhập từ kỹ thuật <span>{technicalRequests.filter((item) => item.status === 'READY_TO_CONFIRM' && !item.receiptId).length + materialRequests.filter((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)).length}</span></button>}
+      {!isStaff && <button type="button" role="tab" aria-selected={activeTab === 'outbound'} className={activeTab === 'outbound' ? 'active' : ''} onClick={() => { setActiveTab('outbound'); loadOutbound(); }}>Lệnh xuất từ kỹ thuật</button>}
       <button type="button" role="tab" aria-selected={activeTab === 'progress'} className={activeTab === 'progress' ? 'active' : ''} onClick={() => { setActiveTab('progress'); loadTechnicalRequests(); loadInboundProgress(); }}>Tiến độ nhập kho</button>
     </div>
-    {activeTab === 'requests' && <UnifiedTechnicalInboundList
+    {!isStaff && activeTab === 'requests' && <UnifiedTechnicalInboundList
       finishedRequests={technicalRequests} materialRequests={materialRequests}
       loading={requestsLoading} error={requestsError} onRefresh={loadTechnicalRequests}
       onOpen={setInboundDetail} />}
-    {activeTab === 'outbound' && <WarehouseOutboundList materialRequests={outboundMaterialRequests}
+    {!isStaff && activeTab === 'outbound' && <WarehouseOutboundList materialRequests={outboundMaterialRequests}
       finishedDocuments={outboundFinishedDocuments} loading={outboundLoading} error={outboundError}
       onRefresh={loadOutbound} onOpen={setOutboundDetail} />}
     {activeTab === 'progress' && <WarehouseInboundProgress finishedRequests={technicalRequests}
@@ -393,7 +425,8 @@ export default function FinishedGoodsPage() {
       error={progressError || requestsError} onRefresh={() => { loadTechnicalRequests(); loadInboundProgress(); }}
       onOpenRequest={setInboundDetail} />}
     {activeTab === 'stock' && <FinishedGoodsOverview products={products} recentDocuments={recentDocuments} ownerId={ownerId} loading={loading}
-      onIssue={(product, sku) => { setBulkDirection(''); openStockMovementForm(product, 'OUT', sku.id); }} onError={setError} />}
+      canIssue={!isStaff} canConfigure={!isStaff}
+      onIssue={(product, sku) => { if (isStaff) return; setBulkDirection(''); openStockMovementForm(product, 'OUT', sku.id); }} onError={setError} />}
     {activeTab === 'progress' && <div className="fg-records">
       <div className="fg-records-head"><div><h2>Phiếu nhập thành phẩm gần đây</h2><p>Phiếu nhập mới nhất, kèm in tem và chi tiết phân bổ kệ.</p></div><button className="btn-ara-secondary" type="button" onClick={() => { loadRecentStockDocuments(); loadPendingReceipts(); loadInboundProgress(); }}><RefreshCw size={17} /> Làm mới</button></div>
       {!recentDocuments.some((item) => item.direction === 'IN') && <p className="fg-empty">Chưa có phiếu nhập gần đây.</p>}

@@ -8,7 +8,16 @@ const number = (value) => Number(value || 0).toLocaleString('vi-VN');
 
 /** Shows server-confirmed SKU totals and opens barcode labels only from a selected receipt.
  * Receipt progress covers recent documents; it must not be used to infer SKU availability. */
-export default function FinishedGoodsOverview({ products, recentDocuments, ownerId, loading, onIssue, onError }) {
+export default function FinishedGoodsOverview({
+  products,
+  recentDocuments,
+  ownerId,
+  loading,
+  onIssue,
+  onError,
+  canIssue = true,
+  canConfigure = true,
+}) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [availability, setAvailability] = useState('');
@@ -94,13 +103,13 @@ export default function FinishedGoodsOverview({ products, recentDocuments, owner
         <div className="fg-stock-heading"><div><h2>Tồn kho theo SKU</h2><p>{filtered.length} SKU và sản phẩm phù hợp</p></div><div className="fg-stock-tools"><button type="button" onClick={() => setFiltersOpen((value) => !value)} aria-expanded={filtersOpen}><Filter size={17} /> Bộ lọc</button><button type="button" onClick={exportCsv} disabled={!filtered.length || loading} title="Tải tệp CSV mở bằng Excel"><ArrowDownToLine size={17} /> Xuất CSV</button></div></div>
         <label className="fg-search"><Search size={19} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Tìm tên sản phẩm, mã mẫu hoặc SKU" aria-label="Tìm tồn kho theo SKU" /></label>
         {filtersOpen && <div className="fg-filters"><label>Danh mục<select value={category} onChange={(event) => { setCategory(event.target.value); setPage(1); }}><option value="">Tất cả danh mục</option>{categories.map((name) => <option key={name} value={name}>{name}</option>)}</select></label><label>Khả dụng<select value={availability} onChange={(event) => { setAvailability(event.target.value); setPage(1); }}><option value="">Tất cả</option><option value="available">Còn khả dụng</option><option value="empty">Hết khả dụng</option></select></label><button type="button" onClick={() => { setSearch(''); setCategory(''); setAvailability(''); setPage(1); }}>Xóa bộ lọc</button></div>}
-        {loading ? <p className="fg-empty">Đang tải tồn kho...</p> : filtered.length === 0 ? <p className="fg-empty">Không có SKU phù hợp. <Link to="/warehouse/products/new">Cấu hình sản phẩm</Link></p> : <div className="fg-table-scroll"><table className="fg-stock-table"><thead><tr><th>Sản phẩm / SKU</th><th>Tồn thực tế</th><th>Tạm giữ</th><th>Khả dụng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{visible.map(({ product, sku }) => {
+        {loading ? <p className="fg-empty">Đang tải tồn kho...</p> : filtered.length === 0 ? <p className="fg-empty">Không có SKU phù hợp. {canConfigure && <Link to="/warehouse/products/new">Cấu hình sản phẩm</Link>}</p> : <div className="fg-table-scroll"><table className="fg-stock-table"><thead><tr><th>Sản phẩm / SKU</th><th>Tồn thực tế</th><th>Tạm giữ</th><th>Khả dụng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{visible.map(({ product, sku }) => {
           const availableQty = sku ? Number(sku.pickableQty || 0) : 0;
           return <tr key={`${product.id}:${sku?.id || 'no-sku'}`} className={selected?.productId === product.id && selected?.skuId === sku?.id ? 'selected' : ''}>
             <td data-label="Sản phẩm / SKU"><div className="fg-product-cell">{product.thumbnailUrl ? <img src={product.thumbnailUrl} alt="" /> : <span className="fg-product-placeholder"><Box size={20} /></span>}<div><strong>{product.productName}</strong><small>{product.productCode} · {sku ? `${sku.skuCode} · ${sku.color || '—'} / ${sku.size || '—'}` : 'Chưa có SKU'}</small></div></div></td>
             <td data-label="Tồn thực tế" className="fg-number">{number(sku?.onHandQty)}</td><td data-label="Tạm giữ" className="fg-number">{number(sku?.reservedQty)}</td><td data-label="Khả dụng" className="fg-number fg-available-number">{number(availableQty)}</td>
             <td data-label="Trạng thái"><span className={`fg-status ${!product.isActive || !sku?.isActive ? 'muted' : availableQty ? 'ready' : 'empty'}`}>{!sku ? 'Chưa có SKU' : !product.isActive || !sku.isActive ? 'Ngừng sử dụng' : availableQty ? 'Còn hàng' : 'Hết khả dụng'}</span></td>
-            <td data-label="Thao tác"><div className="fg-row-actions"><button type="button" onClick={() => openDetail(product, sku)}>Chi tiết</button>{sku && <button type="button" disabled={!product.isActive || !sku.isActive || availableQty === 0} onClick={() => onIssue(product, sku)}>Xuất kho</button>}</div></td>
+            <td data-label="Thao tác"><div className="fg-row-actions"><button type="button" onClick={() => openDetail(product, sku)}>Chi tiết</button>{canIssue && sku && <button type="button" disabled={!product.isActive || !sku.isActive || availableQty === 0} onClick={() => onIssue(product, sku)}>Xuất kho</button>}</div></td>
           </tr>;
         })}</tbody></table></div>}
         <div className="fg-pagination"><span>Hiển thị {visible.length ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, filtered.length)} / {filtered.length} dòng</span>{pageCount > 1 && <div><button type="button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Trước</button><span>Trang {currentPage}/{pageCount}</span><button type="button" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Sau</button></div>}</div>
@@ -109,7 +118,7 @@ export default function FinishedGoodsOverview({ products, recentDocuments, owner
         <div className="fg-drawer-head"><div><small>CHI TIẾT SKU</small><h2>{selectedProduct.productName}</h2></div><button type="button" onClick={() => setSelected(null)} aria-label="Đóng chi tiết"><X size={21} /></button></div>
         <div className="fg-drawer-identity">{selectedProduct.thumbnailUrl ? <img src={selectedProduct.thumbnailUrl} alt="" /> : <span className="fg-product-placeholder"><Box size={25} /></span>}<div><strong>{selectedSku?.skuCode || selectedProduct.productCode}</strong><span>{selectedSku ? `${selectedSku.color || '—'} · ${selectedSku.size || '—'}` : 'Chưa cấu hình biến thể'}</span></div></div>
         <div className="fg-drawer-metrics"><div><small>Tồn</small><strong>{number(selectedSku?.onHandQty)}</strong></div><div><small>Tạm giữ</small><strong>{number(selectedSku?.reservedQty)}</strong></div><div><small>Khả dụng</small><strong>{number(selectedSku?.availableQty)}</strong></div></div>
-        <div className="fg-drawer-links"><Link to={`/warehouse/products/${selectedProduct.id}/edit`}>Cấu hình / Nhập <ArrowRight size={16} /></Link><Link to="/warehouse/layout"><MapPin size={16} /> Xem vị trí kệ</Link></div>
+        <div className="fg-drawer-links">{canConfigure && <Link to={`/warehouse/products/${selectedProduct.id}/edit`}>Cấu hình / Nhập <ArrowRight size={16} /></Link>}<Link to="/warehouse/layout"><MapPin size={16} /> Xem vị trí kệ</Link></div>
         {selectedSku && <div className="fg-barcode-section"><h3>Barcode theo phiếu nhập</h3><p>Chọn một trong 20 phiếu gần đây để tra barcode đã cấp cho SKU này. Trang vị trí kho hiển thị barcode theo từng ô kệ.</p><label>Phiếu nhập<select value={receiptId} onChange={(event) => loadLabels(event.target.value)}><option value="">Chọn phiếu nhập</option>{recentInbound.map((document) => <option key={document.id} value={document.id}>{document.documentCode}</option>)}</select></label>{receiptId && <label className="fg-search"><Search size={16} /><input value={labelSearch} onChange={(event) => setLabelSearch(event.target.value)} placeholder="Tìm barcode trong phiếu" /></label>}{labelsLoading && <p role="status">Đang tải barcode...</p>}{labelMessage && <p role="status">{labelMessage}</p>}{receiptId && !labelsLoading && <><p>{shownLabels.length} barcode phù hợp</p><div className="fg-barcode-list">{shownLabels.slice(0, 50).map((label) => <code key={label.barcode}>{label.barcode}</code>)}</div>{shownLabels.length > 50 && <small>Đang hiển thị 50 barcode đầu tiên. Lọc theo mã để tìm chiếc cần xem.</small>}</>}</div>}
       </aside>}
     </section>

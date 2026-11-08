@@ -122,9 +122,12 @@ export const syncFinishedGoodsConfirmations = async (ownerId) => {
         // received its unique technical ticket, even when this device has a different key.
         try {
           const confirmed = await productService.confirmationStatus(operation.payload);
-          await complete(confirmed.data.document,
-            confirmed.data.matchType === 'SOURCE_TICKET' ? 'SUPERSEDED' : 'DONE');
-          continue;
+          const data = confirmed.data;
+          if (data?.document && data?.confirmed !== false) {
+            await complete(data.document,
+              data.matchType === 'SOURCE_TICKET' ? 'SUPERSEDED' : 'DONE');
+            continue;
+          }
         } catch (error) {
           if (error.code === 'CONFIRMATION_REUSED') {
             await save({ status: 'REVIEW', lastError: error.message, nextRetryAt: null });

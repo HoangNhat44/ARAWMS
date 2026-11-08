@@ -267,7 +267,7 @@ function FinishedGoodsPutawayPanel() {
   return <main className="putaway-page">
     <header className="putaway-page-head"><div><span className="putaway-eyebrow">KHO THÀNH PHẨM / XẾP HÀNG</span>
       <h1>Xếp hàng vào kệ</h1><p>In tem từng chiếc, quét đúng ô rồi quét barcode sản phẩm khi đặt vào kệ.</p></div>
-      <div className="putaway-head-actions"><Link className="putaway-button putaway-button-light" to="/warehouse/finished-goods?tab=requests">Xem lệnh nhập kỹ thuật</Link>
+      <div className="putaway-head-actions"><Link className="putaway-button putaway-button-light" to="/warehouse/staff/finished-goods">Xem kho thành phẩm</Link>
       <button type="button" className="putaway-button putaway-button-light" onClick={refresh} disabled={busy}>↻ Làm mới</button></div></header>
     {error && <div className="putaway-toast putaway-toast-error" role="alert">{error}
       <button type="button" aria-label="Đóng thông báo lỗi" onClick={() => setError('')}>×</button></div>}

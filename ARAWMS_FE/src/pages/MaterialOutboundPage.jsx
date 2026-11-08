@@ -4,7 +4,8 @@
  *              -> Warehouse Staff scans barcodes & records actual picked quantities -> Handover confirmation & atomic inventory deduction.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { productService } from '../services/productService';
 import {
   Package,
   Layers,
@@ -21,6 +22,9 @@ import {
   ChevronRight,
   ShieldCheck,
   AlertCircle,
+  Shirt,
+  Trash2,
+  Barcode,
 } from 'lucide-react';
 import { materialOutboundService as api } from '../services/materialOutboundService';
 import { MATERIAL_UNIT_OPTIONS } from '../utils/materialUnits';
@@ -139,8 +143,10 @@ export const formatSourceLocation = (source, line) => {
   };
 };
 
-export default function MaterialOutboundPage() {
-  const [activeTab, setActiveTab] = useState('REQUESTS'); // 'REQUESTS' | 'STAFF_TASKS' | 'HISTORY'
+export default function MaterialOutboundPage({ isStaffMode = false }) {
+  const location = useLocation();
+  const isStaff = isStaffMode || location.pathname.includes('/staff');
+  const [activeTab, setActiveTab] = useState(isStaff ? 'STAFF_TASKS' : 'REQUESTS');
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -149,6 +155,7 @@ export default function MaterialOutboundPage() {
   // Data lists
   const [requests, setRequests] = useState([]);
   const [staffTasks, setStaffTasks] = useState([]);
+  const [finishedOutboundDocs, setFinishedOutboundDocs] = useState([]);
   const [historyTickets, setHistoryTickets] = useState([]);
   const [staffUsers, setStaffUsers] = useState([]);
   const [options, setOptions] = useState({ warehouses: [], locations: [], materials: [], sources: [] });
@@ -188,23 +195,46 @@ export default function MaterialOutboundPage() {
   // Detail Modal (for viewing completed or in-progress tickets)
   const [viewingTicket, setViewingTicket] = useState(null);
 
+  // 3. Staff Finished Goods Outbound Picking State & Modal
+  const [fgPickingDoc, setFgPickingDoc] = useState(null);
+  const [fgDetailDoc, setFgDetailDoc] = useState(null);
+  const [fgScannedBarcode, setFgScannedBarcode] = useState('');
+  const [fgScanNotice, setFgScanNotice] = useState(null); // { type: 'error' | 'success', message: string, scannedCode: string }
+  const [fgCameraActive, setFgCameraActive] = useState(false);
+  const [fgBusy, setFgBusy] = useState(false);
+  const [fgFilterStatus, setFgFilterStatus] = useState('ALL');
+  const fgCameraRef = useRef(null);
+  const fgVideoRef = useRef(null);
+  const fgBarcodeInputRef = useRef(null);
+
+  // Sync tab with role mode
+  useEffect(() => {
+    if (isStaff && activeTab === 'REQUESTS') {
+      setActiveTab('STAFF_TASKS');
+    } else if (!isStaff && ['STAFF_TASKS', 'FINISHED_OUTBOUND'].includes(activeTab)) {
+      setActiveTab('REQUESTS');
+    }
+  }, [isStaff]);
+
   // Load all required data
   const refreshAll = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [reqRes, taskRes, histRes, staffRes, optRes] = await Promise.all([
+      const [reqRes, taskRes, histRes, staffRes, optRes, fgOutRes] = await Promise.all([
         api.listRequests(),
         api.staffTasks(),
         api.list({ status: 'COMPLETED' }),
         api.staffUsers().catch(() => ({ data: [] })),
         api.options().catch(() => ({ data: { warehouses: [], locations: [], materials: [], sources: [] } })),
+        productService.outboundDocuments().catch(() => ({ data: { documents: [] } })),
       ]);
       setRequests(reqRes.data || []);
       setStaffTasks(taskRes.data || []);
       setHistoryTickets(histRes.data || []);
       setStaffUsers(staffRes.data || []);
       setOptions(optRes.data || { warehouses: [], locations: [], materials: [], sources: [] });
+      setFinishedOutboundDocs(fgOutRes.data?.documents || []);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -218,11 +248,15 @@ export default function MaterialOutboundPage() {
       refreshAll();
     };
     window.addEventListener('arawms-material-outbound-realtime', handleRealtime);
+    window.addEventListener('arawms-finished-goods-realtime', handleRealtime);
+    window.addEventListener('arawms-finished-goods-synced', handleRealtime);
     const interval = setInterval(() => {
       refreshAll();
     }, 10000);
     return () => {
       window.removeEventListener('arawms-material-outbound-realtime', handleRealtime);
+      window.removeEventListener('arawms-finished-goods-realtime', handleRealtime);
+      window.removeEventListener('arawms-finished-goods-synced', handleRealtime);
       clearInterval(interval);
     };
   }, [refreshAll]);
@@ -230,6 +264,7 @@ export default function MaterialOutboundPage() {
   useEffect(() => {
     return () => {
       cameraRef.current?.stop?.();
+      fgCameraRef.current?.stop?.();
     };
   }, []);
 
@@ -791,16 +826,247 @@ export default function MaterialOutboundPage() {
     });
   }, [pickingTask]);
 
+  // Filter finished goods outbound documents
+  const filteredFinishedOutboundDocs = useMemo(() => {
+    return finishedOutboundDocs.filter((doc) => {
+      const docStatus = doc.status || 'WAITING_PICKING';
+      if (fgFilterStatus !== 'ALL' && docStatus !== fgFilterStatus) return false;
+      if (!filters.search) return true;
+      const q = filters.search.toLowerCase();
+      const code = (doc.documentCode || doc.code || '').toLowerCase();
+      const recipient = (doc.recipient || doc.purpose || '').toLowerCase();
+      const itemsMatch = (doc.items || []).some((it) =>
+        (it.productName || '').toLowerCase().includes(q) || (it.skuCode || '').toLowerCase().includes(q)
+      );
+      return code.includes(q) || recipient.includes(q) || itemsMatch;
+    });
+  }, [finishedOutboundDocs, fgFilterStatus, filters.search]);
+
+  // List of all scanned items in the active picking session
+  const fgAllScannedList = useMemo(() => {
+    if (!fgPickingDoc) return [];
+    const list = [];
+    for (const item of fgPickingDoc.items || []) {
+      for (const bc of item.scannedBarcodes || []) {
+        list.push({
+          barcode: bc,
+          skuCode: item.skuCode,
+          skuId: item.skuId,
+          productName: item.productName,
+        });
+      }
+    }
+    return list.reverse();
+  }, [fgPickingDoc]);
+
+  const stopFgCamera = () => {
+    try {
+      if (fgCameraRef.current) {
+        fgCameraRef.current.stop();
+        fgCameraRef.current = null;
+      }
+      if (fgVideoRef.current?.srcObject) {
+        fgVideoRef.current.srcObject.getTracks().forEach((track) => track.stop());
+        fgVideoRef.current.srcObject = null;
+      }
+    } catch {
+      // ignore
+    }
+    setFgCameraActive(false);
+  };
+
+  const startFgCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const msg = 'Trình duyệt không hỗ trợ camera hoặc chưa cấp quyền (cần HTTPS/localhost).';
+      setError(msg);
+      setFgScanNotice({ type: 'error', message: msg, scannedCode: '' });
+      playScanSound(false);
+      return;
+    }
+    try {
+      stopFgCamera();
+      setFgCameraActive(true);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const videoElement = fgVideoRef.current;
+      if (!videoElement) {
+        throw new Error('Không tìm thấy phần tử hiển thị video camera.');
+      }
+      const { BrowserMultiFormatReader, BarcodeFormat } = await import('@zxing/browser');
+      const reader = new BrowserMultiFormatReader();
+      reader.possibleFormats = [
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.QR_CODE,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.UPC_A,
+      ];
+      const controls = await reader.decodeFromConstraints(
+        {
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        },
+        videoElement,
+        (result) => {
+          if (result && result.getText()) {
+            const code = result.getText().trim();
+            if (code) {
+              stopFgCamera();
+              handleFgScanBarcode(code);
+            }
+          }
+        }
+      );
+      fgCameraRef.current = controls;
+    } catch (failure) {
+      stopFgCamera();
+      const msg = `Không mở được camera: ${errorMessage(failure)}`;
+      setError(msg);
+      setFgScanNotice({ type: 'error', message: msg, scannedCode: '' });
+      playScanSound(false);
+    }
+  };
+
+  const handleFgScanBarcode = async (barcodeToScan = fgScannedBarcode) => {
+    const code = String(barcodeToScan || '').trim().toUpperCase();
+    if (!code) {
+      const msg = 'Vui lòng quét hoặc nhập mã barcode';
+      setFgScanNotice({ type: 'error', message: msg, scannedCode: '' });
+      playScanSound(false);
+      fgBarcodeInputRef.current?.focus();
+      return;
+    }
+    if (!fgPickingDoc) return;
+    setFgBusy(true);
+    setFgScanNotice(null);
+    try {
+      const res = await productService.scanOutboundBarcode(fgPickingDoc.id, code);
+      const updatedDoc = res.data.document;
+      setFgPickingDoc(updatedDoc);
+      setFinishedOutboundDocs((prev) =>
+        prev.map((d) => (d.id === updatedDoc.id ? updatedDoc : d))
+      );
+      setFgScannedBarcode('');
+      setFgScanNotice({
+        type: 'success',
+        message: res.data.message || `✓ Đã quét: ${code}`,
+        scannedCode: code,
+      });
+      playScanSound(true);
+      setTimeout(() => {
+        fgBarcodeInputRef.current?.focus();
+      }, 50);
+    } catch (err) {
+      const msg = errorMessage(err);
+      setFgScanNotice({
+        type: 'error',
+        message: msg,
+        scannedCode: code,
+      });
+      playScanSound(false);
+      setFgScannedBarcode('');
+      setTimeout(() => {
+        fgBarcodeInputRef.current?.focus();
+      }, 50);
+    } finally {
+      setFgBusy(false);
+    }
+  };
+
+  const handleFgRemoveScan = async (barcode, skuId) => {
+    if (!fgPickingDoc) return;
+    setFgBusy(true);
+    try {
+      const res = await productService.removeOutboundScan(fgPickingDoc.id, barcode, skuId);
+      const updatedDoc = res.data.document;
+      setFgPickingDoc(updatedDoc);
+      setFinishedOutboundDocs((prev) =>
+        prev.map((d) => (d.id === updatedDoc.id ? updatedDoc : d))
+      );
+      setFgScanNotice({
+        type: 'success',
+        message: `Đã hủy mã ${barcode || 'vừa quét'}`,
+        scannedCode: barcode || '',
+      });
+      playScanSound(true);
+    } catch (err) {
+      setFgScanNotice({
+        type: 'error',
+        message: errorMessage(err),
+        scannedCode: barcode || '',
+      });
+      playScanSound(false);
+    } finally {
+      setFgBusy(false);
+    }
+  };
+
+  const handleFgConfirmOutbound = async () => {
+    if (!fgPickingDoc) return;
+    const totalScanned = fgPickingDoc.totalScannedQty || 0;
+    const totalQty = fgPickingDoc.totalQuantity || 0;
+    if (totalScanned === 0) {
+      alert('Chưa có sản phẩm nào được quét. Vui lòng quét mã sản phẩm trước khi xuất kho!');
+      return;
+    }
+    if (totalScanned < totalQty) {
+      const proceed = window.confirm(
+        `Yêu cầu xuất ${totalQty} sản phẩm, hiện mới quét được ${totalScanned} sản phẩm.\nBạn có chắc chắn muốn xác nhận xuất kho phần đã quét không?`
+      );
+      if (!proceed) return;
+    }
+
+    setFgBusy(true);
+    try {
+      const res = await productService.confirmOutboundDispatch(fgPickingDoc.id);
+      stopFgCamera();
+      setFgPickingDoc(null);
+      playScanSound(true);
+      setMessage(res.data.message || `Đã xuất kho thành công ${totalScanned} sản phẩm!`);
+      await refreshAll();
+    } catch (err) {
+      setError(errorMessage(err));
+      playScanSound(false);
+    } finally {
+      setFgBusy(false);
+    }
+  };
+
+  const openFgPickingModal = (doc) => {
+    setFgPickingDoc(doc);
+    setFgScanNotice(null);
+    setFgScannedBarcode('');
+    setTimeout(() => {
+      fgBarcodeInputRef.current?.focus();
+    }, 100);
+  };
+
   return (
     <div className="material-outbound-page">
       <div className="mo-breadcrumb">
-        <Link to="/">Trang chủ</Link> / Kho nguyên phụ liệu / Xuất kho
+        <Link to="/">Trang chủ</Link> /{' '}
+        {isStaff ? (
+          <>
+            <Link to="/warehouse/putaway">Nhân viên kho</Link> / Lệnh xuất nguyên phụ liệu & thành phẩm
+          </>
+        ) : (
+          <>
+            <Link to="/warehouse/raw-materials/inbound">Quản lý kho</Link> / Xuất nguyên phụ liệu
+          </>
+        )}
       </div>
 
       <header className="mo-hero">
         <div>
-          <h1>Xuất nguyên phụ liệu</h1>
-          <p>Quy trình xuất kho: Garment gửi yêu cầu → Quản lý duyệt & giao việc → Nhân viên quét barcode → Bàn giao & trừ tồn.</p>
+          <h1>{isStaff ? 'Lệnh xuất nguyên phụ liệu & thành phẩm' : 'Xuất nguyên phụ liệu'}</h1>
+          <p>
+            {isStaff
+              ? 'Lấy hàng theo nguồn chỉ định FIFO, quét barcode cây vải/lô phụ liệu và xuất kho bàn giao cho xưởng may.'
+              : 'Duyệt cấp yêu cầu xuất từ Kỹ thuật viên may, phân bổ nguồn tồn theo FIFO và giao việc cho nhân viên kho.'}
+          </p>
         </div>
         <div className="mo-actions">
           <button onClick={refreshAll} disabled={loading} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -896,22 +1162,36 @@ export default function MaterialOutboundPage() {
 
       {/* Navigation Tabs */}
       <nav className="mo-nav-tabs">
-        <button
-          className={`mo-tab-btn ${activeTab === 'REQUESTS' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('REQUESTS'); setError(''); setMessage(''); }}
-        >
-          <Layers size={17} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-          Duyệt & giao việc (Quản lý kho)
-          <span className="mo-tab-count">{requests.filter((r) => ['WAITING_SCAN', 'WAITING_DISCREPANCY'].includes(r.status)).length}</span>
-        </button>
-        <button
-          className={`mo-tab-btn ${activeTab === 'STAFF_TASKS' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('STAFF_TASKS'); setError(''); setMessage(''); }}
-        >
-          <Package size={17} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-          Yêu cầu xuất cần thực hiện (Nhân viên kho)
-          <span className="mo-tab-count">{staffTasks.filter((t) => ['WAITING_PICKING', 'PICKING', 'WAITING_DISCREPANCY'].includes(t.status)).length}</span>
-        </button>
+        {!isStaff && (
+          <button
+            className={`mo-tab-btn ${activeTab === 'REQUESTS' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('REQUESTS'); setError(''); setMessage(''); }}
+          >
+            <Layers size={17} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+            Duyệt & giao việc (Quản lý kho)
+            <span className="mo-tab-count">{requests.filter((r) => ['WAITING_SCAN', 'WAITING_DISCREPANCY'].includes(r.status)).length}</span>
+          </button>
+        )}
+        {isStaff && (
+          <>
+            <button
+              className={`mo-tab-btn ${activeTab === 'STAFF_TASKS' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('STAFF_TASKS'); setError(''); setMessage(''); }}
+            >
+              <Package size={17} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+              Nguyên phụ liệu cần lấy hàng
+              <span className="mo-tab-count">{staffTasks.filter((t) => ['WAITING_PICKING', 'PICKING', 'WAITING_DISCREPANCY'].includes(t.status)).length}</span>
+            </button>
+            <button
+              className={`mo-tab-btn ${activeTab === 'FINISHED_OUTBOUND' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('FINISHED_OUTBOUND'); setError(''); setMessage(''); }}
+            >
+              <Shirt size={17} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+              Lệnh xuất thành phẩm
+              <span className="mo-tab-count">{finishedOutboundDocs.length}</span>
+            </button>
+          </>
+        )}
         <button
           className={`mo-tab-btn ${activeTab === 'HISTORY' ? 'active' : ''}`}
           onClick={() => { setActiveTab('HISTORY'); setError(''); setMessage(''); }}
@@ -1079,6 +1359,165 @@ export default function MaterialOutboundPage() {
             </div>
           ) : (
             <div className="mo-empty">Không có công việc xuất kho nào cần thực hiện.</div>
+          )}
+        </section>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 2.5: Lệnh xuất thành phẩm (Nhân viên kho) */}
+      {/* ========================================================= */}
+      {activeTab === 'FINISHED_OUTBOUND' && (
+        <section className="mo-card mo-list">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <h2 style={{ margin: 0 }}>Lệnh xuất kho thành phẩm</h2>
+              <p style={{ margin: '4px 0 0 0', color: 'var(--ara-text-muted)', fontSize: 13 }}>
+                Danh sách yêu cầu xuất kho từ Quản lý. Nhân viên kho tiến hành lấy hàng, quét mã barcode và xuất kho.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button onClick={refreshAll} disabled={loading} className="btn-ara-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <RefreshCw size={14} className={loading ? 'spin' : ''} />
+                Làm mới
+              </button>
+            </div>
+          </div>
+
+          {/* Status Filter Tabs for Finished Goods */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            {[
+              { id: 'ALL', label: 'Tất cả', count: finishedOutboundDocs.length },
+              { id: 'WAITING_PICKING', label: 'Chờ lấy hàng & quét mã', count: finishedOutboundDocs.filter(d => (d.status || 'WAITING_PICKING') === 'WAITING_PICKING').length },
+              { id: 'PICKING', label: 'Đang quét mã', count: finishedOutboundDocs.filter(d => d.status === 'PICKING').length },
+              { id: 'COMPLETED', label: 'Đã xuất kho', count: finishedOutboundDocs.filter(d => d.status === 'COMPLETED').length },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFgFilterStatus(tab.id)}
+                className={`btn-ara-secondary ${fgFilterStatus === tab.id ? 'active' : ''}`}
+                style={{
+                  fontSize: 13,
+                  padding: '6px 14px',
+                  borderRadius: 20,
+                  background: fgFilterStatus === tab.id ? '#2b2520' : '#f5f0ea',
+                  color: fgFilterStatus === tab.id ? '#ffffff' : '#2b2520',
+                  border: '1px solid ' + (fgFilterStatus === tab.id ? '#2b2520' : '#e4d9cd'),
+                  fontWeight: fgFilterStatus === tab.id ? 600 : 500,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+              >
+                <span>{tab.label}</span>
+                <span style={{
+                  background: fgFilterStatus === tab.id ? 'rgba(255,255,255,0.25)' : '#e2d5c5',
+                  padding: '1px 7px',
+                  borderRadius: 10,
+                  fontSize: 11
+                }}>{tab.count}</span>
+              </button>
+            ))}
+          </div>
+
+          {filteredFinishedOutboundDocs.length ? (
+            <div className="mo-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Mã yêu cầu xuất</th>
+                    <th>Mục đích / Người nhận</th>
+                    <th>Mặt hàng & Chi tiết</th>
+                    <th style={{ minWidth: 160 }}>Tiến độ quét mã</th>
+                    <th>Ngày lập</th>
+                    <th>Trạng thái</th>
+                    <th style={{ textAlign: 'right' }}>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredFinishedOutboundDocs.map((doc) => {
+                    const status = doc.status || 'WAITING_PICKING';
+                    const totalQty = doc.totalQuantity || 0;
+                    const scannedQty = doc.totalScannedQty || 0;
+                    const pct = totalQty > 0 ? Math.min(100, Math.round((scannedQty / totalQty) * 100)) : 0;
+                    const isCompleted = status === 'COMPLETED';
+                    const isPicking = status === 'PICKING';
+
+                    return (
+                      <tr key={doc.id || doc._id}>
+                        <td>
+                          <strong>{doc.documentCode || doc.code}</strong>
+                          {doc.note && <div style={{ fontSize: 12, color: '#766a5e', marginTop: 2 }}>{doc.note}</div>}
+                        </td>
+                        <td>{doc.recipient || doc.purpose || 'Xuất kho thành phẩm'}</td>
+                        <td>
+                          <div><strong>{doc.items?.length || doc.lines?.length || 0}</strong> mặt hàng · <strong>{totalQty}</strong> chiếc</div>
+                          <div style={{ fontSize: 12, color: '#766a5e', marginTop: 2 }}>
+                            {(doc.items || doc.lines || []).slice(0, 2).map(it => it.skuCode || it.code || it.productName || it.name).join(', ')}
+                            {(doc.items || doc.lines || []).length > 2 && '...'}
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                            <span><strong>{scannedQty}</strong> / {totalQty}</span>
+                            <span style={{ fontWeight: 600, color: isCompleted ? '#286f3a' : pct > 0 ? '#b8621b' : '#766a5e' }}>{pct}%</span>
+                          </div>
+                          <div style={{ width: '100%', height: 6, background: '#ede6dd', borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{
+                              width: `${pct}%`,
+                              height: '100%',
+                              background: isCompleted ? '#286f3a' : '#c27e28',
+                              transition: 'width 0.2s ease'
+                            }} />
+                          </div>
+                        </td>
+                        <td>{doc.createdAt ? new Date(doc.createdAt).toLocaleString('vi-VN') : '—'}</td>
+                        <td>
+                          {isCompleted && (
+                            <span className="mo-status-pill status-completed">
+                              <CheckCircle2 size={12} /> Đã xuất kho
+                            </span>
+                          )}
+                          {isPicking && (
+                            <span className="mo-status-pill status-in-progress" style={{ background: '#eef4ff', color: '#1a56db', border: '1px solid #c3d9ff' }}>
+                              <Package size={12} /> Đang quét ({scannedQty}/{totalQty})
+                            </span>
+                          )}
+                          {status === 'WAITING_PICKING' && (
+                            <span className="mo-status-pill status-assigned">
+                              <Clock size={12} /> Chờ lấy & quét mã
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {!isCompleted ? (
+                            <button
+                              onClick={() => openFgPickingModal(doc)}
+                              className="primary"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}
+                            >
+                              <Camera size={14} />
+                              {isPicking ? 'Tiếp tục quét' : 'Lấy hàng & Quét'}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setFgDetailDoc(doc)}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}
+                            >
+                              <Eye size={14} />
+                              Chi tiết
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="mo-empty">Không có lệnh xuất thành phẩm nào phù hợp bộ lọc.</div>
           )}
         </section>
       )}
@@ -1904,6 +2343,416 @@ export default function MaterialOutboundPage() {
                 <Printer size={16} />
                 In phiếu xuất
               </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: Trạm lấy hàng & Quét mã xuất kho thành phẩm */}
+      {/* ========================================================= */}
+      {fgPickingDoc && (
+        <div className="mo-overlay top" role="dialog" aria-modal="true">
+          <div className="mo-modal" style={{ maxWidth: 1100 }}>
+            <header className="mo-modal-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <h2 style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 0, fontSize: 22 }}>
+                  <Package size={22} color="#8c591c" />
+                  <span>Lấy hàng & Quét mã xuất kho thành phẩm</span>
+                  <span style={{ fontSize: 15, background: '#eee5da', padding: '2px 10px', borderRadius: 6, color: '#2b2520' }}>
+                    {fgPickingDoc.documentCode || fgPickingDoc.code}
+                  </span>
+                </h2>
+                <div style={{ marginTop: 4, color: '#766a5e', fontSize: 13 }}>
+                  Người nhận: <strong>{fgPickingDoc.recipient || '—'}</strong>
+                  {fgPickingDoc.note ? ` · Ghi chú: ${fgPickingDoc.note}` : ''}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  stopFgCamera();
+                  setFgPickingDoc(null);
+                }}
+                style={{ background: 'transparent', border: 'none', fontSize: 24, cursor: 'pointer', color: '#766a5e' }}
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="mo-modal-body" style={{ maxHeight: '72vh', overflowY: 'auto', padding: 20 }}>
+              {/* Progress Banner */}
+              {(() => {
+                const totalScanned = fgPickingDoc.totalScannedQty || 0;
+                const totalQty = fgPickingDoc.totalQuantity || 0;
+                const pct = totalQty > 0 ? Math.min(100, Math.round((totalScanned / totalQty) * 100)) : 0;
+                const isAllDone = totalQty > 0 && totalScanned >= totalQty;
+
+                return (
+                  <div style={{
+                    background: isAllDone ? '#e9f6e9' : '#f8f3ec',
+                    border: '1px solid ' + (isAllDone ? '#b7e4be' : '#e7dccc'),
+                    padding: '14px 18px',
+                    borderRadius: 10,
+                    marginBottom: 16
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{ fontWeight: 600, fontSize: 15, color: '#2b2520' }}>
+                        Tiến độ lấy hàng & quét mã xuất kho:
+                      </span>
+                      <span style={{ fontWeight: 700, fontSize: 16, color: isAllDone ? '#286f3a' : '#8c591c' }}>
+                        Đã quét {totalScanned} / {totalQty} chiếc ({pct}%)
+                      </span>
+                    </div>
+                    <div style={{ width: '100%', height: 10, background: '#dfd2c4', borderRadius: 5, overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${pct}%`,
+                        height: '100%',
+                        background: isAllDone ? '#286f3a' : '#c27e28',
+                        transition: 'width 0.25s ease'
+                      }} />
+                    </div>
+                    {isAllDone && (
+                      <div style={{ marginTop: 8, color: '#286f3a', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <CheckCircle2 size={16} /> Đã quét đủ 100% số lượng theo yêu cầu. Hãy kiểm tra lại và bấm "Xác nhận xuất kho" bên dưới.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Main Content: 2-Columns */}
+              <div className="mo-grid" style={{ gap: 20 }}>
+                {/* Column 1: Danh sách mặt hàng cần lấy */}
+                <div>
+                  <h3 style={{ margin: '0 0 12px', fontSize: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Shirt size={18} color="#8c591c" />
+                    Danh sách sản phẩm cần xuất ({fgPickingDoc.items?.length || 0})
+                  </h3>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {(fgPickingDoc.items || []).map((item, idx) => {
+                      const isLineDone = (item.scannedQty || 0) >= item.quantity;
+                      return (
+                        <div
+                          key={item.skuId || idx}
+                          style={{
+                            padding: '12px 14px',
+                            borderRadius: 10,
+                            background: isLineDone ? '#fbfdfb' : '#ffffff',
+                            border: '1px solid ' + (isLineDone ? '#c3e6cb' : '#e4d9cd'),
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: 12
+                          }}
+                        >
+                          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                            {item.thumbnailUrl && (
+                              <img
+                                src={item.thumbnailUrl}
+                                alt=""
+                                style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 6, border: '1px solid #ebd9c8' }}
+                              />
+                            )}
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 14 }}>{item.productName || item.productCode}</div>
+                              <div style={{ fontSize: 12, color: '#685e54', marginTop: 2 }}>
+                                SKU: <strong>{item.skuCode}</strong>
+                                {item.color ? ` · Màu: ${item.color}` : ''}
+                                {item.size ? ` · Size: ${item.size}` : ''}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#8c591c', marginTop: 3 }}>
+                                📍 Vị trí kệ: {item.location ? `Kệ ${item.location.rackCode || ''} · Tầng ${item.location.floorNo || 1} · Ô ${item.location.binNo || 1} (${item.location.locationCode || ''})` : 'Khu vực thành phẩm'}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700 }}>
+                              <span style={{ color: isLineDone ? '#286f3a' : '#b8621b' }}>{item.scannedQty || 0}</span>
+                              <span style={{ color: '#766a5e' }}> / {item.quantity}</span>
+                            </div>
+                            <div style={{ marginTop: 4 }}>
+                              {isLineDone ? (
+                                <span style={{ background: '#e9f6e9', color: '#286f3a', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  <CheckCircle2 size={12} /> Đã đủ
+                                </span>
+                              ) : (
+                                <span style={{ background: '#fff4e5', color: '#b8621b', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600 }}>
+                                  Thiếu {item.quantity - (item.scannedQty || 0)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Column 2: Trạm quét mã (Camera + Barcode input + Lịch sử) */}
+                <div>
+                  <h3 style={{ margin: '0 0 12px', fontSize: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Barcode size={18} color="#8c591c" />
+                    Trạm quét mã vạch
+                  </h3>
+
+                  {/* Scan Notice */}
+                  {fgScanNotice && (
+                    <div
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: 8,
+                        background: fgScanNotice.type === 'success' ? '#e9f6e9' : '#fff0ed',
+                        color: fgScanNotice.type === 'success' ? '#286f3a' : '#a52e20',
+                        border: '1px solid ' + (fgScanNotice.type === 'success' ? '#b7e4be' : '#f5c6cb'),
+                        marginBottom: 12,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        fontWeight: 600,
+                        fontSize: 13
+                      }}
+                    >
+                      {fgScanNotice.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+                      <span style={{ flex: 1 }}>{fgScanNotice.message}</span>
+                      <button
+                        type="button"
+                        onClick={() => setFgScanNotice(null)}
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: 16, lineHeight: 1 }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Camera Component */}
+                  <div className="putaway-camera" style={{ height: fgCameraActive ? 220 : 120 }}>
+                    <video ref={fgVideoRef} playsInline autoPlay muted className={fgCameraActive ? '' : 'hidden'} />
+                    <div className="putaway-camera-top">
+                      <span>{fgCameraActive ? 'CAMERA QUÉT BARCODE' : 'CAMERA ĐANG TẮT'}</span>
+                      <button type="button" onClick={fgCameraActive ? stopFgCamera : startFgCamera}>
+                        <Camera size={14} /> {fgCameraActive ? 'Tắt camera' : 'Mở camera quét'}
+                      </button>
+                    </div>
+                    {fgCameraActive && <div className="putaway-reticle" />}
+                    <p>{fgCameraActive ? 'Đưa mã vạch của sản phẩm (tem ARA... hoặc tem SKU) vào khung' : 'Bấm Mở camera để quét trực tiếp hoặc dùng súng quét mã bên dưới'}</p>
+                  </div>
+
+                  {/* Barcode input form */}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleFgScanBarcode();
+                    }}
+                    style={{ display: 'flex', gap: 8, marginTop: 12 }}
+                  >
+                    <input
+                      ref={fgBarcodeInputRef}
+                      type="text"
+                      value={fgScannedBarcode}
+                      onChange={(e) => setFgScannedBarcode(e.target.value)}
+                      placeholder="Quét hoặc nhập mã barcode (ARA... hoặc SKU)..."
+                      disabled={fgBusy}
+                      autoFocus
+                      style={{
+                        flex: 1,
+                        padding: '10px 14px',
+                        border: '1px solid #d4c7b8',
+                        borderRadius: 8,
+                        fontSize: 14,
+                        fontFamily: 'inherit'
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={fgBusy || !fgScannedBarcode.trim()}
+                      className="primary"
+                      style={{ padding: '0 18px', whiteSpace: 'nowrap', fontSize: 13 }}
+                    >
+                      Xác nhận
+                    </button>
+                  </form>
+                  <p style={{ margin: '6px 0 16px', fontSize: 12, color: '#766a5e' }}>
+                    Có thể dùng máy quét barcode cầm tay bắn trực tiếp vào ô trên.
+                  </p>
+
+                  {/* Lịch sử mã vừa quét */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#2b2520' }}>
+                        Mã đã quét ({fgAllScannedList.length} chiếc):
+                      </span>
+                    </div>
+                    <div style={{
+                      maxHeight: 140,
+                      overflowY: 'auto',
+                      border: '1px solid #e4d9cd',
+                      borderRadius: 8,
+                      background: '#fff'
+                    }}>
+                      {fgAllScannedList.length ? (
+                        fgAllScannedList.map(({ barcode, skuCode, skuId }, idx) => (
+                          <div
+                            key={`${barcode}-${idx}`}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '6px 12px',
+                              borderBottom: '1px solid #f4eee7',
+                              fontSize: 13
+                            }}
+                          >
+                            <div>
+                              <strong style={{ fontFamily: 'monospace' }}>{barcode}</strong>
+                              {skuCode && <span style={{ marginLeft: 8, color: '#766a5e', fontSize: 12 }}>({skuCode})</span>}
+                            </div>
+                            <button
+                              type="button"
+                              title="Hủy mã này"
+                              onClick={() => handleFgRemoveScan(barcode, skuId)}
+                              disabled={fgBusy}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#a52e20',
+                                cursor: 'pointer',
+                                padding: '2px 6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                fontSize: 12
+                              }}
+                            >
+                              <X size={14} /> Gỡ
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ padding: '14px', textAlign: 'center', color: '#9b9186', fontSize: 13 }}>
+                          Chưa có mã nào được quét.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <footer className="mo-modal-foot" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px' }}>
+              <button
+                type="button"
+                className="btn-ara-secondary"
+                onClick={() => {
+                  stopFgCamera();
+                  setFgPickingDoc(null);
+                }}
+              >
+                Lưu tạm & Đóng
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={fgBusy || (fgPickingDoc.totalScannedQty || 0) === 0}
+                onClick={handleFgConfirmOutbound}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 22px',
+                  fontWeight: 600,
+                  fontSize: 14,
+                  background: (fgPickingDoc.totalScannedQty || 0) >= (fgPickingDoc.totalQuantity || 0) ? '#286f3a' : undefined,
+                  borderColor: (fgPickingDoc.totalScannedQty || 0) >= (fgPickingDoc.totalQuantity || 0) ? '#286f3a' : undefined
+                }}
+              >
+                <CheckCircle2 size={16} />
+                Xác nhận xuất kho ({fgPickingDoc.totalScannedQty || 0}/{fgPickingDoc.totalQuantity || 0})
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: Xem chi tiết phiếu xuất thành phẩm đã hoàn tất */}
+      {/* ========================================================= */}
+      {fgDetailDoc && (
+        <div className="mo-overlay top" role="dialog" aria-modal="true">
+          <div className="mo-modal" style={{ maxWidth: 800 }}>
+            <header className="mo-modal-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 20 }}>Chi tiết phiếu xuất kho thành phẩm</h2>
+                <span style={{ fontSize: 13, color: '#766a5e' }}>{fgDetailDoc.documentCode || fgDetailDoc.code}</span>
+              </div>
+              <button type="button" onClick={() => setFgDetailDoc(null)} style={{ background: 'transparent', border: 'none', fontSize: 24, cursor: 'pointer' }}>
+                ×
+              </button>
+            </header>
+
+            <div className="mo-modal-body" style={{ maxHeight: '70vh', overflowY: 'auto', padding: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+                <div style={{ background: '#fff', padding: 12, borderRadius: 8, border: '1px solid #ebd9c8' }}>
+                  <div style={{ fontSize: 12, color: '#766a5e' }}>Người nhận / Mục đích</div>
+                  <div style={{ fontWeight: 600, marginTop: 4 }}>{fgDetailDoc.recipient || '—'}</div>
+                </div>
+                <div style={{ background: '#fff', padding: 12, borderRadius: 8, border: '1px solid #ebd9c8' }}>
+                  <div style={{ fontSize: 12, color: '#766a5e' }}>Tổng số lượng</div>
+                  <div style={{ fontWeight: 600, marginTop: 4 }}>{fgDetailDoc.totalQuantity} chiếc</div>
+                </div>
+                <div style={{ background: '#fff', padding: 12, borderRadius: 8, border: '1px solid #ebd9c8' }}>
+                  <div style={{ fontSize: 12, color: '#766a5e' }}>Ngày tạo</div>
+                  <div style={{ fontWeight: 600, marginTop: 4 }}>{fgDetailDoc.createdAt ? new Date(fgDetailDoc.createdAt).toLocaleString('vi-VN') : '—'}</div>
+                </div>
+              </div>
+
+              {fgDetailDoc.note && (
+                <div style={{ background: '#fff', padding: 12, borderRadius: 8, border: '1px solid #ebd9c8', marginBottom: 16, fontSize: 13 }}>
+                  <strong>Ghi chú:</strong> {fgDetailDoc.note}
+                </div>
+              )}
+
+              <h4 style={{ margin: '0 0 10px' }}>Danh sách sản phẩm xuất kho</h4>
+              <div className="mo-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Sản phẩm</th>
+                      <th>SKU</th>
+                      <th>Số lượng</th>
+                      <th>Mã tem barcode đã xuất</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(fgDetailDoc.items || fgDetailDoc.lines || []).map((line, idx) => (
+                      <tr key={idx}>
+                        <td><strong>{line.productName || line.name || line.code}</strong></td>
+                        <td>{line.skuCode || line.code}</td>
+                        <td>{line.quantity} chiếc</td>
+                        <td>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 80, overflowY: 'auto' }}>
+                            {(line.scannedBarcodes || []).length ? (
+                              line.scannedBarcodes.map((bc, bIdx) => (
+                                <span key={bIdx} style={{ fontSize: 11, background: '#f5efe6', padding: '1px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
+                                  {bc}
+                                </span>
+                              ))
+                            ) : (
+                              <span style={{ color: '#9b9186', fontSize: 12 }}>—</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <footer className="mo-modal-foot">
+              <button onClick={() => setFgDetailDoc(null)}>Đóng</button>
             </footer>
           </div>
         </div>

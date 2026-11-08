@@ -205,10 +205,10 @@ router.post('/confirmations/status', async (req, res, next) => {
     if (!key) return sendError(res, 'Thiếu mã xác nhận', { code: 'INVALID_CONFIRMATION' }, 400);
     const prior = await FinishedGoodsBulkDocument.findOne({ confirmationKey: key }).lean();
     if (prior && (prior.confirmationHash !== confirmationPayloadHash(req.body) ||
-      String(prior.createdByUserId) !== String(req.user._id)))
+      (req.user?._id && prior.createdByUserId && String(prior.createdByUserId) !== String(req.user._id))))
       return sendError(res, 'Mã xác nhận thuộc nội dung khác', { code: 'CONFIRMATION_REUSED' }, 409);
     if (prior) return sendSuccess(res, 'Phiếu đã được xác nhận',
-      { document: receiptResponse(prior), matchType: 'CONFIRMATION_KEY' });
+      { document: receiptResponse(prior), matchType: 'CONFIRMATION_KEY', confirmed: true });
     // A receipt may have reached the server under another local attempt. The source ticket
     // is unique, so this local operation must not be sent again once that ticket is received.
     const sourceTicketId = String(req.body?.sourceTicketId || '');
@@ -218,10 +218,10 @@ router.post('/confirmations/status', async (req, res, next) => {
         documentCode, direction: 'IN', isDeleted: { $ne: true } }).lean();
       if (received)
         return sendSuccess(res, 'Lệnh đã có phiếu nhập kho',
-          { document: receiptResponse(received), matchType: 'SOURCE_TICKET' });
+          { document: receiptResponse(received), matchType: 'SOURCE_TICKET', confirmed: true });
     }
-    return sendError(res, 'Chưa có phiếu được xác nhận với mã này',
-      { code: 'CONFIRMATION_NOT_FOUND' }, 404);
+    return sendSuccess(res, 'Chưa có phiếu được xác nhận với mã này',
+      { confirmed: false, document: null, code: 'CONFIRMATION_NOT_FOUND' }, 200);
   } catch (error) { next(error); }
 });
 
@@ -232,26 +232,365 @@ router.get('/inbound-progress', async (req, res, next) => {
   catch (error) { next(error); }
 });
 
-/** Lists every manager-created finished-goods issue for the shared outbound queue. */
+/** Populates an outbound document with product details, SKU details, and locations */
+async function populateOutboundDocument(doc) {
+  const docObj = doc.toObject ? doc.toObject() : doc;
+  const skuIds = (docObj.items || []).map((it) => it.skuId);
+  const skus = await Sku.find({ _id: { $in: skuIds } }).select('skuCode skuBarcode color size productId').lean();
+  const products = await Product.find({ _id: { $in: skus.map((s) => s.productId) } }).select('productName productCode thumbnailUrl').lean();
+
+  const units = await ProductUnit.find({
+    skuId: { $in: skuIds },
+    inventoryStatus: 'AVAILABLE'
+  }).populate('warehouseId', 'locationCode rackCode floorNo binNo').limit(50).lean();
+
+  const bySku = new Map(skus.map((s) => [String(s._id), s]));
+  const byProduct = new Map(products.map((p) => [String(p._id), p]));
+  const locBySku = new Map();
+  for (const u of units) {
+    const k = String(u.skuId);
+    if (!locBySku.has(k) && u.warehouseId) {
+      locBySku.set(k, u.warehouseId);
+    }
+  }
+
+  const items = (docObj.items || []).map((line) => {
+    const sku = bySku.get(String(line.skuId));
+    const product = byProduct.get(String(sku?.productId || line.productId));
+    const loc = locBySku.get(String(line.skuId));
+    return {
+      productId: String(line.productId || sku?.productId || ''),
+      productName: product?.productName || '',
+      productCode: product?.productCode || '',
+      thumbnailUrl: product?.thumbnailUrl || null,
+      skuId: String(line.skuId),
+      skuCode: sku?.skuCode || '',
+      skuBarcode: sku?.skuBarcode || '',
+      color: sku?.color || '',
+      size: sku?.size || '',
+      quantity: line.quantity,
+      scannedQty: line.scannedQty || 0,
+      scannedBarcodes: line.scannedBarcodes || [],
+      location: loc ? {
+        locationCode: loc.locationCode,
+        rackCode: loc.rackCode,
+        floorNo: loc.floorNo,
+        binNo: loc.binNo,
+      } : null,
+      isCompleted: (line.scannedQty || 0) >= line.quantity,
+    };
+  });
+
+  const totalScannedQty = items.reduce((sum, it) => sum + (it.scannedQty || 0), 0);
+  const isAllScanned = items.length > 0 && items.every((it) => it.isCompleted);
+
+  return {
+    id: String(docObj._id),
+    _id: String(docObj._id),
+    documentCode: docObj.documentCode,
+    code: docObj.documentCode,
+    direction: docObj.direction,
+    status: docObj.status || 'WAITING_PICKING',
+    recipient: docObj.recipient || '',
+    note: docObj.note || '',
+    createdAt: docObj.createdAt,
+    totalQuantity: docObj.totalQuantity,
+    totalScannedQty,
+    isAllScanned,
+    items,
+    lines: items.map((it) => ({
+      code: it.skuCode,
+      name: it.productName,
+      quantity: it.quantity,
+      scannedQty: it.scannedQty,
+    })),
+  };
+}
+
+/** Lists all finished-goods outbound requests and documents. */
 router.get('/outbound-documents', async (req, res, next) => {
   try {
-    const documents = await FinishedGoodsBulkDocument.find({ direction: 'OUT',
-      isDeleted: { $ne: true } }).select('documentCode items.skuId items.quantity totalQuantity createdAt')
-      .sort({ createdAt: -1 }).lean();
-    const skus = await Sku.find({ _id: { $in: documents.flatMap((item) =>
-      item.items.map((line) => line.skuId)) } }).select('skuCode productId').lean();
-    const products = await Product.find({ _id: { $in: skus.map((item) => item.productId) } })
-      .select('productName').lean();
-    const bySku = new Map(skus.map((item) => [String(item._id), item]));
-    const byProduct = new Map(products.map((item) => [String(item._id), item]));
-    return sendSuccess(res, 'Phiếu xuất kho thành phẩm', { documents: documents.map((item) => ({
-      id: String(item._id), code: item.documentCode, createdAt: item.createdAt,
-      status: 'COMPLETED', totalQuantity: item.totalQuantity,
-      lines: item.items.map((line) => { const sku = bySku.get(String(line.skuId));
-        return { code: sku?.skuCode || String(line.skuId),
-          name: byProduct.get(String(sku?.productId))?.productName || '', quantity: line.quantity }; }),
-    })) });
+    const documents = await FinishedGoodsBulkDocument.find({
+      direction: 'OUT',
+      isDeleted: { $ne: true },
+    }).sort({ createdAt: -1 }).lean();
+
+    const populated = await Promise.all(documents.map(populateOutboundDocument));
+    return sendSuccess(res, 'Phiếu xuất kho thành phẩm', { documents: populated });
   } catch (error) { next(error); }
+});
+
+/** Gets single finished-goods outbound document detail. */
+router.get('/outbound-documents/:id', async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return sendError(res, 'Mã yêu cầu không hợp lệ', { code: 'INVALID_ID' }, 400);
+    }
+    const document = await FinishedGoodsBulkDocument.findOne({
+      _id: req.params.id,
+      direction: 'OUT',
+      isDeleted: { $ne: true },
+    }).lean();
+    if (!document) {
+      return sendError(res, 'Không tìm thấy yêu cầu xuất kho', { code: 'DOCUMENT_NOT_FOUND' }, 404);
+    }
+    const populated = await populateOutboundDocument(document);
+    return sendSuccess(res, 'Chi tiết yêu cầu xuất kho thành phẩm', { document: populated });
+  } catch (error) { next(error); }
+});
+
+/** Warehouse staff scans barcode for an outbound request. */
+router.post('/outbound-documents/:id/scan', async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return sendError(res, 'Mã yêu cầu không hợp lệ', { code: 'INVALID_ID' }, 400);
+    }
+    const rawBarcode = String(req.body?.barcode || '').trim();
+    if (!rawBarcode) {
+      return sendError(res, 'Vui lòng cung cấp mã barcode để quét', { code: 'BARCODE_REQUIRED' }, 400);
+    }
+
+    const document = await FinishedGoodsBulkDocument.findOne({
+      _id: req.params.id,
+      direction: 'OUT',
+      isDeleted: { $ne: true },
+    });
+    if (!document) {
+      return sendError(res, 'Không tìm thấy yêu cầu xuất kho', { code: 'DOCUMENT_NOT_FOUND' }, 404);
+    }
+    if (document.status === 'COMPLETED') {
+      return sendError(res, 'Yêu cầu xuất kho này đã hoàn tất', { code: 'ALREADY_COMPLETED' }, 400);
+    }
+    if (document.status === 'CANCELLED') {
+      return sendError(res, 'Yêu cầu xuất kho này đã bị hủy', { code: 'CANCELLED' }, 400);
+    }
+
+    // Check if barcode already scanned in this document
+    const alreadyScanned = document.items.some((line) => line.scannedBarcodes?.includes(rawBarcode));
+    if (alreadyScanned) {
+      return sendError(res, `Mã tem ${rawBarcode} đã được quét trong yêu cầu này rồi`, { code: 'ALREADY_SCANNED' }, 400);
+    }
+
+    // 1. Try finding ProductUnit by barcode
+    let matchedUnit = await ProductUnit.findOne({ barcode: rawBarcode, inventoryStatus: 'AVAILABLE' });
+    let matchedLine = null;
+    let registeredBarcode = rawBarcode;
+    let matchedSku = null;
+
+    if (matchedUnit) {
+      matchedLine = document.items.find((line) => String(line.skuId) === String(matchedUnit.skuId));
+      if (!matchedLine) {
+        return sendError(res, `Sản phẩm quét (${rawBarcode}) không thuộc danh sách yêu cầu xuất kho này`, { code: 'SKU_NOT_IN_REQUEST' }, 400);
+      }
+      matchedSku = await Sku.findById(matchedUnit.skuId).select('skuCode color size').lean();
+    } else {
+      // 2. Try matching SKU barcode or skuCode
+      const sku = await Sku.findOne({
+        $or: [
+          { skuBarcode: rawBarcode },
+          { skuCode: { $regex: new RegExp(`^${rawBarcode}$`, 'i') } }
+        ],
+        isDeleted: { $ne: true }
+      }).lean();
+
+      if (sku) {
+        matchedLine = document.items.find((line) => String(line.skuId) === String(sku._id));
+        if (!matchedLine) {
+          return sendError(res, `SKU ${sku.skuCode} không thuộc danh sách yêu cầu xuất kho này`, { code: 'SKU_NOT_IN_REQUEST' }, 400);
+        }
+        matchedSku = sku;
+        const allScannedBarcodes = document.items.flatMap((l) => l.scannedBarcodes || []);
+        const availableUnit = await ProductUnit.findOne({
+          skuId: sku._id,
+          inventoryStatus: 'AVAILABLE',
+          barcode: { $nin: allScannedBarcodes }
+        }).lean();
+        if (availableUnit) {
+          registeredBarcode = availableUnit.barcode;
+        }
+      }
+    }
+
+    if (!matchedLine) {
+      return sendError(res, `Không tìm thấy sản phẩm khả dụng với mã: ${rawBarcode}`, { code: 'BARCODE_NOT_FOUND' }, 404);
+    }
+
+    if ((matchedLine.scannedQty || 0) >= matchedLine.quantity) {
+      return sendError(res, `Mặt hàng ${matchedSku?.skuCode || 'này'} đã quét đủ số lượng (${matchedLine.quantity} chiếc)`, { code: 'QUANTITY_REACHED' }, 400);
+    }
+
+    // Update scanned quantity and barcode array
+    matchedLine.scannedQty = (matchedLine.scannedQty || 0) + 1;
+    if (!matchedLine.scannedBarcodes) matchedLine.scannedBarcodes = [];
+    matchedLine.scannedBarcodes.push(registeredBarcode);
+    document.status = 'PICKING';
+    await document.save();
+
+    const populated = await populateOutboundDocument(document);
+    return sendSuccess(res, `Đã quét thành công ${matchedSku?.skuCode || registeredBarcode}`, {
+      document: populated,
+      scannedBarcode: registeredBarcode,
+      matchedSku: matchedSku?.skuCode,
+      lineScanned: matchedLine.scannedQty,
+      lineTotal: matchedLine.quantity,
+    });
+  } catch (error) { next(error); }
+});
+
+/** Warehouse staff removes an accidental scan. */
+router.post('/outbound-documents/:id/remove-scan', async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return sendError(res, 'Mã yêu cầu không hợp lệ', { code: 'INVALID_ID' }, 400);
+    }
+    const rawBarcode = String(req.body?.barcode || '').trim();
+    const skuId = String(req.body?.skuId || '').trim();
+
+    const document = await FinishedGoodsBulkDocument.findOne({
+      _id: req.params.id,
+      direction: 'OUT',
+      isDeleted: { $ne: true },
+    });
+    if (!document) {
+      return sendError(res, 'Không tìm thấy yêu cầu xuất kho', { code: 'DOCUMENT_NOT_FOUND' }, 404);
+    }
+    if (document.status === 'COMPLETED') {
+      return sendError(res, 'Yêu cầu xuất kho này đã hoàn tất', { code: 'ALREADY_COMPLETED' }, 400);
+    }
+
+    let modified = false;
+    for (const line of document.items) {
+      if (skuId && String(line.skuId) !== skuId) continue;
+      if (rawBarcode) {
+        const idx = (line.scannedBarcodes || []).indexOf(rawBarcode);
+        if (idx !== -1) {
+          line.scannedBarcodes.splice(idx, 1);
+          line.scannedQty = Math.max(0, (line.scannedQty || 1) - 1);
+          modified = true;
+          break;
+        }
+      } else if (skuId && (line.scannedQty || 0) > 0) {
+        line.scannedQty = Math.max(0, line.scannedQty - 1);
+        if (line.scannedBarcodes?.length) line.scannedBarcodes.pop();
+        modified = true;
+        break;
+      }
+    }
+
+    if (!modified) {
+      return sendError(res, 'Không tìm thấy mã vạch để hủy trong danh sách đã quét', { code: 'SCAN_NOT_FOUND' }, 404);
+    }
+
+    const totalScanned = document.items.reduce((s, l) => s + (l.scannedQty || 0), 0);
+    if (totalScanned === 0) {
+      document.status = 'WAITING_PICKING';
+    }
+    await document.save();
+
+    const populated = await populateOutboundDocument(document);
+    return sendSuccess(res, 'Đã gỡ mã quét thành công', { document: populated });
+  } catch (error) { next(error); }
+});
+
+/** Staff confirms picking completion and executes outbound dispatch & inventory deduction. */
+router.post('/outbound-documents/:id/confirm', async (req, res, next) => {
+  let session;
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return sendError(res, 'Mã yêu cầu không hợp lệ', { code: 'INVALID_ID' }, 400);
+    }
+    const document = await FinishedGoodsBulkDocument.findOne({
+      _id: req.params.id,
+      direction: 'OUT',
+      isDeleted: { $ne: true },
+    });
+    if (!document) {
+      return sendError(res, 'Không tìm thấy yêu cầu xuất kho', { code: 'DOCUMENT_NOT_FOUND' }, 404);
+    }
+    if (document.status === 'COMPLETED') {
+      return sendError(res, 'Yêu cầu xuất kho này đã được hoàn tất trước đó', { code: 'ALREADY_COMPLETED' }, 400);
+    }
+
+    const totalScanned = document.items.reduce((sum, item) => sum + (item.scannedQty || 0), 0);
+    if (totalScanned === 0) {
+      return sendError(res, 'Chưa quét sản phẩm nào. Vui lòng quét mã sản phẩm trước khi xuất kho', { code: 'NOTHING_SCANNED' }, 400);
+    }
+
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      const allBarcodesToMark = [];
+
+      for (const line of document.items) {
+        const qtyToDeduct = line.scannedQty || 0;
+        if (qtyToDeduct <= 0) continue;
+
+        const sku = await Sku.findById(line.skuId).session(session);
+        if (!sku) throw createBulkStockRequestError('Không tìm thấy SKU trong hệ thống', 'SKU_NOT_FOUND', 404);
+
+        const before = sku.onHandQty || 0;
+        const updated = await Sku.findOneAndUpdate(
+          { _id: sku._id },
+          { $inc: { onHandQty: -qtyToDeduct } },
+          { new: true, session }
+        );
+        if (!updated) throw createBulkStockRequestError('Tồn kho đã thay đổi, vui lòng thử lại', 'STOCK_CHANGED', 409);
+
+        // Record Inventory Transaction
+        await InventoryTransaction.create([{
+          transactionCode: `FGM-${randomUUID()}`,
+          warehouseType: 'FINISHED_GOODS',
+          itemType: 'FINISHED_SKU',
+          skuId: sku._id,
+          transactionType: 'MANUAL_OUTBOUND',
+          referenceModel: 'FinishedGoodsBulkDocument',
+          referenceId: document._id,
+          quantityChange: -qtyToDeduct,
+          onHandBefore: before,
+          onHandAfter: updated.onHandQty,
+          unitCostSnapshot: sku.unitCogs || 0,
+          totalValueSnapshot: qtyToDeduct * (sku.unitCogs || 0),
+          performedByUserId: req.user?._id || document.createdByUserId,
+          note: document.note || `Xuất kho thành phẩm theo yêu cầu ${document.documentCode}`,
+        }], { session });
+
+        if (line.scannedBarcodes?.length) {
+          allBarcodesToMark.push(...line.scannedBarcodes);
+        }
+      }
+
+      // Mark ProductUnits as UNAVAILABLE
+      if (allBarcodesToMark.length > 0) {
+        await ProductUnit.updateMany(
+          { barcode: { $in: allBarcodesToMark } },
+          { $set: { inventoryStatus: 'UNAVAILABLE', packedAt: new Date() } },
+          { session }
+        );
+      }
+
+      document.status = 'COMPLETED';
+      await document.save({ session });
+    });
+
+    publishRealtime('finished-goods:changed', {
+      warehouseType: 'FINISHED_GOODS',
+      direction: 'OUT',
+      status: 'COMPLETED',
+      documentId: String(document._id),
+      documentCode: document.documentCode,
+      totalQuantity: totalScanned,
+      skuIds: document.items.map((i) => String(i.skuId)),
+    });
+
+    const populated = await populateOutboundDocument(document);
+    return sendSuccess(res, `Đã xuất kho thành công ${totalScanned} sản phẩm thành phẩm`, {
+      document: populated,
+    });
+  } catch (error) {
+    if (error.status) return sendError(res, error.message, { code: error.code }, error.status);
+    next(error);
+  } finally {
+    if (session) await session.endSession();
+  }
 });
 
 router.get('/documents', async (req, res, next) => {
@@ -704,50 +1043,52 @@ router.post('/documents', async (req, res, next) => {
         }
         if (!sku) throw createBulkStockRequestError(`Không tìm thấy SKU cho ${product.productCode}`, 'SKU_NOT_FOUND', 404);
         if (!sku.isActive) throw createBulkStockRequestError(`SKU ${sku.skuCode} đã ngừng sử dụng`, 'SKU_INACTIVE', 409);
-        if (direction === 'OUT' && await FinishedGoodsBatch.exists({ skuId: sku._id,
-          currentOnHandQty: { $gt: 0 }, isDeleted: { $ne: true } }).session(session)) {
-          throw createBulkStockRequestError('Hàng theo lô cần xuất bằng barcode từng chiếc', 'BARCODE_OUTBOUND_REQUIRED', 409);
-        }
         const resolvedKey = String(sku._id);
         if (resolvedSkus.has(resolvedKey)) throw createBulkStockRequestError(`SKU ${sku.skuCode} bị lặp trong phiếu`, 'DUPLICATE_LINE');
         resolvedSkus.add(resolvedKey);
         const quantity = Number(item.quantity);
         const before = sku.onHandQty || 0;
-        if (direction === 'OUT' && before - (sku.reservedQty || 0) < quantity) {
-          throw createBulkStockRequestError(`Tồn khả dụng của ${sku.skuCode} không đủ`, 'INSUFFICIENT_STOCK', 409);
+        if (direction === 'OUT' && before < quantity) {
+          throw createBulkStockRequestError(`Tồn kho của ${sku.skuCode} không đủ (hiện có ${before}, yêu cầu ${quantity})`, 'INSUFFICIENT_STOCK', 409);
         }
-        const delta = direction === 'IN' ? quantity : -quantity;
-        const updated = delta === 0 ? sku : await Sku.findOneAndUpdate(
-          { _id: sku._id, ...(direction === 'OUT' ? { $expr: { $gte: [{ $subtract: [{ $ifNull: ['$onHandQty', 0] }, { $ifNull: ['$reservedQty', 0] }] }, quantity] } } : {}) },
-          { $inc: { onHandQty: delta } }, { new: true, session }
-        );
-        if (!updated) throw createBulkStockRequestError('Tồn kho đã thay đổi, hãy thử lại', 'STOCK_CHANGED', 409);
-        if (delta !== 0) await InventoryTransaction.create([{
-          transactionCode: `FGM-${randomUUID()}`, warehouseType: 'FINISHED_GOODS', itemType: 'FINISHED_SKU',
-          skuId: sku._id, transactionType: direction === 'IN' ? 'MANUAL_INBOUND' : 'MANUAL_OUTBOUND',
-          referenceModel: 'FinishedGoodsBulkDocument', referenceId: documentId,
-          ...(direction === 'IN' ? { locationId: location._id } : {}),
-          quantityChange: delta, onHandBefore: before, onHandAfter: updated.onHandQty,
-          unitCostSnapshot: sku.unitCogs || 0, totalValueSnapshot: quantity * (sku.unitCogs || 0), performedByUserId: req.user._id, note,
-        }], { session });
-        let barcodes = [];
-        if (direction === 'IN' && quantity > 0) {
-          barcodes = Array.from({ length: quantity }, () => `ARA${randomUUID().replace(/-/g, '').slice(0, 20).toUpperCase()}`);
-          const [batch] = await FinishedGoodsBatch.create([{
-            batchCode: `FGB-${randomUUID()}`, skuId: sku._id, skuBarcode: sku.skuBarcode,
-            locationId: location._id, initialQty: quantity, labeledQty: quantity, currentOnHandQty: quantity,
-            fifoInboundTimestamp: new Date(),
+        if (direction === 'IN') {
+          const delta = quantity;
+          const updated = delta === 0 ? sku : await Sku.findOneAndUpdate(
+            { _id: sku._id },
+            { $inc: { onHandQty: delta } }, { new: true, session }
+          );
+          if (!updated) throw createBulkStockRequestError('Tồn kho đã thay đổi, hãy thử lại', 'STOCK_CHANGED', 409);
+          if (delta !== 0) await InventoryTransaction.create([{
+            transactionCode: `FGM-${randomUUID()}`, warehouseType: 'FINISHED_GOODS', itemType: 'FINISHED_SKU',
+            skuId: sku._id, transactionType: 'MANUAL_INBOUND',
+            referenceModel: 'FinishedGoodsBulkDocument', referenceId: documentId,
+            locationId: location._id,
+            quantityChange: delta, onHandBefore: before, onHandAfter: updated.onHandQty,
+            unitCostSnapshot: sku.unitCogs || 0, totalValueSnapshot: quantity * (sku.unitCogs || 0), performedByUserId: req.user?._id, note,
           }], { session });
-          await ProductUnit.insertMany(barcodes.map((barcode) => ({
-            barcode, barcodeFormat: 'CODE_128', skuId: sku._id,
-            warehouseId: location._id, batchId: batch._id,
-            receivingDocumentId: documentId, inventoryStatus: 'AVAILABLE',
-          })), { session });
-        }
-        lines.push({ productId: product._id, skuId: sku._id, quantity,
-          ...(direction === 'IN' ? { expectedQty: Number(item.expectedQty),
+
+          let barcodes = [];
+          if (quantity > 0) {
+            barcodes = Array.from({ length: quantity }, () => `ARA${randomUUID().replace(/-/g, '').slice(0, 20).toUpperCase()}`);
+            const [batch] = await FinishedGoodsBatch.create([{
+              batchCode: `FGB-${randomUUID()}`, skuId: sku._id, skuBarcode: sku.skuBarcode,
+              locationId: location._id, initialQty: quantity, labeledQty: quantity, currentOnHandQty: quantity,
+              fifoInboundTimestamp: new Date(),
+            }], { session });
+            await ProductUnit.insertMany(barcodes.map((barcode) => ({
+              barcode, barcodeFormat: 'CODE_128', skuId: sku._id,
+              warehouseId: location._id, batchId: batch._id,
+              receivingDocumentId: documentId, inventoryStatus: 'AVAILABLE',
+            })), { session });
+          }
+          lines.push({ productId: product._id, skuId: sku._id, quantity,
+            expectedQty: Number(item.expectedQty),
             receivedQty: Number(item.receivedQty), repairQty: Number(item.receivedQty) - quantity,
-            repairStatus: Number(item.receivedQty) > quantity ? 'WAITING_RETURN' : undefined, barcodes } : {}) });
+            repairStatus: Number(item.receivedQty) > quantity ? 'WAITING_RETURN' : undefined, barcodes });
+        } else {
+          // OUT: Created as Bulk Outbound Request for Warehouse Staff to pick & scan
+          lines.push({ productId: product._id, skuId: sku._id, quantity, scannedQty: 0, scannedBarcodes: [] });
+        }
       }
       if (direction === 'IN') {
         const totalAccepted = lines.reduce((sum, line) => sum + line.quantity, 0);
@@ -758,12 +1099,14 @@ router.post('/documents', async (req, res, next) => {
       }
       [saved] = await FinishedGoodsBulkDocument.create([{
         _id: documentId, documentCode, direction, items: lines,
+        status: direction === 'OUT' ? 'WAITING_PICKING' : 'COMPLETED',
+        recipient: req.body?.recipient || '',
         ...(direction === 'IN' ? { sourceTicketId: sourceTicket._id } : {}),
         ...(direction === 'IN' ? { locationId: location._id } : {}),
         // The document and inventory writes share a transaction and one immutable retry identity.
         confirmationKey, confirmationHash,
         totalQuantity: lines.reduce((total, line) => total + line.quantity, 0),
-        note, createdByUserId: req.user._id,
+        note, createdByUserId: req.user?._id || new mongoose.Types.ObjectId(),
       }], { session });
       if (direction === 'IN') {
         const allocationError = receiptAllocationError(lines, allocations);
@@ -783,13 +1126,21 @@ router.post('/documents', async (req, res, next) => {
         skuIds: saved.items.map((item) => String(item.skuId)) });
       if (allocations.length) publishRealtime('warehouse-putaway:changed', { warehouseType: 'FINISHED_GOODS',
         receiptId: String(saved._id), documentCode: saved.documentCode, reason: 'RECEIPT_AND_ALLOCATION_CONFIRMED' });
+    } else if (direction === 'OUT') {
+      publishRealtime('finished-goods:changed', { warehouseType: 'FINISHED_GOODS', direction,
+        status: saved.status,
+        documentId: String(saved._id), documentCode: saved.documentCode, totalQuantity: saved.totalQuantity,
+        skuIds: saved.items.map((item) => String(item.skuId)) });
     }
-    return sendSuccess(res, direction === 'IN' ? 'Đã nhập kho hàng loạt' : 'Đã xuất kho hàng loạt', {
+    return sendSuccess(res, direction === 'IN' ? 'Đã nhập kho hàng loạt' : 'Đã tạo yêu cầu xuất kho hàng loạt', {
       document: { id: String(saved._id), documentCode: saved.documentCode, direction: saved.direction,
+        status: saved.status, recipient: saved.recipient,
         lineCount: saved.items.length, totalQuantity: saved.totalQuantity,
         items: direction === 'IN' ? saved.items.map((item) => ({ skuId: String(item.skuId), barcodes: item.barcodes, expectedQty: item.expectedQty,
           receivedQty: item.receivedQty, acceptedQty: item.quantity, repairQty: item.repairQty,
-          repairStatus: item.repairStatus })) : undefined },
+          repairStatus: item.repairStatus })) : saved.items.map((item) => ({
+            skuId: String(item.skuId), quantity: item.quantity, scannedQty: item.scannedQty || 0,
+          })) },
     }, 201);
   } catch (error) {
     // A concurrent retry may race the unique index; return the first committed result only if it matches.

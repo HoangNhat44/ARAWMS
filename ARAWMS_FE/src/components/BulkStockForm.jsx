@@ -40,6 +40,7 @@ export default function BulkStockForm({ direction, products, ownerId, sourceTick
     quantity: String(item.expectedQty), repairQty: '0',
   }));
   const [documentCode, setDocumentCode] = useState('');
+  const [recipient, setRecipient] = useState('');
   const [note, setNote] = useState('');
   const [lines, setLines] = useState([createEmptyStockLine()]);
   const [saving, setSaving] = useState(false);
@@ -61,7 +62,9 @@ export default function BulkStockForm({ direction, products, ownerId, sourceTick
     finishedGoodsOffline.getDraft(ownerId, draftKey).then((draft) => {
       if (!active) return;
       if (draft) {
-        setDocumentCode(sourceTicket ? `NK-${sourceTicket.code}` : draft.documentCode || ''); setNote(draft.note || '');
+        setDocumentCode(sourceTicket ? `NK-${sourceTicket.code}` : draft.documentCode || '');
+        setRecipient(draft.recipient || '');
+        setNote(draft.note || '');
         setLines(sourceTicket ? requestLines().map((line) => {
           const prior = (draft.lines || []).find((item) => item.skuId === line.skuId);
           return prior ? { ...line, receivedQty: prior.receivedQty, quantity: prior.quantity,
@@ -89,7 +92,7 @@ export default function BulkStockForm({ direction, products, ownerId, sourceTick
   useEffect(() => {
     if (!restored || !ownerId) return undefined;
     const timer = window.setTimeout(() => {
-      finishedGoodsOffline.saveDraft(ownerId, draftKey, { documentCode, note, lines, allocations, confirmationKey })
+      finishedGoodsOffline.saveDraft(ownerId, draftKey, { documentCode, recipient, note, lines, allocations, confirmationKey })
         .then(() => setLocalStatus('Nháp · Đã lưu trên máy'))
         .catch((failure) => setError(`Không lưu được trên thiết bị: ${failure.message}`));
     }, 400);
@@ -145,7 +148,7 @@ export default function BulkStockForm({ direction, products, ownerId, sourceTick
   /** Flushes the complete inspection and allocation draft before a network attempt or manual save. */
   const saveNow = async () => {
     if (!ownerId) throw new Error('Cần đăng nhập để lưu phiếu trên thiết bị.');
-    await finishedGoodsOffline.saveDraft(ownerId, draftKey, { documentCode, note, lines, allocations, confirmationKey });
+    await finishedGoodsOffline.saveDraft(ownerId, draftKey, { documentCode, recipient, note, lines, allocations, confirmationKey });
     setLocalStatus('Nháp · Đã lưu trên máy');
   };
 
@@ -220,7 +223,7 @@ export default function BulkStockForm({ direction, products, ownerId, sourceTick
         return;
       }
       const payload = {
-        direction, documentCode, note, confirmationKey,
+        direction, documentCode, recipient, note, confirmationKey,
         ...(direction === 'IN' ? { sourceTicketId: sourceTicket?.id, draftKey } : {}),
         ...(direction === 'IN' ? { allocations: requested.map((row) => ({
           skuId: row.skuId, targetLocationId: row.locationId, allocatedQuantity: Number(row.quantity) })) } : {}),
@@ -264,12 +267,23 @@ export default function BulkStockForm({ direction, products, ownerId, sourceTick
       .reduce((sum, row) => sum + (Number(row.quantity) || 0), 0) !== Number(line.quantity));
   const invalidAllocation = direction === 'IN' && (invalidAllocationRows || allocationIncomplete);
   return <section className="product-card receiving-card">
-    <div className="product-card-head"><div><span className="product-section-number">{direction === 'IN' ? '02' : '01'}</span><h2>{direction === 'IN' ? 'Kiểm nhận và chọn vị trí kho' : 'Phiếu xuất kho'}</h2></div><span className="product-badge active">{direction === 'IN' ? 'Theo lệnh kỹ thuật' : 'Xuất kho'}</span></div>
-    {direction === 'IN' && <p className="product-muted receiving-intro">Lệnh {sourceTicket?.code} ghi số lượng đạt KCS theo từng SKU. Nhập số thực nhận, số đạt và chọn kệ; chỉ số lượng đạt được cấp barcode riêng từng chiếc.</p>}
+    <div className="product-card-head"><div><span className="product-section-number">{direction === 'IN' ? '02' : '01'}</span><h2>{direction === 'IN' ? 'Kiểm nhận và chọn vị trí kho' : 'Tạo yêu cầu xuất kho hàng loạt'}</h2></div><span className="product-badge active">{direction === 'IN' ? 'Theo lệnh kỹ thuật' : 'Yêu cầu xuất kho'}</span></div>
+    {direction === 'IN' ? (
+      <p className="product-muted receiving-intro">Lệnh {sourceTicket?.code} ghi số lượng đạt KCS theo từng SKU. Nhập số thực nhận, số đạt và chọn kệ; chỉ số lượng đạt được cấp barcode riêng từng chiếc.</p>
+    ) : (
+      <p className="product-muted receiving-intro">Lập yêu cầu xuất kho thành phẩm gửi đến Nhân viên kho. Nhân viên kho sẽ lấy hàng trên kệ, quét mã barcode và hoàn tất xuất kho theo đúng yêu cầu.</p>
+    )}
     <form onSubmit={submitBulkStockDocument} style={{ display: 'grid', gap: '1rem', marginTop: '1rem' }}>
-      <label style={{ maxWidth: 400 }}>{direction === 'IN' ? 'Mã biên bản nhập kho *' : 'Mã phiếu xuất kho *'}
-        <input style={input} required maxLength={80} pattern="[A-Za-z0-9._/-]{2,80}" title="2–80 ký tự: chữ, số, dấu chấm, gạch dưới hoặc gạch ngang" value={documentCode} readOnly={direction === 'IN'} onChange={(event) => setDocumentCode(event.target.value.toUpperCase())} placeholder={direction === 'IN' ? 'Theo lệnh kỹ thuật' : 'Ví dụ: XK-2026-001'} />
-      </label>
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        <label style={{ minWidth: 260, flex: 1 }}>{direction === 'IN' ? 'Mã biên bản nhập kho *' : 'Mã yêu cầu xuất kho *'}
+          <input style={input} required maxLength={80} pattern="[A-Za-z0-9._\/\\-]{2,80}" title="2–80 ký tự: chữ, số, dấu chấm, gạch dưới hoặc gạch ngang" value={documentCode} readOnly={direction === 'IN'} onChange={(event) => setDocumentCode(event.target.value.toUpperCase())} placeholder={direction === 'IN' ? 'Theo lệnh kỹ thuật' : 'Ví dụ: YCXK-2026-001'} />
+        </label>
+        {direction !== 'IN' && (
+          <label style={{ minWidth: 260, flex: 1 }}>Người nhận / Mục đích xuất
+            <input style={input} maxLength={200} value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="Ví dụ: Showroom 1, Đơn hàng đối tác..." />
+          </label>
+        )}
+      </div>
       <div className="product-table-scroll"><table className="product-table receiving-table">
         <thead><tr><th>Sản phẩm</th><th>SKU</th>{direction === 'IN' && <><th>Xưởng báo giao</th><th>Thực nhận</th></>}<th>{direction === 'IN' ? 'Đạt nhập kho' : 'Số lượng'}</th>{direction === 'IN' && <th>Trả xưởng sửa</th>}<th /></tr></thead>
         <tbody>{lines.map((line) => {
@@ -360,7 +374,7 @@ export default function BulkStockForm({ direction, products, ownerId, sourceTick
       {invalidAllocation && <p role="alert" className="receiving-quantity-error">Chọn đủ ô kệ cho toàn bộ số lượng đạt của từng SKU. Số phân bổ phải hợp lệ và không vượt sức chứa ô.</p>}
       <div style={{ display: 'flex', gap: '.75rem' }}>
         <button className="btn-ara-secondary" disabled={saving || !restored} type="button" onClick={() => saveNow().catch((failure) => setError(failure.message))}>Lưu kết quả trên máy</button>
-        <button className="btn-ara-primary" disabled={saving || !restored || invalidInspection || invalidAllocation || products.length === 0 || (direction === 'IN' && loadingBins)} type="submit">{saving ? 'Đang lưu phiếu...' : `Xác nhận ${direction === 'IN' ? 'nhập' : 'xuất'} kho`}</button>
+        <button className="btn-ara-primary" disabled={saving || !restored || invalidInspection || invalidAllocation || products.length === 0 || (direction === 'IN' && loadingBins)} type="submit">{saving ? 'Đang gửi...' : direction === 'IN' ? 'Xác nhận nhập kho' : 'Tạo yêu cầu xuất kho'}</button>
         <button className="btn-ara-secondary" disabled={saving} type="button" onClick={() => {
           if (window.confirm('Đóng phiếu đang nhập? Bản nháp đã lưu trên thiết bị vẫn được giữ lại.')) onCancel();
         }}>Hủy</button>

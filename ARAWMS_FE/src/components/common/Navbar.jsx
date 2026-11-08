@@ -2,12 +2,12 @@
  * File: Navbar.jsx
  * Author: Duy Anh & Antigravity
  * Date: 2026-10-29
- * Description: Clean navigation bar with role modules, user badge, and logout.
+ * Description: Clean top navigation bar with 3 main role modules (Phân hệ Kỹ thuật, Quản lý kho, Nhân viên kho), user badge, and logout.
  */
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { LogOut, User as UserIcon, LogIn } from 'lucide-react';
+import { LogOut, User as UserIcon, LogIn, ShieldCheck, SlidersHorizontal, Box } from 'lucide-react';
 
 const Navbar = () => {
   const { user, logout } = useAuth();
@@ -19,7 +19,35 @@ const Navbar = () => {
     navigate('/login');
   };
 
-  const isGarmentRole = user?.roleCode === 'GARMENT_TECHNICIAN' || user?.roles?.includes('GARMENT_TECHNICIAN') || location.pathname.startsWith('/garment');
+  const isHomeActive = location.pathname === '/';
+  const isGarmentActive = location.pathname.startsWith('/garment');
+  const isManagerActive =
+    location.pathname.startsWith('/warehouse/raw-materials') ||
+    location.pathname.startsWith('/warehouse/finished-goods') ||
+    location.pathname.startsWith('/warehouse/products') ||
+    location.pathname.startsWith('/warehouse/layout') ||
+    location.pathname.startsWith('/warehouse/stocktake');
+  const isStaffActive =
+    location.pathname.startsWith('/warehouse/putaway') ||
+    location.pathname.startsWith('/warehouse/staff') ||
+    location.pathname.startsWith('/packing') ||
+    location.pathname.startsWith('/orders') ||
+    location.pathname.startsWith('/warehouse/shipping');
+
+  const navLinkStyle = (isActive) => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+    textDecoration: 'none',
+    fontSize: '0.92rem',
+    fontWeight: isActive ? 700 : 500,
+    color: isActive ? 'var(--ara-gold)' : 'var(--ara-noir-soft)',
+    background: isActive ? 'var(--ara-bg-surface)' : 'transparent',
+    border: isActive ? '1px solid var(--ara-gold)' : '1px solid transparent',
+    padding: '0.4rem 0.85rem',
+    borderRadius: 'var(--radius-sm)',
+    transition: 'all 0.2s ease',
+  });
 
   return (
     <header className="ara-navbar">
@@ -40,32 +68,43 @@ const Navbar = () => {
       <nav>
         <ul className="ara-nav-links">
           <li>
-            <Link to="/">Trang chủ</Link>
-          </li>
-
-          {/* Phân hệ Kỹ thuật xưởng (KCS) */}
-          <li>
-            <Link 
-              to="/garment/material-inbound-verification" 
-              style={location.pathname.startsWith('/garment') ? { color: 'var(--ara-gold)', fontWeight: 700 } : undefined}
-            >
-              Phân hệ Kỹ thuật may
+            <Link to="/" style={navLinkStyle(isHomeActive)}>
+              Trang chủ
             </Link>
           </li>
 
-          {/* Link kho vận đầy đủ */}
-          {!isGarmentRole && (
-            <>
-              <li><Link to="/orders/qr">Đơn hàng / QR</Link></li>
-              <li><Link to="/packing/qr">Đóng hàng</Link></li>
-              <li><Link to="/warehouse/putaway">Xếp hàng vào kệ</Link></li>
-              <li><Link to="/warehouse/finished-goods">Kho thành phẩm</Link></li>
-              <li><Link to="/warehouse/layout">Vị trí kho</Link></li>
-              <li><Link to="/warehouse/raw-materials/inbound">Nhập nguyên phụ liệu</Link></li>
-              <li><Link to="/warehouse/raw-materials/outbound">Xuất nguyên phụ liệu</Link></li>
-              <li><Link to="/warehouse/stocktake">Kiểm kê kho</Link></li>
-            </>
-          )}
+          {/* 1. Phân hệ Kỹ thuật */}
+          <li>
+            <Link 
+              to="/garment/material-inbound-verification" 
+              style={navLinkStyle(isGarmentActive)}
+            >
+              <ShieldCheck size={16} color={isGarmentActive ? 'var(--ara-gold)' : 'var(--ara-text-muted)'} />
+              <span>Phân hệ Kỹ thuật</span>
+            </Link>
+          </li>
+
+          {/* 2. Quản lý kho */}
+          <li>
+            <Link 
+              to="/warehouse/raw-materials/inbound" 
+              style={navLinkStyle(isManagerActive)}
+            >
+              <SlidersHorizontal size={16} color={isManagerActive ? 'var(--ara-gold)' : 'var(--ara-text-muted)'} />
+              <span>Quản lý kho</span>
+            </Link>
+          </li>
+
+          {/* 3. Nhân viên kho */}
+          <li>
+            <Link 
+              to="/warehouse/putaway" 
+              style={navLinkStyle(isStaffActive)}
+            >
+              <Box size={16} color={isStaffActive ? 'var(--ara-gold)' : 'var(--ara-text-muted)'} />
+              <span>Nhân viên kho</span>
+            </Link>
+          </li>
 
           {user ? (
             <>
@@ -93,7 +132,7 @@ const Navbar = () => {
                   fontWeight: 700,
                   letterSpacing: '0.04em',
                 }}>
-                  {user.roleCode || (user.roles && user.roles[0]) || 'GARMENT_TECHNICIAN'}
+                  {user.roleCode || (user.roles && user.roles[0]) || 'TEST_USER'}
                 </span>
               </li>
               <li>
