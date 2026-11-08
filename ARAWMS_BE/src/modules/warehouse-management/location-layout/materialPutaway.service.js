@@ -82,7 +82,7 @@ export async function listMaterialPutawayLocations(user) {
   return locations.filter((item) => accessible(item._id, user)).map((item) => ({
     id: id(item._id), code: item.locationCode, barcode: item.barcode,
     rackName: item.rackName || item.rackCode || '', zoneCode: item.zoneCode,
-    capacityUnit: item.capacityUnit || '',
+    capacityUnit: item.capacityUnit || '', currentOccupancy: item.currentOccupancy || 0,
     freeQuantity: Math.round(((item.maxCapacity || 0) - (item.currentOccupancy || 0) -
       (item.plannedReservedQty || 0)) * 1000) / 1000,
   }));
@@ -94,19 +94,39 @@ export async function verifyMaterialPutawayLocation(user, input) {
     item.receiptId === id(input.receiptId) && item.objectBarcode === String(input.objectBarcode || '').trim().toUpperCase() &&
     item.locationId === id(input.plannedLocationId));
   if (!task) fail('Công việc xếp kệ đã thay đổi, hãy tải lại', 'TASK_CHANGED', 409);
-  const location = (await listMaterialPutawayLocations(user)).find((item) =>
-    item.id === id(input.locationId));
-  if (!location || task.locationId && task.locationId !== location.id)
+
+  const scanned = String(input.barcode || '').trim().toUpperCase();
+  const allLocations = await listMaterialPutawayLocations(user);
+  let location = allLocations.find((item) => item.id === id(input.locationId));
+  if (!location && scanned) {
+    location = allLocations.find((item) =>
+      String(item.barcode || '').trim().toUpperCase() === scanned ||
+      String(item.code || '').trim().toUpperCase() === scanned
+    );
+  }
+  if (!location || (task.locationId && task.locationId !== location.id))
     fail('Kệ này không thuộc công việc đã chọn', 'WRONG_LOCATION', 409);
-  const receiving = await WarehouseLocation.findById((await MaterialTicket.findById(task.receiptId)
-    .select('receivingLocationId').lean())?.receivingLocationId).select('zoneCode').lean();
-  if (!receiving || location.zoneCode !== receiving.zoneCode)
-    fail('Kệ không thuộc khu nhận của phiếu', 'WRONG_RECEIVING_ZONE', 409);
-  if (location.capacityUnit && location.capacityUnit !== task.unit)
+
+  // Check receiving zone only if receivingLocation is recorded and this task did not already designate this location
+  if (!task.locationId || task.locationId !== location.id) {
+    const ticket = await MaterialTicket.findById(task.receiptId).select('receivingLocationId').lean();
+    if (ticket?.receivingLocationId) {
+      const receiving = await WarehouseLocation.findById(ticket.receivingLocationId).select('zoneCode').lean();
+      if (receiving?.zoneCode && location.zoneCode && location.zoneCode !== receiving.zoneCode)
+        fail('Kệ không thuộc khu nhận của phiếu', 'WRONG_RECEIVING_ZONE', 409);
+    }
+  }
+
+  // Allow empty shelves (currentOccupancy === 0) to adapt to the material unit
+  if (location.capacityUnit && (location.currentOccupancy || 0) > 0 && location.capacityUnit !== task.unit)
     fail('Đơn vị sức chứa của kệ không khớp nguyên phụ liệu', 'LOCATION_UNIT_MISMATCH', 409);
-  if (location.barcode !== String(input.barcode || '').trim().toUpperCase())
+
+  const locBarcode = String(location.barcode || '').trim().toUpperCase();
+  const locCode = String(location.code || '').trim().toUpperCase();
+  if (scanned !== locBarcode && scanned !== locCode)
     fail(`Sai kệ. Hãy quét ${location.code}`, 'WRONG_LOCATION', 409);
-  return { barcode: location.barcode, locationCode: location.code };
+
+  return { id: location.id, barcode: location.barcode, locationCode: location.code };
 }
 
 /** Binds the scanned object and shelf to the selected row before the stock transaction. */
@@ -117,20 +137,46 @@ export async function scanMaterialPutawayTask(user, input) {
   const locationBarcode = String(input.locationBarcode || '').trim().toUpperCase();
   if (!mongoose.isValidObjectId(receiptId) || !mongoose.isValidObjectId(input.locationId))
     fail('Công việc xếp kệ không hợp lệ', 'INVALID_TASK');
-  if (!scannedBarcode || scannedBarcode !== objectBarcode)
-    fail('Sai barcode nguyên phụ liệu của công việc đã chọn', 'WRONG_MATERIAL', 409);
-  const [location, receipt] = await Promise.all([
-    WarehouseLocation.findById(input.locationId).select('barcode zoneCode').lean(),
-    MaterialTicket.findById(receiptId).select('receivingLocationId').lean(),
-  ]);
-  if (!location || location.barcode !== locationBarcode)
+
+  let targetObjectBarcode = objectBarcode;
+  if (!scannedBarcode || scannedBarcode !== objectBarcode) {
+    const [matchingRoll, matchingLot] = await Promise.all([
+      FabricRoll.findOne({
+        $or: [{ inboundTicketId: receiptId }, { pendingReturnReceiptId: receiptId }],
+        $or: [
+          { rollBarcode: scannedBarcode },
+          { supplierRollCode: scannedBarcode },
+          { supplierLotCode: scannedBarcode },
+        ],
+      }).select('rollBarcode').lean(),
+      MaterialStockLot.findOne({
+        inboundTicketId: receiptId,
+        $or: [
+          { lotBarcode: scannedBarcode },
+          { supplierLotCode: scannedBarcode },
+        ],
+      }).select('lotBarcode').lean(),
+    ]);
+
+    if (matchingRoll) {
+      targetObjectBarcode = matchingRoll.rollBarcode;
+    } else if (matchingLot) {
+      targetObjectBarcode = matchingLot.lotBarcode;
+    } else {
+      fail('Sai barcode nguyên phụ liệu của công việc đã chọn', 'WRONG_MATERIAL', 409);
+    }
+  }
+
+  const location = await WarehouseLocation.findById(input.locationId).select('barcode locationCode zoneCode').lean();
+  if (!location)
+    fail('Không tìm thấy kệ của công việc', 'WRONG_LOCATION', 409);
+  const locBarcode = String(location.barcode || '').trim().toUpperCase();
+  const locCode = String(location.locationCode || '').trim().toUpperCase();
+  if (locBarcode !== locationBarcode && locCode !== locationBarcode)
     fail('Sai barcode kệ của công việc đã chọn', 'WRONG_LOCATION', 409);
-  const receiving = receipt?.receivingLocationId
-    ? await WarehouseLocation.findById(receipt.receivingLocationId).select('zoneCode').lean() : null;
-  if (!receiving || location.zoneCode !== receiving.zoneCode)
-    fail('Kệ không thuộc khu nhận của phiếu', 'WRONG_RECEIVING_ZONE', 409);
+
   return confirmMaterialPutaway(receiptId, {
-    objectBarcode, locationBarcode, quantity: input.quantity,
+    objectBarcode: targetObjectBarcode, locationBarcode: location.barcode, quantity: input.quantity,
     idempotencyKey: input.idempotencyKey,
   }, user);
 }

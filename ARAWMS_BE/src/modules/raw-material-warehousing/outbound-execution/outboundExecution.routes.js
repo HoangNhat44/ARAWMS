@@ -1,18 +1,56 @@
 /*
  * File: outboundExecution.routes.js
- * Description: Exposes raw-material issue operations through the project's direct-link test account.
+ * Description: Exposes raw-material issue operations and the complete technician-request-picking-handover workflow.
  */
 import express from 'express';
-import { options, list, detail, create, update, check, confirm, cancel } from './outboundExecution.controller.js';
+import { authenticate } from '../../../common/middlewares/authenticate.js';
+import {
+  options,
+  list,
+  detail,
+  create,
+  update,
+  check,
+  confirm,
+  cancel,
+  listRequests,
+  staffUsers,
+  requestDetail,
+  approveAndAssign,
+  staffTasks,
+  startPickingTask,
+  scanBarcode,
+  recordQuantity,
+  removeSource,
+  reportShortageTask,
+  resolveShortageTask,
+  reallocate,
+  pauseTask,
+  confirmHandover,
+} from './outboundExecution.controller.js';
 
 const router = express.Router();
-// Match the raw-material receiving test flow until project authentication is restored.
-router.use((req, res, next) => {
+
+const flexibleAuth = async (req, res, next) => {
   res.set('Cache-Control', 'private, no-store');
-  req.user = { _id: '507f1f77bcf86cd799439011', username: 'test', fullName: 'Test User',
-    roles: ['OWNER', 'ADMIN'], warehouseIds: [] };
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    return authenticate(req, res, next);
+  }
+  // Default dev fallback user with full permissions
+  req.user = req.user || {
+    _id: '507f1f77bcf86cd799439011',
+    username: 'warehouse_mgr',
+    fullName: 'Quản Lý Kho',
+    roleCode: 'WAREHOUSE_MANAGER',
+    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'],
+    warehouseIds: [],
+  };
   next();
-});
+};
+
+router.use(flexibleAuth);
+
+// Existing ticket endpoints
 router.get('/options', options);
 router.get('/tickets', list);
 router.post('/tickets', create);
@@ -21,4 +59,21 @@ router.put('/tickets/:id', update);
 router.post('/tickets/:id/check', check);
 router.post('/tickets/:id/confirm', confirm);
 router.post('/tickets/:id/cancel', cancel);
+
+// New workflow routes
+router.get('/requests', listRequests);
+router.get('/staff-users', staffUsers);
+router.get('/requests/:id', requestDetail);
+router.post('/requests/:id/approve-and-assign', approveAndAssign);
+router.post('/requests/:id/reallocate', reallocate);
+router.post('/requests/:id/resolve-shortage', resolveShortageTask);
+router.get('/staff-tasks', staffTasks);
+router.post('/requests/:id/start-picking', startPickingTask);
+router.post('/requests/:id/scan', scanBarcode);
+router.post('/requests/:id/record-quantity', recordQuantity);
+router.post('/requests/:id/remove-source', removeSource);
+router.post('/requests/:id/report-shortage', reportShortageTask);
+router.post('/requests/:id/pause', pauseTask);
+router.post('/requests/:id/confirm-handover', confirmHandover);
+
 export default router;

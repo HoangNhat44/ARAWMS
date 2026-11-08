@@ -78,7 +78,9 @@ export async function verifyPutawayLocation(allocationId, lineId, barcode) {
     layoutBin: true, warehouseType: 'FINISHED_GOODS', isDeleted: { $ne: true } }).lean();
   if (!target || target.status !== 'ACTIVE' || target.isFrozenForStocktake)
     fail('BIN_UNAVAILABLE', 'Ô cần xếp hiện không hoạt động');
-  if (!barcode || target.barcode !== String(barcode).trim())
+  const scanned = String(barcode || '').trim().toUpperCase();
+  if (!scanned || (String(target.barcode || '').trim().toUpperCase() !== scanned &&
+      String(target.locationCode || '').trim().toUpperCase() !== scanned))
     fail('WRONG_LOCATION', `Sai ô. Hãy quét ${target.locationCode}.`);
   return { locationCode: target.locationCode, barcode: target.barcode };
 }
@@ -116,7 +118,9 @@ export async function scanPutawayUnit(user, allocationId, lineId, input) {
         layoutBin: true, warehouseType: 'FINISHED_GOODS', isDeleted: { $ne: true } }).session(session);
       if (!target || target.status !== 'ACTIVE' || target.isFrozenForStocktake)
         fail('BIN_UNAVAILABLE', 'Ô cần xếp hiện không hoạt động');
-      if (target.barcode !== String(input.locationBarcode || '').trim())
+      const locScanned = String(input.locationBarcode || '').trim().toUpperCase();
+      if (String(target.barcode || '').trim().toUpperCase() !== locScanned &&
+          String(target.locationCode || '').trim().toUpperCase() !== locScanned)
         fail('WRONG_LOCATION', `Sai ô. Hãy quét ${target.locationCode}.`);
       const unit = await ProductUnit.findOne({ barcode }).session(session);
       if (!unit) fail('UNIT_NOT_FOUND', 'Không tìm thấy barcode sản phẩm', 404);

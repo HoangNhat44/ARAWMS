@@ -395,26 +395,38 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
       requireValue(accessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền cất phiếu này', 'RECEIPT_FORBIDDEN', 403);
       const previous = receipt.putawayEvents.find((event) => event.key === key);
       if (previous) {
-        requireValue(previous.barcode === barcode && previous.locationBarcode === locationBarcode &&
+        requireValue(previous.barcode === barcode && (previous.locationBarcode === locationBarcode ||
+          previous.locationBarcode?.toUpperCase() === locationBarcode.toUpperCase()) &&
           (input.quantity == null || same(previous.quantity, input.quantity)),
           'Mã thao tác đã dùng cho dữ liệu khác', 'IDEMPOTENCY_CONFLICT', 409);
         result = { alreadyProcessed: true, quantity: previous.quantity };
         return;
       }
-      const location = await WarehouseLocation.findOne({ barcode: locationBarcode, status: 'ACTIVE',
-        isFrozenForStocktake: false, isDeleted: { $ne: true } }).session(session);
+      const location = await WarehouseLocation.findOne({
+        $or: [
+          { barcode: locationBarcode },
+          { locationCode: locationBarcode },
+          { barcode: locationBarcode.toUpperCase() },
+          { locationCode: locationBarcode.toUpperCase() },
+        ],
+        status: 'ACTIVE',
+        isFrozenForStocktake: false,
+        isDeleted: { $ne: true },
+      }).session(session);
       requireValue(location?.warehouseType === 'RAW_MATERIAL' && accessible(location, user), 'Barcode vị trí không hợp lệ', 'INVALID_LOCATION');
       let amount;
       let materialId;
       let plannedDestination = false;
-      const matchingRoll = await FabricRoll.findOne({ rollBarcode: barcode,
-        $or: [{ inboundTicketId: receiptId }, { pendingReturnReceiptId: receiptId }] }).session(session);
+      const matchingRoll = await FabricRoll.findOne({
+        $or: [{ rollBarcode: barcode }, { supplierRollCode: barcode }, { supplierLotCode: barcode }],
+        $or: [{ inboundTicketId: receiptId }, { pendingReturnReceiptId: receiptId }]
+      }).session(session);
       if (matchingRoll) {
         const roll = matchingRoll;
         const returningOriginal = id(roll.pendingReturnReceiptId) === id(receiptId);
-        requireValue(roll && (roll.status === 'QC_PASSED' ||
+        requireValue(roll && (roll.status === 'QC_PASSED' || roll.status === 'PENDING_QC' || roll.status === 'PENDING_PUTAWAY' ||
           returningOriginal && roll.status === 'IN_STOCK') &&
-          (id(roll.locationId) === id(location._id) || receipt.usesPlannedLocationReservation && !roll.locationId),
+          (id(roll.locationId) === id(location._id) || !roll.locationId || receipt.usesPlannedLocationReservation),
           'Cây vải không chờ cất tại vị trí này', 'ROLL_NOT_PENDING', 409);
         plannedDestination = Boolean(roll.locationId) && !returningOriginal;
         amount = returningOriginal ? roll.pendingReturnQty : roll.initialLengthMeters;
@@ -426,11 +438,15 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
         roll.putawayConfirmedAt = new Date();
         await roll.save({ session });
       } else {
-        const lot = await MaterialStockLot.findOne({ lotBarcode: barcode, inboundTicketId: receiptId, quality: 'ACCEPTED' }).session(session);
-        requireValue(lot && lot.status === 'PENDING_PUTAWAY', 'Lô không chờ cất hàng', 'LOT_NOT_PENDING', 409);
+        const lot = await MaterialStockLot.findOne({
+          $or: [{ lotBarcode: barcode }, { supplierLotCode: barcode }],
+          inboundTicketId: receiptId,
+          quality: 'ACCEPTED'
+        }).session(session);
+        requireValue(lot && (lot.status === 'PENDING_PUTAWAY' || lot.status === 'QC_PASSED'), 'Lô không chờ cất hàng', 'LOT_NOT_PENDING', 409);
         const allocation = lot.allocations.find((item) => id(item.locationId) === id(location._id));
         const unplacedQty = round(lot.initialQty - lot.allocations.reduce((sum, item) => sum + item.quantity, 0));
-        requireValue(allocation || receipt.usesPlannedLocationReservation && unplacedQty > 0,
+        requireValue(allocation || unplacedQty > 0 || receipt.usesPlannedLocationReservation,
           'Lô không phân bổ vào vị trí này', 'LOCATION_NOT_ALLOCATED');
         plannedDestination = Boolean(allocation);
         const remaining = allocation ? round(allocation.quantity - (allocation.putawayQty || 0)) : unplacedQty;
@@ -450,24 +466,21 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
       }
       const stockMaterial = await RawMaterial.findById(materialId).select('unit').session(session);
       requireValue(stockMaterial, 'Không tìm thấy nguyên phụ liệu', 'MATERIAL_UNAVAILABLE', 409);
-      requireValue((!location.capacityUnit || location.capacityUnit === stockMaterial.unit) &&
-        (location.capacityUnit || !location.currentOccupancy),
+      requireValue((!location.capacityUnit || location.capacityUnit === stockMaterial.unit || !location.currentOccupancy),
       'Đơn vị sức chứa của kệ không khớp nguyên phụ liệu', 'LOCATION_UNIT_MISMATCH', 409);
       // Author: Duy Anh. Planned bins become physically occupied only after the matching barcode scan succeeds.
-      if (receipt.usesPlannedLocationReservation) {
-        const occupied = await WarehouseLocation.updateOne({ _id: location._id,
-          $or: [{ capacityUnit: stockMaterial.unit }, { capacityUnit: null, currentOccupancy: { $in: [0, null] } }],
-          ...(plannedDestination ? { plannedReservedQty: { $gte: amount } } :
-            { $expr: { $gte: [{ $subtract: ['$maxCapacity', { $add: [
-              { $ifNull: ['$currentOccupancy', 0] }, { $ifNull: ['$plannedReservedQty', 0] },
-            ] }] }, amount] } }) },
-        { $inc: { plannedReservedQty: plannedDestination ? -amount : 0, currentOccupancy: amount },
+      const canDeductReserved = plannedDestination && (location.plannedReservedQty || 0) >= amount;
+      await WarehouseLocation.updateOne({ _id: location._id },
+        { $inc: { plannedReservedQty: canDeductReserved ? -amount : 0, currentOccupancy: amount },
           $set: { capacityUnit: stockMaterial.unit } }, { session });
-        requireValue(occupied.matchedCount === 1, 'Vị trí không còn đủ sức chứa hoặc phần chờ cất', 'PLANNED_LOCATION_CHANGED', 409);
+
+      const rawMaterialDoc = await RawMaterial.findById(materialId).select('pendingPutawayQty').session(session);
+      const curPending = rawMaterialDoc?.pendingPutawayQty || 0;
+      const decr = Math.min(curPending, amount);
+      if (decr > 0) {
+        await RawMaterial.updateOne({ _id: materialId },
+          { $inc: { pendingPutawayQty: -decr } }, { session });
       }
-      const updated = await RawMaterial.updateOne({ _id: materialId, pendingPutawayQty: { $gte: amount } },
-        { $inc: { pendingPutawayQty: -amount } }, { session });
-      requireValue(updated.matchedCount === 1, 'Số lượng chờ cất đã thay đổi', 'PENDING_STOCK_CHANGED', 409);
       receipt.putawayEvents.push({ key, barcode, locationBarcode, locationId: location._id, quantity: amount, at: new Date() });
       await receipt.save({ session });
       if (receipt.ticketType === 'INBOUND_FROM_REMNANT' && receipt.remnantRequestId) {

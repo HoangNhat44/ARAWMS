@@ -21,6 +21,7 @@ import {
   Send,
   Eye,
   X,
+  UserCheck,
 } from 'lucide-react';
 import { garmentTechnicalService } from '../../services/garmentTechnicalService';
 
@@ -73,6 +74,17 @@ export default function GarmentMaterialOutboundPage() {
 
   useEffect(() => {
     loadData();
+    const handleRealtime = () => {
+      loadData();
+    };
+    window.addEventListener('arawms-material-outbound-realtime', handleRealtime);
+    const interval = setInterval(() => {
+      loadData();
+    }, 8000); // 8s auto-refresh fallback
+    return () => {
+      window.removeEventListener('arawms-material-outbound-realtime', handleRealtime);
+      clearInterval(interval);
+    };
   }, []);
 
   // Handle adding line in create form
@@ -136,12 +148,16 @@ export default function GarmentMaterialOutboundPage() {
 
   // Filtered tickets
   const filteredTickets = tickets.filter((t) => {
-    const matchStatus = statusFilter === 'ALL' || t.status === statusFilter;
+    const matchStatus =
+      statusFilter === 'ALL' ||
+      t.status === statusFilter ||
+      (statusFilter === 'WAITING_SCAN' && t.status === 'DRAFT');
     const matchSearch =
       !searchTerm ||
       (t.ticketCode && t.ticketCode.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (t.purpose && t.purpose.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (t.recipient && t.recipient.toLowerCase().includes(searchTerm.toLowerCase()));
+      (t.recipient && t.recipient.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (t.assignedStaffName && t.assignedStaffName.toLowerCase().includes(searchTerm.toLowerCase()));
     return matchStatus && matchSearch;
   });
 
@@ -245,8 +261,10 @@ export default function GarmentMaterialOutboundPage() {
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           {[
             ['ALL', 'Tất cả phiếu'],
-            ['WAITING_SCAN', 'Chờ kho duyệt & xuất'],
-            ['COMPLETED', 'Đã xuất kho / Đã nhận'],
+            ['WAITING_SCAN', 'Chờ duyệt'],
+            ['WAITING_PICKING', 'Chờ lấy hàng'],
+            ['PICKING', 'Đang xuất kho'],
+            ['COMPLETED', 'Hoàn thành'],
             ['CANCELLED', 'Đã hủy'],
           ].map(([val, label]) => (
             <button
@@ -335,21 +353,110 @@ export default function GarmentMaterialOutboundPage() {
                       </div>
                     </td>
                     <td style={{ padding: '1rem' }}>
-                      <span style={{
-                        display: 'inline-block',
-                        padding: '0.25rem 0.65rem',
-                        borderRadius: '999px',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        background: isCompleted ? '#e6f4ea' : isWaiting ? '#fff0da' : '#fce8e6',
-                        color: isCompleted ? '#137333' : isWaiting ? '#b06000' : '#c5221f',
-                      }}>
-                        {isCompleted ? '✓ Đã xuất kho (Đã nhận vải)' : isWaiting ? 'Chờ Quản lý kho duyệt & xuất' : 'Đã hủy'}
-                      </span>
-                      {hasSources && (
-                        <div style={{ fontSize: '0.72rem', color: '#137333', marginTop: '0.25rem', fontWeight: 600 }}>
-                          ✓ Kho đã gán cuộn vải
+                      {t.status === 'WAITING_SCAN' || t.status === 'DRAFT' ? (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          padding: '0.28rem 0.75rem',
+                          borderRadius: 999,
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          background: '#fff0da',
+                          color: '#b06000',
+                        }}>
+                          <Clock size={13} /> Chờ quản lý kho duyệt
+                        </span>
+                      ) : t.status === 'WAITING_PICKING' ? (
+                        <div>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            padding: '0.28rem 0.75rem',
+                            borderRadius: 999,
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            background: '#e8f0fe',
+                            color: '#1a73e8',
+                          }}>
+                            <UserCheck size={13} /> Chờ lấy hàng
+                          </span>
+                          {t.assignedStaffName && (
+                            <div style={{ fontSize: '0.75rem', color: '#1a73e8', marginTop: 3 }}>
+                              NV: <strong>{t.assignedStaffName}</strong>
+                            </div>
+                          )}
                         </div>
+                      ) : t.status === 'PICKING' ? (
+                        <div>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            padding: '0.28rem 0.75rem',
+                            borderRadius: 999,
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            background: '#e3f2fd',
+                            color: '#0d47a1',
+                            border: '1px solid #90caf9',
+                          }}>
+                            <RefreshCw size={12} className="spin" /> Đang xuất kho
+                          </span>
+                          {t.assignedStaffName && (
+                            <div style={{ fontSize: '0.75rem', color: '#0d47a1', marginTop: 3 }}>
+                              NV: <strong>{t.assignedStaffName}</strong>
+                            </div>
+                          )}
+                        </div>
+                      ) : t.status === 'WAITING_DISCREPANCY' ? (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          padding: '0.28rem 0.75rem',
+                          borderRadius: 999,
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          background: '#fce8e6',
+                          color: '#c5221f',
+                        }}>
+                          <AlertCircle size={13} /> Chờ xử lý sai lệch
+                        </span>
+                      ) : t.status === 'COMPLETED' ? (
+                        <div>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            padding: '0.28rem 0.75rem',
+                            borderRadius: 999,
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            background: '#e6f4ea',
+                            color: '#137333',
+                          }}>
+                            <CheckCircle2 size={13} /> Hoàn thành
+                          </span>
+                          <div style={{ fontSize: '0.75rem', color: '#137333', marginTop: 3 }}>
+                            ✓ Đã xuất kho NPL
+                          </div>
+                        </div>
+                      ) : (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          padding: '0.28rem 0.75rem',
+                          borderRadius: 999,
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          background: '#f1f3f4',
+                          color: '#5f6368',
+                        }}>
+                          <X size={13} /> Đã hủy
+                        </span>
                       )}
                     </td>
                     <td style={{ padding: '1rem', textAlign: 'center' }}>
@@ -608,7 +715,26 @@ export default function GarmentMaterialOutboundPage() {
                 <div><strong>Mục đích:</strong> {viewingTicket.purpose || 'Cắt may sản xuất'}</div>
                 <div><strong>Bộ phận:</strong> {viewingTicket.department || 'XƯỞNG MAY'}</div>
                 <div><strong>Người yêu cầu:</strong> {viewingTicket.createdByUserId?.fullName || 'Kỹ thuật viên may'}</div>
-                <div><strong>Trạng thái:</strong> {viewingTicket.status === 'COMPLETED' ? '✓ Đã xuất kho' : 'Chờ Quản lý kho duyệt & xuất'}</div>
+                <div>
+                  <strong>Trạng thái: </strong>
+                  {viewingTicket.status === 'WAITING_SCAN' || viewingTicket.status === 'DRAFT' ? (
+                    <span style={{ color: '#b06000', fontWeight: 700 }}>Chờ quản lý kho duyệt</span>
+                  ) : viewingTicket.status === 'WAITING_PICKING' ? (
+                    <span style={{ color: '#1a73e8', fontWeight: 700 }}>
+                      Đã duyệt · Chờ nhân viên lấy hàng {viewingTicket.assignedStaffName ? `(NV: ${viewingTicket.assignedStaffName})` : ''}
+                    </span>
+                  ) : viewingTicket.status === 'PICKING' ? (
+                    <span style={{ color: '#0d47a1', fontWeight: 700 }}>
+                      Đang xuất kho {viewingTicket.assignedStaffName ? `(NV: ${viewingTicket.assignedStaffName})` : ''}
+                    </span>
+                  ) : viewingTicket.status === 'WAITING_DISCREPANCY' ? (
+                    <span style={{ color: '#c5221f', fontWeight: 700 }}>Chờ xử lý sai lệch</span>
+                  ) : viewingTicket.status === 'COMPLETED' ? (
+                    <span style={{ color: '#137333', fontWeight: 700 }}>✓ Hoàn thành (Đã xuất kho NPL)</span>
+                  ) : (
+                    <span>{viewingTicket.status}</span>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -620,34 +746,44 @@ export default function GarmentMaterialOutboundPage() {
                         <th style={{ padding: '0.6rem' }}>Mã NPL</th>
                         <th style={{ padding: '0.6rem' }}>Tên nguyên phụ liệu</th>
                         <th style={{ padding: '0.6rem', textAlign: 'center' }}>Số lượng yêu cầu</th>
-                        <th style={{ padding: '0.6rem' }}>Cuộn/Lô kho đã xuất (Sources)</th>
+                        <th style={{ padding: '0.6rem' }}>Cây vải / Lô kho xuất thực tế</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {(viewingTicket.lines || []).map((l, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid var(--ara-border)' }}>
-                          <td style={{ padding: '0.6rem', fontFamily: 'monospace', fontWeight: 700 }}>{l.materialCode}</td>
-                          <td style={{ padding: '0.6rem' }}>{l.materialName} ({l.color || ''})</td>
-                          <td style={{ padding: '0.6rem', textAlign: 'center', fontWeight: 700, color: 'var(--ara-gold)' }}>
-                            {l.quantity} {l.unit}
-                          </td>
-                          <td style={{ padding: '0.6rem' }}>
-                            {l.sources && l.sources.length > 0 ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                                {l.sources.map((s, si) => (
-                                  <div key={si} style={{ fontSize: '0.78rem', background: '#e6f4ea', color: '#137333', padding: '0.2rem 0.4rem', borderRadius: '4px' }}>
-                                    Barcode: <strong>{s.barcode}</strong> ({s.quantity}m)
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)', fontStyle: 'italic' }}>
-                                Kho chưa chỉ định cuộn vải
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {(viewingTicket.lines || []).map((l, i) => {
+                        const sourcesList = (l.pickedSources && l.pickedSources.length > 0)
+                          ? l.pickedSources
+                          : (l.designatedSources && l.designatedSources.length > 0)
+                          ? l.designatedSources
+                          : (l.sources && l.sources.length > 0)
+                          ? l.sources
+                          : [];
+
+                        return (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--ara-border)' }}>
+                            <td style={{ padding: '0.6rem', fontFamily: 'monospace', fontWeight: 700 }}>{l.materialCode}</td>
+                            <td style={{ padding: '0.6rem' }}>{l.materialName} ({l.color || ''})</td>
+                            <td style={{ padding: '0.6rem', textAlign: 'center', fontWeight: 700, color: 'var(--ara-gold)' }}>
+                              {l.quantity} {l.unit}
+                            </td>
+                            <td style={{ padding: '0.6rem' }}>
+                              {sourcesList.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                  {sourcesList.map((s, si) => (
+                                    <div key={si} style={{ fontSize: '0.78rem', background: '#e6f4ea', color: '#137333', padding: '0.3rem 0.5rem', borderRadius: '4px', border: '1px solid #cce8d4' }}>
+                                      Barcode: <strong>{s.barcode}</strong> ({s.locationCode || 'Kho NPL'}{s.rackName ? `, ${s.rackName}` : ''}) · <strong>{s.quantity} {l.unit}</strong>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)', fontStyle: 'italic' }}>
+                                  {viewingTicket.status === 'WAITING_SCAN' ? 'Chưa phân bổ nguồn' : 'Chưa có cây/lô quét thực tế'}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

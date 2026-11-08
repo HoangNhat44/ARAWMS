@@ -62,11 +62,15 @@ const receiptLineSchema = new Schema({
 
 // Outbound lines retain the checked physical sources on the same ticket that owns the issue.
 const outboundSourceSchema = new Schema({
+  scanId: String,
   kind: { type: String, enum: ['ROLL', 'LOT'], required: true },
   objectId: { type: Schema.Types.ObjectId, required: true },
   barcode: { type: String, required: true },
   locationId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation', required: true },
   locationCode: String,
+  rackName: String,
+  rackCode: String,
+  materialName: String,
   inboundTicketId: { type: Schema.Types.ObjectId, ref: 'MaterialTicket' },
   quantity: { type: Number, required: true, min: 0 },
   checkedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -76,8 +80,23 @@ const outboundSourceSchema = new Schema({
 const outboundLineSchema = new Schema({
   rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial', required: true },
   materialCode: String, materialName: String, color: String, unit: String,
+  specification: String,
+  requestedQuantity: { type: Number, default: 0 },
+  approvedQuantity: { type: Number, default: 0 },
+  issuedQuantity: { type: Number, default: 0 },
   quantity: { type: Number, required: true, min: 0 },
+  hasDesignatedSources: { type: Boolean, default: false },
+  designatedSources: [outboundSourceSchema],
   sources: [outboundSourceSchema],
+  pickedSources: [outboundSourceSchema],
+  shortageReport: {
+    reported: { type: Boolean, default: false },
+    reason: String,
+    reportedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+    reportedAt: Date,
+    approvedByManagerId: { type: Schema.Types.ObjectId, ref: 'User' },
+    approvedAt: Date,
+  },
 }, { _id: false });
 
 /** A technician request is fulfilled by accepted quantities from linked receipts. */
@@ -155,6 +174,21 @@ const materialTicketSchema = new Schema(
     department: String,
     recipient: String,
     purpose: String,
+    assignedStaffId: { type: Schema.Types.ObjectId, ref: 'User' },
+    assignedStaffName: String,
+    assignedAt: Date,
+    outboundScanRecords: [{
+      scanId: { type: String, required: true },
+      lineIndex: Number,
+      rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial' },
+      objectId: { type: Schema.Types.ObjectId },
+      barcode: { type: String, required: true },
+      locationId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation' },
+      locationCode: String,
+      pickedQuantity: { type: Number, default: 0 },
+      scannedAt: { type: Date, default: Date.now },
+      scannedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+    }],
     lines: [outboundLineSchema],
     version: { type: Number, default: 0 },
     createdByUserId: { type: Schema.Types.ObjectId, ref: 'User' },

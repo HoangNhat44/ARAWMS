@@ -56,14 +56,35 @@ export default function MaterialPutawayPanel() {
     setPendingRetry(null); load();
   };
   const submitLocation = async (barcode) => {
-    if (!selected || !destinationId || lockedRef.current) return;
+    if (!selected || lockedRef.current) return;
+    const clean = String(barcode || '').trim().toUpperCase();
+    if (!clean) return;
+    let targetLocId = destinationId;
+    if (!targetLocId) {
+      const match = locations.find((l) =>
+        String(l.barcode || '').trim().toUpperCase() === clean ||
+        String(l.code || '').trim().toUpperCase() === clean
+      );
+      if (match) {
+        targetLocId = match.id;
+        setDestinationId(match.id);
+      }
+    }
+    if (!targetLocId && !selected.locationId) {
+      setError('Vui lòng chọn kệ hoặc quét đúng mã ô kệ.');
+      return;
+    }
     lockedRef.current = true; setBusy(true); setError('');
     try {
       const result = await api.materialLocation({ receiptId: selected.receiptId,
         objectBarcode: selected.objectBarcode, plannedLocationId: selected.locationId,
-        locationId: destinationId, barcode });
-      setVerifiedLocation(result.data.location.barcode);
-      setNotice('Đúng kệ. Quét barcode cây vải hoặc lô nguyên phụ liệu.'); setCode('');
+        locationId: targetLocId || selected.locationId, barcode: clean });
+      if (result.data.location?.id) {
+        setDestinationId(result.data.location.id);
+      }
+      setVerifiedLocation(result.data.location.barcode || result.data.location.locationCode);
+      setNotice(`Đúng kệ (${result.data.location.locationCode || result.data.location.code}). Quét barcode cây vải hoặc lô nguyên phụ liệu.`);
+      setCode('');
     } catch (err) { setError(err.message); }
     finally { lockedRef.current = false; setBusy(false); }
   };
@@ -102,7 +123,7 @@ export default function MaterialPutawayPanel() {
     else submitLocation(barcode);
   };
   const startCamera = async () => {
-    if (cameraOn || !selected || !destinationId) return;
+    if (cameraOn || !selected) return;
     setError('');
     if (!navigator.mediaDevices?.getUserMedia) {
       setError('Camera cần HTTPS hoặc localhost và quyền truy cập thiết bị.'); return;
@@ -198,8 +219,8 @@ export default function MaterialPutawayPanel() {
         <select value={destinationId} disabled={Boolean(verifiedLocation) || busy}
           onChange={(event) => { setDestinationId(event.target.value); setCode(''); }}>
           <option value="">Chọn kệ</option>
-          {locations.filter((item) => item.zoneCode === selected.receivingZone &&
-            (!item.capacityUnit || item.capacityUnit === selected.unit) &&
+          {locations.filter((item) => (!selected.receivingZone || item.zoneCode === selected.receivingZone) &&
+            (!item.capacityUnit || item.capacityUnit === selected.unit || (item.currentOccupancy || 0) <= 0) &&
             item.freeQuantity >= (selected.kind === 'LOT' ? Number(quantity) : selected.remainingQuantity))
             .map((item) => <option key={item.id} value={item.id}>
             {item.code} · {item.rackName} · còn {item.freeQuantity} {selected.unit}</option>)}
@@ -216,7 +237,7 @@ export default function MaterialPutawayPanel() {
           setVerifiedLocation(''); setPendingRetry(null); setCode(''); }}>Quét lại kệ</button>}</div>
       <div className="putaway-camera"><video ref={videoRef} className={cameraOn ? '' : 'hidden'} muted playsInline />
         {!cameraOn && <button className="putaway-button" type="button" onClick={startCamera}
-          disabled={!destinationId || selected.kind === 'LOT' && !(Number(quantity) > 0 && Number(quantity) <= selected.remainingQuantity)}>Mở camera quét mã</button>}
+          disabled={selected.kind === 'LOT' && !(Number(quantity) > 0 && Number(quantity) <= selected.remainingQuantity)}>Mở camera quét mã</button>}
         {cameraOn && <button className="putaway-button" type="button" onClick={stopCamera}>Tắt camera</button>}
       </div><form className="putaway-scan-form" onSubmit={(event) => {
         event.preventDefault(); if (verifiedLocation) submitObject(code.trim().toUpperCase());
@@ -225,7 +246,7 @@ export default function MaterialPutawayPanel() {
         <div><input id="material-putaway-code" value={code} disabled={busy || Boolean(pendingRetry)}
           onChange={(event) => setCode(event.target.value)} autoFocus autoComplete="off" />
           <button className="putaway-button putaway-button-primary" type="submit"
-            disabled={busy || Boolean(pendingRetry) || !code.trim() || !destinationId ||
+            disabled={busy || Boolean(pendingRetry) || !code.trim() ||
               selected.kind === 'LOT' && !(Number(quantity) > 0 && Number(quantity) <= selected.remainingQuantity)}>Xác nhận mã</button></div>
       </form>{pendingRetry && <div className="putaway-retry">Chưa rõ kết quả quét trước.
         <button className="putaway-button" type="button" disabled={busy}

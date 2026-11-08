@@ -1,0 +1,712 @@
+/*
+ * File: remnantReturnReview.css
+ * Description: ARA ATELIER Design System - Remnant Return Review Component Styles
+ * Design: Editorial Luxury, Refined Beige & Crisp High-Contrast Enterprise WMS
+ */
+
+/* ========== REMNANT REVIEW CARD CONTAINER ========== */
+.remnant-review-card {
+  background: var(--ara-surface, #ffffff);
+  border: 1px solid var(--ara-border, #c8b9a6);
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(20, 18, 16, 0.05);
+  margin-bottom: 24px;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease;
+}
+
+.remnant-review-card:hover {
+  box-shadow: 0 4px 16px rgba(20, 18, 16, 0.08);
+}
+
+/* ========== CARD HEADER ========== */
+.remnant-review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 24px;
+  background: linear-gradient(180deg, #ffffff 0%, var(--ara-surface-subtle, #faf7f2) 100%);
+  border-bottom: 1px solid var(--ara-border-light, #e3d9cd);
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.remnant-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.remnant-header-icon-box {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: var(--ara-gold-subtle, #efe6da);
+  border: 1px solid var(--ara-border-light, #e3d9cd);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ara-gold, #8a6a46);
+  flex-shrink: 0;
+}
+
+.remnant-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.remnant-card-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ara-text-primary, #141210);
+  letter-spacing: -0.01em;
+}
+
+.remnant-counter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  background: var(--ara-gold, #8a6a46);
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 12px;
+}
+
+.remnant-card-subtitle {
+  margin: 3px 0 0 0;
+  font-size: 13px;
+  color: var(--ara-text-muted, #786e63);
+  line-height: 1.4;
+}
+
+.remnant-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.remnant-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  background: #ffffff;
+  border: 1px solid var(--ara-border, #c8b9a6);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ara-text-body, #26221e);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.remnant-refresh-btn:hover:not(:disabled) {
+  background: var(--ara-surface-subtle, #faf7f2);
+  border-color: var(--ara-gold, #8a6a46);
+  color: var(--ara-gold-hover, #6e5233);
+}
+
+.remnant-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.remnant-spin {
+  animation: remnant-spin-kf 0.9s linear infinite;
+}
+
+@keyframes remnant-spin-kf {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* ========== ALERTS ========== */
+.remnant-alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 24px 0;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  animation: remnant-fade-in 0.25s ease-out;
+}
+
+.remnant-alert-banner.success {
+  background: var(--ara-success-bg, #e3f5ec);
+  color: var(--ara-success, #1e6b47);
+  border: 1px solid var(--ara-success-border, #86cfa8);
+}
+
+.remnant-alert-banner.error {
+  background: var(--ara-error-bg, #fce4e4);
+  color: var(--ara-error, #a62626);
+  border: 1px solid var(--ara-error-border, #eda1a1);
+}
+
+.remnant-alert-close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.7;
+}
+
+.remnant-alert-close:hover {
+  opacity: 1;
+}
+
+/* ========== TABLE CONTAINER ========== */
+.remnant-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border-top: none;
+}
+
+.remnant-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.remnant-table thead th {
+  background: var(--ara-surface-subtle, #faf7f2);
+  color: var(--ara-text-secondary, #574f46);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--ara-border-light, #e3d9cd);
+  white-space: nowrap;
+}
+
+.remnant-table tbody td {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--ara-surface-nested, #f3ede4);
+  color: var(--ara-text-body, #26221e);
+  vertical-align: middle;
+}
+
+.remnant-table tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+.remnant-table tbody tr:hover {
+  background-color: var(--ara-surface-subtle, #faf7f2);
+}
+
+.remnant-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Specific Cell Styles */
+.remnant-code-badge {
+  display: inline-block;
+  font-family: var(--font-mono, ui-monospace, 'SF Mono', Consolas, monospace);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ara-text-primary, #141210);
+  background: var(--ara-surface-nested, #f3ede4);
+  border: 1px solid var(--ara-border-light, #e3d9cd);
+  padding: 4px 8px;
+  border-radius: 5px;
+  letter-spacing: 0.02em;
+}
+
+.remnant-roll-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.remnant-barcode-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--ara-text-primary, #141210);
+}
+
+.remnant-roll-sub {
+  font-size: 11.5px;
+  color: var(--ara-text-muted, #786e63);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remnant-ticket-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.remnant-ticket-code {
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--ara-text-primary, #141210);
+}
+
+.remnant-tech-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--ara-text-muted, #786e63);
+}
+
+.remnant-qty-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.remnant-qty-main {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ara-text-primary, #141210);
+}
+
+.remnant-qty-unit {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--ara-text-secondary, #574f46);
+  margin-left: 2px;
+}
+
+.remnant-kind-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  width: fit-content;
+}
+
+.remnant-kind-pill.roll {
+  background: var(--ara-surface-nested, #f3ede4);
+  color: var(--ara-text-secondary, #574f46);
+  border: 1px solid var(--ara-border-light, #e3d9cd);
+}
+
+.remnant-kind-pill.pieces {
+  background: #f0ebf8;
+  color: #633b94;
+  border: 1px solid #dcd1ed;
+}
+
+/* Status Badges */
+.remnant-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+/* Action View Button */
+.remnant-btn-view {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--ara-surface, #ffffff);
+  border: 1px solid var(--ara-border, #c8b9a6);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ara-text-primary, #141210);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.remnant-btn-view:hover {
+  background: var(--ara-gold-subtle, #efe6da);
+  border-color: var(--ara-gold, #8a6a46);
+  color: var(--ara-gold-hover, #6e5233);
+  transform: translateY(-1px);
+}
+
+/* ========== EMPTY STATE ========== */
+.remnant-empty-state {
+  padding: 44px 24px;
+  text-align: center;
+  background: var(--ara-surface, #ffffff);
+}
+
+.remnant-empty-icon-box {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--ara-surface-nested, #f3ede4);
+  border: 1px solid var(--ara-border-light, #e3d9cd);
+  color: var(--ara-text-muted, #786e63);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 14px;
+}
+
+.remnant-empty-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ara-text-primary, #141210);
+  margin-bottom: 6px;
+}
+
+.remnant-empty-desc {
+  font-size: 13px;
+  color: var(--ara-text-muted, #786e63);
+  max-width: 520px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* ========== REVIEW DETAIL MODAL ========== */
+.remnant-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(20, 18, 16, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+  animation: remnant-fade-in 0.2s ease-out;
+}
+
+.remnant-modal-sheet {
+  position: relative;
+  max-width: 740px;
+  width: 100%;
+  max-height: calc(100vh - 48px);
+  background: var(--ara-surface, #ffffff);
+  border: 1px solid var(--ara-border, #c8b9a6);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(20, 18, 16, 0.22);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.remnant-modal-head {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--ara-border-light, #e3d9cd);
+  background: var(--ara-surface-subtle, #faf7f2);
+  gap: 16px;
+}
+
+.remnant-modal-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.remnant-modal-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ara-text-primary, #141210);
+}
+
+.remnant-modal-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--ara-border-light, #e3d9cd);
+  color: var(--ara-text-secondary, #574f46);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.remnant-modal-close-btn:hover {
+  background: var(--ara-error-bg, #fce4e4);
+  color: var(--ara-error, #a62626);
+  border-color: var(--ara-error-border, #eda1a1);
+}
+
+.remnant-modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Info Cards in Modal */
+.remnant-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.remnant-info-box {
+  background: var(--ara-surface-subtle, #faf7f2);
+  border: 1px solid var(--ara-border-light, #e3d9cd);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.remnant-info-box-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ara-gold, #8a6a46);
+  margin-bottom: 2px;
+}
+
+.remnant-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.remnant-info-label {
+  color: var(--ara-text-muted, #786e63);
+  flex-shrink: 0;
+}
+
+.remnant-info-val {
+  color: var(--ara-text-primary, #141210);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+}
+
+/* Form Section inside Modal */
+.remnant-form-section {
+  background: #ffffff;
+  border: 1px solid var(--ara-border, #c8b9a6);
+  border-radius: 8px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.remnant-form-section-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ara-text-primary, #141210);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.remnant-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.remnant-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.remnant-form-field.full-width {
+  grid-column: 1 / -1;
+}
+
+.remnant-form-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ara-text-secondary, #574f46);
+}
+
+.remnant-form-input,
+.remnant-form-select {
+  width: 100%;
+  padding: 9px 12px;
+  background: #ffffff;
+  border: 1px solid var(--ara-border, #c8b9a6);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--ara-text-primary, #141210);
+  outline: none;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.remnant-form-input:focus,
+.remnant-form-select:focus {
+  border-color: var(--ara-gold, #8a6a46);
+  box-shadow: 0 0 0 3px rgba(138, 106, 70, 0.15);
+}
+
+.remnant-receipt-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--ara-success-bg, #e3f5ec);
+  border: 1px solid var(--ara-success-border, #86cfa8);
+  border-radius: 8px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.remnant-receipt-banner p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ara-success, #1e6b47);
+  font-weight: 600;
+}
+
+/* Modal Actions Footer */
+.remnant-modal-footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--ara-border-light, #e3d9cd);
+  background: var(--ara-surface-subtle, #faf7f2);
+  flex-wrap: wrap;
+}
+
+.remnant-btn-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.remnant-btn-action.close {
+  background: #ffffff;
+  border-color: var(--ara-border, #c8b9a6);
+  color: var(--ara-text-secondary, #574f46);
+}
+
+.remnant-btn-action.close:hover {
+  background: var(--ara-surface-nested, #f3ede4);
+  color: var(--ara-text-primary, #141210);
+}
+
+.remnant-btn-action.reject {
+  background: #ffffff;
+  border-color: var(--ara-error-border, #eda1a1);
+  color: var(--ara-error, #a62626);
+}
+
+.remnant-btn-action.reject:hover:not(:disabled) {
+  background: var(--ara-error-bg, #fce4e4);
+}
+
+.remnant-btn-action.discrepancy {
+  background: #ffffff;
+  border-color: var(--ara-warning-border, #f5b95f);
+  color: var(--ara-warning, #9a5b06);
+}
+
+.remnant-btn-action.discrepancy:hover:not(:disabled) {
+  background: var(--ara-warning-bg, #fef0c7);
+}
+
+.remnant-btn-action.confirm {
+  background: var(--ara-noir, #141210);
+  border-color: var(--ara-noir, #141210);
+  color: #ffffff;
+}
+
+.remnant-btn-action.confirm:hover:not(:disabled) {
+  background: var(--ara-noir-hover, #24201c);
+  transform: translateY(-1px);
+}
+
+.remnant-btn-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@keyframes remnant-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 768px) {
+  .remnant-review-header {
+    padding: 14px 16px;
+  }
+
+  .remnant-table thead th,
+  .remnant-table tbody td {
+    padding: 10px 12px;
+  }
+
+  .remnant-modal-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .remnant-modal-sheet {
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .remnant-modal-head,
+  .remnant-modal-body,
+  .remnant-modal-footer {
+    padding: 16px;
+  }
+}
+

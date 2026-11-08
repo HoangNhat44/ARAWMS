@@ -14,6 +14,7 @@ import FabricRoll from '../../../models/FabricRoll.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import SystemSetting from '../../../models/SystemSetting.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
+import { publishRealtime } from '../../../common/services/realtime.js';
 
 const fail = (ok, message, code = 'INVALID_INPUT', status = 400) => {
   if (!ok) {
@@ -112,6 +113,14 @@ export async function createOutboundRequest(payload, user) {
   });
 
   await ticket.save();
+
+  publishRealtime('material-outbound:changed', {
+    ticketId: ticket._id,
+    ticketCode: ticket.ticketCode,
+    status: ticket.status,
+    action: 'CREATED',
+  });
+
   return ticket;
 }
 
@@ -139,6 +148,7 @@ export async function listGarmentOutboundRequests(user, query = {}) {
 
   const tickets = await MaterialTicket.find(filter)
     .populate('createdByUserId', 'fullName employeeCode roleCode')
+    .populate('assignedStaffId', 'fullName employeeCode roleCode')
     .populate('confirmedByUserId', 'fullName employeeCode roleCode')
     .populate('lines.rawMaterialId', 'materialCode materialName unit color materialType')
     .sort({ createdAt: -1 })
@@ -155,6 +165,7 @@ export async function getOutboundRequestDetail(ticketId) {
 
   const ticket = await MaterialTicket.findOne({ _id: ticketId, isDeleted: { $ne: true } })
     .populate('createdByUserId', 'fullName employeeCode roleCode')
+    .populate('assignedStaffId', 'fullName employeeCode roleCode')
     .populate('confirmedByUserId', 'fullName employeeCode roleCode')
     .populate('lines.rawMaterialId', 'materialCode materialName unit color materialType')
     .lean();

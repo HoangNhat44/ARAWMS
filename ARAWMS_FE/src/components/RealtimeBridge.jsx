@@ -16,13 +16,20 @@ export default function RealtimeBridge() {
     const onProduct = (payload) => window.dispatchEvent(new CustomEvent('arawms-product-description-realtime', { detail: payload }));
     const onPutaway = (payload) => window.dispatchEvent(new CustomEvent('arawms-putaway-realtime', { detail: payload }));
     const onMaterialRequest = (payload) => window.dispatchEvent(new CustomEvent('arawms-material-request-realtime', { detail: payload }));
+    const onMaterialOutbound = (payload) => window.dispatchEvent(new CustomEvent('arawms-material-outbound-realtime', { detail: payload }));
     socket.on('finished-goods:changed', onStock);
     socket.on('catalog:product-updated', onProduct);
     socket.on('warehouse-putaway:changed', onPutaway);
     socket.on('material-inbound-request:changed', onMaterialRequest);
-    return () => { socket.off('finished-goods:changed', onStock); socket.off('catalog:product-updated', onProduct);
+    socket.on('material-outbound:changed', onMaterialOutbound);
+    return () => {
+      socket.off('finished-goods:changed', onStock);
+      socket.off('catalog:product-updated', onProduct);
       socket.off('warehouse-putaway:changed', onPutaway);
-      socket.off('material-inbound-request:changed', onMaterialRequest); socket.disconnect(); };
+      socket.off('material-inbound-request:changed', onMaterialRequest);
+      socket.off('material-outbound:changed', onMaterialOutbound);
+      socket.disconnect();
+    };
   }, []);
   return null;
 }
