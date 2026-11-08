@@ -7,6 +7,7 @@
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 import { WAREHOUSE_TYPES } from '../common/constants/enums.js';
+import { isValidMaterialUnit, normalizeMaterialUnit } from '../common/constants/materialUnits.js';
 
 const { Schema } = mongoose;
 
@@ -17,10 +18,12 @@ const warehouseLocationSchema = new Schema(
     warehouseType: { type: String, enum: WAREHOUSE_TYPES, required: true, index: true },
     zoneCode: { type: String, required: true, index: true },
     rackCode: { type: String, required: true },
+    rackName: { type: String, trim: true },
     shelfCode: { type: String, required: true },
     fifoPickSequence: { type: Number, default: 1 },
     maxCapacity: { type: Number, required: true },
-    capacityUnit: { type: String, enum: ['METER', 'KG', 'PIECE', 'SPOOL', 'BOX'] },
+    capacityUnit: { type: String, set: normalizeMaterialUnit, validate: { validator: isValidMaterialUnit,
+      message: 'Đơn vị sức chứa không hợp lệ.' } },
     currentOccupancy: { type: Number, default: 0 },
     isFrozenForStocktake: { type: Boolean, default: false, index: true },
     status: { type: String, enum: ['ACTIVE', 'FULL', 'MAINTENANCE', 'LOCKED', 'INACTIVE'], default: 'ACTIVE' },

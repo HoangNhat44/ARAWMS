@@ -6,6 +6,7 @@
  */
 import mongoose from 'mongoose';
 import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
+import { isValidMaterialUnitForType, normalizeMaterialUnit } from '../common/constants/materialUnits.js';
 
 const { Schema } = mongoose;
 
@@ -16,10 +17,13 @@ const rawMaterialSchema = new Schema(
     materialType: { type: String, enum: ['FABRIC', 'AUXILIARY'], required: true, index: true },
     category: {
       type: String,
-      enum: ['FABRIC_ROLL', 'BUTTON', 'THREAD', 'ZIPPER', 'CARE_LABEL', 'PACKAGING_BAG'],
+      enum: ['FABRIC_ROLL', 'BUTTON', 'THREAD', 'ZIPPER', 'CARE_LABEL', 'PACKAGING_BAG',
+        'NEEDLE', 'CHALK', 'MARKER', 'ACCESSORY', 'OTHER'],
       required: true,
     },
-    unit: { type: String, enum: ['METER', 'KG', 'PIECE', 'SPOOL', 'BOX'], required: true },
+    unit: { type: String, required: true, set: normalizeMaterialUnit, validate: { validator(value) {
+      return isValidMaterialUnitForType(value, this.materialType);
+    }, message: 'Đơn vị tồn không hợp lệ với loại nguyên phụ liệu.' } },
     color: { type: String },
     gsm: { type: Number },
     widthCm: { type: Number },

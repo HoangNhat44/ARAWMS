@@ -11,6 +11,11 @@ const taskPath = (allocationId, lineId) => `${root}/tasks/${allocationId}/${line
 
 export const warehousePutawayService = {
   tasks: () => api.get(`${root}/tasks`),
+  materialTasks: () => api.get(`${root}/material-tasks`),
+  materialLocations: () => api.get(`${root}/material-locations`),
+  materialReceiptLabels: (receiptId) => api.get(`${root}/material-receipts/${receiptId}/labels`),
+  materialLocation: (data) => api.post(`${root}/material-tasks/location`, data),
+  materialScan: (data) => api.post(`${root}/material-tasks/scan`, data),
   receiptLabels: (receiptId) => api.get(`${root}/receipts/${receiptId}/labels`),
   task: (allocationId, lineId) => api.get(taskPath(allocationId, lineId)),
   location: (allocationId, lineId, barcode) => api.post(

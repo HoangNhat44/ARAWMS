@@ -4,6 +4,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { materialInboundService as api } from '../services/materialInboundService';
+import { MATERIAL_UNIT_OPTIONS, isFractionalMaterialUnit } from '../utils/materialUnits';
 
 const field = { width: '100%', padding: '10px', border: '1px solid #ded0bf', borderRadius: 8, background: '#fff' };
 const grid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 14 };
@@ -11,7 +12,23 @@ const id = (value) => String(value?._id || value?.id || value || '');
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const qty = (value) => Number(value || 0);
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
-const unitName = { METER: 'm', KG: 'kg', PIECE: 'chiếc', SPOOL: 'cuộn', BOX: 'hộp' };
+const withReceiptObjects = (lines = []) => lines.map((line) => ({ ...line,
+  rolls: Array.isArray(line.rolls) ? line.rolls : [],
+  lots: Array.isArray(line.lots) ? line.lots.map((lot) => ({ ...lot,
+    allocations: Array.isArray(lot.allocations) ? lot.allocations : [] })) : [] }));
+const unitName = Object.fromEntries(MATERIAL_UNIT_OPTIONS.map(({ value, shortLabel }) => [value, shortLabel]));
+const rackOptionGroups = (locations) => {
+  const groups = new Map();
+  for (const location of locations) {
+    const key = `${location.zoneCode}:${location.rackCode || ''}`;
+    if (!groups.has(key)) groups.set(key, { rackCode: location.rackCode || '—',
+      rackName: location.rackName || location.rackCode || 'Chưa đặt tên', locations: [] });
+    groups.get(key).locations.push(location);
+  }
+  return [...groups.values()].sort((a, b) => a.rackCode.localeCompare(b.rackCode, 'vi'));
+};
+const rackBinOptionLabel = (location) =>
+  `Kệ ${location.rackCode || '—'} · ${location.rackName || location.rackCode || 'Chưa đặt tên'} — Ô ${location.locationCode || location.displayName || '—'}`;
 const statusName = { DRAFT: 'Nháp', WAITING_QC: 'Chờ kiểm tra', READY_TO_CONFIRM: 'Sẵn sàng xác nhận', COMPLETED: 'Đã xác nhận' };
 const storageKey = (user) => `arawms-material-direct-drafts:${id(user)}`;
 
@@ -121,7 +138,8 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
   const requestMode = Boolean(form.inboundRequestId);
   const receiving = availableLocations.find((item) => id(item) === form.receivingLocationId);
   const acceptedBins = availableLocations.filter((item) => item.warehouseType === 'RAW_MATERIAL' &&
-    item.layoutBin && item.zoneCode === 'A');
+    item.layoutBin && item.zoneCode === 'A' && item.rackCode && item.rackActive !== false);
+  const acceptedRackGroups = rackOptionGroups(acceptedBins);
   const rejectedBins = availableLocations.filter((item) => item.warehouseType === 'DEFECT_QUARANTINE');
   const totals = new Map();
   for (const line of form.receiptLines) {
@@ -130,9 +148,20 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
   }
 
   useEffect(() => {
-    setAvailableLocations((current) => [...new Map([...options.locations, ...current]
+    setAvailableLocations((current) => [...new Map([...current, ...options.locations]
       .map((item) => [id(item), item])).values()]);
   }, [options.locations]);
+
+  useEffect(() => {
+    let active = true;
+    api.options().then((result) => {
+      if (!active) return;
+      const latestLocations = result.data?.locations || [];
+      setAvailableLocations((current) => [...new Map([...current, ...latestLocations]
+        .map((item) => [id(item), item])).values()]);
+    }).catch((failure) => { if (active) setError(failure.message); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (target.kind !== 'request' || form.receivingLocationId || !form.receiptLines.length) return;
@@ -157,14 +186,18 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
         const request = target.request;
         setInboundRequest(request);
         const linked = (await api.receipts({ inboundRequestId: id(request), page: 1 })).data.receipts || [];
-        const saved = linked.find((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)) || linked[0];
+        const savedSummary = linked.find((item) => !['COMPLETED', 'CANCELLED'].includes(item.status));
+        const savedDetails = savedSummary ? (await api.receipt(id(savedSummary))).data : null;
+        const saved = savedDetails?.receipt;
         const local = getDirectLocalDrafts(user).find((item) => id(item.form.inboundRequestId) === id(request));
         const requestLines = request.requestLines.filter((line) => qty(line.remainingQty ?? line.acceptedQty ?? line.requestedQty) > 0 && line.rawMaterialId)
           .map((line, index) => requestReceiptLine(line, index));
         const matchingUnits = request.requestLines.map((line) => line.rawMaterialId?.unit).filter(Boolean);
-        const suggestedBin = request.receivingLocationId || options.locations.find((item) =>
-          item.warehouseType === 'RAW_MATERIAL' && item.layoutBin && item.zoneCode === 'A' &&
-          (!item.capacityUnit || matchingUnits.every((unit) => unit === item.capacityUnit)));
+        const requestedBin = options.locations.find((item) => id(item) === id(request.receivingLocationId) &&
+          item.warehouseType === 'RAW_MATERIAL');
+        const suggestedBin = requestedBin || options.locations.find((item) =>
+          item.warehouseType === 'RAW_MATERIAL' && (item.layoutBin && item.zoneCode === 'A' || request.ticketType === 'INBOUND_REQUEST') &&
+          (request.ticketType === 'INBOUND_REQUEST' || !item.capacityUnit || matchingUnits.every((unit) => unit === item.capacityUnit)));
         const supplierIds = [...new Set(request.requestLines.map((line) => id(line.supplierId)).filter(Boolean))];
         const sourceValues = { supplierId: supplierIds.length === 1 ? supplierIds[0] : '',
           purchaseSourceName: supplierIds.length === 1 ? request.requestLines.find((line) => id(line.supplierId) === supplierIds[0])?.supplierId?.supplierName || '' : '',
@@ -173,17 +206,17 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
         let linkedReceipt = saved || null;
         if (saved) {
           setReceipt(saved);
-          setSavedMaterials(saved.receiptLines?.map((line) => line.rawMaterialId).filter(Boolean) || []);
+          setSavedMaterials(savedDetails.materials || []);
           next = { receiptSource: 'DIRECT', draftKey: saved.draftKey, inboundRequestId: id(request),
             supplierId: id(saved.supplierId), purchaseSourceName: saved.purchaseSourceName || '',
             purchasedByName: saved.purchasedByName || user?.fullName || '',
             receivedAt: saved.receivedAt?.slice(0, 10) || today(),
             receivingLocationId: id(saved.receivingLocationId), receiptNote: saved.receiptNote || '',
-            receiptLines: saved.receiptLines || [] };
+            receiptLines: withReceiptObjects(saved.receiptLines || []) };
           if (saved.status === 'COMPLETED') setLabels((await api.labels(id(saved))).data.labels || []);
         } else {
           next = local?.form ? { ...local.form,
-            receiptLines: local.form.receiptLines?.length ? local.form.receiptLines : requestLines } :
+            receiptLines: withReceiptObjects(local.form.receiptLines?.length ? local.form.receiptLines : requestLines) } :
             { ...blankForm(user, options.locations), ...sourceValues, inboundRequestId: id(request),
               receiptLines: requestLines };
           linkedReceipt = local?.receipt || null;
@@ -202,12 +235,14 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
         if (target.kind === 'local') {
           saved = getDirectLocalDrafts(user).find((item) => item.form.draftKey === target.id);
           if (!saved) throw new Error('Không tìm thấy nháp trên thiết bị.');
-          setForm(saved.form); setReceipt(saved.receipt || null);
+          setForm({ ...saved.form, receiptLines: withReceiptObjects(saved.form.receiptLines || []) });
+          setReceipt(saved.receipt || null);
           if (saved.form.inboundRequestId) api.technicianRequests().then((result) =>
             setInboundRequest(result.data.requests.find((item) => id(item) === id(saved.form.inboundRequestId)) || null))
             .catch(() => {});
           confirmationKey.current = saved.confirmationKey || crypto.randomUUID();
-          savedSignature.current = JSON.stringify(saved.form);
+          savedSignature.current = JSON.stringify({ ...saved.form,
+            receiptLines: withReceiptObjects(saved.form.receiptLines || []) });
         } else {
           const response = (await api.receipt(target.id)).data;
           saved = response.receipt;
@@ -222,7 +257,7 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
             purchasedByName: saved.purchasedByName || user?.fullName || '',
             receivedAt: saved.receivedAt?.slice(0, 10) || today(),
             receivingLocationId: id(saved.receivingLocationId), receiptNote: saved.receiptNote || '',
-            receiptLines: saved.receiptLines || [] };
+            receiptLines: withReceiptObjects(saved.receiptLines || []) };
           setForm(restored); savedSignature.current = JSON.stringify(restored);
           if (saved.status === 'COMPLETED') setLabels((await api.labels(target.id)).data.labels);
         }
@@ -337,9 +372,10 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
             <div><span>Ngày kiểm tra</span><strong>{inboundRequest?.inspectionCompletedAt ? new Date(inboundRequest.inspectionCompletedAt).toLocaleString('vi-VN') : '—'}</strong></div>
           </div>}
           <div style={grid}>
-          <label>Kho nhận<select style={field} value={form.receivingLocationId} disabled={locked} onChange={(event) => change({ receivingLocationId: event.target.value })}>
-            <option value="">Chọn kho nhận</option>{acceptedBins
-              .map((item) => <option key={id(item)} value={id(item)}>{item.zoneCode} · {item.locationCode}</option>)}</select></label>
+          {requestMode ? <div><span>Kho nhận</span><strong>Kho nguyên vật liệu</strong></div> : <label>Kho nhận<select style={field} value={form.receivingLocationId} disabled={locked} onChange={(event) => change({ receivingLocationId: event.target.value })}>
+            <option value="">Chọn kho nhận</option>{acceptedRackGroups.map((group) => <optgroup key={`${group.rackCode}:${group.rackName}`}
+              label={`Kệ ${group.rackCode} · ${group.rackName}`}>{group.locations.map((item) =>
+                <option key={id(item)} value={id(item)}>{rackBinOptionLabel(item)}</option>)}</optgroup>)}</select></label>}
           <label>Ngày nhận<input style={field} type="date" max={today()} value={form.receivedAt} disabled={locked}
             onChange={(event) => change({ receivedAt: event.target.value })} /></label>
           {!requestMode && <label>Tên nhà cung cấp<input style={field} list="direct-supplier-options" value={form.purchaseSourceName} disabled={locked}
@@ -351,14 +387,14 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
           <label>Ghi chú<input style={field} value={form.receiptNote || ''} disabled={locked}
             onChange={(event) => change({ receiptNote: event.target.value })} /></label>
         </div>
-          {!locked && <><button type="button" className="btn-ara-secondary" onClick={() => {
+          {!requestMode && !locked && <><button type="button" className="btn-ara-secondary" onClick={() => {
             setNewLocation((current) => ({ ...current,
               capacityUnit: current.capacityUnit || materials.get(id(form.receiptLines[0]?.rawMaterialId))?.unit || 'PIECE' }));
             setLocationOpen((current) => !current);
           }}>{locationOpen ? 'Ẩn tạo vị trí' : 'Thêm vị trí Khu A'}</button>
             {requestMode && form.receiptLines.some((line) => !acceptedBins.some((bin) =>
               !bin.capacityUnit || bin.capacityUnit === materials.get(id(line.rawMaterialId))?.unit)) &&
-              <p>Chưa có ô Khu A phù hợp đơn vị vật tư. Hãy thêm vị trí trước khi nhập kho.</p>}
+              <p>Chưa có ô kho nguyên phụ liệu phù hợp đơn vị vật tư. Hãy chọn hoặc thêm vị trí trước khi nhập kho.</p>}
             {locationOpen && <div style={grid}>
               {[['locationCode', 'Mã vị trí'], ['rackCode', 'Mã kệ'], ['shelfCode', 'Mã ô'],
                 ['maxCapacity', 'Sức chứa']].map(([key, label]) => <label key={key}>{label}
@@ -366,7 +402,7 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
                   setNewLocation((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
               <label>Đơn vị sức chứa<select style={field} value={newLocation.capacityUnit} onChange={(event) =>
                 setNewLocation((current) => ({ ...current, capacityUnit: event.target.value }))}>
-                {['METER', 'KG', 'PIECE', 'SPOOL', 'BOX'].map((unit) => <option key={unit} value={unit}>{unitName[unit]}</option>)}
+                {MATERIAL_UNIT_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
               </select></label>
               <button type="button" className="btn-ara-primary" disabled={busy} onClick={() => run(async () => {
                 const location = (await api.createLocation({ ...newLocation, warehouseType: 'RAW_MATERIAL',
@@ -402,9 +438,12 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
               materialType: event.target.value, category: event.target.value === 'FABRIC' ? 'FABRIC_ROLL' : 'BUTTON',
               unit: event.target.value === 'FABRIC' ? 'METER' : 'PIECE' })}><option value="AUXILIARY">Phụ liệu</option><option value="FABRIC">Vải</option></select></label>
             <label>Danh mục<select style={field} value={newMaterial.category} onChange={(event) => setNewMaterial({ ...newMaterial, category: event.target.value })}>
-              {(newMaterial.materialType === 'FABRIC' ? ['FABRIC_ROLL'] : ['BUTTON', 'THREAD', 'ZIPPER', 'CARE_LABEL', 'PACKAGING_BAG']).map((value) => <option key={value}>{value}</option>)}</select></label>
+              {(newMaterial.materialType === 'FABRIC' ? ['FABRIC_ROLL'] :
+                ['BUTTON', 'THREAD', 'ZIPPER', 'CARE_LABEL', 'PACKAGING_BAG', 'NEEDLE', 'CHALK', 'MARKER', 'ACCESSORY', 'OTHER'])
+                .map((value) => <option key={value}>{value}</option>)}</select></label>
             <label>Đơn vị<select style={field} value={newMaterial.unit} onChange={(event) => setNewMaterial({ ...newMaterial, unit: event.target.value })}>
-              {(newMaterial.materialType === 'FABRIC' ? ['METER'] : ['KG', 'PIECE', 'SPOOL', 'BOX']).map((value) => <option key={value}>{value}</option>)}</select></label>
+              {(newMaterial.materialType === 'FABRIC' ? MATERIAL_UNIT_OPTIONS.filter(({ value }) => value === 'METER') : MATERIAL_UNIT_OPTIONS)
+                .map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label>
             <button type="button" className="btn-ara-primary" onClick={() => run(async () => {
               const material = (await api.createMaterial(newMaterial)).data.material;
               onMaterialCreated(material); addMaterial(material); setNewMaterialOpen(false);
@@ -427,11 +466,11 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
                 <div><span>Ngày kiểm tra</span><strong>{line.inspectedAt ? new Date(line.inspectedAt).toLocaleDateString('vi-VN') : '—'}</strong></div></>}
               {requestMode ? <div><span>Số lượng đạt</span><strong>{qty(line.acceptedQty)} {unitName[material.unit]}</strong></div> : fabric ? <div><span>Thực nhận</span><strong>{qty(line.actualQty)} m</strong></div> :
                   <label>Thực nhận ({unitName[material.unit]})<input style={field} type="number" min="0" disabled={locked}
-                    step={['METER', 'KG'].includes(material.unit) ? '.001' : '1'} value={line.actualQty}
+                    step={isFractionalMaterialUnit(material.unit) ? '.001' : '1'} value={line.actualQty}
                     onChange={(event) => changeLine(index, { actualQty: event.target.value })} /></label>}
               {!requestMode && (fabric ? <div><span>Không đạt</span><strong>{qty(line.rejectedQty)} m</strong></div> :
                   <label>Không đạt<input style={field} type="number" min="0" disabled={locked}
-                    step={['METER', 'KG'].includes(material.unit) ? '.001' : '1'} value={line.rejectedQty}
+                    step={isFractionalMaterialUnit(material.unit) ? '.001' : '1'} value={line.rejectedQty}
                     onChange={(event) => changeLine(index, { rejectedQty: event.target.value })} /></label>)}
                 <div><span>Nhập kho</span><strong className="material-reference-accepted">{qty(line.acceptedQty)} {unitName[material.unit]}</strong></div>
               </div>
@@ -444,8 +483,10 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
                     changeRoll(index, rollIndex, { quality: event.target.value, locationId: '' })}>
                     <option value="">Chưa kiểm tra</option><option value="ACCEPTED">Đạt</option><option value="REJECTED">Không đạt</option></select></label>}
                   <label>Vị trí dự kiến<select style={field} value={id(roll.locationId)} disabled={locked} onChange={(event) => changeRoll(index, rollIndex, { locationId: event.target.value })}>
-                    <option value="">Chọn ô</option>{(roll.quality === 'REJECTED' ? eligibleQuarantine : eligibleBins).map((item) =>
-                      <option key={id(item)} value={id(item)}>{item.locationCode}</option>)}</select></label>
+                    <option value="">Chọn ô</option>{rackOptionGroups(roll.quality === 'REJECTED' ? eligibleQuarantine : eligibleBins)
+                      .map((group) => <optgroup key={`${group.rackCode}:${group.rackName}`} label={`Kệ ${group.rackCode} · ${group.rackName}`}>
+                        {group.locations.map((item) => <option key={id(item)} value={id(item)}>{rackBinOptionLabel(item)}</option>)}
+                      </optgroup>)}</select></label>
                   {material.requiresWeightKg && <label>Cân nặng (kg)<input style={field} type="number" min="0" step=".001" disabled={locked || requestMode}
                     value={roll.weightKg ?? ''} onChange={(event) => changeRoll(index, rollIndex, { weightKg: event.target.value })} /></label>}
                   {roll.quality === 'REJECTED' && <label>Lý do không đạt<input style={field} disabled={locked}
@@ -460,7 +501,10 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
                 {requestMode ? `Vị trí dự kiến · lô ${lot.supplierLotCode || lotIndex + 1} · ${lot.countedQty} ${unitName[material.unit]}` : `Vị trí dự kiến trong Khu ${receiving?.zoneCode || 'A'}`}<select style={field} disabled={locked}
                 value={id(lot.allocations?.[0]?.locationId)} onChange={(event) => changeLine(index, { lots: line.lots.map((item) => item.clientLineId === lot.clientLineId
                   ? { ...item, allocations: [{ locationId: event.target.value, quantity: item.countedQty }] } : item) })}>
-                <option value="">Chọn ô lưu trữ</option>{eligibleBins.map((item) => <option key={id(item)} value={id(item)}>{item.locationCode}</option>)}</select></label>)}
+                <option value="">Chọn ô lưu trữ</option>{rackOptionGroups(eligibleBins).map((group) =>
+                  <optgroup key={`${group.rackCode}:${group.rackName}`} label={`Kệ ${group.rackCode} · ${group.rackName}`}>
+                    {group.locations.map((item) => <option key={id(item)} value={id(item)}>{rackBinOptionLabel(item)}</option>)}
+                  </optgroup>)}</select></label>)}
                 {qty(line.rejectedQty) > 0 && <><label>Lý do không đạt<input style={field} disabled={locked} value={line.defectReason || ''}
                   onChange={(event) => changeLine(index, { defectReason: event.target.value })} /></label>
                   <label>Ô cách ly<select style={field} disabled={locked}

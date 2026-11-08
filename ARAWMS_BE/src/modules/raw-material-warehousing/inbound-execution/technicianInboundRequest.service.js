@@ -12,6 +12,7 @@ import RawMaterial from '../../../models/RawMaterial.model.js';
 import Supplier from '../../../models/Supplier.model.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
 import { ReceiptError } from './inboundExecution.service.js';
+import { isFractionalMaterialUnit } from '../../../common/constants/materialUnits.js';
 
 const id = (value) => String(value || '');
 const sameId = (left, right) => {
@@ -26,7 +27,7 @@ const fail = (condition, message, code, status = 400) => {
 const openStatuses = ['WAITING_RECEIPT', 'PARTIALLY_RECEIVED'];
 const legacyOpenStatuses = ['DRAFT', 'WAITING_QC', 'READY_TO_CONFIRM', 'PARTIALLY_RECEIVED'];
 const requestLinesFor = (request) => (request.requestLines?.length ? request.requestLines :
-  request.receiptLines?.length ? request.receiptLines.map((line) => ({ ...line,
+  request.receiptLines?.length ? request.receiptLines.map((line) => ({ ...(line.toObject ? line.toObject() : line),
     clientLineId: line.clientLineId || id(line.rawMaterialId),
     requestedQty: line.actualQty || line.acceptedQty || 0,
     acceptedQty: line.acceptedQty ?? line.actualQty ?? 0, receivedQty: 0 })) :
@@ -52,6 +53,7 @@ export async function listTechnicianInboundRequests() {
       isDeleted: { $ne: true } })
       .select('ticketCode ticketType status requestStatus supplierId receivedAt items receiptLines requestLines createdAt')
       .populate('supplierId', 'supplierName supplierCode')
+      .populate('requestLines.rawMaterialId', 'materialCode materialName color unit materialType widthCm gsm')
       .populate('items.rawMaterialId', 'materialCode materialName color unit materialType')
       .populate('receiptLines.rawMaterialId', 'materialCode materialName color unit materialType')
       .sort({ createdAt: -1 }).lean(),
@@ -117,7 +119,7 @@ export async function createTechnicianInboundRequest(input, user) {
   const supplierNames = new Map(suppliers.map((supplier) => [id(supplier._id), supplier.supplierName]));
   parsed.forEach((line) => { if (line.supplierId && !line.supplierNameSnapshot) line.supplierNameSnapshot = supplierNames.get(id(line.supplierId)); });
   const units = new Map(materials.map((material) => [id(material._id), material.unit]));
-  fail(parsed.every((line) => ['METER', 'KG'].includes(units.get(id(line.rawMaterialId))) ||
+  fail(parsed.every((line) => isFractionalMaterialUnit(units.get(id(line.rawMaterialId))) ||
     Number.isInteger(line.requestedQty)), 'Số lượng phải là số nguyên theo đơn vị vật tư', 'INVALID_REQUEST_QUANTITY');
   const note = String(input?.requestNote || '').trim();
   fail(note.length <= 500, 'Ghi chú quá dài', 'INVALID_REQUEST_NOTE');

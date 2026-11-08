@@ -25,6 +25,7 @@ const bulkDocumentSchema = new Schema({
   totalQuantity: { type: Number, required: true, min: 0 },
   putawayReservationEpoch: { type: Number, default: 0 },
   confirmationKey: { type: String },
+  sourceTicketId: { type: Schema.Types.ObjectId, ref: 'FinishedGoodsTicket' },
   confirmationHash: String,
   note: { type: String, maxlength: 500 },
   createdByUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -32,4 +33,5 @@ const bulkDocumentSchema = new Schema({
 
 bulkDocumentSchema.plugin(baseSchemaPlugin);
 bulkDocumentSchema.index({ confirmationKey: 1 }, { unique: true, partialFilterExpression: { confirmationKey: { $type: 'string' } } });
+bulkDocumentSchema.index({ sourceTicketId: 1 }, { unique: true, partialFilterExpression: { sourceTicketId: { $type: 'objectId' } } });
 export default mongoose.model('FinishedGoodsBulkDocument', bulkDocumentSchema);

@@ -80,6 +80,13 @@ test('direct purchase stores separate prices and confirms stock once without a p
     const meterBin = await WarehouseLocation.create({ locationCode: 'A-DIRECT-METER', barcode: 'LOC-A-DIRECT-METER',
       warehouseType: 'RAW_MATERIAL', layoutBin: true, zoneCode: 'A', rackCode: 'A', shelfCode: 'M1',
       maxCapacity: 1000, capacityUnit: 'METER' });
+    const wrongUnitLine = line('wrong-unit', 1, 2);
+    wrongUnitLine.lots[0].allocations = [{ locationId: meterBin._id, quantity: 1 }];
+    const wrongUnitDraft = await createSupplierReceipt({ ...payload, draftKey: 'direct-wrong-unit-test',
+      receiptLines: [wrongUnitLine] }, user);
+    await assert.rejects(confirmSupplierReceipt(wrongUnitDraft._id,
+      { expectedVersion: 0, idempotencyKey: 'direct-wrong-unit-confirm' }, user),
+    (error) => error.code === 'LOCATION_UNIT_MISMATCH');
     const fabricDraft = await createSupplierReceipt({ ...payload, draftKey: 'direct-fabric-rolls-test',
       receiptLines: [{ clientLineId: 'fabric-line-test', rawMaterialId: fabric._id, unitCost: 10,
         actualQty: 12, acceptedQty: 12, rejectedQty: 0, pendingQty: 0, inspectionConclusion: 'ÄÃ£ kiá»ƒm tra',

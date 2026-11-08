@@ -127,7 +127,8 @@ export const syncCatalogChanges = async (ownerId) => {
     let completed = 0;
     try {
       await migrateOfflineCatalogQueue(ownerId);
-      let operations = await store.list('operations', ownerId);
+      let operations = (await store.list('operations', ownerId))
+        .filter((item) => item.operationType !== 'FINISHED_GOODS_CONFIRM');
       for (const item of operations.filter((entry) => entry.status === 'AUTH_REQUIRED')) {
         await save(ownerId, item, { status: 'QUEUED', lastError: '', errorCode: '', nextRetryAt: null });
       }
@@ -214,7 +215,8 @@ export const syncCatalogChanges = async (ownerId) => {
 
 export const getPendingCatalogChanges = async (ownerId) => {
   await migrateOfflineCatalogQueue(ownerId);
-  return store.list('operations', ownerId);
+  return (await store.list('operations', ownerId))
+    .filter((item) => item.operationType !== 'FINISHED_GOODS_CONFIRM');
 };
 export const subscribeCatalogChanges = (listener) => { listeners.add(listener); return () => listeners.delete(listener); };
 export const retryCatalogChange = async (ownerId, operation) => {

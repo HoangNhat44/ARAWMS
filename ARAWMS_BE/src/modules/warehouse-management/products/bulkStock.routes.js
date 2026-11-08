@@ -17,6 +17,7 @@ import Product from '../../../models/Product.model.js';
 import Sku from '../../../models/Sku.model.js';
 import InventoryTransaction from '../../../models/InventoryTransaction.model.js';
 import FinishedGoodsBulkDocument from '../../../models/FinishedGoodsBulkDocument.model.js';
+import FinishedGoodsTicket from '../../../models/FinishedGoodsTicket.model.js';
 import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
 import ProductUnit from '../../../models/ProductUnit.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
@@ -25,6 +26,7 @@ import { scheduleBarcodeImages } from '../../../common/services/barcodeImageStor
 import PutawayAllocation from '../../../models/PutawayAllocation.model.js';
 import { confirmReceiptAllocation, fingerprint, parseLines, remainingQuantity } from '../location-layout/allocation.service.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
+import { listWarehouseInboundProgress } from './warehouseInboundProgress.service.js';
 
 const router = express.Router();
 
@@ -74,6 +76,7 @@ export const receiptAllocationError = (lines, allocations) => {
 
 /** Returns the committed document identity and issued unit barcodes for an idempotent retry. */
 const receiptResponse = (document) => ({ id: String(document._id), documentCode: document.documentCode,
+  sourceTicketId: document.sourceTicketId ? String(document.sourceTicketId) : null,
   direction: document.direction, lineCount: document.items.length, totalQuantity: document.totalQuantity,
   items: document.direction === 'IN' ? document.items.map((item) => ({ skuId: String(item.skuId),
     barcodes: item.barcodes, expectedQty: item.expectedQty, receivedQty: item.receivedQty,
@@ -83,6 +86,7 @@ const receiptResponse = (document) => ({ id: String(document._id), documentCode:
  * Reusing that key with changed stock lines, bins, or notes must be rejected. */
 const confirmationPayloadHash = (body) => createHash('sha256').update(JSON.stringify({
   direction: body.direction, documentCode: String(body.documentCode || '').trim().toUpperCase(),
+  sourceTicketId: String(body.sourceTicketId || ''),
   note: String(body.note || '').trim(),
   items: body.items, allocations: body.allocations || [],
 })).digest('hex');
@@ -155,6 +159,101 @@ router.get('/bin-options', async (req, res, next) => {
  * TỰ ĐỘNG:
  * - Nếu phiếu nhập chưa có đủ ảnh barcode → schedule background job tạo ảnh
  */
+/** Warehouse queue is sourced only from technician inspection tickets. */
+router.get('/technical-requests', async (req, res, next) => {
+  try {
+    const tickets = await FinishedGoodsTicket.find({ ticketType: 'INBOUND_FROM_SEWING',
+      isDeleted: { $ne: true } }).sort({ createdAt: -1 })
+      .populate({ path: 'items.skuId', select: 'skuCode productId color size',
+        populate: { path: 'productId', select: 'productCode productName' } })
+      .populate('garmentInspection.inspectedByTechId', 'fullName username').lean();
+    const documents = await FinishedGoodsBulkDocument.find({ sourceTicketId: { $in: tickets.map((item) => item._id) },
+      direction: 'IN', isDeleted: { $ne: true } }).select('_id sourceTicketId documentCode').lean();
+    const byTicket = new Map(documents.map((item) => [String(item.sourceTicketId), item]));
+    return sendSuccess(res, 'Lệnh nhập thành phẩm từ nhân viên kỹ thuật', { requests: tickets.map((ticket) => {
+      const document = byTicket.get(String(ticket._id));
+      const lines = new Map();
+      for (const item of ticket.items || []) {
+        if (!(Number(item.expectedQty) > 0)) continue;
+        const sku = item.skuId;
+        const skuId = String(sku?._id || sku || '');
+        const current = lines.get(skuId) || { skuId, skuCode: sku?.skuCode || '',
+          productId: String(sku?.productId?._id || ''), productCode: sku?.productId?.productCode || '',
+          productName: sku?.productId?.productName || '', color: sku?.color || '', size: sku?.size || '',
+          expectedQty: 0 };
+        current.expectedQty += Number(item.expectedQty) || 0;
+        lines.set(skuId, current);
+      }
+      return { id: String(ticket._id), code: ticket.ticketCode, status: ticket.status,
+        createdAt: ticket.createdAt, inspectedAt: ticket.garmentInspection?.inspectedAt,
+        technician: ticket.garmentInspection?.inspectedByTechId?.fullName ||
+          ticket.garmentInspection?.inspectedByTechId?.username || '',
+        totalBatchQty: ticket.garmentInspection?.totalBatchQty || 0,
+        passedQty: ticket.garmentInspection?.passedQty || 0,
+        failedDefectQty: ticket.garmentInspection?.failedDefectQty || 0,
+        qcNote: ticket.garmentInspection?.qcNote || '', defectAction: ticket.defectAction,
+        lines: [...lines.values()], receiptId: document ? String(document._id) : null,
+        receiptCode: document?.documentCode || '' };
+    }) });
+  } catch (error) { next(error); }
+});
+
+/** Checks an earlier confirmation without creating inventory during retry backoff. */
+router.post('/confirmations/status', async (req, res, next) => {
+  try {
+    const key = String(req.body?.confirmationKey || '').trim();
+    if (!key) return sendError(res, 'Thiếu mã xác nhận', { code: 'INVALID_CONFIRMATION' }, 400);
+    const prior = await FinishedGoodsBulkDocument.findOne({ confirmationKey: key }).lean();
+    if (prior && (prior.confirmationHash !== confirmationPayloadHash(req.body) ||
+      String(prior.createdByUserId) !== String(req.user._id)))
+      return sendError(res, 'Mã xác nhận thuộc nội dung khác', { code: 'CONFIRMATION_REUSED' }, 409);
+    if (prior) return sendSuccess(res, 'Phiếu đã được xác nhận',
+      { document: receiptResponse(prior), matchType: 'CONFIRMATION_KEY' });
+    // A receipt may have reached the server under another local attempt. The source ticket
+    // is unique, so this local operation must not be sent again once that ticket is received.
+    const sourceTicketId = String(req.body?.sourceTicketId || '');
+    const documentCode = String(req.body?.documentCode || '').trim().toUpperCase();
+    if (req.body?.direction === 'IN' && mongoose.isValidObjectId(sourceTicketId) && documentCode) {
+      const received = await FinishedGoodsBulkDocument.findOne({ sourceTicketId,
+        documentCode, direction: 'IN', isDeleted: { $ne: true } }).lean();
+      if (received)
+        return sendSuccess(res, 'Lệnh đã có phiếu nhập kho',
+          { document: receiptResponse(received), matchType: 'SOURCE_TICKET' });
+    }
+    return sendError(res, 'Chưa có phiếu được xác nhận với mã này',
+      { code: 'CONFIRMATION_NOT_FOUND' }, 404);
+  } catch (error) { next(error); }
+});
+
+/** Lists placement progress for confirmed receipts from both warehouse types. */
+router.get('/inbound-progress', async (req, res, next) => {
+  try { return sendSuccess(res, 'Tiến độ nhập và xếp kệ',
+    { receipts: await listWarehouseInboundProgress() }); }
+  catch (error) { next(error); }
+});
+
+/** Lists every manager-created finished-goods issue for the shared outbound queue. */
+router.get('/outbound-documents', async (req, res, next) => {
+  try {
+    const documents = await FinishedGoodsBulkDocument.find({ direction: 'OUT',
+      isDeleted: { $ne: true } }).select('documentCode items.skuId items.quantity totalQuantity createdAt')
+      .sort({ createdAt: -1 }).lean();
+    const skus = await Sku.find({ _id: { $in: documents.flatMap((item) =>
+      item.items.map((line) => line.skuId)) } }).select('skuCode productId').lean();
+    const products = await Product.find({ _id: { $in: skus.map((item) => item.productId) } })
+      .select('productName').lean();
+    const bySku = new Map(skus.map((item) => [String(item._id), item]));
+    const byProduct = new Map(products.map((item) => [String(item._id), item]));
+    return sendSuccess(res, 'Phiếu xuất kho thành phẩm', { documents: documents.map((item) => ({
+      id: String(item._id), code: item.documentCode, createdAt: item.createdAt,
+      status: 'COMPLETED', totalQuantity: item.totalQuantity,
+      lines: item.items.map((line) => { const sku = bySku.get(String(line.skuId));
+        return { code: sku?.skuCode || String(line.skuId),
+          name: byProduct.get(String(sku?.productId))?.productName || '', quantity: line.quantity }; }),
+    })) });
+  } catch (error) { next(error); }
+});
+
 router.get('/documents', async (req, res, next) => {
   try {
     const documents = await FinishedGoodsBulkDocument.find({ isDeleted: { $ne: true } })
@@ -524,6 +623,34 @@ router.post('/documents', async (req, res, next) => {
       ? sendSuccess(res, 'Phiếu kho đã được xác nhận', { document: receiptResponse(prior) })
       : sendError(res, 'Khóa xác nhận đã dùng cho nội dung khác', { code: 'CONFIRMATION_REUSED' }, 409);
   }
+  let sourceTicket = null;
+  if (direction === 'IN') {
+    if (!mongoose.isValidObjectId(req.body?.sourceTicketId))
+      return sendError(res, 'Chỉ nhập kho từ lệnh của nhân viên kỹ thuật', { code: 'TECHNICAL_REQUEST_REQUIRED' }, 400);
+    sourceTicket = await FinishedGoodsTicket.findOne({ _id: req.body.sourceTicketId,
+      ticketType: 'INBOUND_FROM_SEWING', status: 'READY_TO_CONFIRM', isDeleted: { $ne: true } }).lean();
+    if (!sourceTicket) return sendError(res, 'Lệnh kỹ thuật không còn chờ nhập kho',
+      { code: 'TECHNICAL_REQUEST_UNAVAILABLE' }, 409);
+    if (documentCode !== `NK-${sourceTicket.ticketCode}`)
+      return sendError(res, 'Mã phiếu nhập phải theo lệnh kỹ thuật', { code: 'RECEIPT_CODE_MISMATCH' }, 400);
+    const expected = new Map();
+    for (const line of sourceTicket.items || []) {
+      if (!(Number(line.expectedQty) > 0)) continue;
+      const skuId = String(line.skuId);
+      expected.set(skuId, (expected.get(skuId) || 0) + Number(line.expectedQty));
+    }
+    const submitted = Array.isArray(items) ? items : [];
+    if (new Set(submitted.map((item) => String(item.skuId))).size !== submitted.length)
+      return sendError(res, 'SKU bị lặp trong phiếu nhập', { code: 'DUPLICATE_LINE' }, 400);
+    if (submitted.length !== expected.size || new Set(submitted.map((item) => String(item.skuId))).size !== expected.size ||
+      submitted.some((item) => !expected.has(String(item.skuId)) ||
+        Number(item.expectedQty) !== expected.get(String(item.skuId)) ||
+        Number(item.receivedQty) > expected.get(String(item.skuId))))
+      return sendError(res, 'SKU hoặc số lượng không khớp lệnh kỹ thuật',
+        { code: 'TECHNICAL_REQUEST_MISMATCH' }, 409);
+    if (await FinishedGoodsBulkDocument.exists({ sourceTicketId: sourceTicket._id }))
+      return sendError(res, 'Lệnh kỹ thuật đã có phiếu nhập kho', { code: 'REQUEST_ALREADY_RECEIVED' }, 409);
+  }
   if (!['IN', 'OUT'].includes(direction) || !/^[A-Z0-9._/-]{2,80}$/.test(documentCode) ||
       note.length > 500 || !Array.isArray(items) || items.length < 1 || items.length > 100 ||
       (direction === 'IN' && locationId && !mongoose.isValidObjectId(locationId)) ||
@@ -631,6 +758,7 @@ router.post('/documents', async (req, res, next) => {
       }
       [saved] = await FinishedGoodsBulkDocument.create([{
         _id: documentId, documentCode, direction, items: lines,
+        ...(direction === 'IN' ? { sourceTicketId: sourceTicket._id } : {}),
         ...(direction === 'IN' ? { locationId: location._id } : {}),
         // The document and inventory writes share a transaction and one immutable retry identity.
         confirmationKey, confirmationHash,
@@ -641,6 +769,11 @@ router.post('/documents', async (req, res, next) => {
         const allocationError = receiptAllocationError(lines, allocations);
         if (allocationError) throw createBulkStockRequestError(allocationError.message, allocationError.code);
         if (allocations.length) await confirmReceiptAllocation(req.user, documentId, allocations, session);
+        const claimed = await FinishedGoodsTicket.updateOne({ _id: sourceTicket._id,
+          ticketType: 'INBOUND_FROM_SEWING', status: 'READY_TO_CONFIRM' },
+        { $set: { status: 'COMPLETED' } }, { session });
+        if (claimed.matchedCount !== 1) throw createBulkStockRequestError(
+          'Lệnh kỹ thuật đã được xử lý', 'TECHNICAL_REQUEST_CHANGED', 409);
       }
     });
     if (direction === 'IN' && saved.totalQuantity > 0) {
@@ -669,6 +802,8 @@ router.post('/documents', async (req, res, next) => {
     if (error.code === 112 || error.hasErrorLabel?.('TransientTransactionError'))
       return sendError(res, 'Sức chứa hoặc nguồn hàng vừa thay đổi; hãy kiểm tra lại và thử lại',
         { code: 'STOCK_CHANGED' }, 409);
+    if (error.code === 11000 && direction === 'IN') return sendError(res,
+      'Lệnh kỹ thuật đã có phiếu nhập kho', { code: 'REQUEST_ALREADY_RECEIVED' }, 409);
     if (error.code === 11000) return sendError(res, 'Số chứng từ hoặc mã SKU đã tồn tại', { code: 'DUPLICATE_DOCUMENT_OR_SKU' }, 409);
     next(error);
   } finally { if (session) await session.endSession(); }

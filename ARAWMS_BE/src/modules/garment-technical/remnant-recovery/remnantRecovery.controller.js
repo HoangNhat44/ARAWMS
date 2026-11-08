@@ -11,13 +11,14 @@ import {
   listGarmentOutboundRequests,
   getOutboundRequestDetail,
   listIssuedRollsForCutting,
-  recordCuttingAndRemnant,
   listRemnantRecoveryHistory,
   getSystemThreshold,
 } from './remnantRecovery.service.js';
+import { lookupRemnantSources, submitRemnantReturn, listRemnantReturns,
+  confirmRemnantReturn, reportRemnantDiscrepancy, closeRemnantReturn,
+  reportUnidentifiedReturnSource } from './remnantReturn.service.js';
 import {
   validateCreateOutboundRequest,
-  validateRecordCutting,
 } from './remnantRecovery.validation.js';
 
 const run = (message, action, status = 200) => async (req, res, next) => {
@@ -58,9 +59,20 @@ export const listIssuedRolls = run('Danh sách cuộn vải đã xuất cho xư�
 );
 
 export const recordCutting = run('Đã ghi nhận cắt vải & xử lý thu hồi vải thừa', async (req) => {
-  const validated = validateRecordCutting(req.body);
-  return recordCuttingAndRemnant(validated, req.user);
+  return submitRemnantReturn(req.body, req.user);
 });
+
+export const lookupReturnSource = run('Nguồn cây vải và các lần xuất', async (req) =>
+  lookupRemnantSources(req.query.barcode, req.query.outboundTicketId));
+export const reportUnknownReturnSource = run('Đã báo sai lệch nguồn cây vải', async (req) =>
+  reportUnidentifiedReturnSource(req.params.id, req.body.barcode, req.body.reason, req.user));
+export const listReturnRequests = run('Yêu cầu nhập lại vải thừa', async () => listRemnantReturns());
+export const confirmReturnRequest = run('Đã xác nhận nhập lại vải thừa', async (req) =>
+  confirmRemnantReturn(req.params.id, req.body, req.user));
+export const reportReturnDiscrepancy = run('Đã báo sai lệch vải trả', async (req) =>
+  reportRemnantDiscrepancy(req.params.id, req.body.reason, req.user));
+export const cancelReturnRequest = run('Đã đóng yêu cầu trả vải', async (req) =>
+  closeRemnantReturn(req.params.id, req.body.status, req.user));
 
 export const listHistory = run('Lịch sử thu hồi & nhập lại vải thừa', async (req) =>
   listRemnantRecoveryHistory(req.user, req.query)

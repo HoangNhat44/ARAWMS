@@ -3,6 +3,7 @@
  * Description: Schedules supplier delivery batches and computes receipt progress from accepted stock only.
  */
 import mongoose from 'mongoose';
+import { isFractionalMaterialUnit } from '../../../common/constants/materialUnits.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import MaterialInboundPlan from '../../../models/MaterialInboundPlan.model.js';
 import MaterialTicket from '../../../models/MaterialTicket.model.js';
@@ -23,7 +24,7 @@ const dayNumber = (value) => Date.parse(`${day(value)}T00:00:00.000Z`) / 8640000
 const today = () => new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
 const quantity = (value, unit) => {
   const amount = Number(value);
-  const scale = ['METER', 'KG'].includes(unit) ? 1000 : 1;
+  const scale = isFractionalMaterialUnit(unit) ? 1000 : 1;
   fail(value !== '' && value != null && Number.isFinite(amount) && amount > 0 &&
     Math.abs(amount * scale - Math.round(amount * scale)) < 0.000001,
   'Số lượng kế hoạch không hợp lệ theo đơn vị', 'INVALID_PLAN_QUANTITY');

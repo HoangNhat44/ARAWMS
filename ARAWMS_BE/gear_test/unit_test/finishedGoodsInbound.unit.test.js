@@ -14,6 +14,8 @@ import Product from '../../src/models/Product.model.js';
 import Sku from '../../src/models/Sku.model.js';
 import WarehouseLocation from '../../src/models/WarehouseLocation.model.js';
 import FinishedGoodsBulkDocument from '../../src/models/FinishedGoodsBulkDocument.model.js';
+import FinishedGoodsTicket from '../../src/models/FinishedGoodsTicket.model.js';
+import User from '../../src/models/User.model.js';
 import FinishedGoodsBatch from '../../src/models/FinishedGoodsBatch.model.js';
 import ProductUnit from '../../src/models/ProductUnit.js';
 import InventoryTransaction from '../../src/models/InventoryTransaction.model.js';
@@ -129,7 +131,21 @@ describe('Finished goods receipt stock writes', () => {
     allocations: [{ skuId: String(sku._id), targetLocationId: String(bin._id), allocatedQuantity: 3 }],
     ...overrides,
   });
-  const post = (body) => request(app).post('/bulk/documents').send(body);
+  const post = async (body) => {
+    if (body.direction === 'IN' && !body.sourceTicketId) {
+      const ticketCode = `PNTP-${randomUUID().slice(0, 8).toUpperCase()}`;
+      const ticket = await FinishedGoodsTicket.create({ ticketCode,
+        ticketType: 'INBOUND_FROM_SEWING', status: 'READY_TO_CONFIRM',
+        garmentInspection: { inspectedByTechId: actor._id,
+          passedQty: body.items.reduce((sum, item) => sum + Number(item.expectedQty || 0), 0) },
+        items: body.items.map((item) => ({ skuId: item.skuId,
+          skuBarcode: 'TEST-BARCODE', designatedFifoLocationId: bin._id,
+          expectedQty: item.expectedQty })) });
+      body.sourceTicketId = String(ticket._id);
+      body.documentCode = `NK-${ticketCode}`;
+    }
+    return request(app).post('/bulk/documents').send(body);
+  };
   const extraSku = (code, size) => Sku.create({ skuCode: `TEST-SHIRT-${code}`,
     skuBarcode: `TEST-BARCODE-${code}`, productId: product._id, styleName: 'Shirt',
     color: 'White', size, retailPrice: 1, isActive: true });
@@ -139,7 +155,7 @@ describe('Finished goods receipt stock writes', () => {
     replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
     await mongoose.connect(replicaSet.getUri('arawms_finished_goods_test'));
     await Promise.all([Product.init(), Sku.init(), WarehouseLocation.init(),
-      FinishedGoodsBulkDocument.init(), FinishedGoodsBatch.init(), ProductUnit.init(),
+      FinishedGoodsBulkDocument.init(), FinishedGoodsTicket.init(), User.init(), FinishedGoodsBatch.init(), ProductUnit.init(),
       InventoryTransaction.init(), PutawayAllocation.init()]);
   });
 
@@ -175,6 +191,43 @@ describe('Finished goods receipt stock writes', () => {
     bin = await WarehouseLocation.create({ locationCode: 'TEST-BIN', barcode: 'LOC-TEST-BIN',
       warehouseType: 'FINISHED_GOODS', zoneCode: 'TEST', rackCode: 'R1', shelfCode: '1',
       maxCapacity: 10, layoutBin: true, status: 'ACTIVE' });
+  });
+
+  test('blocks a warehouse receipt without a technician request', async () => {
+    const response = await request(app).post('/bulk/documents').send(receipt());
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('TECHNICAL_REQUEST_REQUIRED');
+    expect(await FinishedGoodsBulkDocument.countDocuments()).toBe(0);
+    expect((await Sku.findById(sku._id)).onHandQty).toBe(0);
+  });
+
+  test('links the receipt to one technician request and shows its completed status', async () => {
+    const body = receipt();
+    const first = await post(body);
+    expect(first.status).toBe(201);
+    const confirmed = await request(app).post('/bulk/confirmations/status').send(body);
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.data.document.id).toBe(first.body.data.document.id);
+    const changed = await request(app).post('/bulk/confirmations/status')
+      .send({ ...body, note: 'different confirmation' });
+    expect(changed.status).toBe(409);
+    const otherAttempt = await request(app).post('/bulk/confirmations/status')
+      .send({ ...body, confirmationKey: randomUUID() });
+    expect(otherAttempt.status).toBe(200);
+    expect(otherAttempt.body.data).toMatchObject({
+      matchType: 'SOURCE_TICKET', document: { id: first.body.data.document.id },
+    });
+    expect(String((await FinishedGoodsBulkDocument.findOne()).sourceTicketId)).toBe(body.sourceTicketId);
+    expect((await FinishedGoodsTicket.findById(body.sourceTicketId)).status).toBe('COMPLETED');
+    const queue = await request(app).get('/bulk/technical-requests');
+    expect(queue.status).toBe(200);
+    expect(queue.body.data.requests[0]).toMatchObject({ id: body.sourceTicketId,
+      code: body.documentCode.slice(3), status: 'COMPLETED',
+      receiptId: first.body.data.document.id });
+    const again = await post({ ...body, confirmationKey: randomUUID() });
+    expect(again.status).toBe(409);
+    expect(await FinishedGoodsBulkDocument.countDocuments()).toBe(1);
+    expect((await Sku.findById(sku._id)).onHandQty).toBe(3);
   });
 
   test('records accepted units, repair quantity, stock, allocation and ledger', async () => {

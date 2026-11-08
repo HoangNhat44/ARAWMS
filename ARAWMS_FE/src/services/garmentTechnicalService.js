@@ -44,6 +44,12 @@ export const garmentTechnicalService = {
     getOutboundDetail: (id) => api.get(`/garment-technical/remnant-recovery/outbound-requests/${id}`),
     getIssuedRolls: (params = {}) => api.get('/garment-technical/remnant-recovery/issued-rolls', { params }),
     recordCutting: (payload) => api.post('/garment-technical/remnant-recovery/record-cutting', payload),
+    lookupReturnSources: (params) => api.get('/garment-technical/remnant-recovery/return-sources', { params }),
+    reportUnknownReturnSource: (id, payload) => api.post(`/garment-technical/remnant-recovery/outbound-requests/${id}/source-discrepancies`, payload),
+    getReturnRequests: () => api.get('/garment-technical/remnant-recovery/return-requests'),
+    confirmReturnRequest: (id, payload) => api.post(`/garment-technical/remnant-recovery/return-requests/${id}/confirm`, payload),
+    reportReturnDiscrepancy: (id, reason) => api.post(`/garment-technical/remnant-recovery/return-requests/${id}/discrepancy`, { reason }),
+    closeReturnRequest: (id, status) => api.post(`/garment-technical/remnant-recovery/return-requests/${id}/close`, { status }),
     getHistory: (params = {}) => api.get('/garment-technical/remnant-recovery/history', { params }),
   },
 };

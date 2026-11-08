@@ -5,7 +5,9 @@
  * Description: Guides warehouse staff from a confirmed allocation through location and unit barcode scans. Shows server-confirmed progress and keeps a stable request ID when retrying after a connection failure.
  */
 import React, { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { warehousePutawayService as api } from '../services/warehousePutawayService';
+import MaterialPutawayPanel from '../components/MaterialPutawayPanel';
 import '../styles/warehousePutaway.css';
 
 const key = (task) => `${task.allocationId}:${task.lineId}`;
@@ -17,7 +19,7 @@ const locationName = (code = '') => {
 };
 
 /** Keeps one camera session during a task while serializing barcode submissions. */
-export default function WarehousePutawayPage() {
+function FinishedGoodsPutawayPanel() {
   const [tasks, setTasks] = useState([]);
   const [task, setTask] = useState(null);
   const [query, setQuery] = useState('');
@@ -265,7 +267,8 @@ export default function WarehousePutawayPage() {
   return <main className="putaway-page">
     <header className="putaway-page-head"><div><span className="putaway-eyebrow">KHO THÀNH PHẨM / XẾP HÀNG</span>
       <h1>Xếp hàng vào kệ</h1><p>In tem từng chiếc, quét đúng ô rồi quét barcode sản phẩm khi đặt vào kệ.</p></div>
-      <button type="button" className="putaway-button putaway-button-light" onClick={refresh} disabled={busy}>↻ Làm mới</button></header>
+      <div className="putaway-head-actions"><Link className="putaway-button putaway-button-light" to="/warehouse/finished-goods?tab=requests">Xem lệnh nhập kỹ thuật</Link>
+      <button type="button" className="putaway-button putaway-button-light" onClick={refresh} disabled={busy}>↻ Làm mới</button></div></header>
     {error && <div className="putaway-toast putaway-toast-error" role="alert">{error}
       <button type="button" aria-label="Đóng thông báo lỗi" onClick={() => setError('')}>×</button></div>}
     {notice && <div className="putaway-toast" role="status">{notice}
@@ -439,4 +442,17 @@ export default function WarehousePutawayPage() {
             onClick={closeTask}>Về danh sách</button>}</div></div>
     </section></div>}
   </main>;
+}
+
+export default function WarehousePutawayPage() {
+  const [type, setType] = useState('MATERIAL');
+  return <>
+    <nav className="putaway-type-tabs" aria-label="Loại hàng xếp kệ">
+      <button type="button" className={type === 'MATERIAL' ? 'active' : ''}
+        aria-pressed={type === 'MATERIAL'} onClick={() => setType('MATERIAL')}>Nguyên phụ liệu</button>
+      <button type="button" className={type === 'FINISHED' ? 'active' : ''}
+        aria-pressed={type === 'FINISHED'} onClick={() => setType('FINISHED')}>Thành phẩm</button>
+    </nav>
+    {type === 'MATERIAL' ? <MaterialPutawayPanel /> : <FinishedGoodsPutawayPanel />}
+  </>;
 }

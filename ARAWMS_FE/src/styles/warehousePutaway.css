@@ -1,8 +1,12 @@
 /* File: warehousePutaway.css | Author: Duy Anh | Date: 2026-10-31 | Description: Styles the putaway queue and focused barcode scanning dialog. */
 .main-content:has(.putaway-page){width:100%;min-width:0;align-items:stretch}
+.putaway-type-tabs{display:flex;gap:6px;align-self:center;width:min(100% - 64px,1696px);margin:24px auto -16px;padding:5px;background:#f4eee6;border-radius:11px}
+.putaway-type-tabs button{border:0;border-radius:8px;background:transparent;color:#514536;padding:11px 18px;font:700 13px var(--font-sans);cursor:pointer}
+.putaway-type-tabs button.active{background:#fff;color:#825500;box-shadow:0 2px 8px #00000012}
 .putaway-page{width:100%;max-width:1760px;align-self:center;margin:0 auto;padding:32px 32px 72px;color:#1c1b1b;font-family:var(--font-sans);display:grid;gap:32px;min-width:0;scroll-margin-top:80px}
 .putaway-page *{box-sizing:border-box}.putaway-page h1,.putaway-page h2,.putaway-page h3,.putaway-page p{margin:0}
 .putaway-page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.putaway-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.putaway-head-actions a{text-decoration:none;display:inline-flex;align-items:center}
 .putaway-eyebrow{display:block;color:#825500;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px}
 .putaway-page-head h1{font-family:var(--font-serif);font-size:clamp(30px,3vw,42px);font-weight:600;line-height:1.15;margin-bottom:8px}
 .putaway-page-head p,.putaway-section-title p,.putaway-modal-head p{color:#625b52;font-size:14px;line-height:1.5}
@@ -74,6 +78,7 @@
 .putaway-label-row{background:white;border:1px solid #e8dfd1;border-radius:9px;padding:8px 11px;min-width:0}
 .putaway-label-row span{display:grid;gap:3px;min-width:0}.putaway-label-row small{font-size:11px;color:#675b4d}.putaway-label-row code{font-size:12px;overflow-wrap:anywhere}.putaway-label-row img{margin-left:auto;width:70px;height:30px;object-fit:contain}
 .putaway-copies{display:grid;gap:7px;font-size:12px;font-weight:700}.putaway-copies input{width:120px}.putaway-copies select{width:100%;max-width:360px;padding:8px;border:1px solid #d8cfc2;border-radius:7px;background:white}
+.putaway-destination{display:grid;gap:7px;margin:0 0 14px;font-size:12px;font-weight:700}.putaway-destination select,.putaway-destination input{max-width:430px}
 .putaway-report{background:white;border:1px solid #e8dfd1;border-radius:11px;padding:16px;margin-top:15px;display:grid;gap:12px}.putaway-report h3{font-size:15px}.putaway-report label{display:grid;gap:7px;font-size:12px;font-weight:600}
 .putaway-report textarea{min-height:80px;resize:vertical}.putaway-report>div{display:flex;justify-content:flex-end;gap:8px}
 @media(max-width:850px){.putaway-scan-overview{grid-template-columns:1fr 1fr}.putaway-scan-product{grid-column:1/-1}.putaway-scan-columns{grid-template-columns:1fr}.putaway-scan-right{min-height:170px}.putaway-scan-feed{max-height:130px}}

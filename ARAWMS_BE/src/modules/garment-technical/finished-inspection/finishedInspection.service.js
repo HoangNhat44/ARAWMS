@@ -113,6 +113,10 @@ export const getFinishedGoodsTicketDetails = async (ticketId) => {
  * Sends inbound request to Warehouse Manager with verified quantities and defect actions
  */
 export const createFinishedGoodsInboundTicket = async (payload = {}, user) => {
+  if (!user?.roles?.includes('GARMENT_TECHNICIAN')) {
+    const err = new Error('Chỉ nhân viên kỹ thuật được gửi lệnh nhập kho thành phẩm');
+    err.status = 403; err.code = 'TECHNICIAN_REQUIRED'; throw err;
+  }
   const {
     totalBatchQty = 0,
     passedQty = 0,
@@ -156,6 +160,11 @@ export const createFinishedGoodsInboundTicket = async (payload = {}, user) => {
     const err = new Error(`Tổng số lượng phân bổ theo SKU (${itemsSum}) phải bằng số lượng đạt chuẩn KCS (${passed})`);
     err.status = 400;
     throw err;
+  }
+  if (passed > 500 || !items.every((item) => Number.isSafeInteger(Number(item.expectedQty)) &&
+    Number(item.expectedQty) >= 0 && Number(item.expectedQty) <= 500)) {
+    const err = new Error('Mỗi lệnh nhập tối đa 500 thành phẩm đạt và cần số nguyên hợp lệ');
+    err.status = 400; err.code = 'INVALID_REQUEST_QUANTITY'; throw err;
   }
 
   // Find fallback FINISHED_GOODS location if not provided

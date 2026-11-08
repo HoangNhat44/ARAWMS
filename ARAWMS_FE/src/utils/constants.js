@@ -10,3 +10,6 @@ export const STORAGE_KEYS = {
   TOKEN: 'arawms_auth_token',
   USER: 'arawms_user_info',
 };
+
+// Matches the direct-URL warehouse operator used by the local API test routes.
+export const LOCAL_WAREHOUSE_OPERATOR_ID = '507f1f77bcf86cd799439011';

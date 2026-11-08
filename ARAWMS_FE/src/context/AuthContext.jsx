@@ -32,7 +32,9 @@ export const AuthProvider = ({ children }) => {
         const res = await authService.getMe();
         if (!active || currentRequest !== request) return;
         if (token !== localStorage.getItem(STORAGE_KEYS.TOKEN)) return syncAuth();
-        setUser(res.success && res.data?.user ? res.data.user : null);
+        const verifiedUser = res.success && res.data?.user ? res.data.user : null;
+        if (verifiedUser) localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(verifiedUser));
+        setUser(verifiedUser);
       } catch (err) {
         if (!active || currentRequest !== request) return;
         // Axios can clear an expired token before this handler runs.

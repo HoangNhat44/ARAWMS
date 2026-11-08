@@ -6,7 +6,7 @@
  */
 import { offlineCatalogStore as store } from './offlineCatalogStore';
 import { productService } from './productService';
-import { STORAGE_KEYS } from '../utils/constants';
+import { LOCAL_WAREHOUSE_OPERATOR_ID, STORAGE_KEYS } from '../utils/constants';
 
 const listeners = new Set();
 let running = false;
@@ -17,8 +17,12 @@ const ownKey = (kind, id) => `finished-goods:${kind}:${id}`;
 /** Prevents a retry from using another account's token after a login switch. */
 const signedInAs = (ownerId) => {
   try {
+    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+    if (!token && import.meta.env.DEV &&
+      ['localhost', '127.0.0.1'].includes(window.location.hostname))
+      return String(ownerId) === LOCAL_WAREHOUSE_OPERATOR_ID;
     const user = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER) || 'null');
-    return Boolean(localStorage.getItem(STORAGE_KEYS.TOKEN)) &&
+    return Boolean(token) &&
       String(user?.id || user?._id) === String(ownerId);
   } catch { return false; }
 };
@@ -65,8 +69,15 @@ export const finishedGoodsOffline = {
   },
   /** Lists stock confirmations separately from catalog operations in the shared queue. */
   async confirmations(ownerId) {
-    return (await store.list('operations', ownerId)).filter((item) =>
-      item.operationType === 'FINISHED_GOODS_CONFIRM').sort((a, b) => a.createdAt - b.createdAt);
+    const candidates = (await store.list('operations', ownerId)).filter((item) =>
+      item.operationType === 'FINISHED_GOODS_CONFIRM' && item.operationId);
+    // The old catalog migration wrote a second, unprefixed copy. Always prefer the
+    // finished-goods key so a stale copy cannot reopen a completed confirmation.
+    const ids = [...new Set(candidates.map((item) => item.operationId))];
+    const operations = await Promise.all(ids.map(async (id) =>
+      await store.get('operations', ownerId, ownKey('confirmation', id)) ||
+      candidates.find((item) => item.operationId === id)));
+    return operations.sort((a, b) => a.createdAt - b.createdAt);
   },
   /** Lets stock screens refresh local status without polling IndexedDB. */
   subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -83,8 +94,10 @@ export const syncFinishedGoodsConfirmations = async (ownerId) => {
     try {
       for (const operation of await finishedGoodsOffline.confirmations(ownerId)) {
         if (!signedInAs(ownerId) || !navigator.onLine) break;
-        if (!['PENDING', 'SYNCING'].includes(operation.status) ||
-          (operation.nextRetryAt && operation.nextRetryAt > Date.now())) continue;
+        // Older catalog migrations also touched this shared store. Reconcile those
+        // legacy statuses without handing stock confirmations to catalog sync.
+        if (!['PENDING', 'SYNCING', 'REVIEW', 'QUEUED', 'RETRY_WAIT',
+          'NEEDS_ACTION', 'AUTH_REQUIRED'].includes(operation.status)) continue;
         const key = ownKey('confirmation', operation.operationId);
         /** Persists each state transition before exposing it to the UI. */
         const save = async (changes) => {
@@ -92,15 +105,43 @@ export const syncFinishedGoodsConfirmations = async (ownerId) => {
           await store.put('operations', ownerId, key, operation);
           notify();
         };
+        const complete = async (document, status = 'DONE') => {
+          await save({ status, serverResult: document, lastError: '', nextRetryAt: null });
+          // A cleanup failure must not turn a server-confirmed receipt back into pending work.
+          try {
+            if (status === 'DONE') {
+              const draftKey = operation.payload.draftKey || operation.payload.direction;
+              const draft = await finishedGoodsOffline.getDraft(ownerId, draftKey);
+              if (draft?.confirmationKey === operation.operationId)
+                await finishedGoodsOffline.removeDraft(ownerId, draftKey);
+            }
+          } catch { /* The confirmed document remains authoritative. */ }
+          window.dispatchEvent(new CustomEvent('arawms-finished-goods-synced', { detail: { ownerId } }));
+        };
+        // Reconcile every queued receipt before replay. Another attempt may already have
+        // received its unique technical ticket, even when this device has a different key.
+        try {
+          const confirmed = await productService.confirmationStatus(operation.payload);
+          await complete(confirmed.data.document,
+            confirmed.data.matchType === 'SOURCE_TICKET' ? 'SUPERSEDED' : 'DONE');
+          continue;
+        } catch (error) {
+          if (error.code === 'CONFIRMATION_REUSED') {
+            await save({ status: 'REVIEW', lastError: error.message, nextRetryAt: null });
+            continue;
+          }
+          if (error.code !== 'CONFIRMATION_NOT_FOUND') continue;
+        }
+        if (['NEEDS_ACTION', 'AUTH_REQUIRED'].includes(operation.status)) {
+          await save({ status: 'REVIEW', nextRetryAt: null });
+          continue;
+        }
+        if (operation.status === 'REVIEW' ||
+            operation.nextRetryAt && operation.nextRetryAt > Date.now()) continue;
         await save({ status: 'SYNCING' });
         try {
           const response = await productService.bulkMoveStock(operation.payload);
-          await save({ status: 'DONE', serverResult: response.data.document, lastError: '', nextRetryAt: null });
-          // An older confirmation must not remove a newer draft opened in another tab.
-          const draft = await finishedGoodsOffline.getDraft(ownerId, operation.payload.direction);
-          if (draft?.confirmationKey === operation.operationId)
-            await finishedGoodsOffline.removeDraft(ownerId, operation.payload.direction);
-          window.dispatchEvent(new CustomEvent('arawms-finished-goods-synced', { detail: { ownerId } }));
+          await complete(response.data.document);
         } catch (error) {
           // Transport and server failures may hide a committed result; retry the unchanged ID.
           // Business conflicts need review because changing the payload under that ID is unsafe.

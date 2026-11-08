@@ -18,7 +18,6 @@ const PORT = process.env.PORT || 5000;
 // Start accepting requests only after MongoDB connects successfully.
 const startServer = async () => {
   await connectDB();
-
   const server = createServer(app);
   attachRealtime(server);
   server.listen(PORT, () => {

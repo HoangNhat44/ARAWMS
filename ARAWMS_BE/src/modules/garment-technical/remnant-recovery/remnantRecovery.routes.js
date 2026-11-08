@@ -15,6 +15,8 @@ import {
   listIssuedRolls,
   recordCutting,
   listHistory,
+  lookupReturnSource, listReturnRequests, confirmReturnRequest,
+  reportReturnDiscrepancy, cancelReturnRequest, reportUnknownReturnSource,
 } from './remnantRecovery.controller.js';
 
 const router = express.Router();
@@ -24,6 +26,7 @@ const flexibleAuth = async (req, res, next) => {
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
     return authenticate(req, res, next);
   }
+  if (process.env.NODE_ENV === 'production') return authenticate(req, res, next);
   req.user = req.user || {
     _id: '507f1f77bcf86cd799439011',
     username: 'garment_tech',
@@ -41,7 +44,13 @@ router.get('/threshold', getThreshold);
 router.get('/outbound-requests', listOutbounds);
 router.post('/outbound-requests', createOutbound);
 router.get('/outbound-requests/:id', getOutbound);
+router.post('/outbound-requests/:id/source-discrepancies', reportUnknownReturnSource);
 router.get('/issued-rolls', listIssuedRolls);
+router.get('/return-sources', lookupReturnSource);
+router.get('/return-requests', listReturnRequests);
+router.post('/return-requests/:id/confirm', confirmReturnRequest);
+router.post('/return-requests/:id/discrepancy', reportReturnDiscrepancy);
+router.post('/return-requests/:id/close', cancelReturnRequest);
 router.post('/record-cutting', recordCutting);
 router.get('/history', listHistory);
 

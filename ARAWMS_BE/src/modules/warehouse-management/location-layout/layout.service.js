@@ -15,6 +15,7 @@ import FabricRoll from "../../../models/FabricRoll.model.js";
 import MaterialStockLot from "../../../models/MaterialStockLot.model.js";
 import PutawayAllocation from "../../../models/PutawayAllocation.model.js";
 import SystemLog from "../../../models/SystemLog.model.js";
+import { isValidMaterialUnit, normalizeMaterialUnit } from "../../../common/constants/materialUnits.js";
 
 const id = (value) => String(value || "");
 const fail = (code, message, status = 409) => {
@@ -35,8 +36,8 @@ const presentLayout = (value) => {
   return layout && { ...layout, active: snap(layout.active),
     draft: layout.draft ? snap(layout.draft) : null };
 };
+
 const codePattern = /^[A-Z0-9_-]{1,32}$/;
-const rawCapacityUnits = ["METER", "KG", "PIECE", "SPOOL", "BOX"];
 const positive = (value, max) =>
   Number.isSafeInteger(Number(value)) &&
   Number(value) >= 1 &&
@@ -176,7 +177,7 @@ export async function addRack(user, input) {
   const floors = Number(input.floors ?? 3);
   const binsPerFloor = Number(input.binsPerFloor ?? 1);
   const capacityPerBin = Number(input.capacityPerBin ?? 0);
-  const capacityUnit = zoneCode === "A" ? String(input.capacityUnit || "").toUpperCase() : "PIECE";
+  const capacityUnit = zoneCode === "A" ? normalizeMaterialUnit(input.capacityUnit) : "PIECE";
   if (
     !codePattern.test(rackCode) ||
     !positive(floors, 12) ||
@@ -185,7 +186,7 @@ export async function addRack(user, input) {
     (zoneCode === "A" ? !Number.isFinite(capacityPerBin) || capacityPerBin > 100000000
       : !Number.isSafeInteger(capacityPerBin)) ||
     capacityPerBin < 0 ||
-    (zoneCode === "A" && !rawCapacityUnits.includes(capacityUnit)) ||
+    (zoneCode === "A" && !isValidMaterialUnit(capacityUnit)) ||
     !layout.draft.zones.some(
       (zone) =>
         zone.code === zoneCode &&
@@ -497,7 +498,7 @@ export async function validateSnapshot(draft, session) {
       !rackIds.has(id(bin.rackId)) ||
       !/^[A-Z0-9_-]+-T\d+-O\d+$/.test(bin.locationCode) ||
       (parentRack?.zoneCode === "A" ? !Number.isFinite(bin.capacity) || bin.capacity > 100000000
-        || !rawCapacityUnits.includes(bin.capacityUnit || "PIECE")
+        || !isValidMaterialUnit(bin.capacityUnit || "PIECE")
         : !Number.isSafeInteger(bin.capacity)) ||
       bin.capacity < 0 ||
       !["ACTIVE", "LOCKED", "INACTIVE"].includes(bin.status)
@@ -717,6 +718,7 @@ export async function publishDraft(user, version) {
               warehouseType: rack.zoneCode === "A" ? "RAW_MATERIAL" : "FINISHED_GOODS",
               zoneCode: rack.zoneCode,
               rackCode: rack.code,
+              rackName: rack.name,
               shelfCode: `T${bin.floorNo}`,
               floorNo: bin.floorNo,
               binNo: bin.binNo,

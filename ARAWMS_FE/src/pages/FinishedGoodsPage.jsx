@@ -5,20 +5,29 @@
  * Description: Displays stock, cached documents, local drafts, barcode labels, and receiving actions.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowUpRight, ArrowRightLeft, CirclePlus, RefreshCw } from 'lucide-react';
 import { productService } from '../services/productService';
-// import { useAuth } from '../hooks/useAuth';
+import { materialInboundService } from '../services/materialInboundService';
+import { garmentTechnicalService } from '../services/garmentTechnicalService';
+import { useAuth } from '../hooks/useAuth';
+import { LOCAL_WAREHOUSE_OPERATOR_ID, STORAGE_KEYS } from '../utils/constants';
 import { getPendingCatalogChanges, subscribeCatalogChanges } from '../services/offlineCatalogSync';
 import { finishedGoodsOffline } from '../services/offlineFinishedGoods';
 import { printProductLabels } from '../utils/productLabelPrint';
 import BulkStockForm from '../components/BulkStockForm';
 import PendingReceiptAllocation from '../components/PendingReceiptAllocation';
 import FinishedGoodsOverview from '../components/FinishedGoodsOverview';
+import UnifiedTechnicalInboundList from '../components/UnifiedTechnicalInboundList';
+import WarehouseOutboundList from '../components/WarehouseOutboundList';
+import WarehouseInboundProgress from '../components/WarehouseInboundProgress';
+import WarehouseRequestDialog from '../components/WarehouseRequestDialog';
+import DirectMaterialReceiptModal from '../components/DirectMaterialReceiptModal';
 import '../styles/finishedGoods.css';
 
 // Mock user for testing (NO AUTH REQUIRED)
-const mockUser = { _id: '507f1f77bcf86cd799439011', id: '507f1f77bcf86cd799439011', username: 'test', fullName: 'Test User', roles: ['OWNER', 'WAREHOUSE_MANAGER'] };
+const mockUser = { _id: LOCAL_WAREHOUSE_OPERATOR_ID, id: LOCAL_WAREHOUSE_OPERATOR_ID,
+  username: 'test', fullName: 'Test User', roles: ['OWNER', 'WAREHOUSE_MANAGER'] };
 
 const panel = { background: '#fff', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-md)', padding: '1.25rem', boxShadow: 'var(--ara-shadow-sm)' };
 const input = { width: '100%', padding: '.65rem', border: '1px solid var(--ara-border)', borderRadius: 8, font: 'inherit' };
@@ -27,9 +36,12 @@ const money = (value) => new Intl.NumberFormat('vi-VN', { style: 'currency', cur
 /** Displays finished-goods stock and the receive or dispatch workflow.
  * Uses account-scoped cached data for offline viewing while keeping local work separate from server stock. */
 export default function FinishedGoodsPage() {
-  const location = useLocation();
-  // const { user } = useAuth();
-  const user = mockUser;
+  const [searchParams] = useSearchParams();
+  const { user: authenticatedUser } = useAuth();
+  const localOperator = import.meta.env.DEV &&
+    ['localhost', '127.0.0.1'].includes(window.location.hostname) &&
+    !localStorage.getItem(STORAGE_KEYS.TOKEN);
+  const user = authenticatedUser || (localOperator ? mockUser : null);
   const ownerId = user?.id || user?._id;
   const [localCatalog, setLocalCatalog] = useState([]);
   const [products, setProducts] = useState([]);
@@ -39,14 +51,31 @@ export default function FinishedGoodsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [activeTab, setActiveTab] = useState('stock');
+  const [activeTab, setActiveTab] = useState(['requests', 'outbound', 'progress'].includes(searchParams.get('tab'))
+    ? searchParams.get('tab') : 'stock');
   const [movement, setMovement] = useState(null);
   const [quantity, setQuantity] = useState('');
   const [skuId, setSkuId] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
-  const [bulkDirection, setBulkDirection] = useState(location.state?.receiveSkuIds?.length ? 'IN' : '');
-  const [handoffSkuIds, setHandoffSkuIds] = useState(location.state?.receiveSkuIds || []);
+  const [bulkDirection, setBulkDirection] = useState('');
+  const [handoffSkuIds, setHandoffSkuIds] = useState([]);
+  const [technicalRequests, setTechnicalRequests] = useState([]);
+  const [materialRequests, setMaterialRequests] = useState([]);
+  const [outboundMaterialRequests, setOutboundMaterialRequests] = useState([]);
+  const [outboundFinishedDocuments, setOutboundFinishedDocuments] = useState([]);
+  const [inboundProgress, setInboundProgress] = useState([]);
+  const [inboundDetail, setInboundDetail] = useState(null);
+  const [outboundDetail, setOutboundDetail] = useState(null);
+  const [materialReceiptTarget, setMaterialReceiptTarget] = useState(null);
+  const [materialOptions, setMaterialOptions] = useState({ suppliers: [], materials: [], locations: [] });
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [requestsError, setRequestsError] = useState('');
+  const [outboundLoading, setOutboundLoading] = useState(false);
+  const [outboundError, setOutboundError] = useState('');
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [progressError, setProgressError] = useState('');
+  const [selectedRequest, setSelectedRequest] = useState(null);
   const [initialProductId, setInitialProductId] = useState('');
   const [recentDocuments, setRecentDocuments] = useState([]);
   const [pendingReceipts, setPendingReceipts] = useState([]);
@@ -101,6 +130,51 @@ export default function FinishedGoodsPage() {
     try { const response = await productService.pendingReceipts(); setPendingReceipts(response.data.receipts); }
     catch (requestError) { setError(requestError.message); }
   };
+  const loadTechnicalRequests = async () => {
+    if (!navigator.onLine) return;
+    setRequestsLoading(true);
+    const [finished, material] = await Promise.allSettled([
+      productService.technicalRequests(), materialInboundService.technicianRequests(),
+    ]);
+    if (finished.status === 'fulfilled') setTechnicalRequests(finished.value.data.requests || []);
+    if (material.status === 'fulfilled') setMaterialRequests(material.value.data.requests || []);
+    setRequestsError([finished, material].filter((result) => result.status === 'rejected')
+      .map((result) => result.reason.message).join(' · '));
+    setRequestsLoading(false);
+  };
+  const loadOutbound = async () => {
+    if (!navigator.onLine) return;
+    setOutboundLoading(true);
+    const [material, finished] = await Promise.allSettled([
+      garmentTechnicalService.remnant.getOutboundRequests(), productService.outboundDocuments(),
+    ]);
+    if (material.status === 'fulfilled') setOutboundMaterialRequests(material.value.data || []);
+    if (finished.status === 'fulfilled') setOutboundFinishedDocuments(finished.value.data.documents || []);
+    setOutboundError([material, finished].filter((result) => result.status === 'rejected')
+      .map((result) => result.reason.message).join(' · '));
+    setOutboundLoading(false);
+  };
+  const loadInboundProgress = async () => {
+    if (!navigator.onLine) return;
+    setProgressLoading(true);
+    try { setInboundProgress((await productService.inboundProgress()).data.receipts || []);
+      setProgressError(''); }
+    catch (failure) { setProgressError(failure.message); }
+    finally { setProgressLoading(false); }
+  };
+  const startReceiving = async (request) => {
+    setInboundDetail(null);
+    if (request.warehouse === 'FINISHED_GOODS') {
+      setSelectedRequest(request); setBulkDirection('IN'); setActiveTab('requests');
+      setError(''); setNotice('');
+      return;
+    }
+    try {
+      const options = await materialInboundService.options();
+      setMaterialOptions(options.data);
+      setMaterialReceiptTarget({ kind: 'request', id: request.id, request });
+    } catch (failure) { setError(failure.message); }
+  };
   /** Opens a receipt detail and retains it locally for a later disconnected lookup. */
   const showReceiptDetail = async (id) => {
     setDetailLoading(true);
@@ -115,14 +189,16 @@ export default function FinishedGoodsPage() {
   };
   // Reset account-specific stock data when the authenticated owner changes.
   useEffect(() => {
-    setProducts([]); setRecentDocuments([]); setPendingReceipts([]); setCacheTime(null);
-    if (ownerId) { loadProducts(); loadRecentStockDocuments(); loadPendingReceipts(); }
+    setProducts([]); setRecentDocuments([]); setPendingReceipts([]);
+    setTechnicalRequests([]); setMaterialRequests([]); setCacheTime(null);
+    if (ownerId) { loadProducts(); loadRecentStockDocuments(); loadPendingReceipts();
+      loadTechnicalRequests(); loadOutbound(); loadInboundProgress(); }
   }, [ownerId]);
   // Show pending and rejected confirmations without treating them as completed documents.
   useEffect(() => {
     if (!ownerId) { setPendingConfirmations([]); return undefined; }
     const refresh = () => finishedGoodsOffline.confirmations(ownerId).then((items) =>
-      setPendingConfirmations(items.filter((item) => item.status !== 'DONE'))).catch(() => {});
+      setPendingConfirmations(items.filter((item) => !['DONE', 'SUPERSEDED'].includes(item.status)))).catch(() => {});
     refresh();
     const unsubscribe = finishedGoodsOffline.subscribe(refresh);
     window.addEventListener('arawms-finished-goods-synced', refresh);
@@ -140,7 +216,8 @@ export default function FinishedGoodsPage() {
   // Refresh stock and documents only after the backend acknowledges a queued confirmation.
   useEffect(() => {
     const refresh = (event) => { if (String(event.detail?.ownerId) === String(ownerId)) {
-      loadProducts(); loadRecentStockDocuments(); loadPendingReceipts();
+      loadProducts(); loadRecentStockDocuments(); loadPendingReceipts(); loadTechnicalRequests();
+      loadOutbound(); loadInboundProgress();
     } };
     window.addEventListener('arawms-finished-goods-synced', refresh);
     return () => window.removeEventListener('arawms-finished-goods-synced', refresh);
@@ -148,7 +225,7 @@ export default function FinishedGoodsPage() {
   useEffect(() => {
     const refreshStock = (event) => {
       if (event.detail?.warehouseType === 'FINISHED_GOODS') {
-        loadProducts(); loadRecentStockDocuments(); loadPendingReceipts();
+        loadProducts(); loadRecentStockDocuments(); loadPendingReceipts(); loadTechnicalRequests();
       }
     };
     const refreshCatalog = () => loadProducts();
@@ -247,34 +324,35 @@ export default function FinishedGoodsPage() {
     <div className="product-page-head finished-goods-hero">
       <div className="finished-goods-intro"><p className="product-eyebrow">QUẢN LÝ KHO THÀNH PHẨM</p><h1>Kho thành phẩm</h1><p>Theo dõi tồn theo SKU, lượng tạm giữ và tiến độ xếp kệ. Kiểm nhận hàng từ xưởng và tra cứu phiếu nhập, xuất trong cùng một màn hình.</p></div>
       <div className="finished-goods-main-actions">
-        <button className="btn-ara-secondary" type="button" disabled={loading} onClick={() => { loadProducts(); loadRecentStockDocuments(); loadPendingReceipts(); }}><RefreshCw size={17} />Làm mới</button>
-        <Link to="/warehouse/products/new" state={{ mode: 'existing' }} className="btn-ara-secondary"><ArrowUpRight size={17} />Nhập từ xưởng</Link>
+        <button className="btn-ara-secondary" type="button" disabled={loading} onClick={() => { loadProducts(); loadRecentStockDocuments(); loadPendingReceipts(); loadTechnicalRequests(); }}><RefreshCw size={17} />Làm mới</button>
+        <button className="btn-ara-secondary" type="button" onClick={() => { setActiveTab('requests'); loadTechnicalRequests(); }}><ArrowUpRight size={17} />Lệnh nhập từ kỹ thuật</button>
         <button className="btn-ara-secondary" type="button" onClick={() => { setHandoffSkuIds([]); setInitialProductId(''); setBulkDirection('OUT'); setMovement(null); setError(''); setNotice(''); }}><ArrowRightLeft size={17} />Xuất kho hàng loạt</button>
         <Link to="/warehouse/products/new" className="btn-ara-primary"><CirclePlus size={18} />Cấu hình sản phẩm</Link>
       </div>
     </div>
-    {bulkDirection === 'IN' && <ol className="product-steps" aria-label="Tiến trình nhập kho"><li><span>01</span>Cấu hình sản phẩm</li><li className="current"><span>02</span>Kiểm nhận</li><li><span>03</span>Phân bổ vị trí</li><li><span>04</span>Xác nhận nhập kho</li></ol>}
+    {bulkDirection === 'IN' && <ol className="product-steps" aria-label="Tiến trình nhập kho"><li><span>01</span>Lệnh nhập kỹ thuật</li><li className="current"><span>02</span>Kiểm nhận và chọn kệ</li><li><span>03</span>Xác nhận nhập kho</li></ol>}
     {error && <p className="finished-goods-message error" role="alert">{error}</p>}
     {notice && <p className="finished-goods-message success" role="status">{notice}</p>}
-    {bulkDirection !== 'IN' && (savedDrafts.IN || savedDrafts.OUT) && <section style={panel} aria-label="Phiếu đang lưu trên thiết bị">
+    {bulkDirection !== 'IN' && savedDrafts.OUT && <section style={panel} aria-label="Phiếu đang lưu trên thiết bị">
       <h2>Phiếu đang lưu trên thiết bị</h2>
-      {['IN', 'OUT'].filter((direction) => savedDrafts[direction]).map((direction) =>
+      {['OUT'].filter((direction) => savedDrafts[direction]).map((direction) =>
         <button key={direction} className="btn-ara-secondary" type="button" style={{ marginRight: '.5rem' }}
           onClick={() => { setBulkDirection(direction); setInitialProductId(''); setHandoffSkuIds([]); }}>
           Mở nháp {direction === 'IN' ? 'nhập' : 'xuất'} · {savedDrafts[direction].documentCode || 'Chưa có mã'}
         </button>)}
     </section>}
     {bulkDirection !== 'IN' && cacheTime && <p role="status">Dữ liệu tồn tải lần cuối lúc {new Date(cacheTime).toLocaleString('vi-VN')}. Kiểm tra lại trước khi xác nhận xuất kho.</p>}
-    {!navigator.onLine && <p role="status">Mất kết nối — bạn có thể tiếp tục kiểm nhận và lưu trên thiết bị. Đang tìm trong dữ liệu đã tải.</p>}
+    {!navigator.onLine && <p role="status">Mất kết nối — bản nháp đang mở có thể lưu trên thiết bị; cần kết nối để xác nhận phiếu kho.</p>}
     {pendingConfirmations.length > 0 && <section style={panel} aria-label="Dữ liệu kho chờ đồng bộ">
       <h2>Dữ liệu chờ đồng bộ</h2>
       {pendingConfirmations.map((item) => <p key={item.operationId}>
-        {item.payload.documentCode} · {item.status === 'REVIEW' ? 'Cần kiểm tra' : 'Chờ đối chiếu'}
+        {item.payload.documentCode} · {item.status === 'REVIEW' ? 'Cần kiểm tra' :
+          item.status === 'SYNCING' ? 'Đang gửi lên máy chủ' : 'Chưa được máy chủ xác nhận'}
         {item.lastError && ` · ${item.lastError}`}
       </p>)}
     </section>}
 
-    {bulkDirection && <BulkStockForm key={`${bulkDirection}:${initialProductId}:${handoffSkuIds.join(',')}`} direction={bulkDirection} products={products} ownerId={ownerId} initialSkuIds={handoffSkuIds} initialProductId={initialProductId} onCancel={() => setBulkDirection('')} onQueued={(message) => { setBulkDirection(''); setNotice(message); }} onDone={async (document) => {
+    {bulkDirection && <div className="fg-request-overlay"><div className="fg-bulk-dialog"><BulkStockForm key={`${bulkDirection}:${selectedRequest?.id || ''}:${initialProductId}`} direction={bulkDirection} products={products} ownerId={ownerId} sourceTicket={bulkDirection === 'IN' ? selectedRequest : null} initialSkuIds={handoffSkuIds} initialProductId={initialProductId} onCancel={() => setBulkDirection('')} onQueued={(message) => { setBulkDirection(''); setNotice(message); }} onDone={async (document) => {
       setBulkDirection('');
       setHandoffSkuIds([]);
       setNotice(`Đã lưu phiếu ${document.documentCode}: ${document.lineCount} dòng, tổng ${document.totalQuantity} sản phẩm.`);
@@ -282,7 +360,10 @@ export default function FinishedGoodsPage() {
       await loadProducts();
       await loadRecentStockDocuments();
       await loadPendingReceipts();
-    }} />}
+      await loadTechnicalRequests();
+      await loadOutbound();
+      await loadInboundProgress();
+    }} /></div></div>}
 
     {localCatalog.length > 0 && <section className="finished-goods-catalog" aria-label="Sản phẩm trên thiết bị chờ đồng bộ">
       <h2>Sản phẩm trên thiết bị</h2>
@@ -296,17 +377,30 @@ export default function FinishedGoodsPage() {
     </section>}
     <div className="fg-tabs" role="tablist" aria-label="Nội dung kho thành phẩm">
       <button type="button" role="tab" aria-selected={activeTab === 'stock'} className={activeTab === 'stock' ? 'active' : ''} onClick={() => setActiveTab('stock')}>Tồn kho theo SKU</button>
-      <button type="button" role="tab" aria-selected={activeTab === 'records'} className={activeTab === 'records' ? 'active' : ''} onClick={() => setActiveTab('records')}>Phiếu kho <span>{recentDocuments.length}</span></button>
+      <button type="button" role="tab" aria-selected={activeTab === 'requests'} className={activeTab === 'requests' ? 'active' : ''} onClick={() => { setActiveTab('requests'); loadTechnicalRequests(); }}>Lệnh nhập từ kỹ thuật <span>{technicalRequests.filter((item) => item.status === 'READY_TO_CONFIRM' && !item.receiptId).length + materialRequests.filter((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)).length}</span></button>
+      <button type="button" role="tab" aria-selected={activeTab === 'outbound'} className={activeTab === 'outbound' ? 'active' : ''} onClick={() => { setActiveTab('outbound'); loadOutbound(); }}>Lệnh xuất từ kỹ thuật</button>
+      <button type="button" role="tab" aria-selected={activeTab === 'progress'} className={activeTab === 'progress' ? 'active' : ''} onClick={() => { setActiveTab('progress'); loadTechnicalRequests(); loadInboundProgress(); }}>Tiến độ nhập kho</button>
     </div>
+    {activeTab === 'requests' && <UnifiedTechnicalInboundList
+      finishedRequests={technicalRequests} materialRequests={materialRequests}
+      loading={requestsLoading} error={requestsError} onRefresh={loadTechnicalRequests}
+      onOpen={setInboundDetail} />}
+    {activeTab === 'outbound' && <WarehouseOutboundList materialRequests={outboundMaterialRequests}
+      finishedDocuments={outboundFinishedDocuments} loading={outboundLoading} error={outboundError}
+      onRefresh={loadOutbound} onOpen={setOutboundDetail} />}
+    {activeTab === 'progress' && <WarehouseInboundProgress finishedRequests={technicalRequests}
+      materialRequests={materialRequests} receipts={inboundProgress} loading={progressLoading || requestsLoading}
+      error={progressError || requestsError} onRefresh={() => { loadTechnicalRequests(); loadInboundProgress(); }}
+      onOpenRequest={setInboundDetail} />}
     {activeTab === 'stock' && <FinishedGoodsOverview products={products} recentDocuments={recentDocuments} ownerId={ownerId} loading={loading}
       onIssue={(product, sku) => { setBulkDirection(''); openStockMovementForm(product, 'OUT', sku.id); }} onError={setError} />}
-    {activeTab === 'records' && <div className="fg-records">
-      <div className="fg-records-head"><div><h2>Phiếu kho gần đây</h2><p>20 phiếu nhập, xuất gần nhất từ hệ thống</p></div><button className="btn-ara-secondary" type="button" onClick={() => { loadRecentStockDocuments(); loadPendingReceipts(); }}><RefreshCw size={17} /> Làm mới</button></div>
-      {recentDocuments.length === 0 && <p className="fg-empty">Chưa có phiếu kho gần đây.</p>}
-    {recentDocuments.length > 0 && <section className="fg-record-table" style={{ ...panel, marginTop: '0' }} aria-label="Danh sách phiếu kho gần đây">
+    {activeTab === 'progress' && <div className="fg-records">
+      <div className="fg-records-head"><div><h2>Phiếu nhập thành phẩm gần đây</h2><p>Phiếu nhập mới nhất, kèm in tem và chi tiết phân bổ kệ.</p></div><button className="btn-ara-secondary" type="button" onClick={() => { loadRecentStockDocuments(); loadPendingReceipts(); loadInboundProgress(); }}><RefreshCw size={17} /> Làm mới</button></div>
+      {!recentDocuments.some((item) => item.direction === 'IN') && <p className="fg-empty">Chưa có phiếu nhập gần đây.</p>}
+    {recentDocuments.some((item) => item.direction === 'IN') && <section className="fg-record-table" style={{ ...panel, marginTop: '0' }} aria-label="Danh sách phiếu nhập thành phẩm gần đây">
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
         <thead><tr><th style={{ textAlign: 'left' }}>Số chứng từ</th><th>Loại</th><th>Số dòng</th><th>Đạt / xuất</th><th>Trả sửa</th><th>Ngày tạo</th><th /></tr></thead>
-        <tbody>{recentDocuments.map((document) => <tr key={document.id}>
+        <tbody>{recentDocuments.filter((item) => item.direction === 'IN').map((document) => <tr key={document.id}>
           <td style={{ padding: '.6rem', borderBottom: '1px solid var(--ara-border)' }}>{document.documentCode}</td>
           <td style={{ textAlign: 'center' }}>{document.direction === 'IN' ? 'Nhập' : 'Xuất'}</td>
           <td style={{ textAlign: 'center' }}>{document.lineCount}</td>
@@ -356,6 +450,16 @@ export default function FinishedGoodsPage() {
       }} />}
 
     </div>}
+
+    {inboundDetail && <WarehouseRequestDialog request={inboundDetail} kind="IN"
+      onClose={() => setInboundDetail(null)} onReceive={startReceiving} />}
+    {outboundDetail && <WarehouseRequestDialog request={outboundDetail} kind="OUT"
+      onClose={() => setOutboundDetail(null)} />}
+    {materialReceiptTarget && <DirectMaterialReceiptModal target={materialReceiptTarget}
+      options={materialOptions} user={user} onClose={() => setMaterialReceiptTarget(null)}
+      onChanged={() => { loadTechnicalRequests(); loadInboundProgress(); }}
+      onMaterialCreated={(material) => setMaterialOptions((current) => ({ ...current,
+        materials: [material, ...current.materials] }))} />}
 
     {movement && <div className="fg-movement-backdrop">
       <section className="fg-movement-drawer" role="dialog" aria-modal="true" aria-label={`${movement.direction === 'IN' ? 'Nhập kho' : 'Xuất kho'} ${movement.product.productCode}`}>

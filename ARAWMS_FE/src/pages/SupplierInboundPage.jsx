@@ -3,7 +3,8 @@
  * Description: Redesigned Supplier Inbound Page following ARA ATELIER Design System
  * Design System: Editorial Luxury & Refined Beige + Enterprise WMS High-Contrast
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Package, RefreshCw, Plus, FileText, AlertCircle,
   CheckCircle2, Clock, XCircle, Search, Filter,
@@ -13,6 +14,7 @@ import { useAuth } from '../hooks/useAuth';
 import { materialInboundService as api } from '../services/materialInboundService';
 import DirectMaterialReceiptModal from '../components/DirectMaterialReceiptModal';
 import LegacyMaterialReceiptForm from '../components/LegacyMaterialReceiptForm';
+import RemnantReturnReview from '../components/RemnantReturnReview';
 import '../styles/supplierInbound.css';
 
 const mockUser = {
@@ -61,6 +63,9 @@ function StatusBadge({ status }) {
 }
 
 export default function SupplierInboundPage() {
+  const [searchParams] = useSearchParams();
+  const requestedId = searchParams.get('request');
+  const openedRequestId = useRef('');
   const { user: signedInUser } = useAuth();
   const user = signedInUser || mockUser;
 
@@ -119,6 +124,24 @@ export default function SupplierInboundPage() {
     loadData();
   }, [loadData, refreshKey]);
 
+  // Open the requested material workflow when arriving from the shared technician queue.
+  useEffect(() => {
+    if (!requestedId || openedRequestId.current === requestedId) return;
+    const request = requests.find((item) => String(item._id) === requestedId);
+    if (!request) return;
+    openedRequestId.current = requestedId;
+    if (['WAITING_RECEIPT', 'PARTIALLY_RECEIVED', 'DRAFT', 'WAITING_QC',
+      'READY_TO_CONFIRM'].includes(request.status)) {
+      setTarget({ kind: 'request', id: request._id, request });
+    } else if (request.legacyCompleted) {
+      setTarget({ kind: 'legacy', id: request._id });
+    } else {
+      const linked = receipts.filter((receipt) => String(receipt.inboundRequestId || '') === requestedId);
+      if (linked.length === 1) setTarget({ kind: 'receipt', id: linked[0]._id });
+      else setExpandedRequest(requestedId);
+    }
+  }, [requestedId, requests, receipts]);
+
   // Calculate KPIs
   const kpis = {
     totalRequests: requests.length,
@@ -167,6 +190,8 @@ export default function SupplierInboundPage() {
             </button>
           </div>
         </section>
+
+        <RemnantReturnReview locations={options.locations} />
 
         {/* KPI STRIP */}
         <div className="wms-kpi-strip">

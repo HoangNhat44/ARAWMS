@@ -4,6 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
+import { isFractionalMaterialUnit } from '../../../common/constants/materialUnits.js';
 import FabricRoll from '../../../models/FabricRoll.model.js';
 import MaterialStockLot from '../../../models/MaterialStockLot.model.js';
 import MaterialOutbound from '../../../models/MaterialOutbound.model.js';
@@ -21,7 +22,7 @@ const permitted = (user) => user?.roles?.some((role) => ['OWNER', 'ADMIN', 'WARE
 const access = (location, user) => !user.warehouseIds?.length || user.warehouseIds.some((value) => id(value) === id(location._id));
 const quantity = (value, unit) => {
   const n = Number(value);
-  const scale = ['METER', 'KG'].includes(unit) ? 1000 : 1;
+  const scale = isFractionalMaterialUnit(unit) ? 1000 : 1;
   requireRule(value !== '' && value != null && Number.isFinite(n) && n > 0 &&
     Math.abs(n * scale - Math.round(n * scale)) < 0.000001, 'Số lượng không hợp lệ theo đơn vị quản lý', 'INVALID_QUANTITY');
   return round(n);
@@ -43,7 +44,7 @@ export async function getOutboundOptions(user) {
   const [materials, rolls, lots] = await Promise.all([
     RawMaterial.find({ isActive: true, isDeleted: { $ne: true } }).select('materialCode materialName materialType color widthCm gsm unit onHandQty reservedQty pendingPutawayQty').lean(),
     FabricRoll.find({ locationId: { $in: locationIds }, status: 'IN_STOCK', currentLengthMeters: { $gt: 0 }, isDeleted: { $ne: true } })
-      .select('rollBarcode rawMaterialId locationId inboundTicketId currentLengthMeters fifoInboundTimestamp').lean(),
+      .select('rollBarcode rawMaterialId locationId inboundTicketId currentLengthMeters pendingReturnQty fifoInboundTimestamp').lean(),
     MaterialStockLot.find({ status: 'IN_STOCK', quality: 'ACCEPTED', currentQty: { $gt: 0 },
       'allocations.locationId': { $in: locationIds }, isDeleted: { $ne: true } })
       .select('lotBarcode rawMaterialId inboundTicketId currentQty allocations fifoInboundTimestamp').lean(),
@@ -52,7 +53,8 @@ export async function getOutboundOptions(user) {
   const sources = [
     ...rolls.map((roll) => ({ kind: 'ROLL', objectId: roll._id, barcode: roll.rollBarcode,
       rawMaterialId: roll.rawMaterialId, locationId: roll.locationId, inboundTicketId: roll.inboundTicketId,
-      available: roll.currentLengthMeters, fifoInboundTimestamp: roll.fifoInboundTimestamp })),
+      available: round(Math.max(0, roll.currentLengthMeters - (roll.pendingReturnQty || 0))),
+      fifoInboundTimestamp: roll.fifoInboundTimestamp })).filter((source) => source.available > 0),
     ...lots.flatMap((lot) => lot.allocations.filter((allocation) => byLocation.has(id(allocation.locationId)) && allocation.putawayQty > 0)
       .map((allocation) => ({ kind: 'LOT', objectId: lot._id, barcode: lot.lotBarcode,
         rawMaterialId: lot.rawMaterialId, locationId: allocation.locationId, inboundTicketId: lot.inboundTicketId,
@@ -207,7 +209,8 @@ async function verifySource(source, line, warehouseCode, user, session) {
     : await MaterialStockLot.findById(source.objectId).session(session || null);
   requireRule(object && id(object.rawMaterialId) === id(line.rawMaterialId) &&
     (source.kind === 'ROLL' ? object.rollBarcode === source.barcode && object.status === 'IN_STOCK' &&
-      id(object.locationId) === id(location._id) && object.currentLengthMeters >= source.quantity :
+      id(object.locationId) === id(location._id) &&
+      object.currentLengthMeters - (object.pendingReturnQty || 0) >= source.quantity :
       object.lotBarcode === source.barcode && object.status === 'IN_STOCK' && object.quality === 'ACCEPTED' &&
       object.currentQty >= source.quantity && object.allocations.some((allocation) =>
         id(allocation.locationId) === id(location._id) && allocation.putawayQty >= source.quantity)),

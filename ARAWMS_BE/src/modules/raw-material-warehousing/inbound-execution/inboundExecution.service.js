@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
 import MaterialInboundPlan from '../../../models/MaterialInboundPlan.model.js';
 import MaterialTicket from '../../../models/MaterialTicket.model.js';
+import RemnantRecoveryRequest from '../../../models/RemnantRecoveryRequest.model.js';
 import MaterialStockLot from '../../../models/MaterialStockLot.model.js';
 import FabricRoll from '../../../models/FabricRoll.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
@@ -18,6 +19,7 @@ import InventoryTransaction from '../../../models/InventoryTransaction.model.js'
 import User from '../../../models/User.model.js';
 import { scheduleBarcodeImages } from '../../../common/services/barcodeImageStorage.js';
 import { claimRawMaterialBarcode, nextRawMaterialBarcode } from '../../../common/services/rawMaterialBarcode.js';
+import { isFractionalMaterialUnit, isValidMaterialUnit, normalizeMaterialUnit } from '../../../common/constants/materialUnits.js';
 
 const allowedPlanStatuses = ['SCHEDULED', 'IN_INSPECTION', 'VERIFIED_MATCHED', 'DEVIATION_REPORTED'];
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
@@ -41,7 +43,7 @@ const requireValue = (condition, message, code, status) => {
 /** Enforces quantity precision by the material's stock unit. */
 const quantity = (value, unit, field) => {
   const number = Number(value);
-  const precision = ['METER', 'KG'].includes(unit) ? 3 : 0;
+  const precision = isFractionalMaterialUnit(unit) ? 3 : 0;
   requireValue(value !== '' && value != null && Number.isFinite(number) && number >= 0 &&
     Math.abs(number * (10 ** precision) - Math.round(number * (10 ** precision))) < 0.000001,
   `${field} không hợp lệ theo đơn vị ${unit}`, 'INVALID_QUANTITY');
@@ -53,12 +55,14 @@ const accessible = (location, user) => !user.warehouseIds?.length || user.wareho
 
 /** Returns real suppliers and usable receiving/quarantine locations for the form. */
 export async function getReceiptOptions(user) {
+  // Published rack names and bin locations are read from warehouse_locations only.
   const [suppliers, locations] = await Promise.all([
     Supplier.find({ isActive: true, isDeleted: { $ne: true } }).select('supplierCode supplierName').sort({ supplierName: 1 }).lean(),
     WarehouseLocation.find({ warehouseType: { $in: ['RAW_MATERIAL', 'DEFECT_QUARANTINE'] }, status: 'ACTIVE',
-      isFrozenForStocktake: false, isDeleted: { $ne: true } }).select('locationCode barcode warehouseType zoneCode rackCode shelfCode floorNo binNo layoutBin displayName maxCapacity currentOccupancy plannedReservedQty capacityUnit').sort({ zoneCode: 1, rackCode: 1, floorNo: 1, binNo: 1, shelfCode: 1 }).lean(),
+      isFrozenForStocktake: false, isDeleted: { $ne: true } }).select('locationCode barcode warehouseType zoneCode rackCode rackName shelfCode floorNo binNo layoutBin displayName maxCapacity currentOccupancy plannedReservedQty capacityUnit').sort({ zoneCode: 1, rackCode: 1, floorNo: 1, binNo: 1, shelfCode: 1 }).lean(),
   ]);
-  return { suppliers, locations: locations.filter((location) => accessible(location, user)) };
+  return { suppliers, locations: locations.filter((location) => accessible(location, user))
+    .map((location) => ({ ...location, rackName: location.rackName || location.rackCode })) };
 }
 
 /** Creates a shelf in the raw-material or defect area for receipt allocations. */
@@ -70,12 +74,13 @@ export async function createReceiptLocation(input, user) {
   requireValue([locationCode, zoneCode, rackCode, shelfCode].every((part) => /^[A-Z0-9_-]{1,40}$/.test(part)),
     'Mã vị trí, khu, giá hoặc kệ không hợp lệ', 'INVALID_LOCATION');
   requireValue(['RAW_MATERIAL', 'DEFECT_QUARANTINE'].includes(input.warehouseType), 'Loại khu không hợp lệ', 'INVALID_WAREHOUSE_TYPE');
-  requireValue(['METER', 'KG', 'PIECE', 'SPOOL', 'BOX'].includes(input.capacityUnit),
+  const capacityUnit = normalizeMaterialUnit(input.capacityUnit);
+  requireValue(isValidMaterialUnit(capacityUnit),
     'Cần chọn đơn vị sức chứa cho kệ', 'CAPACITY_UNIT_REQUIRED');
-  const maxCapacity = quantity(input.maxCapacity, input.capacityUnit, 'Sức chứa');
+  const maxCapacity = quantity(input.maxCapacity, capacityUnit, 'Sức chứa');
   requireValue(maxCapacity > 0 && maxCapacity <= 100000000, 'Sức chứa không hợp lệ', 'INVALID_CAPACITY');
   const location = await WarehouseLocation.create({ locationCode, barcode: `LOC-${locationCode}`, warehouseType: input.warehouseType,
-    zoneCode, rackCode, shelfCode, maxCapacity, capacityUnit: input.capacityUnit,
+    zoneCode, rackCode, rackName: String(input.rackName || rackCode).trim(), shelfCode, maxCapacity, capacityUnit,
     layoutBin: input.warehouseType === 'RAW_MATERIAL' });
   if (user.warehouseIds?.length) await User.updateOne({ _id: user._id }, { $addToSet: { warehouseIds: location._id } });
   return location;
@@ -136,11 +141,19 @@ export async function listMaterialReceipts(user) {
 export async function getMaterialReceipt(receiptId, user) {
   requireValue(mongoose.isValidObjectId(receiptId), 'Mã phiếu không hợp lệ', 'INVALID_RECEIPT');
   const receipt = await MaterialTicket.findOne({ _id: receiptId,
-    ticketType: { $in: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER'] }, isDeleted: { $ne: true } }).lean();
+    ticketType: { $in: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER', 'INBOUND_FROM_REMNANT'] },
+    isDeleted: { $ne: true } }).lean();
   requireValue(receipt, 'Không tìm thấy phiếu nhập', 'RECEIPT_NOT_FOUND', 404);
   if (user) requireValue(accessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền xem phiếu này', 'RECEIPT_FORBIDDEN', 403);
-  return { receipt, plan: receipt.inboundPlanId && !receipt.deliveryBatchId
-    ? await getInboundPlanDetails(receipt.inboundPlanId, true) : null,
+  let plan = null;
+  if (receipt.inboundPlanId && !receipt.deliveryBatchId) {
+    try { plan = await getInboundPlanDetails(receipt.inboundPlanId, true); }
+    catch (error) {
+      // Historical completed tickets may reference a plan that was removed later.
+      if (error.code !== 'PLAN_NOT_FOUND' || !['COMPLETED', 'CANCELLED'].includes(receipt.status)) throw error;
+    }
+  }
+  return { receipt, plan,
   supplier: receipt.supplierId ? await Supplier.findById(receipt.supplierId)
     .select('supplierName supplierCode').lean() : null };
 }
@@ -300,7 +313,8 @@ export async function getMaterialReceiptLabels(receiptId, user) {
   const { receipt, supplier } = await getMaterialReceipt(receiptId, user);
   requireValue(receipt.status === 'COMPLETED', 'Chỉ in tem cho phiếu đã xác nhận', 'RECEIPT_NOT_CONFIRMED', 409);
   const [rolls, lots] = await Promise.all([
-    FabricRoll.find({ inboundTicketId: receiptId }).select('rollBarcode barcodeImageUrl rawMaterialId supplierId supplierNameSnapshot clientLineId supplierRollCode initialLengthMeters currentLengthMeters measuredWidthCm supplierLotCode unitCostPerMeter fifoInboundTimestamp status locationId').lean(),
+    FabricRoll.find({ $or: [{ inboundTicketId: receiptId }, { returnReceiptIds: receiptId }] })
+      .select('rollBarcode barcodeImageUrl rawMaterialId supplierId supplierNameSnapshot clientLineId supplierRollCode initialLengthMeters currentLengthMeters measuredWidthCm supplierLotCode unitCostPerMeter fifoInboundTimestamp status locationId inboundTicketId returnReceiptIds').lean(),
     MaterialStockLot.find({ inboundTicketId: receiptId }).select('lotBarcode barcodeImageUrl rawMaterialId supplierId supplierNameSnapshot clientLineId initialQty currentQty unitCost quality status allocations supplierLotCode fifoInboundTimestamp').lean(),
   ]);
   if ([...rolls, ...lots].some((item) => !item.barcodeImageUrl)) scheduleBarcodeImages('RAW_MATERIAL', receiptId);
@@ -319,7 +333,9 @@ export async function getMaterialReceiptLabels(receiptId, user) {
   const labels = [
     ...rolls.map((roll) => ({ barcode: roll.rollBarcode, stockObjectId: id(roll._id), sourceLineId: roll.clientLineId,
       receiptCode: receipt.ticketCode, supplierName: roll.supplierNameSnapshot || bySupplier.get(id(roll.supplierId)) || supplier?.supplierName || receipt.purchaseSourceName || 'Chưa xác định',
-      supplierId: id(roll.supplierId), rawMaterialId: id(roll.rawMaterialId), quantity: roll.initialLengthMeters,
+      supplierId: id(roll.supplierId), rawMaterialId: id(roll.rawMaterialId),
+      quantity: id(roll.inboundTicketId) === id(receiptId) ? roll.initialLengthMeters :
+        receipt.receiptLines[0]?.acceptedQty || 0,
       remainingQuantity: roll.currentLengthMeters, unitCost: roll.unitCostPerMeter,
       imageUrl: roll.barcodeImageUrl || null,
       materialName: byMaterial.get(id(roll.rawMaterialId))?.materialName, materialCode: byMaterial.get(id(roll.rawMaterialId))?.materialCode,
@@ -331,7 +347,9 @@ export async function getMaterialReceiptLabels(receiptId, user) {
       actualLocationCodes: roll.status === 'IN_STOCK' ? [byLocation.get(id(roll.locationId))].filter(Boolean) : [],
       stockStatus: roll.status,
       quality: ['DEFECTIVE', 'RETURNED_TO_SUPPLIER'].includes(roll.status) ? 'REJECTED' : 'ACCEPTED',
-      putawayComplete: ['IN_STOCK', 'DEFECTIVE', 'RETURNED_TO_SUPPLIER'].includes(roll.status) })),
+      putawayComplete: id(roll.inboundTicketId) === id(receiptId)
+        ? ['IN_STOCK', 'DEFECTIVE', 'RETURNED_TO_SUPPLIER'].includes(roll.status)
+        : receipt.putawayEvents?.some((event) => event.barcode === roll.rollBarcode) || false })),
     ...lots.map((lot) => ({ barcode: lot.lotBarcode, stockObjectId: id(lot._id), sourceLineId: lot.clientLineId,
       receiptCode: receipt.ticketCode, supplierName: lot.supplierNameSnapshot || bySupplier.get(id(lot.supplierId)) || supplier?.supplierName || receipt.purchaseSourceName || 'Chưa xác định',
       supplierId: id(lot.supplierId), rawMaterialId: id(lot.rawMaterialId), quantity: lot.initialQty,
@@ -371,7 +389,8 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
     let result;
     await session.withTransaction(async () => {
       const receipt = await MaterialTicket.findOne({ _id: receiptId,
-        ticketType: { $in: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER'] }, status: 'COMPLETED' }).session(session);
+        ticketType: { $in: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER', 'INBOUND_FROM_REMNANT'] },
+        status: 'COMPLETED' }).session(session);
       requireValue(receipt, 'Phiếu chưa được xác nhận', 'RECEIPT_NOT_CONFIRMED', 409);
       requireValue(accessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền cất phiếu này', 'RECEIPT_FORBIDDEN', 403);
       const previous = receipt.putawayEvents.find((event) => event.key === key);
@@ -388,18 +407,22 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
       let amount;
       let materialId;
       let plannedDestination = false;
-      const matchingRoll = await FabricRoll.findOne({ rollBarcode: barcode, inboundTicketId: receiptId }).session(session);
+      const matchingRoll = await FabricRoll.findOne({ rollBarcode: barcode,
+        $or: [{ inboundTicketId: receiptId }, { pendingReturnReceiptId: receiptId }] }).session(session);
       if (matchingRoll) {
         const roll = matchingRoll;
-        requireValue(roll && roll.status === 'QC_PASSED' &&
+        const returningOriginal = id(roll.pendingReturnReceiptId) === id(receiptId);
+        requireValue(roll && (roll.status === 'QC_PASSED' ||
+          returningOriginal && roll.status === 'IN_STOCK') &&
           (id(roll.locationId) === id(location._id) || receipt.usesPlannedLocationReservation && !roll.locationId),
           'Cây vải không chờ cất tại vị trí này', 'ROLL_NOT_PENDING', 409);
-        plannedDestination = Boolean(roll.locationId);
-        amount = roll.initialLengthMeters;
+        plannedDestination = Boolean(roll.locationId) && !returningOriginal;
+        amount = returningOriginal ? roll.pendingReturnQty : roll.initialLengthMeters;
         requireValue(input.quantity == null || same(input.quantity, amount), 'Phải cất toàn bộ cây vải', 'ROLL_QUANTITY_MISMATCH');
         materialId = roll.rawMaterialId;
         roll.locationId = location._id;
         roll.status = 'IN_STOCK';
+        if (returningOriginal) { roll.pendingReturnQty = 0; roll.pendingReturnReceiptId = undefined; }
         roll.putawayConfirmedAt = new Date();
         await roll.save({ session });
       } else {
@@ -425,18 +448,21 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
           lot.status = 'IN_STOCK';
         await lot.save({ session });
       }
+      const stockMaterial = await RawMaterial.findById(materialId).select('unit').session(session);
+      requireValue(stockMaterial, 'Không tìm thấy nguyên phụ liệu', 'MATERIAL_UNAVAILABLE', 409);
+      requireValue((!location.capacityUnit || location.capacityUnit === stockMaterial.unit) &&
+        (location.capacityUnit || !location.currentOccupancy),
+      'Đơn vị sức chứa của kệ không khớp nguyên phụ liệu', 'LOCATION_UNIT_MISMATCH', 409);
       // Author: Duy Anh. Planned bins become physically occupied only after the matching barcode scan succeeds.
       if (receipt.usesPlannedLocationReservation) {
-        const material = await RawMaterial.findById(materialId).select('unit').session(session);
-        requireValue(material, 'Không tìm thấy nguyên phụ liệu', 'MATERIAL_UNAVAILABLE', 409);
         const occupied = await WarehouseLocation.updateOne({ _id: location._id,
-          $or: [{ capacityUnit: material.unit }, { capacityUnit: null }],
+          $or: [{ capacityUnit: stockMaterial.unit }, { capacityUnit: null, currentOccupancy: { $in: [0, null] } }],
           ...(plannedDestination ? { plannedReservedQty: { $gte: amount } } :
             { $expr: { $gte: [{ $subtract: ['$maxCapacity', { $add: [
               { $ifNull: ['$currentOccupancy', 0] }, { $ifNull: ['$plannedReservedQty', 0] },
             ] }] }, amount] } }) },
         { $inc: { plannedReservedQty: plannedDestination ? -amount : 0, currentOccupancy: amount },
-          $set: { capacityUnit: material.unit } }, { session });
+          $set: { capacityUnit: stockMaterial.unit } }, { session });
         requireValue(occupied.matchedCount === 1, 'Vị trí không còn đủ sức chứa hoặc phần chờ cất', 'PLANNED_LOCATION_CHANGED', 409);
       }
       const updated = await RawMaterial.updateOne({ _id: materialId, pendingPutawayQty: { $gte: amount } },
@@ -444,6 +470,16 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
       requireValue(updated.matchedCount === 1, 'Số lượng chờ cất đã thay đổi', 'PENDING_STOCK_CHANGED', 409);
       receipt.putawayEvents.push({ key, barcode, locationBarcode, locationId: location._id, quantity: amount, at: new Date() });
       await receipt.save({ session });
+      if (receipt.ticketType === 'INBOUND_FROM_REMNANT' && receipt.remnantRequestId) {
+        const request = await RemnantRecoveryRequest.findById(receipt.remnantRequestId).session(session);
+        if (request?.status === 'WAITING_PUTAWAY_SCAN') {
+          const placed = round(receipt.putawayEvents.reduce((sum, event) => sum + event.quantity, 0));
+          if (placed >= round(request.measuredRemnantLengthMeters)) {
+            request.status = 'RESTOCKED';
+            await request.save({ session });
+          }
+        }
+      }
       result = { alreadyProcessed: false, quantity: amount, locationCode: location.locationCode };
     });
     return result;

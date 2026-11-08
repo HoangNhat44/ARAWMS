@@ -31,12 +31,18 @@ const receivingQuantityError = (line) => {
 
 /** Collects SKU quantities for a finished-goods receipt or issue.
  * Restores and saves drafts locally; only an explicit online confirmation enters the stock retry queue. */
-export default function BulkStockForm({ direction, products, ownerId, initialSkuIds = [], initialProductId = '', onDone, onQueued, onCancel }) {
+export default function BulkStockForm({ direction, products, ownerId, sourceTicket = null,
+  initialSkuIds = [], initialProductId = '', onDone, onQueued, onCancel }) {
+  const draftKey = direction === 'IN' ? `IN:${sourceTicket?.id || 'missing'}` : direction;
+  const requestLines = () => (sourceTicket?.lines || []).map((item) => ({
+    key: item.skuId, productId: item.productId, skuId: item.skuId,
+    expectedQty: String(item.expectedQty), receivedQty: String(item.expectedQty),
+    quantity: String(item.expectedQty), repairQty: '0',
+  }));
   const [documentCode, setDocumentCode] = useState('');
   const [note, setNote] = useState('');
   const [lines, setLines] = useState([createEmptyStockLine()]);
   const [saving, setSaving] = useState(false);
-  const [step, setStep] = useState('inspection');
   const [confirmationKey, setConfirmationKey] = useState(() => crypto.randomUUID());
   const [allocations, setAllocations] = useState([]);
   const [bins, setBins] = useState([]);
@@ -52,12 +58,16 @@ export default function BulkStockForm({ direction, products, ownerId, initialSku
   useEffect(() => {
     let active = true;
     if (!ownerId) return undefined;
-    finishedGoodsOffline.getDraft(ownerId, direction).then((draft) => {
+    finishedGoodsOffline.getDraft(ownerId, draftKey).then((draft) => {
       if (!active) return;
       if (draft) {
-        setDocumentCode(draft.documentCode || ''); setNote(draft.note || '');
-        setLines(draft.lines?.length ? draft.lines : [createEmptyStockLine()]);
-        setAllocations(draft.allocations || []); setStep(draft.step || 'inspection');
+        setDocumentCode(sourceTicket ? `NK-${sourceTicket.code}` : draft.documentCode || ''); setNote(draft.note || '');
+        setLines(sourceTicket ? requestLines().map((line) => {
+          const prior = (draft.lines || []).find((item) => item.skuId === line.skuId);
+          return prior ? { ...line, receivedQty: prior.receivedQty, quantity: prior.quantity,
+            repairQty: prior.repairQty } : line;
+        }) : draft.lines?.length ? draft.lines : [createEmptyStockLine()]);
+        setAllocations(draft.allocations || []);
         if (draft.confirmationKey) {
           setConfirmationKey(draft.confirmationKey);
           // A rejected confirmation keeps its original ID and payload for audit; editing needs a new ID.
@@ -67,24 +77,27 @@ export default function BulkStockForm({ direction, products, ownerId, initialSku
           }).catch(() => {});
         }
         setLocalStatus('Đã khôi phục bản nháp lưu trên thiết bị.');
+      } else if (sourceTicket) {
+        setDocumentCode(`NK-${sourceTicket.code}`);
+        setLines(requestLines());
       }
       setRestored(true);
     }).catch((failure) => { if (active) { setError(failure.message); setRestored(true); } });
     return () => { active = false; };
-  }, [ownerId, direction]);
+  }, [ownerId, draftKey]);
   // Debounce local writes, but report success only after the IndexedDB transaction completes.
   useEffect(() => {
     if (!restored || !ownerId) return undefined;
     const timer = window.setTimeout(() => {
-      finishedGoodsOffline.saveDraft(ownerId, direction, { documentCode, note, lines, allocations, step, confirmationKey })
+      finishedGoodsOffline.saveDraft(ownerId, draftKey, { documentCode, note, lines, allocations, confirmationKey })
         .then(() => setLocalStatus('Nháp · Đã lưu trên máy'))
         .catch((failure) => setError(`Không lưu được trên thiết bị: ${failure.message}`));
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [restored, ownerId, direction, documentCode, note, lines, allocations, step, confirmationKey]);
+  }, [restored, ownerId, draftKey, documentCode, note, lines, allocations, confirmationKey]);
   // Apply navigation defaults only to an empty draft, never over an inspection already in progress.
   useEffect(() => {
-    if (!products.length || !restored) return;
+    if (!products.length || !restored || sourceTicket) return;
     if (documentCode || lines.some((line) => line.productId)) return;
     if (!initialSkuIds.length) {
       const product = products.find((item) => item.id === initialProductId);
@@ -100,7 +113,7 @@ export default function BulkStockForm({ direction, products, ownerId, initialSku
   const selectedSkuIds = [...new Set(lines.map((line) => line.skuId).filter(Boolean))];
   // Show cached bin capacity when disconnected; the backend rechecks actual capacity on confirmation.
   useEffect(() => {
-    if (direction !== 'IN' || step !== 'allocation' || !selectedSkuIds.length) return;
+    if (direction !== 'IN' || !selectedSkuIds.length) return;
     let active = true;
     setLoadingBins(true);
     finishedGoodsOffline.getCached(ownerId, 'bins', selectedSkuIds.join(',')).then((cached) => {
@@ -115,18 +128,37 @@ export default function BulkStockForm({ direction, products, ownerId, initialSku
     }).catch((requestError) => { if (active) setError(requestError.message); })
       .finally(() => { if (active) setLoadingBins(false); });
     return () => { active = false; };
-  }, [direction, step, selectedSkuIds.join(','), ownerId]);
+  }, [direction, selectedSkuIds.join(','), ownerId]);
+  // Start each accepted SKU with one editable destination; extra rows are for split placement.
+  useEffect(() => {
+    if (!restored || direction !== 'IN') return;
+    setAllocations((current) => {
+      const missing = lines.filter((line) => Number(line.quantity) > 0 &&
+        !current.some((row) => row.lineKey === line.key));
+      return missing.length ? [...current, ...missing.map((line) => ({
+        key: crypto.randomUUID(), lineKey: line.key, skuId: line.skuId,
+        locationId: '', quantity: line.quantity,
+      }))] : current;
+    });
+  }, [restored, direction, lines]);
 
   /** Flushes the complete inspection and allocation draft before a network attempt or manual save. */
   const saveNow = async () => {
     if (!ownerId) throw new Error('Cần đăng nhập để lưu phiếu trên thiết bị.');
-    await finishedGoodsOffline.saveDraft(ownerId, direction, { documentCode, note, lines, allocations, step, confirmationKey });
+    await finishedGoodsOffline.saveDraft(ownerId, draftKey, { documentCode, note, lines, allocations, confirmationKey });
     setLocalStatus('Nháp · Đã lưu trên máy');
   };
 
   /** Updates one document line and clears a SKU that no longer belongs to its product.
    * The repair count is calculated from physical receipt minus accepted units, never entered separately. */
-  const updateStockLine = (key, field, value) => setLines((current) => current.map((line) => {
+  const updateStockLine = (key, field, value) => {
+    if (direction === 'IN' && field === 'quantity') setAllocations((current) => {
+      const matching = current.filter((row) => row.lineKey === key);
+      if (Number(value) === 0) return current.filter((row) => row.lineKey !== key);
+      return matching.length === 1 ? current.map((row) => row.lineKey === key
+        ? { ...row, quantity: value } : row) : current;
+    });
+    setLines((current) => current.map((line) => {
     if (line.key !== key) return line;
     if (field === 'productId') {
       const product = products.find((item) => item.id === value);
@@ -141,7 +173,8 @@ export default function BulkStockForm({ direction, products, ownerId, initialSku
         ? String(received - accepted) : '' };
     }
     return { ...line, [field]: value };
-  }));
+    }));
+  };
 
   /** Validates quantities and planned bins, then saves locally before attempting server confirmation.
    * Offline submission remains a draft; an online attempt is queued with one immutable confirmation key.
@@ -152,15 +185,14 @@ export default function BulkStockForm({ direction, products, ownerId, initialSku
     setSaving(true);
     setError('');
     try {
+      if (direction === 'IN' && !sourceTicket?.id)
+        throw new Error('Hãy chọn lệnh nhập kho do nhân viên kỹ thuật gửi.');
       if (direction === 'IN') {
         const invalidLine = lines.findIndex((line) => receivingQuantityError(line));
         if (invalidLine !== -1) throw new Error(`Dòng ${invalidLine + 1}: ${receivingQuantityError(lines[invalidLine])}`);
       }
-      if (direction === 'IN' && step === 'inspection') {
-        if (lines.some((line) => !line.skuId)) throw new Error('Hãy chọn SKU cho từng dòng.');
-        setStep('allocation');
-        return;
-      }
+      if (direction === 'IN' && lines.some((line) => !line.skuId))
+        throw new Error('Lệnh kỹ thuật có SKU không hợp lệ. Hãy tải lại lệnh.');
       const requested = allocations;
       if (direction === 'IN') {
         // Allocation remains a proposal until the backend checks current capacity and reserves bins.
@@ -189,6 +221,7 @@ export default function BulkStockForm({ direction, products, ownerId, initialSku
       }
       const payload = {
         direction, documentCode, note, confirmationKey,
+        ...(direction === 'IN' ? { sourceTicketId: sourceTicket?.id, draftKey } : {}),
         ...(direction === 'IN' ? { allocations: requested.map((row) => ({
           skuId: row.skuId, targetLocationId: row.locationId, allocatedQuantity: Number(row.quantity) })) } : {}),
         items: lines.map(({ productId, skuId, expectedQty, quantity, receivedQty }) => ({ productId, skuId: skuId || undefined,
@@ -226,36 +259,36 @@ export default function BulkStockForm({ direction, products, ownerId, initialSku
     return !bin || !Number.isSafeInteger(Number(row.quantity)) || Number(row.quantity) < 1 ||
       allocated > accepted || binAllocated > bin.available;
   });
-  const allocationIncomplete = direction === 'IN' && step === 'allocation' && lines.some((line) =>
+  const allocationIncomplete = direction === 'IN' && lines.some((line) =>
     allocations.filter((row) => row.lineKey === line.key)
       .reduce((sum, row) => sum + (Number(row.quantity) || 0), 0) !== Number(line.quantity));
-  const invalidAllocation = direction === 'IN' && step === 'allocation' && (invalidAllocationRows || allocationIncomplete);
+  const invalidAllocation = direction === 'IN' && (invalidAllocationRows || allocationIncomplete);
   return <section className="product-card receiving-card">
-    <div className="product-card-head"><div><span className="product-section-number">{step === 'allocation' ? '03' : '02'}</span><h2>{direction === 'IN' ? step === 'allocation' ? 'Phân bổ vị trí' : 'Kiểm nhận hàng từ xưởng' : 'Phiếu xuất kho'}</h2></div><span className="product-badge active">{direction === 'IN' ? `Bước ${step === 'allocation' ? 3 : 2} / 4` : 'Xuất kho'}</span></div>
-    {direction === 'IN' && <p className="product-muted receiving-intro">Ghi số xưởng báo giao để đối chiếu, sau đó nhập số thực nhận. Chỉ số lượng đạt mới được cộng vào tồn kho và cấp barcode riêng từng chiếc.</p>}
+    <div className="product-card-head"><div><span className="product-section-number">{direction === 'IN' ? '02' : '01'}</span><h2>{direction === 'IN' ? 'Kiểm nhận và chọn vị trí kho' : 'Phiếu xuất kho'}</h2></div><span className="product-badge active">{direction === 'IN' ? 'Theo lệnh kỹ thuật' : 'Xuất kho'}</span></div>
+    {direction === 'IN' && <p className="product-muted receiving-intro">Lệnh {sourceTicket?.code} ghi số lượng đạt KCS theo từng SKU. Nhập số thực nhận, số đạt và chọn kệ; chỉ số lượng đạt được cấp barcode riêng từng chiếc.</p>}
     <form onSubmit={submitBulkStockDocument} style={{ display: 'grid', gap: '1rem', marginTop: '1rem' }}>
       <label style={{ maxWidth: 400 }}>{direction === 'IN' ? 'Mã biên bản nhập kho *' : 'Mã phiếu xuất kho *'}
-        <input style={input} required maxLength={80} pattern="[A-Za-z0-9._/-]{2,80}" title="2–80 ký tự: chữ, số, dấu chấm, gạch dưới hoặc gạch ngang" value={documentCode} onChange={(event) => setDocumentCode(event.target.value.toUpperCase())} placeholder={direction === 'IN' ? 'Ví dụ: NK-2026-001' : 'Ví dụ: XK-2026-001'} />
+        <input style={input} required maxLength={80} pattern="[A-Za-z0-9._/-]{2,80}" title="2–80 ký tự: chữ, số, dấu chấm, gạch dưới hoặc gạch ngang" value={documentCode} readOnly={direction === 'IN'} onChange={(event) => setDocumentCode(event.target.value.toUpperCase())} placeholder={direction === 'IN' ? 'Theo lệnh kỹ thuật' : 'Ví dụ: XK-2026-001'} />
       </label>
       <div className="product-table-scroll"><table className="product-table receiving-table">
         <thead><tr><th>Sản phẩm</th><th>SKU</th>{direction === 'IN' && <><th>Xưởng báo giao</th><th>Thực nhận</th></>}<th>{direction === 'IN' ? 'Đạt nhập kho' : 'Số lượng'}</th>{direction === 'IN' && <th>Trả xưởng sửa</th>}<th /></tr></thead>
         <tbody>{lines.map((line) => {
           const product = products.find((item) => item.id === line.productId);
           return <tr key={line.key}>
-            <td style={{ padding: '.4rem' }}><select style={input} required value={line.productId} onChange={(event) => updateStockLine(line.key, 'productId', event.target.value)}>
+            <td style={{ padding: '.4rem' }}>{direction === 'IN' ? <strong>{product?.productCode} · {product?.productName}</strong> : <select style={input} required value={line.productId} onChange={(event) => updateStockLine(line.key, 'productId', event.target.value)}>
               <option value="">Chọn sản phẩm</option>
               {products.filter((item) => item.isActive && item.skus.some((sku) => sku.isActive && (direction === 'IN' || sku.availableQty > 0))).map((item) => <option key={item.id} value={item.id}>{item.productCode} · {item.productName}</option>)}
-            </select></td>
-            <td style={{ padding: '.4rem' }}>{product?.skus.length ? <select style={input} required value={line.skuId} onChange={(event) => updateStockLine(line.key, 'skuId', event.target.value)}>
+            </select>}</td>
+            <td style={{ padding: '.4rem' }}>{direction === 'IN' ? <strong>{product?.skus.find((sku) => sku.id === line.skuId)?.skuCode || line.skuId}</strong> : product?.skus.length ? <select style={input} required value={line.skuId} onChange={(event) => updateStockLine(line.key, 'skuId', event.target.value)}>
               {product.skus.length > 1 && <option value="">Chọn SKU</option>}
               {product.skus.filter((sku) => sku.isActive && (direction === 'IN' || sku.availableQty > 0)).map((sku) => <option key={sku.id} value={sku.id}>{sku.skuCode} · {sku.color}/{sku.size} · khả dụng {sku.availableQty}</option>)}
             </select> : <small>Chưa có SKU — hãy cấu hình biến thể trước</small>}</td>
-            {direction === 'IN' && <><td><input style={input} aria-label="Xưởng báo giao" required type="number" min="1" max="500" step="1" value={line.expectedQty} onChange={(event) => updateStockLine(line.key, 'expectedQty', event.target.value)} /></td><td><input style={input} aria-label="Thực nhận" required type="number" min="1" max={line.expectedQty || '500'} step="1" value={line.receivedQty} onChange={(event) => updateStockLine(line.key, 'receivedQty', event.target.value)} /></td></>}
+            {direction === 'IN' && <><td><input style={input} aria-label="Số đạt theo lệnh kỹ thuật" required readOnly type="number" min="1" max="500" step="1" value={line.expectedQty} /></td><td><input style={input} aria-label="Thực nhận" required type="number" min="1" max={line.expectedQty || '500'} step="1" value={line.receivedQty} onChange={(event) => updateStockLine(line.key, 'receivedQty', event.target.value)} /></td></>}
             <td style={{ padding: '.4rem' }}><input style={input} aria-label="Số lượng đạt" required type="number" min={direction === 'IN' ? '0' : '1'} max={direction === 'IN' ? line.receivedQty || '500' : '100000'} step="1" value={line.quantity} onChange={(event) => updateStockLine(line.key, 'quantity', event.target.value)} /></td>
             {direction === 'IN' && <td style={{ padding: '.4rem' }}><output aria-label="Trả xưởng sửa, tự tính" className="receiving-derived-quantity">{line.repairQty === '' ? '—' : line.repairQty}</output></td>}
-            <td style={{ padding: '.4rem' }}><button className="btn-ara-secondary" type="button" disabled={lines.length === 1 || saving} onClick={() => {
+            <td style={{ padding: '.4rem' }}>{direction !== 'IN' && <button className="btn-ara-secondary" type="button" disabled={lines.length === 1 || saving} onClick={() => {
               if (window.confirm('Xóa dòng sản phẩm này?')) setLines((current) => current.filter((item) => item.key !== line.key));
-            }}>Xóa</button></td>
+            }}>Xóa</button>}</td>
           </tr>;
         })}</tbody>
       </table></div>
@@ -263,7 +296,7 @@ export default function BulkStockForm({ direction, products, ownerId, initialSku
       {invalidInspection &&
         <p role="alert" className="receiving-quantity-error">{inspectionError}</p>}
       {direction === 'IN' && <div className="receiving-totals"><span>Thực nhận <strong>{totalReceived}</strong></span><span>Đạt nhập kho <strong>{totalAccepted}</strong></span><span>Trả xưởng sửa <strong>{invalidInspection ? '—' : totalRepair}</strong></span></div>}
-      <button className="btn-ara-secondary" style={{ justifySelf: 'start' }} type="button" disabled={lines.length >= 100 || saving} onClick={() => setLines((current) => [...current, createEmptyStockLine()])}>+ Thêm dòng sản phẩm</button>
+      {direction !== 'IN' && <button className="btn-ara-secondary" style={{ justifySelf: 'start' }} type="button" disabled={lines.length >= 100 || saving} onClick={() => setLines((current) => [...current, createEmptyStockLine()])}>+ Thêm dòng sản phẩm</button>}
       <label style={{ maxWidth: 580 }}>Ghi chú
         <input style={input} maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Thông tin bổ sung cho phiếu" />
       </label>
@@ -273,8 +306,8 @@ export default function BulkStockForm({ direction, products, ownerId, initialSku
         setConfirmationKey(crypto.randomUUID()); setNeedsRevision(false); setError('');
       }}>Tạo bản điều chỉnh sau khi kiểm tra lỗi</button>}
       {localStatus && <p role="status">{localStatus}</p>}
-      {direction === 'IN' && step === 'allocation' && <section className="receiving-allocation" aria-label="Phân bổ vị trí">
-        <h3>03 · Phân bổ vị trí</h3>
+      {direction === 'IN' && <section className="receiving-allocation" aria-label="Chọn vị trí kho">
+        <h3>Chọn vị trí kho và xem chỗ còn trống</h3>
         <p>Chọn ô trong kệ dựa trên sức chứa còn lại. Một kệ có thể nhận nhiều SKU; hệ thống kiểm tra lại chỗ trống khi xác nhận nhập.</p>
         {loadingBins && <p role="status">Đang tải ô kệ phù hợp...</p>}
         <RackAvailability bins={bins} racks={racks} rows={allocations} />
@@ -309,26 +342,25 @@ export default function BulkStockForm({ direction, products, ownerId, initialSku
               return <div className="receiving-allocation-row" key={row.key}>
                 <select style={input} aria-label={`Ô kệ cho ${sku?.skuCode}`} value={row.locationId} onChange={(event) => setAllocations((current) => current.map((item) => item.key === row.key ? { ...item, locationId: event.target.value } : item))}>
                   <option value="">Chọn ô kệ</option>
-                  {eligible.map((item) => <option key={item.id} value={item.id}>{item.rackLabel || item.rackCode} · Tầng {item.floorNo} · Ô {item.binNo} ({item.locationCode}) · còn {item.available}</option>)}
+                  {eligible.map((item) => <option key={item.id} value={item.id}>{item.rackLabel || item.rackCode} · Tầng {item.floorNo} · Ô {item.binNo} ({item.locationCode}) · khả dụng {Math.max(0, item.available - allocations.filter((planned) => planned.key !== row.key && planned.locationId === item.id).reduce((sum, planned) => sum + (Number(planned.quantity) || 0), 0))}</option>)}
                   {bin && !eligible.some((item) => item.id === bin.id) && <option value={bin.id}>{bin.rackLabel || bin.rackCode} · Tầng {bin.floorNo} · Ô {bin.binNo} ({bin.locationCode})</option>}
                 </select>
                 <input style={input} aria-label="Số phân bổ lần này" type="number" min="1" max={maxQuantity} step="1" value={row.quantity} onChange={(event) => setAllocations((current) => current.map((item) => item.key === row.key ? { ...item, quantity: event.target.value && Number(event.target.value) > maxQuantity ? String(maxQuantity) : event.target.value } : item))} />
                 <small>Tối đa {maxQuantity} chiếc đạt có thể phân bổ vào ô này.</small>
                 {bin && <small>Sức chứa {bin.maxCapacity} · Đang có {bin.currentOccupancy} · Đã giữ {bin.plannedReservedQty} · Còn {bin.available}</small>}
-                <button className="btn-ara-secondary" type="button" onClick={() => {
+                <button className="btn-ara-secondary" type="button" disabled={rows.length === 1} onClick={() => {
                   if (window.confirm('Xóa vị trí phân bổ này?')) setAllocations((current) => current.filter((item) => item.key !== row.key));
                 }}>Xóa</button>
               </div>;
             })}
-            <button className="btn-ara-secondary" type="button" disabled={!line.skuId || loadingBins} onClick={() => setAllocations((current) => [...current, { key: crypto.randomUUID(), lineKey: line.key, skuId: line.skuId, locationId: '', quantity: '' }])}>+ Chọn ô kệ</button>
+            <button className="btn-ara-secondary" type="button" disabled={!line.skuId || loadingBins} onClick={() => setAllocations((current) => [...current, { key: crypto.randomUUID(), lineKey: line.key, skuId: line.skuId, locationId: '', quantity: '' }])}>+ Thêm ô khác nếu cần chia số lượng</button>
           </div>;
         })}
       </section>}
       {invalidAllocation && <p role="alert" className="receiving-quantity-error">Chọn đủ ô kệ cho toàn bộ số lượng đạt của từng SKU. Số phân bổ phải hợp lệ và không vượt sức chứa ô.</p>}
       <div style={{ display: 'flex', gap: '.75rem' }}>
         <button className="btn-ara-secondary" disabled={saving || !restored} type="button" onClick={() => saveNow().catch((failure) => setError(failure.message))}>Lưu kết quả trên máy</button>
-        {direction === 'IN' && step === 'allocation' && <button className="btn-ara-secondary" disabled={saving} type="button" onClick={() => setStep('inspection')}>Quay lại kiểm nhận</button>}
-        <button className="btn-ara-primary" disabled={saving || !restored || invalidInspection || invalidAllocation || products.length === 0 || (direction === 'IN' && step === 'allocation' && loadingBins)} type="submit">{saving ? 'Đang lưu phiếu...' : direction === 'IN' && step === 'inspection' ? 'Tiếp tục phân bổ vị trí' : `Xác nhận ${direction === 'IN' ? 'nhập' : 'xuất'} kho`}</button>
+        <button className="btn-ara-primary" disabled={saving || !restored || invalidInspection || invalidAllocation || products.length === 0 || (direction === 'IN' && loadingBins)} type="submit">{saving ? 'Đang lưu phiếu...' : `Xác nhận ${direction === 'IN' ? 'nhập' : 'xuất'} kho`}</button>
         <button className="btn-ara-secondary" disabled={saving} type="button" onClick={() => {
           if (window.confirm('Đóng phiếu đang nhập? Bản nháp đã lưu trên thiết bị vẫn được giữ lại.')) onCancel();
         }}>Hủy</button>

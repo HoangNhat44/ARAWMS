@@ -67,8 +67,9 @@ export const offlineCatalogStore = {
 // leaves the original records untouched so the migration can safely be attempted again.
 export const migrateOfflineCatalogQueue = async (ownerId) => {
   const operations = await offlineCatalogStore.list('operations', ownerId);
-  const legacy = operations.filter((item) => !item.status || ['PENDING', 'SYNCING', 'REVIEW'].includes(item.status) ||
-    (item.status === 'DONE' && (item.lastError || item.errorCode || item.activeError || item.nextRetryAt)));
+  const legacy = operations.filter((item) => item.operationType !== 'FINISHED_GOODS_CONFIRM' &&
+    (!item.status || ['PENDING', 'SYNCING', 'REVIEW'].includes(item.status) ||
+    (item.status === 'DONE' && (item.lastError || item.errorCode || item.activeError || item.nextRetryAt))));
   if (!legacy.length) return;
   const backupKey = `queue-v2-${ownerId}`;
   const existingBackup = await offlineCatalogStore.get('migrationBackups', ownerId, backupKey);

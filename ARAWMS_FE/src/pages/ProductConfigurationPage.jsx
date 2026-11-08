@@ -340,7 +340,7 @@ export default function ProductConfigurationPage() {
         if (status === 'ACTIVE') setSelectedSkuIds(saved.serverResult.skus.map((sku) => sku.id || sku._id));
         setMode('existing');
         if (status === 'ACTIVE') navigate('/warehouse/finished-goods', {
-          state: { receiveSkuIds: saved.serverResult.skus.map((sku) => sku.id || sku._id) } });
+          state: { configuredSkuIds: saved.serverResult.skus.map((sku) => sku.id || sku._id) } });
       } else {
         startNewProduct();
         setMessage('Đã lưu trên thiết bị — sẽ đồng bộ khi kết nối trở lại.');
@@ -714,7 +714,7 @@ export default function ProductConfigurationPage() {
         <span className="ara-bottom-bar-label">{selectedSkuIds.length} biến thể đã chọn</span>
         <div className="ara-bottom-bar-actions">
           <button className="ara-btn ara-btn-secondary" type="button" onClick={() => setSelected(null)}>Quay lại</button>
-          <button className="ara-btn ara-btn-gold" type="button" disabled={busy || !selected.product.isActive || selectedSkuIds.length === 0} onClick={() => navigate('/warehouse/finished-goods', { state: { receiveSkuIds: selectedSkuIds } })}>Sử dụng {selectedSkuIds.length} SKU và tiếp tục →</button>
+          <button className="ara-btn ara-btn-gold" type="button" disabled={busy || !selected.product.isActive || selectedSkuIds.length === 0} onClick={() => navigate('/warehouse/finished-goods')}>Xem kho thành phẩm →</button>
         </div>
       </div>
     </>}

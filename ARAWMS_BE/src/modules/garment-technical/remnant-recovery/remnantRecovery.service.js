@@ -175,6 +175,7 @@ export async function listIssuedRollsForCutting(user, query = {}) {
     isDeleted: { $ne: true },
   })
     .populate('lines.rawMaterialId', 'materialCode materialName unit color materialType')
+    .populate('items.rawMaterialId', 'materialCode materialName unit color materialType')
     .lean();
 
   // Find existing remnant recovery requests to know which rolls were already cut/recovered
@@ -184,6 +185,19 @@ export async function listIssuedRollsForCutting(user, query = {}) {
   const issuedRolls = [];
 
   for (const ticket of completedTickets) {
+    for (const item of ticket.items || []) {
+      if (!item.fabricRollId || !item.isScannedCompleted || Number(item.scannedQty) <= 0) continue;
+      issuedRolls.push({ outboundTicketId: ticket._id, outboundTicketCode: ticket.ticketCode,
+        issueDate: ticket.confirmedAt || item.scannedAt || ticket.updatedAt || ticket.createdAt,
+        department: ticket.department, recipient: ticket.recipient, purpose: ticket.purpose,
+        rollId: item.fabricRollId, rollBarcode: item.rollBarcode,
+        rawMaterialId: item.rawMaterialId?._id || item.rawMaterialId,
+        materialCode: item.rawMaterialId?.materialCode || '',
+        materialName: item.rawMaterialId?.materialName || '',
+        color: item.rawMaterialId?.color || '', issuedLengthMeters: item.scannedQty,
+        isRecovered: recoveredRollIds.has(String(item.fabricRollId)),
+      });
+    }
     for (const line of ticket.lines || []) {
       for (const src of line.sources || []) {
         if (src.kind === 'ROLL' && src.objectId) {

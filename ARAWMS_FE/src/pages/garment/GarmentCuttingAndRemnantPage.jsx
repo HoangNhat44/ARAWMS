@@ -24,8 +24,11 @@ import {
   X,
 } from 'lucide-react';
 import { garmentTechnicalService } from '../../services/garmentTechnicalService';
+import RemnantReturnEntry from '../../components/RemnantReturnEntry';
+import { useAuth } from '../../hooks/useAuth';
 
 export default function GarmentCuttingAndRemnantPage() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('CUTTING_QUEUE'); // 'CUTTING_QUEUE' or 'HISTORY'
   const [issuedRolls, setIssuedRolls] = useState([]);
   const [history, setHistory] = useState([]);
@@ -38,6 +41,7 @@ export default function GarmentCuttingAndRemnantPage() {
 
   // Modal cutting
   const [selectedRoll, setSelectedRoll] = useState(null);
+  const [returnPrefill, setReturnPrefill] = useState(null);
   const [consumedCuttingLengthMeters, setConsumedCuttingLengthMeters] = useState('');
   const [measuredRemnantLengthMeters, setMeasuredRemnantLengthMeters] = useState('');
   const [measuredRemnantWeightKg, setMeasuredRemnantWeightKg] = useState('');
@@ -76,10 +80,9 @@ export default function GarmentCuttingAndRemnantPage() {
 
   // Open Cutting Modal for an issued roll
   const handleOpenCutModal = (roll) => {
-    setSelectedRoll(roll);
-    setConsumedCuttingLengthMeters('');
-    setMeasuredRemnantLengthMeters('');
-    setMeasuredRemnantWeightKg('');
+    setReturnPrefill({ barcode: roll.rollBarcode, outboundTicketId: roll.outboundTicketId,
+      nonce: crypto.randomUUID() });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Submit Cutting and Remnant measurement
@@ -248,7 +251,7 @@ export default function GarmentCuttingAndRemnantPage() {
               Ngưỡng thu hồi vải thừa tối thiểu: <span style={{ color: '#006c4a', fontSize: '1.3rem' }}>{threshold} mét</span>
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--ara-text-muted)', marginTop: '0.15rem' }}>
-              • Phần vải thừa <strong>≥ {threshold}m</strong>: Hệ thống sinh mã cuộn vải thừa mới và gửi phiếu yêu cầu <strong>Quản lý kho phê duyệt</strong> nhập lại kho.
+              • Phần vải thừa <strong>≥ {threshold}m</strong>: Gửi yêu cầu nhập lại; kho xác nhận rồi mới cộng tồn và cấp mã riêng cho khúc rời.
               <br />
               • Phần vải thừa <strong>&lt; {threshold}m</strong>: Ghi nhận là phế liệu/vụn vải cắt bỏ, không nhập kho.
             </div>
@@ -267,6 +270,9 @@ export default function GarmentCuttingAndRemnantPage() {
           Nguồn dữ liệu: <code>SystemSetting.defaultFabricLeftoverThresholdMeters</code>
         </div>
       </div>
+
+      <RemnantReturnEntry prefill={returnPrefill} onChanged={loadData}
+        currentUserId={user?._id || user?.id || '507f1f77bcf86cd799439011'} />
 
       {/* Tabs Bar */}
       <div style={{
@@ -297,7 +303,7 @@ export default function GarmentCuttingAndRemnantPage() {
             }}
           >
             <Scissors size={16} />
-            <span>Cuộn vải chờ cắt ({issuedRolls.filter((r) => !r.isRecovered).length})</span>
+            <span>Cây vải đã xuất ({issuedRolls.length})</span>
           </button>
 
           <button
@@ -381,23 +387,19 @@ export default function GarmentCuttingAndRemnantPage() {
                         background: roll.isRecovered ? '#e6f4ea' : '#fff0da',
                         color: roll.isRecovered ? '#137333' : '#b06000',
                       }}>
-                        {roll.isRecovered ? '✓ Đã ghi nhận cắt' : 'Chờ cắt may'}
+                        {roll.isRecovered ? 'Đã có ghi nhận vải thừa' : 'Chưa ghi nhận vải thừa'}
                       </span>
                     </td>
                     <td style={{ padding: '1rem', textAlign: 'center' }}>
-                      {!roll.isRecovered ? (
+                      {(
                         <button
                           type="button"
                           onClick={() => handleOpenCutModal(roll)}
                           className="btn-ara-primary"
                           style={{ padding: '0.45rem 0.85rem', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
                         >
-                          <Scissors size={14} /> Ghi nhận cắt vải
+                          <Scissors size={14} /> Tra nguồn / trả vải
                         </button>
-                      ) : (
-                        <span style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)', fontStyle: 'italic' }}>
-                          Đã hoàn thành
-                        </span>
                       )}
                     </td>
                   </tr>

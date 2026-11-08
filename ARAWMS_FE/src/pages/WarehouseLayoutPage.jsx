@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { warehouseLayoutService as api } from '../services/warehouseLayoutService';
 import WarehouseRackContents from '../components/WarehouseRackContents';
+import { MATERIAL_UNIT_OPTIONS } from '../utils/materialUnits';
 import '../styles/warehouseLayout.css';
 
 const id = (value) => String(value?._id || value?.id || value || '');
@@ -16,11 +17,7 @@ const defaultZones = [
 ];
 const emptyRack = { code: '', name: '', zoneCode: 'B', floors: 3, binsPerFloor: 1,
   capacityPerBin: 0, capacityUnit: 'PIECE', status: 'ACTIVE' };
-const rawUnits = [
-  { value: 'METER', label: 'Mét' }, { value: 'KG', label: 'Kg' },
-  { value: 'PIECE', label: 'Chiếc' }, { value: 'SPOOL', label: 'Cuộn' },
-  { value: 'BOX', label: 'Hộp' },
-];
+const rawUnits = MATERIAL_UNIT_OPTIONS.map(({ value, label }) => ({ value, label }));
 const errorText = (error) => error.response?.data?.message || error.message;
 const rackFields = (rack) => ({
   code: rack.code, name: rack.name, zoneCode: rack.zoneCode, floors: rack.floors,
@@ -440,6 +437,7 @@ export default function WarehouseLayoutPage() {
               <select value={rackForm.capacityUnit} disabled={busy}
                 onChange={(event) => setRackForm({ ...rackForm, capacityUnit: event.target.value })}>
                 {rawUnits.map((unit) => <option key={unit.value} value={unit.value}>{unit.label}</option>)}
+                {!rawUnits.some((unit) => unit.value === rackForm.capacityUnit) && <option value={rackForm.capacityUnit}>{rackForm.capacityUnit}</option>}
               </select></label>}
             <label>Trạng thái<select value={rackForm.status} disabled={adding || !canEdit || busy}
               onChange={(event) => setRackForm({ ...rackForm, status: event.target.value })}>
@@ -469,6 +467,7 @@ export default function WarehouseLayoutPage() {
                         <select value={bin.capacityUnit || 'PIECE'} disabled={!canEdit || busy}
                           onChange={(event) => editBin(id(bin.id), { capacityUnit: event.target.value })}>
                           {rawUnits.map((unit) => <option key={unit.value} value={unit.value}>{unit.label}</option>)}
+                          {!rawUnits.some((unit) => unit.value === (bin.capacityUnit || 'PIECE')) && <option value={bin.capacityUnit}>{bin.capacityUnit}</option>}
                         </select></label>}
                       <label>Trạng thái ô<select value={bin.status} disabled={!canEdit || busy}
                         onChange={(event) => editBin(id(bin.id), { status: event.target.value })}>

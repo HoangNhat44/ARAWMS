@@ -5,12 +5,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { materialOutboundService as api } from '../services/materialOutboundService';
+import { MATERIAL_UNIT_OPTIONS, isFractionalMaterialUnit } from '../utils/materialUnits';
 import '../styles/materialOutbound.css';
 
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const formatDate = (value) => value ? new Date(value).toLocaleDateString('vi-VN') : '—';
 const display = (value) => Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 3 });
-const units = { METER: 'm', KG: 'kg', PIECE: 'chiếc', SPOOL: 'cuộn', BOX: 'hộp' };
+const units = Object.fromEntries(MATERIAL_UNIT_OPTIONS.map(({ value, shortLabel }) => [value, shortLabel]));
 const id = (value) => String(value || '');
 const ticketId = (value) => value?._id || value?.id;
 const sum = (list) => Math.round(list.reduce((total, entry) => total + Number(entry.quantity || 0), 0) * 1000) / 1000;
@@ -276,7 +277,7 @@ export default function MaterialOutboundPage() {
           <div className="mo-table-wrap"><table><thead><tr><th>Nguyên phụ liệu</th><th>ĐVT</th><th>Khả dụng</th><th>Số lượng xuất</th><th>Nguồn lấy hàng</th>{editable && <th>Thao tác</th>}</tr></thead>
             <tbody>{form.lines.map((line, index) => { const material = options.materials.find((item) => id(item._id) === id(line.rawMaterialId));
               return <tr id={`outbound-line-${index}`} key={id(line.rawMaterialId)}><td><strong>{line.materialName}</strong><small>{line.materialCode} · {line.color || '—'}</small></td>
-                <td>{units[line.unit]}</td><td>{display(material?.available)}</td><td><input disabled={!editable} type="number" min="0" step={['METER', 'KG'].includes(line.unit) ? '.001' : '1'} value={line.quantity}
+                <td>{units[line.unit] || line.unit}</td><td>{display(material?.available)}</td><td><input disabled={!editable} type="number" min="0" step={isFractionalMaterialUnit(line.unit) ? '.001' : '1'} value={line.quantity}
                   onChange={(event) => updateLine(index, { quantity: event.target.value })} /></td><td>{display(sum(line.sources))}/{display(line.quantity)} {units[line.unit]} · {line.sources.length} cây/lô
                   {Math.abs(sum(line.sources) - Number(line.quantity)) >= .0001 && <small>Cần kiểm tra lại nguồn lấy</small>}
                   {editable && <button onClick={() => openSource(index)}>Chọn cây/lô</button>}</td>
@@ -317,7 +318,7 @@ export default function MaterialOutboundPage() {
           (!sourceLocation || id(source.locationId) === sourceLocation)).map((source) => <tr key={`${source.objectId}-${source.locationId}`}>
             <td>{source.barcode}<small>Phiếu nhập: {id(source.inboundTicketId)}</small></td><td>{formatDate(source.fifoInboundTimestamp)}</td><td>{source.locationCode}</td>
             <td>{display(source.available)} {units[form.lines[sourceLine].unit]}</td><td><input type="number" min="0" max={source.available}
-              step={['METER', 'KG'].includes(form.lines[sourceLine].unit) ? '.001' : '1'} value={sourceDraft.find((entry) => id(entry.objectId) === id(source.objectId) && id(entry.locationId) === id(source.locationId))?.quantity || ''}
+              step={isFractionalMaterialUnit(form.lines[sourceLine].unit) ? '.001' : '1'} value={sourceDraft.find((entry) => id(entry.objectId) === id(source.objectId) && id(entry.locationId) === id(source.locationId))?.quantity || ''}
               onChange={(event) => assignSource(source, event.target.value)} /></td></tr>)}</tbody></table></div>
       <footer><span>Đã chọn {display(sum(sourceDraft))}/{display(form.lines[sourceLine].quantity)} {units[form.lines[sourceLine].unit]}</span>
         <button onClick={() => setSourceLine(null)}>Hủy</button><button className="primary" onClick={saveSources}>Lưu lựa chọn</button></footer>

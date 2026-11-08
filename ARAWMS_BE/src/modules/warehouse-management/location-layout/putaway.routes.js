@@ -10,6 +10,9 @@ import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js
 import ProductUnit from '../../../models/ProductUnit.js';
 import PutawayAllocation from '../../../models/PutawayAllocation.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
+import { getMaterialReceiptLabels } from '../../raw-material-warehousing/inbound-execution/inboundExecution.service.js';
+import { listMaterialPutawayTasks, listMaterialPutawayLocations, verifyMaterialPutawayLocation,
+  scanMaterialPutawayTask } from './materialPutaway.service.js';
 import { listPutawayTasks, getPutawayTask, verifyPutawayLocation, scanPutawayUnit,
   reportPutawayShortage, resolvePutawayShortage, rackContents, binUnits,
   listPutawayIssues, reportPutawayIncident, listPutawayIncidents,
@@ -48,6 +51,19 @@ const handle = (fn) => async (req, res, next) => {
     next(error);
   }
 };
+
+router.get('/material-tasks', role('WAREHOUSE_STAFF'), handle(async (req, res) =>
+  sendSuccess(res, 'Nguyên phụ liệu chờ xếp', { tasks: await listMaterialPutawayTasks(req.user) })));
+router.get('/material-locations', role('WAREHOUSE_STAFF'), handle(async (req, res) =>
+  sendSuccess(res, 'Kệ nguyên phụ liệu', { locations: await listMaterialPutawayLocations(req.user) })));
+router.get('/material-receipts/:receiptId/labels', role('WAREHOUSE_STAFF'), handle(async (req, res) => {
+  const data = await getMaterialReceiptLabels(req.params.receiptId, req.user);
+  return sendSuccess(res, 'Tem nguyên phụ liệu đã cấp', data);
+}));
+router.post('/material-tasks/location', role('WAREHOUSE_STAFF'), handle(async (req, res) =>
+  sendSuccess(res, 'Đúng kệ cần xếp', { location: await verifyMaterialPutawayLocation(req.user, req.body || {}) })));
+router.post('/material-tasks/scan', role('WAREHOUSE_STAFF'), handle(async (req, res) =>
+  sendSuccess(res, 'Đã xếp nguyên phụ liệu', { result: await scanMaterialPutawayTask(req.user, req.body || {}) })));
 
 router.get('/tasks', role('WAREHOUSE_STAFF'), handle(async (req, res) =>
   sendSuccess(res, 'Hàng chờ xếp', { tasks: await listPutawayTasks() })));

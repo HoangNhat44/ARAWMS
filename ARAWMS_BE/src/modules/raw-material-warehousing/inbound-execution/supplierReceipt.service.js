@@ -23,6 +23,7 @@ import { claimRawMaterialBarcode, nextRawMaterialBarcode } from '../../../common
 import { publishRealtime } from '../../../common/services/realtime.js';
 import { getDeliveryBatchContext, commitDeliveryReceipt } from './deliveryPlan.service.js';
 import { validateInboundRequestReceipt, applyInboundRequestReceipt } from './technicianInboundRequest.service.js';
+import { isFractionalMaterialUnit, isValidMaterialUnitForType, normalizeMaterialUnit } from '../../../common/constants/materialUnits.js';
 
 const id = (value) => String(value || '');
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
@@ -34,13 +35,28 @@ const fail = (condition, message, code, status = 400) => {
 const accessible = (location, user) => !user.warehouseIds?.length || user.warehouseIds.some((item) => id(item) === id(location._id));
 const stockQuantity = (value, unit, field) => {
   const numeric = Number(value);
-  const multiplier = ['METER', 'KG'].includes(unit) ? 1000 : 1;
+  const multiplier = isFractionalMaterialUnit(unit) ? 1000 : 1;
   fail(value !== '' && value != null && Number.isFinite(numeric) && numeric >= 0 &&
     Math.abs(numeric * multiplier - Math.round(numeric * multiplier)) < 0.000001,
   `${field} không hợp lệ theo đơn vị ${unit}`, 'INVALID_QUANTITY');
   return round(numeric);
 };
 const deliveryCode = (value) => String(value || '').trim().replace(/\s+/g, ' ').toUpperCase();
+
+/** Keeps the original inspection attribution when a request-linked receipt is edited or confirmed. */
+const restoreRequestInspection = (request, lines) => {
+  const sources = request.requestLines?.length ? request.requestLines : request.receiptLines || [];
+  for (const line of lines) {
+    const key = String(line.requestLineId || line.clientLineId || '');
+    const source = sources.find((item) => String(item.clientLineId || id(item.rawMaterialId)) === key &&
+      id(item.rawMaterialId) === id(line.rawMaterialId));
+    if (!source?.inspectedByUserId || !source.inspectedAt) continue;
+    line.inspectedByUserId = source.inspectedByUserId;
+    line.inspectedAt = source.inspectedAt;
+    if (!line.inspectionConclusion && !line.qualityInspectionRef)
+      line.inspectionConclusion = source.inspectionConclusion || source.qualityInspectionRef || '';
+  }
+};
 
 /** Returns the selectable catalog and locations already scoped to the user's warehouse access. */
 export async function getSupplierReceiptOptions(user) {
@@ -57,16 +73,18 @@ export async function createSupplierMaterial(input) {
   fail(/^[\p{L}\p{N}._-]{2,40}$/u.test(materialCode) && materialName.length >= 2 && materialName.length <= 160,
     'Mã hoặc tên nguyên phụ liệu không hợp lệ', 'INVALID_MATERIAL');
   fail(['FABRIC', 'AUXILIARY'].includes(input.materialType), 'Loại nguyên phụ liệu không hợp lệ', 'INVALID_MATERIAL_TYPE');
-  fail((input.materialType === 'FABRIC' ? ['FABRIC_ROLL'] : ['BUTTON', 'THREAD', 'ZIPPER', 'CARE_LABEL', 'PACKAGING_BAG']).includes(input.category),
+  fail((input.materialType === 'FABRIC' ? ['FABRIC_ROLL'] :
+    ['BUTTON', 'THREAD', 'ZIPPER', 'CARE_LABEL', 'PACKAGING_BAG', 'NEEDLE', 'CHALK', 'MARKER', 'ACCESSORY', 'OTHER'])
+    .includes(input.category),
     'Danh mục không khớp loại nguyên phụ liệu', 'INVALID_MATERIAL_CATEGORY');
-  fail(['METER', 'KG', 'PIECE', 'SPOOL', 'BOX'].includes(input.unit) &&
-    (input.materialType !== 'FABRIC' || input.unit === 'METER'), 'Đơn vị tồn không hợp lệ', 'INVALID_MATERIAL_UNIT');
+  const unit = normalizeMaterialUnit(input.unit);
+  fail(isValidMaterialUnitForType(unit, input.materialType), 'Đơn vị tồn không hợp lệ', 'INVALID_MATERIAL_UNIT');
   const widthCm = input.widthCm === '' || input.widthCm == null ? undefined : Number(input.widthCm);
   fail(widthCm == null || Number.isFinite(widthCm) && widthCm > 0, 'Khổ vải không hợp lệ', 'INVALID_WIDTH');
   const unitCost = Number(input.unitCost);
   fail(Number.isFinite(unitCost) && unitCost >= 0, 'Đơn giá không hợp lệ', 'INVALID_UNIT_COST');
   return RawMaterial.create({ materialCode, materialName, materialType: input.materialType,
-    category: input.category, unit: input.unit, color: String(input.color || '').trim().slice(0, 80),
+    category: input.category, unit, color: String(input.color || '').trim().slice(0, 80),
     widthCm, unitCost, requiresWeightKg: input.materialType === 'FABRIC' && input.requiresWeightKg === true });
 }
 
@@ -127,7 +145,7 @@ export async function listSupplierReceipts(query, user) {
 export async function getSupplierReceipt(receiptId, user) {
   fail(mongoose.isValidObjectId(receiptId), 'Mã phiếu không hợp lệ', 'INVALID_RECEIPT');
   const receipt = await MaterialTicket.findOne({ _id: receiptId, ticketType: 'INBOUND_FROM_SUPPLIER', isDeleted: { $ne: true } })
-    .populate('receiptLines.inspectedByUserId', 'fullName').lean();
+    .lean();
   fail(receipt, 'Không tìm thấy phiếu nhập', 'RECEIPT_NOT_FOUND', 404);
   fail(accessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền xem phiếu này', 'RECEIPT_FORBIDDEN', 403);
   const materials = await RawMaterial.find({ _id: { $in: receipt.receiptLines.map((line) => line.rawMaterialId) } })
@@ -180,7 +198,7 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
   const location = await WarehouseLocation.findOne({ _id: input.receivingLocationId, warehouseType: 'RAW_MATERIAL',
     status: 'ACTIVE', isFrozenForStocktake: false, isDeleted: { $ne: true } }).select('_id zoneCode layoutBin').lean();
   fail(location && accessible(location, user), 'Kho nhận không hoạt động hoặc bạn không có quyền', 'LOCATION_FORBIDDEN', 403);
-  fail(!direct || location.zoneCode === 'A' && location.layoutBin,
+  fail(!direct || input.inboundRequestId || location.zoneCode === 'A' && location.layoutBin,
     'Phiếu ngoài kế hoạch phải nhận tại ô kho Khu A', 'DIRECT_WAREHOUSE_REQUIRED');
   fail(direct || id(context.plan.supplierId) === id(supplier._id) && id(context.warehouse._id) === id(location._id),
     'Nhà cung cấp hoặc kho nhận không khớp kế hoạch', 'PLAN_RECEIPT_MISMATCH', 409);
@@ -306,6 +324,7 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
   });
   const inboundRequest = input.inboundRequestId
     ? await validateInboundRequestReceipt(input.inboundRequestId, lines) : null;
+  if (inboundRequest) restoreRequestInspection(inboundRequest, lines);
   if (previousReceipt?.inboundRequestId) fail(Number(previousReceipt.inboundRequestVersion || 0) ===
     Number(inboundRequest?.requestVersion || 0),
   'Yêu cầu đã thay đổi; hãy tải lại trước khi lưu phân bổ', 'REQUEST_VERSION_CONFLICT', 409);
@@ -334,7 +353,8 @@ export async function createSupplierReceipt(input, user) {
     return existing;
   }
   const draft = await validateSupplierReceiptDraft(input, user);
-  const ticketCode = await CounterSequence.getNextSequence('MATERIAL_SUPPLIER_RECEIPT', 'PNNL', 6);
+  // All inbound ticket types share the PNNL namespace and must use one atomic counter.
+  const ticketCode = await CounterSequence.getNextSequence('MATERIAL_INBOUND_TICKET', 'PNNL', 6);
   try { return await MaterialTicket.create({ ...draft, ticketCode, ticketType: 'INBOUND_FROM_SUPPLIER',
     draftKey, draftFingerprint, createdByManagerId: user._id, receiptVersion: 0 }); }
   catch (error) {
@@ -511,8 +531,11 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
       }
       fail(editable.includes(receipt.status), 'Phiếu không thể xác nhận', 'RECEIPT_LOCKED', 409);
       fail(Number(input.expectedVersion) === receipt.receiptVersion, 'Phiếu đã thay đổi; hãy tải lại', 'VERSION_CONFLICT', 409);
-      if (receipt.inboundRequestId) await validateInboundRequestReceipt(receipt.inboundRequestId,
-        receipt.receiptLines, session, receipt.inboundRequestVersion);
+      if (receipt.inboundRequestId) {
+        const request = await validateInboundRequestReceipt(receipt.inboundRequestId,
+          receipt.receiptLines, session, receipt.inboundRequestVersion);
+        restoreRequestInspection(request, receipt.receiptLines);
+      }
       const direct = receipt.receiptSource === 'DIRECT';
       const supplierIds = [...new Set([id(receipt.supplierId), ...receipt.receiptLines.map((line) => id(line.supplierId))].filter(Boolean))];
       const suppliers = supplierIds.length ? await Supplier.find({ _id: { $in: supplierIds }, isActive: true,
