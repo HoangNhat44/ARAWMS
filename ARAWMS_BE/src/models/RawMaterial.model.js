@@ -17,13 +17,34 @@ const rawMaterialSchema = new Schema(
     materialType: { type: String, enum: ['FABRIC', 'AUXILIARY'], required: true, index: true },
     category: {
       type: String,
-      enum: ['FABRIC_ROLL', 'BUTTON', 'THREAD', 'ZIPPER', 'CARE_LABEL', 'PACKAGING_BAG',
-        'NEEDLE', 'CHALK', 'MARKER', 'ACCESSORY', 'OTHER'],
+      enum: [
+        'FABRIC_ROLL',
+        'BUTTON',
+        'THREAD',
+        'ZIPPER',
+        'CARE_LABEL',
+        'PACKAGING_BAG',
+        'NEEDLE',
+        'CHALK',
+        'MARKER',
+        'ACCESSORY',
+        'OTHER',
+      ],
       required: true,
     },
-    unit: { type: String, required: true, set: normalizeMaterialUnit, validate: { validator(value) {
-      return isValidMaterialUnitForType(value, this.materialType);
-    }, message: 'Đơn vị tồn không hợp lệ với loại nguyên phụ liệu.' } },
+    unit: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+      set: normalizeMaterialUnit,
+      validate: {
+        validator(value) {
+          return isValidMaterialUnitForType(value, this.materialType);
+        },
+        message: 'Đơn vị tồn không hợp lệ với loại nguyên phụ liệu.',
+      },
+    },
     color: { type: String },
     gsm: { type: Number },
     widthCm: { type: Number },
@@ -34,6 +55,12 @@ const rawMaterialSchema = new Schema(
     reservedQty: { type: Number, default: 0, min: 0 },
     safetyStockThreshold: { type: Number, default: 50 },
     fifoAgingThresholdDays: { type: Number, default: 90 },
+    supplierId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Supplier',
+      index: true,
+      default: null,
+    },
     isActive: { type: Boolean, default: true },
   },
   {

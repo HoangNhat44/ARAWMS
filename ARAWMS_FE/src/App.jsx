@@ -19,25 +19,22 @@ import RealtimeBridge from './components/RealtimeBridge';
 /** Keeps pending packing recordings uploading across direct URL navigation. */
 function App() {
   return (
-    <AuthProvider><BrowserRouter
-      future={{
-        v7_startTransition: true,
-        v7_relativeSplatPath: true
-      }}
-    >
-      <PackingUploadRunner />
-      <CatalogSyncRunner />
-      <FinishedGoodsSyncRunner />
-      <RealtimeBridge />
-      <QuickNav />
-      <div className="app-container">
-        <Navbar />
-        <main className="main-content">
-          <AppRouter />
-        </main>
-        <Footer />
-      </div>
-    </BrowserRouter></AuthProvider>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <AuthProvider>
+        <PackingUploadRunner />
+        <CatalogSyncRunner />
+        <FinishedGoodsSyncRunner />
+        <RealtimeBridge />
+        <QuickNav />
+        <div className="app-container">
+          <Navbar />
+          <main className="main-content">
+            <AppRouter />
+          </main>
+          <Footer />
+        </div>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 

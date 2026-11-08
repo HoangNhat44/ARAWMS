@@ -1,12 +1,11 @@
 /*
  * File: index.js
- * Author: Duy Anh
- * Date: 2026-10-26
- * Description: Mounts the backend API modules under their public paths. Keeps route registration in one place for the Express application.
+ * Description: Mounts all backend API modules under their public paths.
+ *              Combines warehouse, order, garment routes with accountant, carrier & contract routes.
  */
 import express from 'express';
 
-// Import all module routes
+// Import all warehouse, order & garment routes
 import orderQrRoutes from '../modules/order-fulfillment/order-qr-management/orderQrManagement.routes.js';
 import packingRoutes from '../modules/order-fulfillment/packing-verification/packingVerification.routes.js';
 import productRoutes from '../modules/warehouse-management/products/product.routes.js';
@@ -21,6 +20,9 @@ import garmentInboundVerificationRoutes from '../modules/garment-technical/inbou
 import garmentFinishedInspectionRoutes from '../modules/garment-technical/finished-inspection/finishedInspection.routes.js';
 import garmentStocktakeExecutionRoutes from '../modules/garment-technical/stocktake-execution/stocktakeExecution.routes.js';
 import garmentRemnantRecoveryRoutes from '../modules/garment-technical/remnant-recovery/remnantRecovery.routes.js';
+
+// Import carrier, contract & accountant financial routes
+import accountantApiRoutes from './api.js';
 
 const router = express.Router();
 
@@ -47,7 +49,7 @@ router.use('/garment-technical/finished-inspection', garmentFinishedInspectionRo
 router.use('/garment-technical/stocktake-execution', garmentStocktakeExecutionRoutes);
 router.use('/garment-technical/remnant-recovery', garmentRemnantRecoveryRoutes);
 
-// Mount other module routes (from main branch)
-// TODO: Add other module routes as needed
+// Carrier, Contract Procurement & Financial Intelligence routes (from api.js)
+router.use('/', accountantApiRoutes);
 
 export default router;

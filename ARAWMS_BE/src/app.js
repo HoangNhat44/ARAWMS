@@ -8,13 +8,13 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import apiRoutes from './routes/index.js';
-import { errorHandler } from './common/middlewares/errorHandler.js';
+import { notFoundHandler, globalErrorHandler, errorHandler } from './common/middlewares/errorHandler.js';
 
 const app = express();
 
-// Middlewares
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Middlewares - Hỗ trợ upload ảnh hợp đồng vật lý dung lượng lớn dạng Base64
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // CORS configuration
 app.use(
@@ -37,16 +37,8 @@ app.get('/', (req, res) => {
   res.send('Welcome to ARAWMS Express.js API Gateway');
 });
 
-// 404 Handler
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found',
-    error: { code: 'NOT_FOUND' }
-  });
-});
-
-// Global Error Handler
-app.use(errorHandler);
+// 404 Handler & Global Error Handler
+app.use(notFoundHandler);
+app.use(globalErrorHandler || errorHandler);
 
 export default app;

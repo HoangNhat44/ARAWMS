@@ -28,6 +28,29 @@ import GarmentCuttingAndRemnantPage from '../pages/garment/GarmentCuttingAndRemn
 import GarmentLayout from '../components/garment/GarmentLayout';
 import WarehouseManagerLayout from '../components/warehouse/WarehouseManagerLayout';
 import WarehouseStaffLayout from '../components/warehouse/WarehouseStaffLayout';
+import AccountantRoutes from './AccountantRoutes';
+import { useAuth } from '../hooks/useAuth';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+
+// Route bảo vệ (yêu cầu phải đăng nhập mới truy cập được)
+export const ProtectedRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) return <LoadingSpinner message="Đang xác thực thông tin đăng nhập..." />;
+  if (!user) return <Navigate to="/login" replace />;
+
+  return children;
+};
+
+// Route công khai (nếu đã đăng nhập rồi thì chuyển sang HomePage)
+export const PublicRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) return <LoadingSpinner message="Đang tải..." />;
+  if (user) return <Navigate to="/" replace />;
+
+  return children;
+};
 
 /** Maps public, authenticated, and role-gated pages to application URLs. */
 const AppRouter = () => {
@@ -35,6 +58,8 @@ const AppRouter = () => {
     <Routes>
       {/* Trang chủ */}
       <Route path="/" element={<HomePage />} />
+      {/* Phân hệ Kế toán (Accountant) */}
+      <Route path="/accountant/*" element={<AccountantRoutes />} />
 
       {/* Phân hệ Quản lý kho (Warehouse Manager) */}
       <Route

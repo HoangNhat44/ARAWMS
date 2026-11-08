@@ -7,7 +7,7 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { LogOut, User as UserIcon, LogIn, ShieldCheck, SlidersHorizontal, Box } from 'lucide-react';
+import { LogOut, User as UserIcon, LogIn, ShieldCheck, SlidersHorizontal, Box, Calculator } from 'lucide-react';
 
 const Navbar = () => {
   const { user, logout } = useAuth();
@@ -33,6 +33,7 @@ const Navbar = () => {
     location.pathname.startsWith('/packing') ||
     location.pathname.startsWith('/orders') ||
     location.pathname.startsWith('/warehouse/shipping');
+  const isAccountantActive = location.pathname.startsWith('/accountant');
 
   const navLinkStyle = (isActive) => ({
     display: 'inline-flex',
@@ -72,7 +73,6 @@ const Navbar = () => {
               Trang chủ
             </Link>
           </li>
-
           {/* 1. Phân hệ Kỹ thuật */}
           <li>
             <Link 
@@ -106,6 +106,16 @@ const Navbar = () => {
             </Link>
           </li>
 
+          {/* 4. Phân hệ Kế toán */}
+          <li>
+            <Link 
+              to="/accountant" 
+              style={navLinkStyle(isAccountantActive)}
+            >
+              <Calculator size={16} color={isAccountantActive ? 'var(--ara-gold)' : 'var(--ara-text-muted)'} />
+              <span>Phân hệ Kế toán</span>
+            </Link>
+          </li>
           {user ? (
             <>
               <li style={{ 

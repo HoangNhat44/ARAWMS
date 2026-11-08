@@ -21,8 +21,9 @@ export const baseSchemaPlugin = (schema) => {
   /** Removes database internals and password hashes from serialized output. */
   const cleanTransform = (doc, ret) => {
     if (ret._id) {
-      ret.id = ret._id.toString();
-      delete ret._id;
+      const idStr = ret._id.toString();
+      ret.id = idStr;
+      ret._id = idStr;
     }
     delete ret.__v;
     delete ret.passwordHash;
