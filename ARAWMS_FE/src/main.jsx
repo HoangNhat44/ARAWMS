@@ -3,10 +3,6 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './styles/index.css';
-import '@fontsource/inter/400.css';
-import '@fontsource/inter/500.css';
-import '@fontsource/inter/600.css';
-import '@fontsource/inter/700.css';
 import './styles/wms.css';
 
 // Register the app-shell cache only in production; API responses stay outside the service worker cache.
