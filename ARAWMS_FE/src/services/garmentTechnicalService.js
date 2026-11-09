@@ -52,6 +52,17 @@ export const garmentTechnicalService = {
     closeReturnRequest: (id, status) => api.post(`/garment-technical/remnant-recovery/return-requests/${id}/close`, { status }),
     getHistory: (params = {}) => api.get('/garment-technical/remnant-recovery/history', { params }),
   },
+
+  // 5. Raw Material Warehouse / Catalog Management (CRUD)
+  materials: {
+    getMeta: () => api.get('/garment-technical/raw-materials/meta'),
+    getMaterials: (params = {}) => api.get('/garment-technical/raw-materials', { params }),
+    getMaterial: (id) => api.get(`/garment-technical/raw-materials/${id}`),
+    createMaterial: (payload) => api.post('/garment-technical/raw-materials', payload),
+    updateMaterial: (id, payload) => api.put(`/garment-technical/raw-materials/${id}`, payload),
+    deleteMaterial: (id) => api.delete(`/garment-technical/raw-materials/${id}`),
+    toggleStatus: (id) => api.patch(`/garment-technical/raw-materials/${id}/toggle-status`),
+  },
 };
 
 export default garmentTechnicalService;

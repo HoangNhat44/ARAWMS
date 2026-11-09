@@ -33,6 +33,7 @@ import WarehousePutawayPage from '../pages/WarehousePutawayPage';
 import StocktakePage from '../pages/StocktakePage';
 import ShippingPage from '../pages/ShippingPage';
 import MaterialInboundVerificationPage from '../pages/garment/MaterialInboundVerificationPage';
+import GarmentRawMaterialsPage from '../pages/garment/GarmentRawMaterialsPage';
 import FinishedGoodsInspectionPage from '../pages/garment/FinishedGoodsInspectionPage';
 import GarmentStocktakeExecutionPage from '../pages/garment/GarmentStocktakeExecutionPage';
 import GarmentMaterialOutboundPage from '../pages/garment/GarmentMaterialOutboundPage';
@@ -155,6 +156,7 @@ export default function AppRouter() {
 
         {/* Phân hệ Kỹ thuật may */}
         <Route element={<ProtectedRoute role="GARMENT_TECHNICIAN"><GarmentLayout><Outlet /></GarmentLayout></ProtectedRoute>}>
+          <Route path="/garment/raw-materials" element={<GarmentRawMaterialsPage />} />
           <Route path="/garment/material-inbound-verification" element={<MaterialInboundVerificationPage />} />
           <Route path="/garment/finished-goods-inspection" element={<FinishedGoodsInspectionPage />} />
           <Route path="/garment/stocktake-execution" element={<GarmentStocktakeExecutionPage />} />

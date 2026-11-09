@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ClipboardCheck, Shirt, ShieldCheck, CheckCircle2, ScanLine, ArrowUpRight, Scissors } from 'lucide-react';
+import { ClipboardCheck, Shirt, ShieldCheck, CheckCircle2, ScanLine, ArrowUpRight, Scissors, Package } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 export default function GarmentLayout({ children }) {
@@ -13,6 +13,12 @@ export default function GarmentLayout({ children }) {
   const location = useLocation();
 
   const menuItems = [
+    {
+      to: '/garment/raw-materials',
+      label: 'Kho nguyên phụ liệu',
+      subLabel: 'Danh mục, định mức & thông số NPL',
+      icon: Package,
+    },
     {
       to: '/garment/material-inbound-verification',
       label: 'Kế hoạch & Nhập NPL',
