@@ -132,13 +132,13 @@ export default function MaterialInboundVerificationPage() {
     setDeviationSummary(plan.technicianVerification?.deviationSummary || '');
     setCreateInboundRequest(true);
 
-    // Populate verification items
+    // Populate verification items for this batch
     const items = (plan.expectedItems || []).map((item) => ({
       rawMaterialId: item.rawMaterialId?._id || item.rawMaterialId,
       material: item.rawMaterialId,
-      plannedQty: item.plannedQty,
-      actualVerifiedPassedQty: item.actualVerifiedPassedQty > 0 ? item.actualVerifiedPassedQty : item.plannedQty,
-      actualDefectiveOrShortQty: item.actualDefectiveOrShortQty || 0,
+      plannedQty: Number(item.plannedQty) || 0,
+      actualVerifiedPassedQty: Number(item.actualVerifiedPassedQty) > 0 ? Number(item.actualVerifiedPassedQty) : (Number(item.plannedQty) || 0),
+      actualDefectiveOrShortQty: Number(item.actualDefectiveOrShortQty) || 0,
       defectReason: '',
     }));
     setVerificationItems(items);
@@ -175,6 +175,8 @@ export default function MaterialInboundVerificationPage() {
     setActionLoading(true);
     try {
       const payload = {
+        batchNumber: selectedPlan.batchNumber,
+        batchId: selectedPlan.batchId,
         verifiedItems: verificationItems.map((it) => ({
           rawMaterialId: it.rawMaterialId,
           actualVerifiedPassedQty: Number(it.actualVerifiedPassedQty) || 0,
@@ -188,11 +190,12 @@ export default function MaterialInboundVerificationPage() {
       };
 
       const res = await garmentTechnicalService.inbound.verifyPlan(selectedPlan._id, payload);
+      const batchTitleInfo = selectedPlan.isBatch ? ` (Đợt ${selectedPlan.batchNumber}/${selectedPlan.totalBatches})` : '';
       showAlert(
         'success',
         isMatched
-          ? `Đã nghiệm thu KCS thành công và gửi Phiếu yêu cầu nhập kho (${res?.data?.ticket?.ticketCode || 'PNNL'}) tới Quản lý kho!`
-          : `Đã ghi nhận sai lệch KCS cho kế hoạch ${selectedPlan.planCode} và gửi thông báo Realtime tới bộ phận Kế toán!`
+          ? `Đã nghiệm thu KCS thành công${batchTitleInfo} và gửi Phiếu yêu cầu nhập kho (${res?.data?.ticket?.ticketCode || 'PNNL'}) tới Quản lý kho!`
+          : `Đã ghi nhận sai lệch KCS cho kế hoạch ${selectedPlan.planCode}${batchTitleInfo} và gửi thông báo Realtime tới bộ phận Kế toán!`
       );
       setSelectedPlan(null);
       fetchData();
@@ -524,7 +527,28 @@ export default function MaterialInboundVerificationPage() {
                     return (
                       <tr key={plan._id} style={{ borderBottom: '1px solid var(--ara-border-subtle)', transition: 'background 0.2s' }}>
                         <td style={{ padding: '1rem 1.1rem', fontWeight: 700, color: 'var(--ara-noir)' }}>
-                          <span style={{ fontFamily: 'monospace', fontSize: '0.95rem' }}>{plan.planCode}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontFamily: 'monospace', fontSize: '0.95rem' }}>{plan.planCode}</span>
+                            {plan.isBatch && (
+                              <span style={{
+                                fontSize: '0.74rem',
+                                background: 'rgba(159, 131, 101, 0.15)',
+                                color: 'var(--ara-gold)',
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: '4px',
+                                fontWeight: 700,
+                                border: '1px solid rgba(159, 131, 101, 0.3)',
+                                whiteSpace: 'nowrap',
+                              }}>
+                                Đợt {plan.batchNumber}/{plan.totalBatches} ({plan.batchPercentage}%)
+                              </span>
+                            )}
+                          </div>
+                          {plan.batchTitle && plan.isBatch && (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', fontWeight: 500, marginTop: '2px' }}>
+                              {plan.batchTitle}
+                            </div>
+                          )}
                           {plan.deliveryNote && (
                             <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', fontWeight: 400, marginTop: '2px' }}>
                               {plan.deliveryNote}
@@ -638,7 +662,22 @@ export default function MaterialInboundVerificationPage() {
                       </td>
                       <td style={{ padding: '1rem 1.1rem' }}>
                         {ticket.inboundPlanId?.planCode ? (
-                          <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{ticket.inboundPlanId.planCode}</span>
+                          <div>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{ticket.inboundPlanId.planCode}</span>
+                            {ticket.deliveryBatchId && (
+                              <span style={{
+                                marginLeft: '0.4rem',
+                                fontSize: '0.72rem',
+                                background: 'rgba(159, 131, 101, 0.15)',
+                                color: 'var(--ara-gold)',
+                                padding: '0.1rem 0.4rem',
+                                borderRadius: '3px',
+                                fontWeight: 700,
+                              }}>
+                                Theo đợt
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span style={{ color: 'var(--ara-text-light)' }}>Tạo trực tiếp</span>
                         )}
@@ -721,6 +760,11 @@ export default function MaterialInboundVerificationPage() {
                 </div>
                 <h2 style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--ara-noir)', margin: '0.2rem 0 0' }}>
                   Nghiệm Thu Kế Hoạch: {selectedPlan.planCode}
+                  {selectedPlan.isBatch && (
+                    <span style={{ marginLeft: '0.6rem', fontSize: '1rem', color: 'var(--ara-gold)', fontWeight: 600 }}>
+                      (Đợt {selectedPlan.batchNumber}/{selectedPlan.totalBatches} · {selectedPlan.batchPercentage}%)
+                    </span>
+                  )}
                 </h2>
               </div>
               <button
@@ -754,9 +798,17 @@ export default function MaterialInboundVerificationPage() {
                   <strong>{selectedPlan.contractId?.contractCode || '—'}</strong>
                 </div>
                 <div>
-                  <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Ngày hẹn giao</span>
+                  <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>
+                    {selectedPlan.isBatch ? `Ngày hẹn giao (Đợt ${selectedPlan.batchNumber})` : 'Ngày hẹn giao'}
+                  </span>
                   <strong>{selectedPlan.scheduledDeliveryDate ? new Date(selectedPlan.scheduledDeliveryDate).toLocaleDateString('vi-VN') : '—'}</strong>
                 </div>
+                {selectedPlan.isBatch && (
+                  <div>
+                    <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Tiến độ đợt giao</span>
+                    <strong style={{ color: 'var(--ara-gold)' }}>Đợt {selectedPlan.batchNumber}/{selectedPlan.totalBatches} ({selectedPlan.batchPercentage}%)</strong>
+                  </div>
+                )}
               </div>
 
               {/* Delivery Note / Code */}
