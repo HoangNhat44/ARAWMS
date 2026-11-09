@@ -18,9 +18,8 @@ const niceDate = (value) => value ? new Date(value).toLocaleString('vi-VN') : 'â
 
 export default function StocktakePage() {
   const { user } = useAuth();
-  const roles = [user?.roleCode, ...(user?.roles || [])];
   // Unauthenticated local URL testing uses the matching backend test manager identity.
-  const canManageStocktake = (import.meta.env.DEV && !user) || roles.some((role) => ['OWNER', 'WAREHOUSE_MANAGER'].includes(role));
+  const canManageStocktake = ['OWNER', 'WAREHOUSE_MANAGER'].includes(user?.roleCode);
   const [data, setData] = useState({ sessions: [], schedules: [] });
   const [options, setOptions] = useState({ warehouses: [], locations: [], inspectors: [], approvers: [], materials: [], skus: [], racks: [] });
   const [tab, setTab] = useState('sessions');

@@ -4,6 +4,7 @@
  */
 import express from 'express';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
+import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
 import {
   options,
   list,
@@ -31,42 +32,27 @@ import {
 
 const router = express.Router();
 
-const flexibleAuth = async (req, res, next) => {
-  res.set('Cache-Control', 'private, no-store');
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-    return authenticate(req, res, next);
-  }
-  // Default dev fallback user with full permissions
-  req.user = req.user || {
-    _id: '507f1f77bcf86cd799439011',
-    username: 'warehouse_mgr',
-    fullName: 'Quản Lý Kho',
-    roleCode: 'WAREHOUSE_MANAGER',
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'],
-    warehouseIds: [],
-  };
-  next();
-};
-
-router.use(flexibleAuth);
+router.use((req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
+router.use(authenticate, authorizeRole('OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'));
+const manageOutbound = authorizeRole('OWNER', 'WAREHOUSE_MANAGER');
 
 // Existing ticket endpoints
 router.get('/options', options);
 router.get('/tickets', list);
-router.post('/tickets', create);
-router.get('/tickets/:id', detail);
-router.put('/tickets/:id', update);
-router.post('/tickets/:id/check', check);
-router.post('/tickets/:id/confirm', confirm);
-router.post('/tickets/:id/cancel', cancel);
+router.post('/tickets', manageOutbound, create);
+router.get('/tickets/:id', manageOutbound, detail);
+router.put('/tickets/:id', manageOutbound, update);
+router.post('/tickets/:id/check', manageOutbound, check);
+router.post('/tickets/:id/confirm', manageOutbound, confirm);
+router.post('/tickets/:id/cancel', manageOutbound, cancel);
 
 // New workflow routes
 router.get('/requests', listRequests);
-router.get('/staff-users', staffUsers);
+router.get('/staff-users', manageOutbound, staffUsers);
 router.get('/requests/:id', requestDetail);
-router.post('/requests/:id/approve-and-assign', approveAndAssign);
-router.post('/requests/:id/reallocate', reallocate);
-router.post('/requests/:id/resolve-shortage', resolveShortageTask);
+router.post('/requests/:id/approve-and-assign', manageOutbound, approveAndAssign);
+router.post('/requests/:id/reallocate', manageOutbound, reallocate);
+router.post('/requests/:id/resolve-shortage', manageOutbound, resolveShortageTask);
 router.get('/staff-tasks', staffTasks);
 router.post('/requests/:id/start-picking', startPickingTask);
 router.post('/requests/:id/scan', scanBarcode);

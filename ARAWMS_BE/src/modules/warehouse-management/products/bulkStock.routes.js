@@ -11,6 +11,7 @@
  * - Phân bổ vị trí kệ
  */
 import express from 'express';
+import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
 import mongoose from 'mongoose';
 import { createHash, randomUUID } from 'node:crypto';
 import Product from '../../../models/Product.model.js';
@@ -807,7 +808,7 @@ router.get('/documents/:id', async (req, res, next) => {
  * - Dùng MongoDB session để đảm bảo tính toàn vẹn
  * - Nếu duplicate key → check hash để trả về allocation cũ
  */
-router.post('/documents/:id/allocations', async (req, res, next) => {
+router.post('/documents/:id/allocations', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (req, res, next) => {
   const key = String(req.body?.idempotencyKey || '').trim();
   if (!mongoose.isValidObjectId(req.params.id) || key.length < 8 || key.length > 100)
     return sendError(res, 'Yêu cầu phân bổ không hợp lệ', { code: 'INVALID_ALLOCATION' }, 400);
@@ -938,7 +939,7 @@ router.post('/documents/:id/allocations', async (req, res, next) => {
  * The confirmation key is required for both directions. A retry by the same actor with an
  * identical payload returns the committed document instead of writing another stock transaction.
  */
-router.post('/documents', async (req, res, next) => {
+router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (req, res, next) => {
   const direction = req.body?.direction;
   const documentCode = String(req.body?.documentCode || '').trim().toUpperCase();
   const note = String(req.body?.note || '').trim();

@@ -11,7 +11,6 @@ import { productService } from '../services/productService';
 import { materialInboundService } from '../services/materialInboundService';
 import { garmentTechnicalService } from '../services/garmentTechnicalService';
 import { useAuth } from '../hooks/useAuth';
-import { LOCAL_WAREHOUSE_OPERATOR_ID, STORAGE_KEYS } from '../utils/constants';
 import { getPendingCatalogChanges, subscribeCatalogChanges } from '../services/offlineCatalogSync';
 import { finishedGoodsOffline } from '../services/offlineFinishedGoods';
 import { printProductLabels } from '../utils/productLabelPrint';
@@ -25,10 +24,6 @@ import WarehouseRequestDialog from '../components/WarehouseRequestDialog';
 import DirectMaterialReceiptModal from '../components/DirectMaterialReceiptModal';
 import '../styles/finishedGoods.css';
 
-// Mock user for testing (NO AUTH REQUIRED)
-const mockUser = { _id: LOCAL_WAREHOUSE_OPERATOR_ID, id: LOCAL_WAREHOUSE_OPERATOR_ID,
-  username: 'test', fullName: 'Test User', roles: ['OWNER', 'WAREHOUSE_MANAGER'] };
-
 const panel = { background: '#fff', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-md)', padding: '1.25rem', boxShadow: 'var(--ara-shadow-sm)' };
 const input = { width: '100%', padding: '.65rem', border: '1px solid var(--ara-border)', borderRadius: 8, font: 'inherit' };
 const money = (value) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(value) || 0);
@@ -39,11 +34,7 @@ export default function FinishedGoodsPage({ isStaffMode = false }) {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const isStaff = isStaffMode || location.pathname.includes('/staff');
-  const { user: authenticatedUser } = useAuth();
-  const localOperator = import.meta.env.DEV &&
-    ['localhost', '127.0.0.1'].includes(window.location.hostname) &&
-    !localStorage.getItem(STORAGE_KEYS.TOKEN);
-  const user = authenticatedUser || (localOperator ? mockUser : null);
+  const { user } = useAuth();
   const ownerId = user?.id || user?._id;
   const [localCatalog, setLocalCatalog] = useState([]);
   const [products, setProducts] = useState([]);
@@ -471,7 +462,7 @@ export default function FinishedGoodsPage({ isStaffMode = false }) {
         {pendingReceipts.map((item) =>
           <div className="receiving-progress-row" key={item.id}>
             <strong>{item.documentCode}</strong><span>{item.unallocated} chiếc đạt chưa có ô đích</span>
-            <button className="btn-ara-secondary" type="button" onClick={() => setLaterReceipt(item)}>Phân bổ vị trí</button>
+            {!isStaff && <button className="btn-ara-secondary" type="button" onClick={() => setLaterReceipt(item)}>Phân bổ vị trí</button>}
           </div>)}
       </section>}
     {laterReceipt && <PendingReceiptAllocation key={laterReceipt.id} receipt={laterReceipt} products={products}

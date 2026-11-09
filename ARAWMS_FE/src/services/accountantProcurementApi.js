@@ -1,6 +1,6 @@
 import axios from 'axios';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+import { API_BASE_URL } from '../utils/constants';
+import { getToken } from '../utils/authStorage';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -11,10 +11,7 @@ const apiClient = axios.create({
 
 // Tự động đính kèm token xác thực nếu người dùng đã đăng nhập
 apiClient.interceptors.request.use((config) => {
-  const token =
-    localStorage.getItem('arawms_auth_token') ||
-    localStorage.getItem('token') ||
-    localStorage.getItem('accessToken');
+  const token = getToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

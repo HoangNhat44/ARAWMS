@@ -172,7 +172,7 @@ export const getPackingVideo = async (req, res, next) => {
 export const registerProductUnit = async (req, res, next) => {
   try {
     // Authorization check
-    if (!req.user.roles?.includes('ADMIN')) {
+    if (!['OWNER', 'WAREHOUSE_MANAGER'].includes(req.user.roleCode)) {
       return sendError(res, 'Không có quyền', { code: 'FORBIDDEN' }, 403);
     }
     

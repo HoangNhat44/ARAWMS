@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import app from '../src/app.js';
+import { createTestToken } from './support/authSession.mjs';
 import RawMaterial from '../src/models/RawMaterial.model.js';
 import FabricRoll from '../src/models/FabricRoll.model.js';
 import MaterialStockLot from '../src/models/MaterialStockLot.model.js';
@@ -22,6 +23,7 @@ test('a checked roll and lot deduct once; a draft does not reserve stock', async
   await mongoose.connect(repl.getUri());
   try {
     const user = { _id: new mongoose.Types.ObjectId(), roles: ['WAREHOUSE_MANAGER'], warehouseIds: [] };
+    const token = await createTestToken('WAREHOUSE_MANAGER', { _id: user._id });
     const location = await WarehouseLocation.create({ locationCode: 'RAW-A-01', barcode: 'LOC-RAW-A-01',
       warehouseType: 'RAW_MATERIAL', zoneCode: 'RAW-A', rackCode: 'A', shelfCode: '01', maxCapacity: 1000,
       currentOccupancy: 150, status: 'ACTIVE' });
@@ -38,7 +40,8 @@ test('a checked roll and lot deduct once; a draft does not reserve stock', async
       supplierId, inboundTicketId, clientLineId: 'test-lot', initialQty: 100, currentQty: 100,
       quality: 'ACCEPTED', status: 'IN_STOCK', fifoInboundTimestamp: new Date('2026-01-02'),
       allocations: [{ locationId: location._id, quantity: 100, putawayQty: 100 }] });
-    const openLink = await request(app).get('/api/raw-material-outbound/options');
+    assert.equal((await request(app).get('/api/raw-material-outbound/options')).status, 401);
+    const openLink = await request(app).get('/api/raw-material-outbound/options').auth(token, { type: 'bearer' });
     assert.equal(openLink.status, 200);
     assert.equal(openLink.body.data.sources.length, 2);
     const draft = await saveOutbound(null, { warehouseCode: 'RAW-A', issueDate: '2026-11-04',

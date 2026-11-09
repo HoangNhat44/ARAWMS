@@ -12,7 +12,6 @@ import Product from '../../../models/Product.model.js';
 import Sku from '../../../models/Sku.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import CatalogOperation from '../../../models/CatalogOperation.model.js';
-import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
 import { parseProductWorkbook, findImportConflicts, saveImportedProducts } from './productExcelImport.js';
 import { copyProductMediaUrl, removeProductMedia } from '../../../common/services/productMediaStorage.js';
@@ -29,11 +28,6 @@ const respondToProductError = (error, res, next) => {
   if (error.status) return sendError(res, error.message, { code: error.code }, error.status);
   if (error.code === 11000) return sendError(res, 'Mã sản phẩm hoặc biến thể đã tồn tại', { code: 'DUPLICATE_PRODUCT_OR_VARIANT' }, 409);
   next(error);
-};
-const authenticateCatalogRequest = (req, res, next) => {
-  // Direct-URL development uses the test user installed by the parent products router.
-  if (process.env.NODE_ENV !== 'production' && !req.headers.authorization && req.user) return next();
-  return authenticate(req, res, next);
 };
 
 /** Validates product name, sample code, category, base price, and draft/active status. */
@@ -118,9 +112,7 @@ const importExcel = (preview) => async (req, res, next) => {
 };
 
 /** Applies one immutable, account-scoped operation and commits its replay result with the catalog write. */
-router.post('/sync', authenticateCatalogRequest, (req, res, next) => req.user.roles?.some((role) =>
-  ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'].includes(role))
-  ? next() : sendError(res, 'Tài khoản không có quyền quản lý sản phẩm', { code: 'FORBIDDEN' }, 403), async (req, res, next) => {
+router.post('/sync', async (req, res, next) => {
   const { operationId, operationType, payload, serverEntityId, baseVersion } = req.body || {};
   if (!/^[a-zA-Z0-9_-]{16,80}$/.test(String(operationId || '')) || !payload || typeof payload !== 'object' ||
       !['CREATE', 'UPDATE_PRODUCT', 'ADD_VARIANTS', 'UPDATE_SKU_PRICE', 'UPDATE_SKU', 'IMPORT_PRODUCT'].includes(operationType)) {

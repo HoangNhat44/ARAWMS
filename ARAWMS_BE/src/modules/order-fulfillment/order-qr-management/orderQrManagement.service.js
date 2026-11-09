@@ -127,8 +127,8 @@ export const findOrder = async (idOrCode) => {
 
 /** Lists only orders visible to the user and marks QR eligibility. */
 export const listOrdersForQr = async (user) => {
-  const isAdmin = user.roles?.includes('ADMIN');
-  const isSales = user.roles?.includes('SALES');
+  const isAdmin = user.roles?.some((role) => ['OWNER', 'ADMIN'].includes(role));
+  const isSales = user.roles?.some((role) => ['SELLER', 'SALES'].includes(role));
   const isWarehouse = user.roles?.includes('WAREHOUSE_STAFF') || user.roles?.includes('WAREHOUSE_MANAGER');
   const query = isAdmin || isWarehouse ? {} : isSales ? { sellerId: user._id } : null;
   const realOrders = query === null ? [] : await SalesOrder.find({ ...query, isDeleted: { $ne: true } })

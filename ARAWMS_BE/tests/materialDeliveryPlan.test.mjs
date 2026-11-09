@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import app from '../src/app.js';
+import { createTestToken } from './support/authSession.mjs';
 import Supplier from '../src/models/Supplier.model.js';
 import RawMaterial from '../src/models/RawMaterial.model.js';
 import WarehouseLocation from '../src/models/WarehouseLocation.model.js';
@@ -22,6 +23,7 @@ test('a batch accepts several receipts; rejected stock does not complete it', as
   await mongoose.connect(repl.getUri());
   try {
     const user = { _id: new mongoose.Types.ObjectId('507f1f77bcf86cd799439011'), roles: ['OWNER', 'ADMIN'], warehouseIds: [] };
+    const token = await createTestToken('OWNER', { _id: user._id });
     const supplier = await Supplier.create({ supplierCode: 'SUP-PLAN-TEST', supplierName: 'Nhà cung cấp thử', phone: '000' });
     const material = await RawMaterial.create({ materialCode: 'BUTTON-PLAN-TEST', materialName: 'Cúc thử',
       materialType: 'AUXILIARY', category: 'BUTTON', unit: 'PIECE', unitCost: 2 });
@@ -51,7 +53,8 @@ test('a batch accepts several receipts; rejected stock does not complete it', as
           defectReason: 'Lỗi cúc', allocations: [{ locationId: quarantine._id, quantity: rejected }] }] : [])] }] });
     const first = await createSupplierReceipt(payload(60, 50, 10, '2026-10-09', 'A'), user);
     assert.equal(String((await createSupplierReceipt(payload(60, 50, 10, '2026-10-09', 'A'), user))._id), String(first._id));
-    assert.equal((await request(app).get('/api/raw-material-inbound/receipts/by-draft-key/draft-key-A')).status, 200);
+    assert.equal((await request(app).get('/api/raw-material-inbound/receipts/by-draft-key/draft-key-A')
+      .auth(token, { type: 'bearer' })).status, 200);
     await assert.rejects(createSupplierReceipt({ ...payload(60, 50, 10, '2026-10-09', 'A'), receiptNote: 'Đã đổi' }, user),
       { code: 'DRAFT_KEY_REUSED' });
     const competing = await createSupplierReceipt(payload(60, 60, 0, '2026-10-10', 'COMPETING'), user);
@@ -89,7 +92,8 @@ test('a batch accepts several receipts; rejected stock does not complete it', as
     assert.equal(confirmedHistory[1].deliveryTimeliness.daysDifference, 1);
     assert.equal((await MaterialTicket.findById(first._id)).deliveryTimeliness.expectedEnd.toISOString().slice(0, 10), '2026-10-12');
     assert.equal((await RawMaterial.findById(material._id)).onHandQty, 100);
-    assert.equal((await request(app).get('/api/raw-material-inbound/plans')).status, 200);
+    assert.equal((await request(app).get('/api/raw-material-inbound/plans')
+      .auth(token, { type: 'bearer' })).status, 200);
     const shortPlan = await createDeliveryPlan({ supplierId: supplier._id, warehouseLocationId: warehouse._id,
       batches: [{ expectedStart: '2026-10-20', expectedEnd: '2026-10-22',
         items: [{ rawMaterialId: material._id, plannedQty: 20 }] }] }, user);
@@ -125,7 +129,7 @@ test('a batch accepts several receipts; rejected stock does not complete it', as
     await assert.rejects(setupLegacyDeliveryPlan(oldPlan._id, { version: 0,
       warehouseLocationId: quarantine._id, expectedStart: '2026-11-04', expectedEnd: '2026-11-05' }, user),
     { code: 'PLAN_WAREHOUSE_FORBIDDEN' });
-    const setupResponse = await request(app).post(`/api/raw-material-inbound/plans/${oldPlan._id}/setup-legacy`)
+    const setupResponse = await request(app).post(`/api/raw-material-inbound/plans/${oldPlan._id}/setup-legacy`).auth(token, { type: 'bearer' })
       .send({ version: 0, warehouseLocationId: warehouse._id,
         expectedStart: '2026-11-04', expectedEnd: '2026-11-05' });
     assert.equal(setupResponse.status, 200);

@@ -1,8 +1,11 @@
 import express from 'express';
+import { authenticate } from '../../common/middlewares/authenticate.js';
+import { authorizeRole } from '../../common/middlewares/authorizeRole.js';
 import { deleteHandoverParcel, getCarrierHandovers, getGhnProvinceOptions, getGhnWardOptions, getShippingOrders, getShippingShipments, postConfirmHandover, postCreateHandover, postCreateShipment, postGhnWebhook, postPrintToken, postScanHandoverParcel } from './shipping.controller.js';
 
 const router = express.Router();
 router.post('/webhooks/ghn', postGhnWebhook);
+router.use(authenticate, authorizeRole('OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'));
 router.get('/orders', getShippingOrders);
 router.get('/shipments', getShippingShipments);
 router.get('/handovers', getCarrierHandovers);

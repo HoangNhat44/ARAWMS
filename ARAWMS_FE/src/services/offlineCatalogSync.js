@@ -6,7 +6,7 @@
  */
 import { offlineCatalogStore as store, migrateOfflineCatalogQueue } from './offlineCatalogStore';
 import { productService } from './productService';
-import { STORAGE_KEYS } from '../utils/constants';
+import { getStoredProfile, getToken } from '../utils/authStorage';
 
 const listeners = new Set();
 let running = false;
@@ -21,15 +21,9 @@ const operationDomain = (change) => {
 };
 const currentVersionFor = (operation, result) => ['UPDATE_SKU', 'UPDATE_SKU_PRICE'].includes(operation.operationType)
   ? result.sku?.version : result.product?.version;
-const currentOwner = () => {
-  try { const user = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER) || 'null'); return user?.id || user?._id || null; }
-  catch { return null; }
-};
-const DIRECT_URL_TEST_USER_ID = '507f1f77bcf86cd799439011';
 const maySend = (ownerId) => {
-  const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-  if (!token && import.meta.env.DEV) return String(ownerId) === DIRECT_URL_TEST_USER_ID;
-  return Boolean(token) && String(currentOwner()) === String(ownerId);
+  const user = getStoredProfile();
+  return Boolean(getToken()) && String(user?.id || user?._id) === String(ownerId);
 };
 
 /** Saves a confirmed change before any network request; the payload never changes under this ID. */
@@ -176,8 +170,6 @@ export const syncCatalogChanges = async (ownerId) => {
           if (error.status === 401) {
             await save(ownerId, current, { status: 'AUTH_REQUIRED', lastError: 'Đăng nhập để đồng bộ',
               errorCode: error.code || 'UNAUTHORIZED', nextRetryAt: null });
-            localStorage.removeItem(STORAGE_KEYS.TOKEN);
-            localStorage.removeItem(STORAGE_KEYS.USER);
             window.dispatchEvent(new Event('arawms-auth-expired'));
             break;
           }

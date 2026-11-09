@@ -5,6 +5,7 @@
  * Description: Exposes manager-only layout, location label, and putaway plan APIs.
  */
 import express from 'express';
+import { authenticate } from '../../../common/middlewares/authenticate.js';
 import mongoose from 'mongoose';
 import bwipjs from 'bwip-js';
 import { randomBytes } from 'node:crypto';
@@ -23,18 +24,7 @@ import { allocationOptions, listAllocations, createAllocation, updateAllocation,
 
 const router = express.Router();
 router.use((req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
-// Direct URL testing uses one manager identity for layout actions.
-router.use((req, res, next) => {
-  req.user = {
-    _id: '507f1f77bcf86cd799439011',
-    username: 'test',
-    fullName: 'Test User',
-    roleCode: 'WAREHOUSE_MANAGER',
-    roles: ['ADMIN', 'OWNER', 'WAREHOUSE_MANAGER'],
-    warehouseIds: []
-  };
-  next();
-});
+router.use(authenticate);
 
 /** Maps the proposed permissions to Role entries, with warehouse-manager defaults. */
 const roleAction = (name) => name.endsWith('.view') ? 'VIEW'

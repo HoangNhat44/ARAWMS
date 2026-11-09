@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import supertest from 'supertest';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import app from '../src/app.js';
+import { createTestToken } from './support/authSession.mjs';
 import RawMaterial from '../src/models/RawMaterial.model.js';
 import WarehouseLocation from '../src/models/WarehouseLocation.model.js';
 import FabricRoll from '../src/models/FabricRoll.model.js';
@@ -125,6 +126,7 @@ test('technician request advances only with confirmed accepted quantities', asyn
     const technician = { _id: new mongoose.Types.ObjectId(), roleCode: 'GARMENT_TECHNICIAN' };
     const manager = { _id: new mongoose.Types.ObjectId(), fullName: 'Warehouse manager',
       roles: ['WAREHOUSE_MANAGER'], warehouseIds: [] };
+    const token = await createTestToken('WAREHOUSE_MANAGER', { _id: manager._id });
     const material = await RawMaterial.create({ materialCode: 'BUTTON-REQUEST-TEST',
       materialName: 'Requested buttons', materialType: 'AUXILIARY', category: 'BUTTON',
       unit: 'PIECE', unitCost: 2 });
@@ -148,7 +150,7 @@ test('technician request advances only with confirmed accepted quantities', asyn
     assert.equal(visibleRequests.find((item) => item.ticketCode === 'DEMO-PN-TEST-1').requestLines[0].receivedQty, 8);
     assert.equal(visibleRequests.find((item) => item.ticketCode === 'LEGACY-ANY-CODE').requestLines[0].remainingQty, 6);
     const legacyId = visibleRequests.find((item) => item.ticketCode === 'LEGACY-ANY-CODE')._id;
-    const legacyForm = await supertest(app).get(`/api/raw-material-inbound/legacy-receipts/${legacyId}`);
+    const legacyForm = await supertest(app).get(`/api/raw-material-inbound/legacy-receipts/${legacyId}`).auth(token, { type: 'bearer' });
     assert.equal(legacyForm.status, 200);
     assert.equal(legacyForm.body.data.receipt.ticketCode, 'LEGACY-ANY-CODE');
     await MaterialTicket.collection.insertMany(Array.from({ length: 102 }, (_, index) => ({
@@ -157,8 +159,8 @@ test('technician request advances only with confirmed accepted quantities', asyn
       isDeleted: false, receiptLines: [{ rawMaterialId: material._id, acceptedQty: index + 1 }],
       createdAt: new Date(Date.UTC(2026, 9, 1, 0, index)),
     })));
-    const firstPage = await supertest(app).get('/api/raw-material-inbound/receipts').query({ page: 1 });
-    const secondPage = await supertest(app).get('/api/raw-material-inbound/receipts').query({ page: 2 });
+    const firstPage = await supertest(app).get('/api/raw-material-inbound/receipts').auth(token, { type: 'bearer' }).query({ page: 1 });
+    const secondPage = await supertest(app).get('/api/raw-material-inbound/receipts').auth(token, { type: 'bearer' }).query({ page: 2 });
     assert.equal(firstPage.status, 200);
     assert.equal(secondPage.status, 200);
     assert.equal(firstPage.body.data.receipts.length, 100);
@@ -170,7 +172,7 @@ test('technician request advances only with confirmed accepted quantities', asyn
     assert.equal((await supertest(app).post('/api/raw-material-inbound/technician-requests')
       .send({ requestLines: [{ rawMaterialId: material._id, requestedQty: 10 }] })).status, 401);
     assert.equal((await listTechnicianInboundRequests())[0].requestLines[0].remainingQty, 10);
-    const listed = await supertest(app).get('/api/raw-material-inbound/technician-requests');
+    const listed = await supertest(app).get('/api/raw-material-inbound/technician-requests').auth(token, { type: 'bearer' });
     assert.equal(listed.status, 200);
     assert.equal(listed.body.data.requests[0].ticketCode, request.ticketCode);
     const payload = (suffix, quantity) => ({ receiptSource: 'DIRECT', inboundRequestId: request._id,
@@ -189,7 +191,7 @@ test('technician request advances only with confirmed accepted quantities', asyn
       ] };
     const first = await createSupplierReceipt(firstPayload, manager);
     await confirmSupplierReceipt(first._id, { expectedVersion: 0, idempotencyKey: 'request-confirm-first' }, manager);
-    const linkedReceipts = await supertest(app).get('/api/raw-material-inbound/receipts')
+    const linkedReceipts = await supertest(app).get('/api/raw-material-inbound/receipts').auth(token, { type: 'bearer' })
       .query({ inboundRequestId: String(request._id) });
     assert.equal(linkedReceipts.status, 200);
     assert.deepEqual(linkedReceipts.body.data.receipts.map((receipt) => receipt.ticketCode), [first.ticketCode]);

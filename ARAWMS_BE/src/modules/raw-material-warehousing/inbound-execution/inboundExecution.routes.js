@@ -6,7 +6,7 @@
  */
 import express from 'express';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
-// import { sendError } from '../../../common/utils/responseHandler.js';
+import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
 import {
   options, createLocation, createMaterial, plans, planDetails, receipts, receiptDetails, deliveryMatches,
   createReceipt, updateReceipt, confirmReceipt, cancelReceipt, receiptByDraftKey, uploadReceiptAttachment,
@@ -24,31 +24,21 @@ router.use((req, res, next) => {
   res.set('Cache-Control', 'private, no-store');
   delete req.headers['if-none-match'];
   delete req.headers['if-modified-since'];
-  // Mock user for testing without authentication
-  req.user = {
-    _id: '507f1f77bcf86cd799439011',
-    username: 'test',
-    fullName: 'Test User',
-    roles: ['OWNER', 'ADMIN'],
-    warehouseIds: []
-  };
   next();
 });
-// router.use(authenticate);
-// router.use((req, res, next) => req.user.roles?.some((role) => ['OWNER', 'WAREHOUSE_MANAGER'].includes(role))
-//   ? next() : sendError(res, 'Bạn không có quyền quản lý nhập kho nguyên phụ liệu', { code: 'FORBIDDEN' }, 403));
+router.use(authenticate);
+router.post('/technician-requests', authorizeRole('GARMENT_TECHNICIAN'), createTechnicianRequest);
+router.get('/technician-requests', authorizeRole('OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'), technicianRequests);
+router.use(authorizeRole('OWNER', 'WAREHOUSE_MANAGER'));
 
 router.get('/options', options);
 router.get('/roll-template', rollTemplate);
 router.post('/roll-import/preview', express.raw({ type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', limit: '5mb' }), previewRolls);
 router.post('/locations', createLocation);
 router.post('/materials', createMaterial);
-router.get('/technician-requests', technicianRequests);
 router.get('/legacy-receipts/:id', legacyReceiptDetails);
 router.put('/legacy-receipts/:id', updateLegacyReceipt);
 router.post('/legacy-receipts/:id/confirm', confirmLegacyReceipt);
-// The warehouse uses a direct-link test account; only a real technician token may create requests.
-router.post('/technician-requests', authenticate, createTechnicianRequest);
 router.post('/technician-requests/:id/discrepancies', reportTechnicianRequestDiscrepancy);
 router.get('/plans', plans);
 router.post('/plans', createPlan);

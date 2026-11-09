@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { authService } from '../services/authService';
-import { useAuth } from '../hooks/useAuth';
-import { CheckCircle2, ArrowRight, Layers, Database, Server, MessageSquareText, ShoppingBag, ShieldCheck, Box, Calculator, Crown } from 'lucide-react';
+import { ArrowRight, Layers, Database, Server, ShieldCheck, Box, Calculator } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 /**
@@ -9,7 +8,6 @@ import { Link } from 'react-router-dom';
  * and a live backend availability indicator.
  */
 const HomePage = () => {
-  const { user } = useAuth();
   const [backendStatus, setBackendStatus] = useState({ loading: true, online: false, message: '' });
 
   useEffect(() => {
@@ -73,86 +71,39 @@ const HomePage = () => {
           Nền tảng kiểm soát thông minh chuyên biệt cho xưởng may và thương hiệu thời trang ARA: từ kho vải, phụ liệu, định mức BOM, lệnh sản xuất đến kế toán kho, bán hàng và giao vận.
         </p>
 
-        {user ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '1rem',
-              padding: '1rem 2rem',
-              background: 'var(--ara-bg-surface)',
-              border: '1px solid var(--ara-gold)',
-              borderRadius: 'var(--radius-full)',
-              boxShadow: 'var(--ara-shadow-sm)',
-            }}>
-              <CheckCircle2 color="var(--ara-success)" size={24} />
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--ara-noir)' }}>
-                  Xin chào, {user.fullName || user.username || user.employeeCode}!
-                </div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--ara-text-muted)' }}>
-                  Tài khoản: <strong>{user.employeeCode || user.email || user.username}</strong> | Vai trò: <strong>{user.roleName || user.roleCode || 'USER'}</strong>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-              <Link to="/seller/chat" className="btn-ara-primary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                <MessageSquareText size={18} />
-                <span>Hội Thoại & Bán Hàng</span>
-                <ArrowRight size={18} />
-              </Link>
-              <Link to="/seller/orders" className="btn-ara-secondary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                <ShoppingBag size={18} />
-                <span>Quản Lý Đơn Hàng</span>
-              </Link>
-              {user?.roleCode === 'OWNER' && (
-                <Link to="/owner/dashboard" className="btn-ara-secondary" style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Crown size={18} />
-                  <span>Trang Quản Trị Chủ Xưởng</span>
-                </Link>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link to="/login" className="btn-ara-primary">
-              <span>Đăng nhập hệ thống</span>
-              <ArrowRight size={18} />
-            </Link>
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <Link to="/login" className="btn-ara-primary">
+            <span>Đăng nhập hệ thống</span>
+            <ArrowRight size={18} />
+          </Link>
+        </div>
       </div>
 
       {/* Grid Trụ cột chức năng */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
-        <Link to="/garment/material-inbound-verification" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
+        <section style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
           <ShieldCheck size={28} color="var(--ara-gold)" />
           <h3 style={{ margin: '1rem 0 .5rem', fontSize: '1.25rem' }}>Phân hệ Kỹ thuật may</h3>
           <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.9rem' }}>Kiểm nhận nguyên phụ liệu, nghiệm thu KCS thành phẩm may, kiểm kê và thu hồi vải dư vụn.</p>
-          <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Truy cập phân hệ →</span>
-        </Link>
+        </section>
 
-        <Link to="/warehouse/raw-materials/inbound" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
+        <section style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
           <Layers size={28} color="var(--ara-gold)" />
           <h3 style={{ margin: '1rem 0 .5rem', fontSize: '1.25rem' }}>Quản lý kho</h3>
           <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.9rem' }}>Quản lý kho nguyên phụ liệu, kho thành phẩm, cấu hình sản phẩm, sơ đồ vị trí kệ và kiểm kê kho.</p>
-          <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Mở quản lý kho →</span>
-        </Link>
+        </section>
 
-        <Link to="/warehouse/putaway" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
+        <section style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
           <Box size={28} color="var(--ara-gold)" />
           <h3 style={{ margin: '1rem 0 .5rem', fontSize: '1.25rem' }}>Nhân viên kho</h3>
           <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.9rem' }}>Cất hàng vào kệ (putaway), xuất kho xưởng may, đóng hàng ghi hình video, in mã QR và giao vận.</p>
-          <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Thao tác tác nghiệp →</span>
-        </Link>
+        </section>
 
-        <Link to="/accountant" style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
+        <section style={{ textDecoration: 'none', color: 'inherit', background: '#fff', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
           <Calculator size={28} color="var(--ara-gold)" />
           <h3 style={{ margin: '1rem 0 .5rem', fontSize: '1.25rem' }}>Phân hệ Kế toán</h3>
           <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.9rem' }}>Hợp đồng mua sắm nhà cung cấp, kế hoạch nhập hàng, chứng từ thanh toán, đối soát COD và công nợ.</p>
-          <span style={{ color: 'var(--ara-gold)', fontWeight: 700 }}>Vào phân hệ kế toán →</span>
-        </Link>
+        </section>
 
         <div style={{
           background: '#FFFFFF',

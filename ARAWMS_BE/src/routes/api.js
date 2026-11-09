@@ -1,4 +1,6 @@
 import express from 'express';
+import { authenticate } from '../common/middlewares/authenticate.js';
+import { authorizeRole } from '../common/middlewares/authorizeRole.js';
 // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13/19, phản hồi 1–7; GBR-01 - Báo cáo và kế hoạch có xác thực.
 import operationsReportRoutes from '../modules/managerial-financial-analytics/operations-report/operationsReport.routes.js';
 import ghnRoutes from '../modules/ghn/ghn.routes.js';
@@ -41,7 +43,7 @@ import returnMerchandiseAuthorizationRoutes from '../modules/reverse-logistics/r
 import customerExchangeProcessingRoutes from '../modules/reverse-logistics/customer-exchange-processing/customerExchangeProcessing.routes.js';
 
 const router = express.Router();
-router.use('/owner/contracts', contractWorkspaceRoutes);
+router.use('/owner/contracts', authenticate, authorizeRole('OWNER'), contractWorkspaceRoutes);
 router.use('/owner/products', productCatalogRoutes);
 router.use('/owner/operations-report', operationsReportRoutes);
 router.use('/auth', authRoutes);
@@ -79,18 +81,19 @@ router.post('/test/flow-simulate', (req, res, next) => {
 });
 
 // Supplier & Contract Procurement routes (Accountant UC 01-06)
+router.use('/supplier-contracts', authenticate, authorizeRole('ACCOUNTANT', 'OWNER'));
 router.use('/supplier-contracts', contractWorkspaceRoutes);
 router.use('/supplier-contracts', inboundPlanningRoutes);
 router.use('/supplier-contracts', deviationResolutionRoutes);
 
 // Accounts Payable / Payment Voucher routes (Accountant UC 08 / UC 15)
-router.use('/payment-vouchers', accountsPayableRoutes);
+router.use('/payment-vouchers', authenticate, authorizeRole('ACCOUNTANT', 'OWNER'), accountsPayableRoutes);
 
 // COD Reconciliation routes (Accountant UC 16–17)
-router.use('/financial/cod-reconciliation', codReconciliationRoutes);
+router.use('/financial/cod-reconciliation', authenticate, authorizeRole('ACCOUNTANT', 'OWNER'), codReconciliationRoutes);
 
 // Debt Management routes (Supplier Debt AP & Carrier Debt AR)
-router.use('/financial/debts', debtManagementRoutes);
+router.use('/financial/debts', authenticate, authorizeRole('ACCOUNTANT', 'OWNER'), debtManagementRoutes);
 
 // ====================================================================
 // MAJOR FEATURE 1: CONVERSATIONAL COMMERCE

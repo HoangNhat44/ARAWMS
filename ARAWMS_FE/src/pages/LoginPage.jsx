@@ -14,6 +14,7 @@ import { authService } from "../services/authService";
 import { passwordError, identifierError } from "../utils/authValidation";
 import "../styles/accountAuth.css";
 import GoogleIdentityButton from "./GoogleIdentityButton";
+import { getLoginDestination } from '../routes/roleHome';
 
 export function LoginBrandPanel() {
   return <section className="ara-login-brand" aria-label="Giới thiệu hệ thống">
@@ -38,12 +39,11 @@ function LoginForm() {
   const change = (event) => { setError(''); setResetRequired(false); setForm({ ...form, [event.target.name]: event.target.value }); };
   // GBR-02: Mở Quên mật khẩu và điền sẵn tài khoản vừa nhập.
   const forgot = () => navigate('/forgot-password', { state: { usernameOrEmail: form.usernameOrEmail.trim() } });
-  // UC-01, UC-05: Lưu hồ sơ và token rồi chuyển về trang người dùng muốn mở.
+  // UC-01, UC-05: Mở phân hệ của vai trò hoặc quay lại trang đã yêu cầu nếu được phép.
   const authenticated = (response) => {
-    login(response.data.user, response.data.token, form.rememberMe);
-    const destination = location.state?.from;
-    navigate(typeof destination === 'string' && destination.startsWith('/') && !destination.startsWith('//')
-      ? destination : '/', { replace: true });
+    const { user, token } = response.data;
+    login(user, token, form.rememberMe);
+    navigate(getLoginDestination(user.roleCode, location.state?.returnTo), { replace: true });
   };
   /*
    * UC-01: Kiểm tra ô nhập trước khi gửi email hoặc mã nhân viên và mật khẩu

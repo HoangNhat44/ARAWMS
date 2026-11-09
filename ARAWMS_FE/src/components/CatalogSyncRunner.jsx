@@ -10,7 +10,7 @@ import { syncCatalogChanges } from '../services/offlineCatalogSync';
 
 export default function CatalogSyncRunner() {
   const { user } = useAuth();
-  const ownerId = user?.id || user?._id;
+  const ownerId = user?.roleCode === 'WAREHOUSE_MANAGER' ? user.id : null;
   useEffect(() => {
     if (!ownerId) return undefined;
     const run = () => syncCatalogChanges(ownerId).catch(() => {});

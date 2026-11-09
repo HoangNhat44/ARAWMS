@@ -5,6 +5,8 @@
  * Description: Defines order lookup, confirmation, and QR endpoints.
  */
 import express from 'express';
+import { authenticate } from '../../../common/middlewares/authenticate.js';
+import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
 import {
   listOrders,
   issueOrderQrBulk,
@@ -17,17 +19,7 @@ import {
 
 const router = express.Router();
 
-// Direct URL testing uses one operator identity for QR issuance and lookup.
-router.use((req, res, next) => {
-  req.user = {
-    _id: '507f1f77bcf86cd799439011',
-    username: 'test',
-    fullName: 'Test User',
-    roles: ['OWNER', 'ADMIN'],
-    warehouseIds: []
-  };
-  next();
-});
+router.use(authenticate, authorizeRole('OWNER', 'WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'SELLER'));
 
 router.get('/orders', listOrders);
 router.post('/orders/qr/bulk', issueOrderQrBulk);

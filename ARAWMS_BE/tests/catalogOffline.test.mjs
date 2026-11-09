@@ -7,13 +7,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import mongoose from 'mongoose';
-import jwt from 'jsonwebtoken';
 import { createHash } from 'node:crypto';
 import { Writable } from 'node:stream';
 import { v2 as cloudinary } from 'cloudinary';
 import request from 'supertest';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import app from '../src/app.js';
+import { createTestToken } from './support/authSession.mjs';
 import User from '../src/models/User.model.js';
 import Product from '../src/models/Product.model.js';
 import Sku from '../src/models/Sku.model.js';
@@ -22,13 +22,10 @@ import CatalogOperation from '../src/models/CatalogOperation.model.js';
 let replicaSet;
 let token;
 test.before(async () => {
-  process.env.JWT_SECRET = 'catalog-offline-test-only';
   replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   await mongoose.connect(replicaSet.getUri());
   await Promise.all([Product.init(), Sku.init(), CatalogOperation.init(), User.init()]);
-  const user = await User.create({ employeeCode: 'OFFLINE01', fullName: 'Offline Test',
-    email: 'offline@example.test', roleId: new mongoose.Types.ObjectId(), roleCode: 'WAREHOUSE_MANAGER' });
-  token = jwt.sign({ id: String(user._id) }, process.env.JWT_SECRET);
+  token = await createTestToken('WAREHOUSE_MANAGER');
 });
 test.after(async () => { await mongoose.disconnect(); await replicaSet?.stop(); });
 
@@ -107,9 +104,7 @@ test('two devices cannot claim the same sample code', async () => {
 });
 
 test('the same operation ID belongs to each authenticated account separately', async () => {
-  const secondUser = await User.create({ employeeCode: 'OFFLINE02', fullName: 'Second Test',
-    email: 'second@example.test', roleId: new mongoose.Types.ObjectId(), roleCode: 'WAREHOUSE_MANAGER' });
-  const secondToken = jwt.sign({ id: String(secondUser._id) }, process.env.JWT_SECRET);
+  const secondToken = await createTestToken('WAREHOUSE_MANAGER');
   const response = await request(app).post('/api/products/configuration/sync')
     .set('Authorization', `Bearer ${secondToken}`).send({ operationId: 'offline-create-0001',
       operationType: 'CREATE', payload: { productName: 'Mẫu khác tài khoản', sampleCode: 'ACCOUNT-02',

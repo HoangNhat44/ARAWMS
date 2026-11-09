@@ -17,14 +17,6 @@ import LegacyMaterialReceiptForm from '../components/LegacyMaterialReceiptForm';
 import RemnantReturnReview from '../components/RemnantReturnReview';
 import '../styles/supplierInbound.css';
 
-const mockUser = {
-  _id: '507f1f77bcf86cd799439011',
-  username: 'test',
-  fullName: 'Test User',
-  roles: ['OWNER', 'WAREHOUSE_MANAGER']
-};
-const optionCacheKey = `arawms-material-receipt-options:${mockUser._id}`;
-
 const statusConfig = {
   WAITING_RECEIPT: { label: 'Chờ nhập', color: '#9A5B06', bg: '#FEF0C7', border: '#F5B95F', icon: Clock },
   PARTIALLY_RECEIVED: { label: 'Đã nhập một phần', color: '#9A5B06', bg: '#FEF0C7', border: '#F5B95F', icon: Clock },
@@ -66,8 +58,8 @@ export default function SupplierInboundPage() {
   const [searchParams] = useSearchParams();
   const requestedId = searchParams.get('request');
   const openedRequestId = useRef('');
-  const { user: signedInUser } = useAuth();
-  const user = signedInUser || mockUser;
+  const { user } = useAuth();
+  const optionCacheKey = `arawms-material-receipt-options:${user.id}`;
 
   const [options, setOptions] = useState({ suppliers: [], materials: [], locations: [] });
   const [requests, setRequests] = useState([]);
@@ -92,7 +84,7 @@ export default function SupplierInboundPage() {
         else setError(failure.message);
       } catch { setError(failure.message); }
     });
-  }, []);
+  }, [optionCacheKey]);
 
   // Load data
   const loadData = useCallback(async () => {

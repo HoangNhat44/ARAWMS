@@ -7,15 +7,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { productService } from '../services/productService';
-// import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../hooks/useAuth';
 import { offlineCatalogStore } from '../services/offlineCatalogStore';
 import { previewProductWorkbook } from '../services/offlineProductWorkbook';
 import { queueCatalogChange, syncCatalogChanges, getPendingCatalogChanges,
   retryCatalogChange, subscribeCatalogChanges, resolveCatalogOperation } from '../services/offlineCatalogSync';
 import '../styles/productConfiguration.css';
-
-// Mock user for testing (NO AUTH REQUIRED)
-const mockUser = { _id: '507f1f77bcf86cd799439011', id: '507f1f77bcf86cd799439011', username: 'test', fullName: 'Test User', roles: ['OWNER', 'WAREHOUSE_MANAGER'] };
 
 const sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'FREESIZE'];
 const blank = { productName: '', sampleCode: '', category: '', description: '', basePrice: '' };
@@ -27,9 +24,7 @@ export default function ProductConfigurationPage() {
   const { id: routeId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  // const { user, loading: authLoading } = useAuth();
-  const user = mockUser;
-  const authLoading = false;
+  const { user, loading: authLoading } = useAuth();
   const ownerId = user?.id || user?._id;
   const requestId = useRef(crypto.randomUUID());
   const draftRef = useRef(null);

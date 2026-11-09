@@ -27,7 +27,16 @@ import {
   ShoppingBag,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { ROLE_HOME } from '../../routes/roleHome';
 
+const workspaceNav = new Map([
+  ['OWNER', { label: 'Chủ xưởng', icon: Crown }],
+  ['SELLER', { label: 'Bán hàng', icon: MessageSquareText }],
+  ['GARMENT_TECHNICIAN', { label: 'Kỹ thuật may', icon: ShieldCheck }],
+  ['WAREHOUSE_MANAGER', { label: 'Quản lý kho', icon: SlidersHorizontal }],
+  ['WAREHOUSE_STAFF', { label: 'Nhân viên kho', icon: Box }],
+  ['ACCOUNTANT', { label: 'Kế toán', icon: Calculator }],
+]);
 export default function Navbar() {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -48,23 +57,11 @@ export default function Navbar() {
     }
   };
 
-  const isHomeActive = location.pathname === '/';
-  const isSellerActive = location.pathname.startsWith('/seller');
-  const isGarmentActive = location.pathname.startsWith('/garment');
-  const isManagerActive =
-    location.pathname.startsWith('/warehouse/raw-materials') ||
-    location.pathname.startsWith('/warehouse/finished-goods') ||
-    location.pathname.startsWith('/warehouse/products') ||
-    location.pathname.startsWith('/warehouse/layout') ||
-    location.pathname.startsWith('/warehouse/stocktake');
-  const isStaffActive =
-    location.pathname.startsWith('/warehouse/putaway') ||
-    location.pathname.startsWith('/warehouse/staff') ||
-    location.pathname.startsWith('/packing') ||
-    location.pathname.startsWith('/orders') ||
-    location.pathname.startsWith('/warehouse/shipping');
-  const isAccountantActive = location.pathname.startsWith('/accountant');
-  const isOwnerActive = location.pathname.startsWith('/owner');
+  const workspace = workspaceNav.get(user?.roleCode);
+  const navItems = workspace ? [{ ...workspace, path: ROLE_HOME.get(user.roleCode) }] : [];
+  if (user?.roleCode === 'SELLER') {
+    navItems.push({ label: 'Đơn hàng', path: '/seller/orders', icon: ShoppingBag });
+  }
 
   const navLinkStyle = (isActive) => ({
     display: 'inline-flex',
@@ -88,28 +85,6 @@ export default function Navbar() {
       icon: <UserIcon size={16} />,
       onClick: () => navigate(user?.roleCode === 'OWNER' ? '/owner/account' : '/account'),
     },
-    {
-      key: 'seller-chat',
-      label: 'Hội thoại bán hàng',
-      icon: <MessageSquareText size={16} />,
-      onClick: () => navigate('/seller/chat'),
-    },
-    {
-      key: 'seller-orders',
-      label: 'Quản lý đơn hàng',
-      icon: <ShoppingBag size={16} />,
-      onClick: () => navigate('/seller/orders'),
-    },
-    ...(user?.roleCode === 'OWNER'
-      ? [
-          {
-            key: 'owner-dashboard',
-            label: 'Trang quản trị Chủ xưởng',
-            icon: <Crown size={16} />,
-            onClick: () => navigate('/owner/dashboard'),
-          },
-        ]
-      : []),
     { type: 'divider' },
     {
       key: 'logout',
@@ -144,113 +119,14 @@ export default function Navbar() {
 
         <nav aria-label="Điều hướng chính">
           <ul className="ara-nav-links">
-            <li>
-              <Link to="/" style={navLinkStyle(isHomeActive)}>
-                Trang chủ
-              </Link>
-            </li>
-
-            {/* 1. Bán hàng & CSKH (Seller / Omnichannel) */}
-            {user && (
-              <>
-                <li>
-                  <Link
-                    to="/seller/chat"
-                    style={navLinkStyle(location.pathname === '/seller/chat')}
-                  >
-                    <MessageSquareText
-                      size={16}
-                      color={location.pathname === '/seller/chat' ? 'var(--ara-gold)' : 'var(--ara-text-muted)'}
-                    />
-                    <span>Bán hàng</span>
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    to="/seller/orders"
-                    style={navLinkStyle(location.pathname === '/seller/orders')}
-                  >
-                    <ShoppingBag
-                      size={16}
-                      color={location.pathname === '/seller/orders' ? 'var(--ara-gold)' : 'var(--ara-text-muted)'}
-                    />
-                    <span>Đơn hàng</span>
-                  </Link>
-                </li>
-              </>
-            )}
-
-            {/* 2. Phân hệ Kỹ thuật */}
-            <li>
-              <Link
-                to="/garment/material-inbound-verification"
-                style={navLinkStyle(isGarmentActive)}
-              >
-                <ShieldCheck
-                  size={16}
-                  color={isGarmentActive ? 'var(--ara-gold)' : 'var(--ara-text-muted)'}
-                />
-                <span>Phân hệ Kỹ thuật</span>
-              </Link>
-            </li>
-
-            {/* 3. Quản lý kho */}
-            <li>
-              <Link
-                to="/warehouse/raw-materials/inbound"
-                style={navLinkStyle(isManagerActive)}
-              >
-                <SlidersHorizontal
-                  size={16}
-                  color={isManagerActive ? 'var(--ara-gold)' : 'var(--ara-text-muted)'}
-                />
-                <span>Quản lý kho</span>
-              </Link>
-            </li>
-
-            {/* 4. Nhân viên kho */}
-            <li>
-              <Link
-                to="/warehouse/putaway"
-                style={navLinkStyle(isStaffActive)}
-              >
-                <Box
-                  size={16}
-                  color={isStaffActive ? 'var(--ara-gold)' : 'var(--ara-text-muted)'}
-                />
-                <span>Nhân viên kho</span>
-              </Link>
-            </li>
-
-            {/* 5. Phân hệ Kế toán */}
-            <li>
-              <Link
-                to="/accountant"
-                style={navLinkStyle(isAccountantActive)}
-              >
-                <Calculator
-                  size={16}
-                  color={isAccountantActive ? 'var(--ara-gold)' : 'var(--ara-text-muted)'}
-                />
-                <span>Phân hệ Kế toán</span>
-              </Link>
-            </li>
-
-            {/* 6. Phân hệ Chủ xưởng (nếu có role OWNER) */}
-            {user?.roleCode === 'OWNER' && (
-              <li>
-                <Link
-                  to="/owner/dashboard"
-                  style={navLinkStyle(isOwnerActive)}
-                >
-                  <Crown
-                    size={16}
-                    color={isOwnerActive ? 'var(--ara-gold)' : 'var(--ara-text-muted)'}
-                  />
-                  <span>Chủ xưởng</span>
+            {navItems.map(({ label, path, icon: Icon }) => (
+              <li key={path}>
+                <Link to={path} style={navLinkStyle(location.pathname === path)}>
+                  <Icon size={16} aria-hidden="true" />
+                  {label}
                 </Link>
               </li>
-            )}
+            ))}
 
             {/* User Account Dropdown hoặc Đăng nhập */}
             {user ? (

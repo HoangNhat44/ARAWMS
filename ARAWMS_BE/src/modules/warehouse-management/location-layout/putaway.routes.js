@@ -5,6 +5,7 @@
  * Description: Exposes staff barcode putaway and manager rack-content review endpoints. Authentication and role gates keep scanning separate from layout administration.
  */
 import express from 'express';
+import { authenticate } from '../../../common/middlewares/authenticate.js';
 import mongoose from 'mongoose';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
 import ProductUnit from '../../../models/ProductUnit.js';
@@ -20,18 +21,7 @@ import { listPutawayTasks, getPutawayTask, verifyPutawayLocation, scanPutawayUni
 
 const router = express.Router();
 router.use((req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
-// Direct URL testing uses one operator identity for scanning and review.
-router.use((req, res, next) => {
-  req.user = {
-    _id: '507f1f77bcf86cd799439011',
-    username: 'test',
-    fullName: 'Test User',
-    roleCode: 'WAREHOUSE_STAFF',
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'],
-    warehouseIds: []
-  };
-  next();
-});
+router.use(authenticate);
 
 /** Restricts physical scans to warehouse staff and review actions to managers. */
 const role = (...allowed) => (req, res, next) => allowed.some((item) => req.user.roles?.includes(item))

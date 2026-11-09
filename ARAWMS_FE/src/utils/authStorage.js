@@ -9,6 +9,11 @@ import { STORAGE_KEYS } from './constants';
 
 export const AUTH_EXPIRED_EVENT = 'arawms:auth-expired';
 export const getToken = () => sessionStorage.getItem(STORAGE_KEYS.TOKEN) || localStorage.getItem(STORAGE_KEYS.TOKEN);
+export const getStoredProfile = () => {
+  const storage = sessionStorage.getItem(STORAGE_KEYS.TOKEN) ? sessionStorage : localStorage;
+  try { return JSON.parse(storage.getItem(STORAGE_KEYS.USER) || 'null'); }
+  catch { return null; }
+};
 // UC-02: Xóa thông tin đăng nhập ở cả bộ nhớ theo phiên và bộ nhớ ghi nhớ.
 export const clearAuth = () => {
   for (const storage of [sessionStorage, localStorage]) {

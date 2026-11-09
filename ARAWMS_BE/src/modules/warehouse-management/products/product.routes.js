@@ -21,6 +21,7 @@ import productConfigurationRoutes from './productConfiguration.routes.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
+import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
 
 const router = express.Router();
 const media = {
@@ -29,19 +30,10 @@ const media = {
   'additional-image': { types: ['image/jpeg', 'image/png', 'image/webp'], limit: 10 * 1024 * 1024, field: 'additionalImageUrls' },
 };
 
-// Existing warehouse screens still use the direct-URL operator until their auth migration.
-router.use((req, res, next) => {
-  req.user = {
-    _id: '507f1f77bcf86cd799439011', username: 'test', fullName: 'Test User',
-    roles: ['OWNER', 'ADMIN'], warehouseIds: [],
-  };
-  next();
-});
-// router.use((req, res, next) => req.user.roles?.includes('WAREHOUSE_MANAGER')
-//   ? next()
-//   : sendError(res, 'Chỉ quản lý kho được tạo sản phẩm', { code: 'FORBIDDEN' }, 403));
+router.use(authenticate, authorizeRole('OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'));
+const manageProducts = authorizeRole('OWNER', 'WAREHOUSE_MANAGER');
 router.use('/bulk', bulkStockRoutes);
-router.use('/configuration', productConfigurationRoutes);
+router.use('/configuration', manageProducts, productConfigurationRoutes);
 
 /** Lists usable finished goods locations and their current capacity. */
 router.get('/locations', async (req, res, next) => {
@@ -57,7 +49,7 @@ router.get('/locations', async (req, res, next) => {
 });
 
 /** Creates a uniquely coded finished goods location for receiving stock. */
-router.post('/locations', async (req, res, next) => {
+router.post('/locations', manageProducts, async (req, res, next) => {
   const locationCode = String(req.body?.locationCode || '').trim().toUpperCase();
   const maxCapacity = Number(req.body?.maxCapacity);
   if (!/^[A-Z0-9_-]{2,40}$/.test(locationCode) || !Number.isSafeInteger(maxCapacity) || maxCapacity < 1) {
@@ -122,7 +114,7 @@ router.get('/', async (req, res, next) => {
  * Receiving requires a separate barcode issuing flow; tracked batch stock cannot
  * leave through this aggregate endpoint because each physical unit must be scanned.
  */
-router.post('/:id/stock', async (req, res, next) => {
+router.post('/:id/stock', manageProducts, async (req, res, next) => {
   const { id } = req.params;
   const { direction, skuId, note } = req.body || {};
   const quantity = Number(req.body?.quantity);
@@ -182,7 +174,7 @@ router.post('/:id/stock', async (req, res, next) => {
 });
 
 /** Creates a basic product after checking its code, name, category, and price. */
-router.post('/', async (req, res, next) => {
+router.post('/', manageProducts, async (req, res, next) => {
   const productCode = String(req.body?.productCode || '').trim().toUpperCase();
   const productName = String(req.body?.productName || '').trim();
   const sampleCode = String(req.body?.sampleCode || '').trim().toUpperCase();
@@ -291,20 +283,7 @@ const uploadProductMedia = async (req, res, next) => {
     next(error);
   }
 };
-const authenticateCatalogFile = (req, res, next) => {
-  if (!req.headers['x-catalog-file-id']) return next();
-  // Match the catalog sync endpoint for direct-URL testing without opening this path in production.
-  if (process.env.NODE_ENV !== 'production' && !req.headers.authorization && req.user) {
-    return req.user.roles?.some((role) => ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'].includes(role))
-      ? next() : sendError(res, 'Tài khoản không có quyền quản lý ảnh sản phẩm', { code: 'FORBIDDEN' }, 403);
-  }
-  return authenticate(req, res, (error) => {
-    if (error) return next(error);
-    return req.user.roles?.some((role) => ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'].includes(role))
-      ? next() : sendError(res, 'Tài khoản không có quyền quản lý ảnh sản phẩm', { code: 'FORBIDDEN' }, 403);
-  });
-};
-router.put('/:id/:kind(image|video)', authenticateCatalogFile, uploadProductMedia);
-router.post('/:id/:kind(additional-image)', authenticateCatalogFile, uploadProductMedia);
+router.put('/:id/:kind(image|video)', manageProducts, uploadProductMedia);
+router.post('/:id/:kind(additional-image)', manageProducts, uploadProductMedia);
 
 export default router;

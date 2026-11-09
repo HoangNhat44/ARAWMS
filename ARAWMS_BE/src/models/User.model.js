@@ -24,6 +24,7 @@ const userSchema = new Schema(
     googleLinkVersion: { type: Number, default: 0, select: false },
     roleId: { type: Schema.Types.ObjectId, ref: 'Role', required: true, index: true },
     roleCode: { type: String, enum: ROLES, required: true, index: true },
+    warehouseIds: { type: [Schema.Types.ObjectId], default: undefined },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE', 'LOCKED'], default: 'ACTIVE', index: true },
     managementVersion: { type: Number, default: 0, min: 0 },
     permissionOverrides: {
@@ -64,6 +65,10 @@ const userSchema = new Schema(
 );
 
 userSchema.plugin(baseSchemaPlugin);
+// Existing warehouse services read an array of roles. Use the authenticated role as its source.
+userSchema.virtual('roles').get(function () {
+  return this.roleCode ? [this.roleCode] : [];
+});
 userSchema.index(
   { googleId: 1 },
   {

@@ -9,10 +9,7 @@ import { Link } from 'react-router-dom';
 import { orderQrService } from '../services/orderQrService';
 import '../styles/orderQr.css';
 import '../styles/orderQrModal.css';
-// import { useAuth } from '../hooks/useAuth';
-
-// Mock user for testing
-const mockUser = { _id: '1', username: 'test', fullName: 'Test User', roles: ['OWNER', 'ADMIN'] };
+import { useAuth } from '../hooks/useAuth';
 
 const panel = {
   background: '#fff', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-md)',
@@ -108,10 +105,9 @@ function OrderLabel({ card }) {
 /** Lists accessible orders and manages their packing QR labels.
  * Keeps search, selection, printing, and QR issuance in one page workflow. */
 export default function OrderQrPage() {
-  // const { user } = useAuth();
-  const user = mockUser;
-  const canIssue = user?.roles?.some((role) => ['OWNER', 'SELLER', 'WAREHOUSE_STAFF'].includes(role));
-  const canConfirm = user?.roles?.some((role) => role === 'OWNER' || role === 'SELLER');
+  const { user } = useAuth();
+  const canIssue = ['OWNER', 'SELLER', 'WAREHOUSE_STAFF'].includes(user?.roleCode);
+  const canConfirm = ['OWNER', 'SELLER'].includes(user?.roleCode);
   const [orders, setOrders] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);

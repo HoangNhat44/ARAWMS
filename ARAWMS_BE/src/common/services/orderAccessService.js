@@ -5,6 +5,9 @@
  * Description: Checks order visibility, QR issuance, and packing access.
  */
 const hasRole = (user, role) => user.roles?.includes(role);
+const canManageOrders = (user) => hasRole(user, 'OWNER') || hasRole(user, 'ADMIN');
+const isAssignedSeller = (user, order) => (hasRole(user, 'SELLER') || hasRole(user, 'SALES')) &&
+  String(order.sellerId) === String(user._id);
 const orderWarehouseIds = (order) => order.items.flatMap((item) => [
   item.reservation?.warehouseId,
   ...(item.fifoPickList || []).map((allocation) => allocation.locationId),
@@ -12,8 +15,7 @@ const orderWarehouseIds = (order) => order.items.flatMap((item) => [
 
 /** Allows warehouse users to view orders tied only to assigned locations. */
 export const canViewOrder = (user, order) => {
-  if (hasRole(user, 'ADMIN')) return true;
-  if (hasRole(user, 'SALES') && String(order.sellerId) === String(user._id)) return true;
+  if (canManageOrders(user) || isAssignedSeller(user, order)) return true;
   if (hasRole(user, 'WAREHOUSE_STAFF') || hasRole(user, 'WAREHOUSE_MANAGER')) {
     const assigned = new Set((user.warehouseIds || []).map(String));
     const orderWarehouses = orderWarehouseIds(order);
@@ -36,10 +38,10 @@ export const canPackOrder = (user, order) => {
 export const canIssueQr = (user, order) => {
   if (hasRole(user, 'WAREHOUSE_STAFF')) return order.status === 'PACKED'
     ? canViewOrder(user, order) : canPackOrder(user, order);
-  return hasRole(user, 'ADMIN') || (hasRole(user, 'SALES') && String(order.sellerId) === String(user._id));
+  return canManageOrders(user) || isAssignedSeller(user, order);
 };
 
 /** Allows only the assigned seller or an administrator to confirm an order. */
 export const canConfirmOrder = (user, order) => {
-  return hasRole(user, 'ADMIN') || (hasRole(user, 'SALES') && String(order.sellerId) === String(user._id));
+  return canManageOrders(user) || isAssignedSeller(user, order);
 };

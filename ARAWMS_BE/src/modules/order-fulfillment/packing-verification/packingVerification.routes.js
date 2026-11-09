@@ -5,6 +5,8 @@
  * Description: Defines packing session, barcode, and video endpoints.
  */
 import express from 'express';
+import { authenticate } from '../../../common/middlewares/authenticate.js';
+import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
 import {
   openPackingSessionRequest,
   getPackingSession,
@@ -21,18 +23,7 @@ import {
 
 const router = express.Router();
 
-// TODO: Replace with real authentication middleware in production
-// This mock user is for development/testing only
-router.use((req, res, next) => {
-  req.user = {
-    _id: '507f1f77bcf86cd799439011',
-    username: 'test',
-    fullName: 'Test User',
-    roles: ['OWNER', 'ADMIN', 'WAREHOUSE_STAFF'],
-    warehouseIds: []
-  };
-  next();
-});
+router.use(authenticate, authorizeRole('OWNER', 'WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER'));
 
 router.post('/product-units/register', registerProductUnit);
 router.post('/prepare', openPackingSessionRequest);

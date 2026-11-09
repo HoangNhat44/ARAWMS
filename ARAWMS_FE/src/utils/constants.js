@@ -10,8 +10,5 @@ export const STORAGE_KEYS = {
   USER: 'arawms_user_info',
 };
 
-// Matches the direct-URL warehouse operator used by the local API test routes.
-export const LOCAL_WAREHOUSE_OPERATOR_ID = '507f1f77bcf86cd799439011';
-
 // Fixed number of rows for Owner tables and server-paged lists.
 export const OWNER_PAGE_SIZE = 15;

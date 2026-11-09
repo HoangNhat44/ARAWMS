@@ -6,7 +6,7 @@
  */
 import { offlineCatalogStore as store } from './offlineCatalogStore';
 import { productService } from './productService';
-import { LOCAL_WAREHOUSE_OPERATOR_ID, STORAGE_KEYS } from '../utils/constants';
+import { getStoredProfile, getToken } from '../utils/authStorage';
 
 const listeners = new Set();
 let running = false;
@@ -16,15 +16,8 @@ const notify = () => listeners.forEach((listener) => listener());
 const ownKey = (kind, id) => `finished-goods:${kind}:${id}`;
 /** Prevents a retry from using another account's token after a login switch. */
 const signedInAs = (ownerId) => {
-  try {
-    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-    if (!token && import.meta.env.DEV &&
-      ['localhost', '127.0.0.1'].includes(window.location.hostname))
-      return String(ownerId) === LOCAL_WAREHOUSE_OPERATOR_ID;
-    const user = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER) || 'null');
-    return Boolean(token) &&
-      String(user?.id || user?._id) === String(ownerId);
-  } catch { return false; }
+  const user = getStoredProfile();
+  return Boolean(getToken()) && String(user?.id || user?._id) === String(ownerId);
 };
 
 export const finishedGoodsOffline = {

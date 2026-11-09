@@ -6,6 +6,7 @@
  */
 import express from 'express';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
+import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
 import {
   getOptions,
   listTickets,
@@ -15,22 +16,7 @@ import {
 
 const router = express.Router();
 
-// Fallback user if token is omitted in local dev environment
-const flexibleAuth = async (req, res, next) => {
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-    return authenticate(req, res, next);
-  }
-  req.user = req.user || {
-    _id: '507f1f77bcf86cd799439011',
-    username: 'garment_tech',
-    fullName: 'Kỹ thuật viên May KCS',
-    roleCode: 'GARMENT_TECHNICIAN',
-    roles: ['GARMENT_TECHNICIAN', 'OWNER'],
-  };
-  next();
-};
-
-router.use(flexibleAuth);
+router.use(authenticate, authorizeRole('GARMENT_TECHNICIAN'));
 
 router.get('/options', getOptions);
 router.get('/tickets', listTickets);

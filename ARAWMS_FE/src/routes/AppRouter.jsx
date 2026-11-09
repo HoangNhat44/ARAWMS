@@ -10,7 +10,8 @@
  *              - Phân hệ Chủ xưởng (Owner)
  */
 import React, { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Result } from 'antd';
 import { WmsButton } from '../components/ui/WmsControls';
 import HomePage from '../pages/HomePage';
 import LoginPage from '../pages/LoginPage';
@@ -42,6 +43,7 @@ import WarehouseStaffLayout from '../components/warehouse/WarehouseStaffLayout';
 import AccountantRoutes from './AccountantRoutes';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import { getRoleHome } from './roleHome';
 
 const OwnerLayout = lazy(() => import('../pages/Owner/OwnerLayout'));
 const InboundPlanDetailPage = lazy(() => import('../pages/Owner/InboundPlanDetailPage'));
@@ -69,29 +71,35 @@ const SessionError = ({ message, retry }) => (
   </div>
 );
 
-/* ProtectedRoute: Bảo vệ các trang yêu cầu phiên đăng nhập */
-export const ProtectedRoute = ({ children }) => {
+/* Bảo vệ phiên đăng nhập và kiểm tra vai trò ở mọi đường dẫn của phân hệ. */
+function ProtectedRoute({ role, children }) {
   const { user, loading, authError, refreshSession } = useAuth();
-  const location = useLocation();
+  const { pathname, search, hash } = useLocation();
 
   if (loading) return <LoadingSpinner message="Đang xác thực thông tin đăng nhập..." />;
   if (authError) return <SessionError message={authError} retry={refreshSession} />;
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
-  return children;
-};
+  if (!user) return <Navigate to="/login" replace state={{ returnTo: { pathname, search, hash, role } }} />;
+  if (role && user.roleCode !== role) {
+    return <Result status="403" title="Không có quyền truy cập"
+      subTitle="Vai trò của bạn chưa được cấp quyền vào khu vực này."
+      extra={<Link to={getRoleHome(user.roleCode)}>Về phân hệ của tôi</Link>} />;
+  }
+  return children ?? <Outlet />;
+}
 
 /* PublicRoute: Chuyển hướng người đã đăng nhập khỏi trang login/register */
 export const PublicRoute = ({ children }) => {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner message="Đang tải..." />;
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to={getRoleHome(user.roleCode)} replace />;
   return children;
 };
 
-// Điều hướng trang chủ: Owner vào dashboard, các vai trò khác vào trang chủ giới thiệu & chọn phân hệ
 function HomeEntry() {
-  const { user } = useAuth();
-  return user?.roleCode === 'OWNER' ? <Navigate to="/owner/dashboard" replace /> : <HomePage />;
+  const { user, loading, authError, refreshSession } = useAuth();
+  if (loading) return <LoadingSpinner message="Đang xác thực thông tin đăng nhập..." />;
+  if (authError) return <SessionError message={authError} retry={refreshSession} />;
+  return user ? <Navigate to={getRoleHome(user.roleCode)} replace /> : <HomePage />;
 }
 
 // Điều hướng trang tài khoản: Owner dùng layout riêng, các vai trò khác dùng trang hồ sơ chuẩn
@@ -116,164 +124,46 @@ export default function AppRouter() {
         <Route path="/account" element={<ProtectedRoute><AccountEntry /></ProtectedRoute>} />
 
         {/* Phân hệ Seller Workspace (Bán hàng & CSKH đa kênh, Quản lý đơn hàng, TMĐT, RMA) */}
-        <Route path="/seller/chat" element={<ProtectedRoute><SellerChatPage /></ProtectedRoute>} />
-        <Route path="/seller/orders" element={<ProtectedRoute><SellerOrdersPage /></ProtectedRoute>} />
+        <Route element={<ProtectedRoute role="SELLER" />}>
+          <Route path="/seller/chat" element={<SellerChatPage />} />
+          <Route path="/seller/orders" element={<SellerOrdersPage />} />
+        </Route>
 
         {/* Phân hệ Kế toán (Accountant) */}
-        <Route path="/accountant/*" element={<AccountantRoutes />} />
+        <Route path="/accountant/*" element={<ProtectedRoute role="ACCOUNTANT"><AccountantRoutes /></ProtectedRoute>} />
 
-        {/* Phân hệ Quản lý kho (Warehouse Manager) */}
-        <Route
-          path="/warehouse/raw-materials/inbound"
-          element={
-            <WarehouseManagerLayout>
-              <SupplierInboundPage />
-            </WarehouseManagerLayout>
-          }
-        />
-        <Route
-          path="/warehouse/raw-materials/outbound"
-          element={
-            <WarehouseManagerLayout>
-              <MaterialOutboundPage />
-            </WarehouseManagerLayout>
-          }
-        />
-        <Route
-          path="/warehouse/finished-goods"
-          element={
-            <WarehouseManagerLayout>
-              <FinishedGoodsPage />
-            </WarehouseManagerLayout>
-          }
-        />
-        <Route
-          path="/warehouse/products/new"
-          element={
-            <WarehouseManagerLayout>
-              <ProductConfigurationPage />
-            </WarehouseManagerLayout>
-          }
-        />
-        <Route
-          path="/warehouse/products/:id/edit"
-          element={
-            <WarehouseManagerLayout>
-              <ProductConfigurationPage />
-            </WarehouseManagerLayout>
-          }
-        />
-        <Route
-          path="/warehouse/layout"
-          element={
-            <WarehouseManagerLayout>
-              <WarehouseLayoutPage />
-            </WarehouseManagerLayout>
-          }
-        />
-        <Route
-          path="/warehouse/stocktake"
-          element={
-            <WarehouseManagerLayout>
-              <StocktakePage />
-            </WarehouseManagerLayout>
-          }
-        />
+        {/* Phân hệ Quản lý kho */}
+        <Route element={<ProtectedRoute role="WAREHOUSE_MANAGER"><WarehouseManagerLayout><Outlet /></WarehouseManagerLayout></ProtectedRoute>}>
+          <Route path="/warehouse/raw-materials/inbound" element={<SupplierInboundPage />} />
+          <Route path="/warehouse/raw-materials/outbound" element={<MaterialOutboundPage />} />
+          <Route path="/warehouse/finished-goods" element={<FinishedGoodsPage />} />
+          <Route path="/warehouse/products/new" element={<ProductConfigurationPage />} />
+          <Route path="/warehouse/products/:id/edit" element={<ProductConfigurationPage />} />
+          <Route path="/warehouse/layout" element={<WarehouseLayoutPage />} />
+          <Route path="/warehouse/stocktake" element={<StocktakePage />} />
+        </Route>
 
-        {/* Phân hệ Nhân viên kho (Warehouse Staff) */}
-        <Route
-          path="/warehouse/putaway"
-          element={
-            <WarehouseStaffLayout>
-              <WarehousePutawayPage />
-            </WarehouseStaffLayout>
-          }
-        />
-        <Route
-          path="/warehouse/staff/outbound"
-          element={
-            <WarehouseStaffLayout>
-              <MaterialOutboundPage isStaffMode={true} />
-            </WarehouseStaffLayout>
-          }
-        />
-        <Route
-          path="/warehouse/staff/finished-goods"
-          element={
-            <WarehouseStaffLayout>
-              <FinishedGoodsPage isStaffMode={true} />
-            </WarehouseStaffLayout>
-          }
-        />
-        <Route
-          path="/packing/qr"
-          element={
-            <WarehouseStaffLayout>
-              <WarehousePackingPage />
-            </WarehouseStaffLayout>
-          }
-        />
-        <Route
-          path="/orders/qr"
-          element={
-            <WarehouseStaffLayout>
-              <OrderQrPage />
-            </WarehouseStaffLayout>
-          }
-        />
-        <Route
-          path="/warehouse/shipping"
-          element={
-            <WarehouseStaffLayout>
-              <ShippingPage />
-            </WarehouseStaffLayout>
-          }
-        />
+        {/* Phân hệ Nhân viên kho */}
+        <Route element={<ProtectedRoute role="WAREHOUSE_STAFF"><WarehouseStaffLayout><Outlet /></WarehouseStaffLayout></ProtectedRoute>}>
+          <Route path="/warehouse/putaway" element={<WarehousePutawayPage />} />
+          <Route path="/warehouse/staff/outbound" element={<MaterialOutboundPage isStaffMode />} />
+          <Route path="/warehouse/staff/finished-goods" element={<FinishedGoodsPage isStaffMode />} />
+          <Route path="/packing/qr" element={<WarehousePackingPage />} />
+          <Route path="/orders/qr" element={<OrderQrPage />} />
+          <Route path="/warehouse/shipping" element={<ShippingPage />} />
+        </Route>
 
-        {/* Phân hệ Kỹ thuật may (Garment Technician) */}
-        <Route
-          path="/garment/material-inbound-verification"
-          element={
-            <GarmentLayout>
-              <MaterialInboundVerificationPage />
-            </GarmentLayout>
-          }
-        />
-        <Route
-          path="/garment/finished-goods-inspection"
-          element={
-            <GarmentLayout>
-              <FinishedGoodsInspectionPage />
-            </GarmentLayout>
-          }
-        />
-        <Route
-          path="/garment/stocktake-execution"
-          element={
-            <GarmentLayout>
-              <GarmentStocktakeExecutionPage />
-            </GarmentLayout>
-          }
-        />
-        <Route
-          path="/garment/material-outbound-request"
-          element={
-            <GarmentLayout>
-              <GarmentMaterialOutboundPage />
-            </GarmentLayout>
-          }
-        />
-        <Route
-          path="/garment/remnant-recovery"
-          element={
-            <GarmentLayout>
-              <GarmentCuttingAndRemnantPage />
-            </GarmentLayout>
-          }
-        />
+        {/* Phân hệ Kỹ thuật may */}
+        <Route element={<ProtectedRoute role="GARMENT_TECHNICIAN"><GarmentLayout><Outlet /></GarmentLayout></ProtectedRoute>}>
+          <Route path="/garment/material-inbound-verification" element={<MaterialInboundVerificationPage />} />
+          <Route path="/garment/finished-goods-inspection" element={<FinishedGoodsInspectionPage />} />
+          <Route path="/garment/stocktake-execution" element={<GarmentStocktakeExecutionPage />} />
+          <Route path="/garment/material-outbound-request" element={<GarmentMaterialOutboundPage />} />
+          <Route path="/garment/remnant-recovery" element={<GarmentCuttingAndRemnantPage />} />
+        </Route>
 
         {/* Phân hệ Chủ xưởng (Owner) */}
-        <Route path="/owner" element={<ProtectedRoute><OwnerLayout /></ProtectedRoute>}>
+        <Route path="/owner" element={<ProtectedRoute role="OWNER"><OwnerLayout /></ProtectedRoute>}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<OperationsPage key="dashboard" />} />
           <Route path="bi" element={<OperationsPage key="bi" mode="bi" />} />

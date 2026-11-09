@@ -12,7 +12,6 @@ import { ToastProvider } from './context/ToastContext';
 import AppRouter from './routes/AppRouter';
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
-import QuickNav from './components/common/QuickNav';
 import PackingUploadRunner from './components/PackingUploadRunner';
 import CatalogSyncRunner from './components/CatalogSyncRunner';
 import FinishedGoodsSyncRunner from './components/FinishedGoodsSyncRunner';
@@ -49,7 +48,6 @@ function App() {
               <CatalogSyncRunner />
               <FinishedGoodsSyncRunner />
               <RealtimeBridge />
-              <QuickNav />
               <AppChrome />
             </ToastProvider>
           </AuthProvider>

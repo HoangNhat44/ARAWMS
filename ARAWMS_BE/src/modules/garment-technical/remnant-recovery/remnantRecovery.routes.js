@@ -6,6 +6,7 @@
  */
 import express from 'express';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
+import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
 import {
   getOptions,
   getThreshold,
@@ -21,38 +22,24 @@ import {
 
 const router = express.Router();
 
-// Fallback user if token is omitted in local dev environment
-const flexibleAuth = async (req, res, next) => {
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-    return authenticate(req, res, next);
-  }
-  if (process.env.NODE_ENV === 'production') return authenticate(req, res, next);
-  req.user = req.user || {
-    _id: '507f1f77bcf86cd799439011',
-    username: 'garment_tech',
-    fullName: 'Kỹ thuật viên May KCS',
-    roleCode: 'GARMENT_TECHNICIAN',
-    roles: ['GARMENT_TECHNICIAN', 'OWNER'],
-  };
-  next();
-};
+router.use(authenticate);
+const technician = authorizeRole('GARMENT_TECHNICIAN');
+const manager = authorizeRole('OWNER', 'WAREHOUSE_MANAGER');
 
-router.use(flexibleAuth);
-
-router.get('/options', getOptions);
-router.get('/threshold', getThreshold);
-router.get('/outbound-requests', listOutbounds);
-router.post('/outbound-requests', createOutbound);
-router.get('/outbound-requests/:id', getOutbound);
-router.post('/outbound-requests/:id/source-discrepancies', reportUnknownReturnSource);
-router.get('/issued-rolls', listIssuedRolls);
-router.get('/return-sources', lookupReturnSource);
-router.get('/return-requests', listReturnRequests);
-router.post('/return-requests/:id/confirm', confirmReturnRequest);
-router.post('/return-requests/:id/discrepancy', reportReturnDiscrepancy);
-router.post('/return-requests/:id/close', cancelReturnRequest);
-router.post('/record-cutting', recordCutting);
-router.get('/history', listHistory);
+router.get('/options', technician, getOptions);
+router.get('/threshold', technician, getThreshold);
+router.get('/outbound-requests', authorizeRole('GARMENT_TECHNICIAN', 'OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'), listOutbounds);
+router.post('/outbound-requests', technician, createOutbound);
+router.get('/outbound-requests/:id', technician, getOutbound);
+router.post('/outbound-requests/:id/source-discrepancies', technician, reportUnknownReturnSource);
+router.get('/issued-rolls', technician, listIssuedRolls);
+router.get('/return-sources', technician, lookupReturnSource);
+router.get('/return-requests', manager, listReturnRequests);
+router.post('/return-requests/:id/confirm', manager, confirmReturnRequest);
+router.post('/return-requests/:id/discrepancy', manager, reportReturnDiscrepancy);
+router.post('/return-requests/:id/close', authorizeRole('GARMENT_TECHNICIAN', 'WAREHOUSE_MANAGER', 'OWNER'), cancelReturnRequest);
+router.post('/record-cutting', technician, recordCutting);
+router.get('/history', technician, listHistory);
 
 export default router;
 
