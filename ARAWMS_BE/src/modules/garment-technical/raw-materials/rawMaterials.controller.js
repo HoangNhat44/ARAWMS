@@ -1,16 +1,87 @@
 /**
  * ============================================================================
- * @title        : Raw Materials Controller
+ * @title        : Raw Materials & Categories Controller
  * @author       : AraWMS Team
  * @createdDate  : 2026-11-09
  * @lastModified : 2026-11-09
- * @description  : Tiếp nhận và xử lý HTTP requests cho Quản lý Danh mục Kho Nguyên Phụ Liệu (CRUD).
+ * @description  : Tiếp nhận và xử lý HTTP requests cho Quản lý Danh mục & Nguyên Phụ Liệu.
  * @module       : Garment Technical / Raw Materials
  * @layer        : Controller
  * ============================================================================
  */
 
 import * as rawMaterialsService from './rawMaterials.service.js';
+
+// ============================================================================
+// CATEGORY CONTROLLERS
+// ============================================================================
+
+/**
+ * Lấy danh sách danh mục phân loại NPL kèm số lượng NPL trong từng danh mục.
+ * @route GET /api/garment-technical/raw-materials/categories
+ */
+export const listCategories = async (req, res, next) => {
+  try {
+    const result = await rawMaterialsService.listCategories();
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+/**
+ * Tạo mới danh mục phân loại NPL.
+ * @route POST /api/garment-technical/raw-materials/categories
+ */
+export const createCategory = async (req, res, next) => {
+  try {
+    const result = await rawMaterialsService.createCategory(req.body);
+    return res.status(201).json({
+      success: true,
+      message: `Đã tạo mới danh mục "${result.categoryName}" (${result.categoryCode}) thành công!`,
+      data: result,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+/**
+ * Cập nhật danh mục phân loại NPL.
+ * @route PUT /api/garment-technical/raw-materials/categories/:id
+ */
+export const updateCategory = async (req, res, next) => {
+  try {
+    const result = await rawMaterialsService.updateCategory(req.params.id, req.body);
+    return res.status(200).json({
+      success: true,
+      message: `Đã cập nhật danh mục "${result.categoryName}" thành công!`,
+      data: result,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+/**
+ * Xóa danh mục phân loại NPL (Bắt buộc phải xóa hết NPL trong danh mục trước).
+ * @route DELETE /api/garment-technical/raw-materials/categories/:id
+ */
+export const deleteCategory = async (req, res, next) => {
+  try {
+    const result = await rawMaterialsService.deleteCategory(req.params.id);
+    return res.status(200).json(result);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// ============================================================================
+// RAW MATERIAL CONTROLLERS
+// ============================================================================
 
 /**
  * Lấy danh sách nguyên phụ liệu kèm bộ lọc và phân trang.
@@ -29,7 +100,7 @@ export const listMaterials = async (req, res, next) => {
 };
 
 /**
- * Lấy thông tin chi tiết một nguyên phụ liệu theo ID.
+ * Lấy chi tiết nguyên phụ liệu theo ID.
  * @route GET /api/garment-technical/raw-materials/:id
  */
 export const getMaterial = async (req, res, next) => {
@@ -79,7 +150,7 @@ export const updateMaterial = async (req, res, next) => {
 };
 
 /**
- * Xóa hoặc vô hiệu hóa nguyên phụ liệu.
+ * Xóa nguyên phụ liệu và cascade dọn dẹp cấu hình kho & lệnh xuất.
  * @route DELETE /api/garment-technical/raw-materials/:id
  */
 export const deleteMaterial = async (req, res, next) => {
@@ -92,7 +163,7 @@ export const deleteMaterial = async (req, res, next) => {
 };
 
 /**
- * Đổi trạng thái hoạt động (Active / Inactive) của nguyên phụ liệu.
+ * Đổi trạng thái hoạt động (Active / Inactive).
  * @route PATCH /api/garment-technical/raw-materials/:id/toggle-status
  */
 export const toggleStatus = async (req, res, next) => {
@@ -105,7 +176,7 @@ export const toggleStatus = async (req, res, next) => {
 };
 
 /**
- * Lấy siêu dữ liệu phục vụ bộ lọc & tạo NPL (Nhà cung cấp, ĐVT, Danh mục).
+ * Lấy siêu dữ liệu phục vụ bộ lọc & form.
  * @route GET /api/garment-technical/raw-materials/meta
  */
 export const getMeta = async (req, res, next) => {
@@ -119,4 +190,3 @@ export const getMeta = async (req, res, next) => {
     return next(err);
   }
 };
-

@@ -1,11 +1,12 @@
 /**
  * ============================================================================
- * @title        : Raw Materials Management Service
+ * @title        : Raw Materials & Categories Management Service
  * @author       : AraWMS Team
  * @createdDate  : 2026-11-09
  * @lastModified : 2026-11-09
- * @description  : Cung cấp logic nghiệp vụ cho Quản lý Danh mục Kho Nguyên Phụ Liệu (Thêm, Sửa, Xóa, Vô hiệu hóa, Lọc tồn kho),
- *                 phục vụ Phân hệ Kỹ thuật may (Garment Technician / KCS) và Quản lý kho.
+ * @description  : Cung cấp logic nghiệp vụ cho Quản lý Danh mục Kho Nguyên Phụ Liệu:
+ *                 - CRUD Nguyên phụ liệu: Xóa triệt để, cascade dọn dẹp cấu hình kho & lệnh xuất.
+ *                 - CRUD Danh mục phân loại: Trước khi xóa danh mục, bắt buộc phải xóa hết toàn bộ NPL trong danh mục.
  * @module       : Garment Technical / Raw Materials
  * @layer        : Service
  * ============================================================================
@@ -13,6 +14,7 @@
 
 import mongoose from 'mongoose';
 import RawMaterial from '../../../models/RawMaterial.model.js';
+import MaterialCategory from '../../../models/MaterialCategory.model.js';
 import Supplier from '../../../models/Supplier.model.js';
 import MaterialStockLot from '../../../models/MaterialStockLot.model.js';
 import FabricRoll from '../../../models/FabricRoll.model.js';
@@ -27,58 +29,241 @@ import {
 } from '../../../common/constants/materialUnits.js';
 
 /**
- * Danh mục phân loại nguyên phụ liệu chi tiết và nhãn hiển thị tiếng Việt
+ * Danh sách danh mục mặc định chuẩn hóa theo ngành may mặc
  */
-export const RAW_MATERIAL_CATEGORIES = [
-  { value: 'FABRIC_ROLL', label: 'Cây vải / Cuộn vải', type: 'FABRIC' },
-  { value: 'BUTTON', label: 'Nút / Cúc', type: 'AUXILIARY' },
-  { value: 'THREAD', label: 'Chỉ may công nghiệp', type: 'AUXILIARY' },
-  { value: 'ZIPPER', label: 'Dây kéo / Khóa kéo', type: 'AUXILIARY' },
-  { value: 'CARE_LABEL', label: 'Nhãn sườn / Mác áo', type: 'AUXILIARY' },
-  { value: 'PACKAGING_BAG', label: 'Túi đóng gói PE/PP', type: 'AUXILIARY' },
-  { value: 'NEEDLE', label: 'Kim may công nghiệp', type: 'AUXILIARY' },
-  { value: 'CHALK', label: 'Phấn may', type: 'AUXILIARY' },
-  { value: 'MARKER', label: 'Bút dấu vải', type: 'AUXILIARY' },
-  { value: 'ACCESSORY', label: 'Phụ kiện may mặc khác', type: 'AUXILIARY' },
-  { value: 'OTHER', label: 'Khác', type: 'AUXILIARY' },
+export const DEFAULT_CATEGORIES = [
+  { categoryCode: 'FABRIC_ROLL', categoryName: 'Cây vải / Cuộn vải', materialType: 'FABRIC', description: 'Vải cuộn chính và lót các loại' },
+  { categoryCode: 'BUTTON', categoryName: 'Nút / Cúc', materialType: 'AUXILIARY', description: 'Cúc áo, cúc bấm, cúc kim loại' },
+  { categoryCode: 'THREAD', categoryName: 'Chỉ may công nghiệp', materialType: 'AUXILIARY', description: 'Chỉ may polyester, chỉ vắt sổ, chỉ thêu' },
+  { categoryCode: 'ZIPPER', categoryName: 'Dây kéo / Khóa kéo', materialType: 'AUXILIARY', description: 'Khóa đồng, khóa nhựa, khóa giọt lệ' },
+  { categoryCode: 'CARE_LABEL', categoryName: 'Nhãn sườn / Mác áo', materialType: 'AUXILIARY', description: 'Mác dệt, mác in, nhãn hướng dẫn giặt' },
+  { categoryCode: 'PACKAGING_BAG', categoryName: 'Túi đóng gói PE/PP', materialType: 'AUXILIARY', description: 'Túi nilon đóng gói sản phẩm' },
+  { categoryCode: 'NEEDLE', categoryName: 'Kim may công nghiệp', materialType: 'AUXILIARY', description: 'Kim máy 1 kim, kim vắt sổ, kim đính bọ' },
+  { categoryCode: 'CHALK', categoryName: 'Phấn may', materialType: 'AUXILIARY', description: 'Phấn vẽ vải, phấn bay nhiệt' },
+  { categoryCode: 'MARKER', categoryName: 'Bút dấu vải', materialType: 'AUXILIARY', description: 'Bút bay màu, bút dạ đánh dấu vải' },
+  { categoryCode: 'ACCESSORY', categoryName: 'Phụ kiện may mặc khác', materialType: 'AUXILIARY', description: 'Dây chun, ruy băng, đệm vai, móc áo...' },
+  { categoryCode: 'OTHER', categoryName: 'Khác', materialType: 'AUXILIARY', description: 'Các vật tư phụ trợ khác' },
 ];
 
 /**
- * Lấy danh sách nguyên phụ liệu kèm bộ lọc, tìm kiếm, sắp xếp và phân trang.
+ * Tự động đồng bộ các danh mục mặc định nếu database chưa có
+ */
+const ensureDefaultCategories = async () => {
+  const count = await MaterialCategory.countDocuments({});
+  if (count === 0) {
+    await MaterialCategory.insertMany(DEFAULT_CATEGORIES);
+  }
+};
+
+// ============================================================================
+// 1. QUẢN LÝ DANH MỤC NGUYÊN PHỤ LIỆU (MATERIAL CATEGORIES)
+// ============================================================================
+
+/**
+ * Lấy danh sách danh mục phân loại NPL kèm số lượng mặt hàng đang có trong từng danh mục.
  *
- * @param {Object} query - Tham số truy vấn (search, materialType, category, status, lowStock, page, limit)
- * @returns {Promise<Object>} Danh sách nguyên phụ liệu, phân trang và thống kê
+ * @returns {Promise<Array>} Danh sách danh mục kèm itemCount
+ */
+export const listCategories = async () => {
+  await ensureDefaultCategories();
+
+  const categories = await MaterialCategory.find({})
+    .sort({ materialType: 1, displayOrder: 1, createdAt: 1 })
+    .lean();
+
+  // Đếm số lượng NPL trong từng danh mục
+  const counts = await RawMaterial.aggregate([
+    { $group: { _id: '$category', count: { $sum: 1 } } },
+  ]);
+
+  const countMap = {};
+  counts.forEach((c) => {
+    countMap[c._id] = c.count;
+  });
+
+  return categories.map((cat) => ({
+    ...cat,
+    itemCount: countMap[cat.categoryCode] || 0,
+  }));
+};
+
+/**
+ * Tạo mới một danh mục phân loại nguyên phụ liệu.
+ *
+ * @param {Object} data - Thông tin danh mục
+ * @returns {Promise<Object>} Danh mục vừa tạo
+ */
+export const createCategory = async (data = {}) => {
+  if (!data.categoryName || !data.categoryName.trim()) {
+    const error = new Error('Vui lòng nhập tên danh mục');
+    error.status = 400;
+    throw error;
+  }
+
+  if (!data.materialType || !['FABRIC', 'AUXILIARY'].includes(data.materialType)) {
+    const error = new Error('Loại danh mục phải là FABRIC (Vải) hoặc AUXILIARY (Phụ liệu)');
+    error.status = 400;
+    throw error;
+  }
+
+  // Tự sinh mã hoặc dùng mã người dùng nhập
+  let code = String(data.categoryCode || '').trim().toUpperCase();
+  if (!code) {
+    const prefix = data.materialType === 'FABRIC' ? 'CAT-FAB' : 'CAT-AUX';
+    code = await CounterSequence.getNextSequence('MATERIAL_CATEGORY_CODE', prefix, 4);
+  }
+
+  // Kiểm tra trùng mã danh mục
+  const existing = await MaterialCategory.findOne({ categoryCode: code });
+  if (existing) {
+    const error = new Error(`Mã danh mục "${code}" đã tồn tại trong hệ thống`);
+    error.status = 409;
+    throw error;
+  }
+
+  const newCat = new MaterialCategory({
+    categoryCode: code,
+    categoryName: data.categoryName.trim(),
+    materialType: data.materialType,
+    description: data.description ? data.description.trim() : '',
+    displayOrder: Number(data.displayOrder) || 0,
+    isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
+  });
+
+  await newCat.save();
+  return {
+    ...newCat.toObject(),
+    itemCount: 0,
+  };
+};
+
+/**
+ * Cập nhật thông tin danh mục.
+ *
+ * @param {string} id - ID danh mục
+ * @param {Object} data - Dữ liệu cập nhật
+ * @returns {Promise<Object>} Danh mục sau cập nhật
+ */
+export const updateCategory = async (id, data = {}) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    const error = new Error('Mã định danh danh mục không hợp lệ');
+    error.status = 400;
+    throw error;
+  }
+
+  const category = await MaterialCategory.findById(id);
+  if (!category) {
+    const error = new Error('Không tìm thấy danh mục để cập nhật');
+    error.status = 404;
+    throw error;
+  }
+
+  if (data.categoryName && data.categoryName.trim()) {
+    category.categoryName = data.categoryName.trim();
+  }
+
+  if (data.description !== undefined) {
+    category.description = data.description ? data.description.trim() : '';
+  }
+
+  if (data.displayOrder !== undefined) {
+    category.displayOrder = Number(data.displayOrder) || 0;
+  }
+
+  if (data.isActive !== undefined) {
+    category.isActive = Boolean(data.isActive);
+  }
+
+  await category.save();
+
+  const count = await RawMaterial.countDocuments({ category: category.categoryCode });
+  return {
+    ...category.toObject(),
+    itemCount: count,
+  };
+};
+
+/**
+ * XÓA DANH MỤC NGUYÊN PHỤ LIỆU:
+ * QUY TẮC BẮT BUỘC: Trước khi xóa danh mục, phải xóa hết toàn bộ nguyên phụ liệu thuộc danh mục đó trước.
+ * Nếu danh mục còn ít nhất 1 NPL, hệ thống sẽ CHẶN XÓA và báo lỗi.
+ *
+ * @param {string} id - ID danh mục
+ * @returns {Promise<Object>} Kết quả xử lý
+ */
+export const deleteCategory = async (id) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    const error = new Error('Mã định danh danh mục không hợp lệ');
+    error.status = 400;
+    throw error;
+  }
+
+  const category = await MaterialCategory.findById(id);
+  if (!category) {
+    const error = new Error('Không tìm thấy danh mục cần xóa');
+    error.status = 404;
+    throw error;
+  }
+
+  // 1. Kiểm tra số lượng nguyên phụ liệu đang thuộc danh mục này
+  const itemCount = await RawMaterial.countDocuments({ category: category.categoryCode });
+
+  if (itemCount > 0) {
+    const error = new Error(
+      `Không thể xóa danh mục "${category.categoryName}" (${category.categoryCode}) vì vẫn còn ${itemCount} nguyên phụ liệu đang thuộc danh mục này. Theo quy định an toàn hệ thống, bạn phải xóa hết toàn bộ các nguyên phụ liệu trong danh mục này trước khi thực hiện xóa danh mục!`
+    );
+    error.status = 400;
+    error.itemCount = itemCount;
+    throw error;
+  }
+
+  // 2. Nếu đã hết NPL, cho phép xóa vĩnh viễn danh mục khỏi database
+  await MaterialCategory.findByIdAndDelete(id);
+
+  return {
+    success: true,
+    message: `Đã xóa thành công danh mục "${category.categoryName}" (${category.categoryCode}) khỏi hệ thống.`,
+    categoryCode: category.categoryCode,
+  };
+};
+
+// ============================================================================
+// 2. QUẢN LÝ NGUYÊN PHỤ LIỆU (RAW MATERIALS)
+// ============================================================================
+
+/**
+ * Lấy danh sách nguyên phụ liệu kèm bộ lọc, tìm kiếm, phân trang và thống kê.
+ *
+ * @param {Object} query - Tham số truy vấn
+ * @returns {Promise<Object>} Danh sách nguyên phụ liệu và thống kê
  */
 export const listRawMaterials = async (query = {}) => {
+  await ensureDefaultCategories();
+
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const limit = Math.max(1, Math.min(100, parseInt(query.limit, 10) || 20));
   const skip = (page - 1) * limit;
 
   const filter = {};
 
-  // 1. Lọc theo trạng thái hoạt động (ACTIVE / INACTIVE / ALL)
   if (query.status === 'ACTIVE') {
     filter.isActive = true;
   } else if (query.status === 'INACTIVE') {
     filter.isActive = false;
   }
 
-  // 2. Lọc theo loại nguyên phụ liệu (FABRIC / AUXILIARY)
   if (query.materialType && ['FABRIC', 'AUXILIARY'].includes(query.materialType)) {
     filter.materialType = query.materialType;
   }
 
-  // 3. Lọc theo danh mục chi tiết (category)
   if (query.category && query.category !== 'ALL') {
     filter.category = query.category;
   }
 
-  // 4. Lọc theo nhà cung cấp
   if (query.supplierId && mongoose.Types.ObjectId.isValid(query.supplierId)) {
     filter.supplierId = query.supplierId;
   }
 
-  // 5. Tìm kiếm theo mã, tên, màu sắc
   if (query.search && query.search.trim()) {
     const s = query.search.trim();
     filter.$or = [
@@ -88,7 +273,6 @@ export const listRawMaterials = async (query = {}) => {
     ];
   }
 
-  // 6. Lọc cảnh báo dưới tồn an toàn (lowStock)
   if (query.lowStock === 'true' || query.lowStock === true) {
     filter.$expr = {
       $lte: [
@@ -98,14 +282,12 @@ export const listRawMaterials = async (query = {}) => {
     };
   }
 
-  // Sắp xếp
   let sortCriteria = { createdAt: -1 };
   if (query.sortBy === 'code_asc') sortCriteria = { materialCode: 1 };
   if (query.sortBy === 'name_asc') sortCriteria = { materialName: 1 };
   if (query.sortBy === 'onHand_desc') sortCriteria = { onHandQty: -1 };
   if (query.sortBy === 'onHand_asc') sortCriteria = { onHandQty: 1 };
 
-  // Thực thi truy vấn và đếm
   const [items, total] = await Promise.all([
     RawMaterial.find(filter)
       .populate('supplierId', 'supplierCode supplierName phone contactName address')
@@ -116,7 +298,6 @@ export const listRawMaterials = async (query = {}) => {
     RawMaterial.countDocuments(filter),
   ]);
 
-  // Bổ sung thuộc tính availableQty cho từng item
   const formattedItems = items.map((item) => ({
     ...item,
     availableQty: Math.max(0, (item.onHandQty || 0) - (item.reservedQty || 0) - (item.pendingPutawayQty || 0)),
@@ -125,7 +306,6 @@ export const listRawMaterials = async (query = {}) => {
       (item.safetyStockThreshold || 0),
   }));
 
-  // Đếm thống kê tổng quan (Dashboard counters)
   const [totalCount, fabricCount, auxiliaryCount, activeCount, lowStockCount] = await Promise.all([
     RawMaterial.countDocuments({}),
     RawMaterial.countDocuments({ materialType: 'FABRIC' }),
@@ -162,8 +342,8 @@ export const listRawMaterials = async (query = {}) => {
 /**
  * Lấy chi tiết một nguyên phụ liệu theo ID.
  *
- * @param {string} id - ID của RawMaterial
- * @returns {Promise<Object>} Chi tiết nguyên phụ liệu
+ * @param {string} id - ID nguyên phụ liệu
+ * @returns {Promise<Object>} Chi tiết NPL
  */
 export const getRawMaterialById = async (id) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -182,7 +362,6 @@ export const getRawMaterialById = async (id) => {
     throw error;
   }
 
-  // Đếm số cuộn vải hoặc lô tồn kho đang liên kết
   const [lotCount, rollCount] = await Promise.all([
     MaterialStockLot.countDocuments({ rawMaterialId: id }),
     FabricRoll.countDocuments({ rawMaterialId: id }),
@@ -200,14 +379,13 @@ export const getRawMaterialById = async (id) => {
 };
 
 /**
- * Tạo mới một nguyên phụ liệu vào hệ thống.
+ * Tạo mới một nguyên phụ liệu.
  *
- * @param {Object} data - Dữ liệu nguyên phụ liệu
- * @param {Object} user - Thông tin người thực hiện
- * @returns {Promise<Object>} Nguyên phụ liệu vừa tạo
+ * @param {Object} data - Dữ liệu NPL
+ * @param {Object} user - Người thực hiện
+ * @returns {Promise<Object>} NPL vừa tạo
  */
 export const createRawMaterial = async (data = {}, user) => {
-  // 1. Kiểm tra trường bắt buộc
   if (!data.materialName || !data.materialName.trim()) {
     const error = new Error('Vui lòng nhập tên nguyên phụ liệu');
     error.status = 400;
@@ -226,26 +404,22 @@ export const createRawMaterial = async (data = {}, user) => {
     throw error;
   }
 
-  // 2. Chuẩn hóa đơn vị tính
   const normalizedUnit = normalizeMaterialUnit(data.unit || (data.materialType === 'FABRIC' ? 'METER' : 'PIECE'));
   if (!isValidMaterialUnitForType(normalizedUnit, data.materialType)) {
     const error = new Error(
       data.materialType === 'FABRIC'
-        ? 'Nguyên phụ liệu loại Vải (FABRIC) bắt buộc phải có đơn vị tồn là Mét (METER).'
+        ? 'Nguyên phụ liệu loại Vải (FABRIC) bắt buộc phải có đơn vị tính là Mét (METER).'
         : 'Đơn vị tính không hợp lệ đối với loại phụ liệu.'
     );
     error.status = 400;
     throw error;
   }
 
-  // 3. Xử lý mã nguyên phụ liệu (materialCode)
   let code = String(data.materialCode || '').trim().toUpperCase();
   if (!code) {
-    // Tự sinh mã nếu để trống
     const prefix = data.materialType === 'FABRIC' ? 'RM-FAB' : 'RM-AUX';
     code = await CounterSequence.getNextSequence('RAW_MATERIAL_CODE', prefix, 5);
   } else {
-    // Kiểm tra trùng mã
     const existing = await RawMaterial.findOne({ materialCode: code });
     if (existing) {
       const error = new Error(`Mã nguyên phụ liệu "${code}" đã tồn tại trong hệ thống. Vui lòng chọn mã khác.`);
@@ -254,35 +428,25 @@ export const createRawMaterial = async (data = {}, user) => {
     }
   }
 
-  // 4. Chuẩn hóa các trường số
-  const unitCost = Math.max(0, Number(data.unitCost) || 0);
-  const safetyStockThreshold = Math.max(0, Number(data.safetyStockThreshold) || 50);
-  const fifoAgingThresholdDays = Math.max(1, Number(data.fifoAgingThresholdDays) || 90);
-  const gsm = data.gsm ? Math.max(0, Number(data.gsm)) : undefined;
-  const widthCm = data.widthCm ? Math.max(0, Number(data.widthCm)) : undefined;
-  const requiresWeightKg = Boolean(data.requiresWeightKg);
-
-  // 5. Kiểm tra nhà cung cấp (nếu có)
   let supplierId = null;
   if (data.supplierId && mongoose.Types.ObjectId.isValid(data.supplierId)) {
     const supExists = await Supplier.findById(data.supplierId);
     if (supExists) supplierId = data.supplierId;
   }
 
-  // 6. Tạo Document
   const newMaterial = new RawMaterial({
     materialCode: code,
     materialName: data.materialName.trim(),
     materialType: data.materialType,
-    category: data.category,
+    category: data.category.trim().toUpperCase(),
     unit: normalizedUnit,
     color: data.color ? data.color.trim() : '',
-    gsm,
-    widthCm,
-    requiresWeightKg,
-    unitCost,
-    safetyStockThreshold,
-    fifoAgingThresholdDays,
+    gsm: data.gsm ? Math.max(0, Number(data.gsm)) : undefined,
+    widthCm: data.widthCm ? Math.max(0, Number(data.widthCm)) : undefined,
+    requiresWeightKg: Boolean(data.requiresWeightKg),
+    unitCost: Math.max(0, Number(data.unitCost) || 0),
+    safetyStockThreshold: Math.max(0, Number(data.safetyStockThreshold) || 50),
+    fifoAgingThresholdDays: Math.max(1, Number(data.fifoAgingThresholdDays) || 90),
     supplierId,
     isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
     onHandQty: 0,
@@ -300,7 +464,7 @@ export const createRawMaterial = async (data = {}, user) => {
  * @param {string} id - ID nguyên phụ liệu
  * @param {Object} data - Dữ liệu cập nhật
  * @param {Object} user - Người thực hiện
- * @returns {Promise<Object>} Nguyên phụ liệu sau khi cập nhật
+ * @returns {Promise<Object>} NPL sau cập nhật
  */
 export const updateRawMaterial = async (id, data = {}, user) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -316,7 +480,6 @@ export const updateRawMaterial = async (id, data = {}, user) => {
     throw error;
   }
 
-  // 1. Kiểm tra nếu có cập nhật mã
   if (data.materialCode && data.materialCode.trim()) {
     const newCode = data.materialCode.trim().toUpperCase();
     if (newCode !== material.materialCode) {
@@ -330,27 +493,18 @@ export const updateRawMaterial = async (id, data = {}, user) => {
     }
   }
 
-  // 2. Cập nhật tên
   if (data.materialName && data.materialName.trim()) {
     material.materialName = data.materialName.trim();
   }
 
-  // 3. Cập nhật loại & danh mục
   if (data.materialType && ['FABRIC', 'AUXILIARY'].includes(data.materialType)) {
-    // Nếu có tồn kho > 0, hạn chế đổi loại từ FABRIC sang AUXILIARY hoặc ngược lại
-    if (material.onHandQty > 0 && material.materialType !== data.materialType) {
-      const error = new Error('Không thể thay đổi Loại nguyên phụ liệu khi mặt hàng này đang có số lượng tồn kho.');
-      error.status = 400;
-      throw error;
-    }
     material.materialType = data.materialType;
   }
 
   if (data.category) {
-    material.category = data.category;
+    material.category = data.category.trim().toUpperCase();
   }
 
-  // 4. Cập nhật đơn vị tính
   if (data.unit) {
     const normalizedUnit = normalizeMaterialUnit(data.unit);
     if (!isValidMaterialUnitForType(normalizedUnit, material.materialType)) {
@@ -358,29 +512,20 @@ export const updateRawMaterial = async (id, data = {}, user) => {
       error.status = 400;
       throw error;
     }
-    // Nếu đang có tồn kho > 0, cảnh báo không được đổi ĐVT
-    if (material.onHandQty > 0 && normalizedUnit !== material.unit) {
-      const error = new Error('Không thể thay đổi Đơn vị tính khi mặt hàng đang có số lượng tồn kho thực tế.');
-      error.status = 400;
-      throw error;
-    }
     material.unit = normalizedUnit;
   }
 
-  // 5. Cập nhật các thông số kỹ thuật
   if (data.color !== undefined) material.color = data.color ? data.color.trim() : '';
   if (data.gsm !== undefined) material.gsm = data.gsm ? Math.max(0, Number(data.gsm)) : undefined;
   if (data.widthCm !== undefined) material.widthCm = data.widthCm ? Math.max(0, Number(data.widthCm)) : undefined;
   if (data.requiresWeightKg !== undefined) material.requiresWeightKg = Boolean(data.requiresWeightKg);
 
-  // 6. Cập nhật định mức & giá
   if (data.unitCost !== undefined) material.unitCost = Math.max(0, Number(data.unitCost) || 0);
   if (data.safetyStockThreshold !== undefined)
     material.safetyStockThreshold = Math.max(0, Number(data.safetyStockThreshold) || 0);
   if (data.fifoAgingThresholdDays !== undefined)
     material.fifoAgingThresholdDays = Math.max(1, Number(data.fifoAgingThresholdDays) || 90);
 
-  // 7. Cập nhật nhà cung cấp
   if (data.supplierId !== undefined) {
     if (data.supplierId && mongoose.Types.ObjectId.isValid(data.supplierId)) {
       const supExists = await Supplier.findById(data.supplierId);
@@ -390,7 +535,6 @@ export const updateRawMaterial = async (id, data = {}, user) => {
     }
   }
 
-  // 8. Trạng thái hoạt động
   if (data.isActive !== undefined) {
     material.isActive = Boolean(data.isActive);
   }
@@ -400,10 +544,13 @@ export const updateRawMaterial = async (id, data = {}, user) => {
 };
 
 /**
- * Xóa hoặc vô hiệu hóa nguyên phụ liệu.
- * - Nếu đang có hàng tồn kho: Không cho xóa.
- * - Nếu đã có liên kết lịch sử giao dịch (phiếu nhập, xuất, lô kho): Soft delete (isActive = false).
- * - Nếu chưa từng phát sinh dữ liệu giao dịch: Hard delete (xóa hoàn toàn).
+ * XÓA NGUYÊN PHỤ LIỆU VÀ CASCADE DỌN DẸP TOÀN BỘ LIÊN KẾT:
+ * Khi xóa một NPL:
+ * - Xóa hoàn toàn Document khỏi collection raw_materials (mất hẳn ở kho NPL).
+ * - Xóa toàn bộ các lô tồn kho (MaterialStockLot) liên kết với NPL này.
+ * - Xóa toàn bộ các cuộn vải (FabricRoll) liên kết với NPL này.
+ * - Tự động rút sạch NPL này khỏi các dòng lệnh xuất (MaterialOutbound) trạng thái DRAFT.
+ * - Tự động rút sạch NPL này khỏi các phiếu kho (MaterialTicket) trạng thái DRAFT.
  *
  * @param {string} id - ID nguyên phụ liệu
  * @param {Object} user - Người thực hiện
@@ -423,52 +570,42 @@ export const deleteRawMaterial = async (id, user) => {
     throw error;
   }
 
-  // 1. Kiểm tra tồn kho thực tế
-  if ((material.onHandQty || 0) > 0 || (material.pendingPutawayQty || 0) > 0 || (material.reservedQty || 0) > 0) {
-    const error = new Error(
-      `Không thể xóa nguyên phụ liệu "${material.materialName}" vì vẫn còn tồn kho (Thực tế: ${material.onHandQty || 0} ${material.unit}, Chờ cất: ${material.pendingPutawayQty || 0}, Đang giữ: ${material.reservedQty || 0}). Vui lòng xuất kho hoặc vô hiệu hóa mặt hàng.`
-    );
-    error.status = 400;
-    throw error;
-  }
+  const materialName = material.materialName;
+  const materialCode = material.materialCode;
 
-  // 2. Kiểm tra ràng buộc dữ liệu lịch sử
-  const [hasLot, hasRoll, hasTicket, hasPlan, hasOutbound] = await Promise.all([
-    MaterialStockLot.exists({ rawMaterialId: id }),
-    FabricRoll.exists({ rawMaterialId: id }),
-    MaterialTicket.exists({ 'receiptLines.rawMaterialId': id }),
-    MaterialInboundPlan.exists({ 'expectedItems.rawMaterialId': id }),
-    MaterialOutbound.exists({ 'requestedItems.rawMaterialId': id }),
-  ]);
+  // 1. Cascade xóa toàn bộ lô tồn kho của NPL này (giải phóng vị trí kho / ô kệ)
+  const lotResult = await MaterialStockLot.deleteMany({ rawMaterialId: id });
 
-  const hasHistory = Boolean(hasLot || hasRoll || hasTicket || hasPlan || hasOutbound);
+  // 2. Cascade xóa toàn bộ cuộn vải của NPL này (giải phóng vị trí kho / ô kệ)
+  const rollResult = await FabricRoll.deleteMany({ rawMaterialId: id });
 
-  if (hasHistory) {
-    // Soft delete: Vô hiệu hóa để bảo toàn tính toàn vẹn dữ liệu
-    material.isActive = false;
-    await material.save();
-    return {
-      success: true,
-      action: 'SOFT_DELETED',
-      message: `Nguyên phụ liệu "${material.materialName}" đã từng phát sinh chứng từ kho/lô hàng nên đã được chuyển sang trạng thái "Ngừng sử dụng" để bảo toàn lịch sử dữ liệu.`,
-      material,
-    };
-  }
+  // 3. Cascade loại bỏ dòng vật tư này khỏi các lệnh xuất NPL (MaterialOutbound) đang DRAFT
+  await MaterialOutbound.updateMany(
+    { status: 'DRAFT', 'lines.rawMaterialId': id },
+    { $pull: { lines: { rawMaterialId: id } } }
+  );
 
-  // Hard delete: Xóa vĩnh viễn vì chưa từng phát sinh dữ liệu
+  // 4. Cascade loại bỏ dòng vật tư này khỏi các phiếu nhập kho (MaterialTicket) đang DRAFT
+  await MaterialTicket.updateMany(
+    { status: 'DRAFT', 'receiptLines.rawMaterialId': id },
+    { $pull: { receiptLines: { rawMaterialId: id } } }
+  );
+
+  // 5. Xóa hoàn toàn Document NPL khỏi collection raw_materials
   await RawMaterial.findByIdAndDelete(id);
+
   return {
     success: true,
-    action: 'HARD_DELETED',
-    message: `Đã xóa vĩnh viễn nguyên phụ liệu "${material.materialName}" (${material.materialCode}) khỏi hệ thống.`,
+    message: `Đã xóa hoàn toàn nguyên phụ liệu "${materialName}" (${materialCode}). Đã giải phóng cấu hình kho, xóa ${lotResult.deletedCount || 0} lô kho, ${rollResult.deletedCount || 0} cuộn vải và dọn dẹp các lệnh xuất kho liên quan.`,
+    materialCode,
   };
 };
 
 /**
- * Chuyển đổi nhanh trạng thái kích hoạt (Active / Inactive) của nguyên phụ liệu.
+ * Đổi trạng thái kích hoạt (Active / Inactive)
  *
  * @param {string} id - ID nguyên phụ liệu
- * @returns {Promise<Object>} Mặt hàng sau khi đổi trạng thái
+ * @returns {Promise<Object>} Kết quả
  */
 export const toggleRawMaterialStatus = async (id) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -497,24 +634,35 @@ export const toggleRawMaterialStatus = async (id) => {
 };
 
 /**
- * Lấy siêu dữ liệu phục vụ bộ lọc và dropdown tạo/sửa NPL (Nhà cung cấp, Đơn vị tính, Danh mục).
+ * Lấy siêu dữ liệu cho bộ lọc & form (Nhà cung cấp, ĐVT, Danh mục động từ DB)
  *
- * @returns {Promise<Object>} Danh sách nhà cung cấp, đơn vị tính, danh mục
+ * @returns {Promise<Object>} Danh sách suppliers, units, categories, types
  */
 export const getRawMaterialMeta = async () => {
-  const suppliers = await Supplier.find({ isActive: true })
-    .select('supplierCode supplierName phone contactName address')
-    .sort({ supplierName: 1 })
-    .lean();
+  await ensureDefaultCategories();
+
+  const [suppliers, categories] = await Promise.all([
+    Supplier.find({ isActive: true })
+      .select('supplierCode supplierName phone contactName address')
+      .sort({ supplierName: 1 })
+      .lean(),
+    listCategories(),
+  ]);
 
   return {
     suppliers,
     units: MATERIAL_UNIT_OPTIONS,
-    categories: RAW_MATERIAL_CATEGORIES,
+    categories: categories.map((c) => ({
+      value: c.categoryCode,
+      label: c.categoryName,
+      type: c.materialType,
+      itemCount: c.itemCount,
+      _id: c._id,
+      description: c.description,
+    })),
     types: [
       { value: 'FABRIC', label: 'Vải (Chính / Lót)' },
       { value: 'AUXILIARY', label: 'Phụ liệu may mặc' },
     ],
   };
 };
-

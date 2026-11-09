@@ -1,11 +1,12 @@
 /**
  * ============================================================================
- * @title        : Garment Raw Materials Page
+ * @title        : Garment Raw Materials & Categories Page
  * @author       : AraWMS Team
  * @createdDate  : 2026-11-09
  * @lastModified : 2026-11-09
- * @description  : Giao diện Quản lý Kho & Danh Mục Nguyên Phụ Liệu cho Kỹ thuật viên xưởng may (Garment Technician / KCS).
- *                 Hỗ trợ Thêm, Sửa, Xóa (vô hiệu hóa an toàn), lọc phân loại, tra cứu tồn kho khả dụng và cảnh báo thiếu hàng.
+ * @description  : Giao diện Quản lý Kho & Danh Mục Phân Loại Nguyên Phụ Liệu:
+ *                 - Tab 1: Kho & Danh sách NPL (Thêm, Sửa, Xóa NPL, cascade dọn dẹp cấu hình kho & lệnh xuất).
+ *                 - Tab 2: Quản lý Danh mục (Thêm, Sửa, Xóa Danh mục; bắt buộc phải xóa hết NPL trong danh mục trước khi xóa).
  * @module       : Garment Technical / Raw Materials
  * @layer        : Front-end (Page)
  * ============================================================================
@@ -33,13 +34,22 @@ import {
   ToggleLeft,
   ToggleRight,
   Info,
+  FolderTree,
+  FolderPlus,
+  ArrowRight,
+  Boxes,
 } from 'lucide-react';
 import garmentTechnicalService from '../../services/garmentTechnicalService';
 
 export default function GarmentRawMaterialsPage() {
+  // Tab: 'MATERIALS' | 'CATEGORIES'
+  const [activeTab, setActiveTab] = useState('MATERIALS');
+
   // State: Data & Loading
   const [materials, setMaterials] = useState([]);
+  const [categoriesList, setCategoriesList] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [categoryLoading, setCategoryLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [stats, setStats] = useState({
     totalMaterials: 0,
@@ -57,7 +67,7 @@ export default function GarmentRawMaterialsPage() {
     types: [],
   });
 
-  // State: Filters & Pagination
+  // State: Filters & Pagination (Materials)
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL'); // 'ALL' | 'FABRIC' | 'AUXILIARY'
   const [categoryFilter, setCategoryFilter] = useState('ALL');
@@ -68,13 +78,25 @@ export default function GarmentRawMaterialsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
-  // State: Modals
+  // State: Modals (Materials)
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState(null);
   const [viewingMaterial, setViewingMaterial] = useState(null);
   const [deletingMaterial, setDeletingMaterial] = useState(null);
 
-  // State: Form
+  // State: Modals (Categories)
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [deletingCategory, setDeletingCategory] = useState(null);
+  const [categoryForm, setCategoryForm] = useState({
+    categoryCode: '',
+    categoryName: '',
+    materialType: 'AUXILIARY',
+    description: '',
+  });
+  const [categoryFormError, setCategoryFormError] = useState('');
+
+  // State: Form (Materials)
   const initialFormState = {
     materialCode: '',
     materialName: '',
@@ -98,19 +120,23 @@ export default function GarmentRawMaterialsPage() {
   const [alert, setAlert] = useState(null);
   const showAlert = (type, message) => {
     setAlert({ type, message });
-    setTimeout(() => setAlert(null), 6000);
+    setTimeout(() => setAlert(null), 7000);
   };
 
   // 1. Tải siêu dữ liệu (Suppliers, Units, Categories)
+  const fetchMeta = async () => {
+    try {
+      const res = await garmentTechnicalService.materials.getMeta();
+      if (res?.data) {
+        setMeta(res.data);
+      }
+    } catch (err) {
+      console.error('Lỗi nạp siêu dữ liệu NPL:', err);
+    }
+  };
+
   useEffect(() => {
-    garmentTechnicalService.materials
-      .getMeta()
-      .then((res) => {
-        if (res?.data) {
-          setMeta(res.data);
-        }
-      })
-      .catch((err) => console.error('Lỗi nạp siêu dữ liệu NPL:', err));
+    fetchMeta();
   }, []);
 
   // 2. Tải danh sách nguyên phụ liệu
@@ -146,14 +172,33 @@ export default function GarmentRawMaterialsPage() {
     }
   };
 
+  // 3. Tải danh sách danh mục phân loại
+  const fetchCategories = async () => {
+    setCategoryLoading(true);
+    try {
+      const res = await garmentTechnicalService.materials.getCategories();
+      if (res?.data) {
+        setCategoriesList(res.data);
+      }
+    } catch (err) {
+      showAlert('error', err.message || 'Lỗi khi tải danh mục NPL');
+    } finally {
+      setCategoryLoading(false);
+    }
+  };
+
   useEffect(() => {
-    fetchMaterials();
-  }, [page, typeFilter, categoryFilter, statusFilter, lowStockFilter, sortBy]);
+    if (activeTab === 'MATERIALS') {
+      fetchMaterials();
+    } else {
+      fetchCategories();
+    }
+  }, [activeTab, page, typeFilter, categoryFilter, statusFilter, lowStockFilter, sortBy]);
 
   // Xử lý chuyển loại NPL trong form
   const handleTypeChange = (newType) => {
-    let defaultCat = newType === 'FABRIC' ? 'FABRIC_ROLL' : 'BUTTON';
-    let defaultUnit = newType === 'FABRIC' ? 'METER' : 'PIECE';
+    const defaultCat = newType === 'FABRIC' ? 'FABRIC_ROLL' : 'BUTTON';
+    const defaultUnit = newType === 'FABRIC' ? 'METER' : 'PIECE';
     setForm((prev) => ({
       ...prev,
       materialType: newType,
@@ -163,7 +208,7 @@ export default function GarmentRawMaterialsPage() {
     }));
   };
 
-  // Mở modal tạo mới
+  // Mở modal tạo mới NPL
   const handleOpenCreate = () => {
     setEditingMaterial(null);
     setForm(initialFormState);
@@ -171,7 +216,7 @@ export default function GarmentRawMaterialsPage() {
     setShowCreateModal(true);
   };
 
-  // Mở modal chỉnh sửa
+  // Mở modal chỉnh sửa NPL
   const handleOpenEdit = (material) => {
     setEditingMaterial(material);
     setForm({
@@ -234,6 +279,7 @@ export default function GarmentRawMaterialsPage() {
 
       setShowCreateModal(false);
       fetchMaterials();
+      fetchMeta();
     } catch (err) {
       setFormError(err.message || 'Lỗi khi lưu nguyên phụ liệu');
     } finally {
@@ -241,7 +287,7 @@ export default function GarmentRawMaterialsPage() {
     }
   };
 
-  // Xác nhận Xóa / Vô hiệu hóa
+  // Xác nhận Xóa nguyên phụ liệu (triệt để + cascade dọn dẹp kho & lệnh xuất)
   const handleConfirmDelete = async () => {
     if (!deletingMaterial) return;
     setActionLoading(true);
@@ -249,10 +295,11 @@ export default function GarmentRawMaterialsPage() {
       const res = await garmentTechnicalService.materials.deleteMaterial(deletingMaterial._id);
       showAlert(
         'success',
-        res.message || `Đã xử lý xóa nguyên phụ liệu "${deletingMaterial.materialName}" thành công!`
+        res.message || `Đã xóa nguyên phụ liệu "${deletingMaterial.materialName}" và dọn dẹp cấu hình kho liên quan.`
       );
       setDeletingMaterial(null);
       fetchMaterials();
+      fetchMeta();
     } catch (err) {
       showAlert('error', err.message || 'Không thể xóa nguyên phụ liệu');
     } finally {
@@ -274,13 +321,108 @@ export default function GarmentRawMaterialsPage() {
     }
   };
 
-  // Danh mục hiển thị thân thiện tiếng Việt
+  // =========================================================================
+  // CATEGORY ACTIONS
+  // =========================================================================
+  const handleOpenCreateCategory = () => {
+    setEditingCategory(null);
+    setCategoryForm({
+      categoryCode: '',
+      categoryName: '',
+      materialType: 'AUXILIARY',
+      description: '',
+    });
+    setCategoryFormError('');
+    setShowCategoryModal(true);
+  };
+
+  const handleOpenEditCategory = (cat) => {
+    setEditingCategory(cat);
+    setCategoryForm({
+      categoryCode: cat.categoryCode || '',
+      categoryName: cat.categoryName || '',
+      materialType: cat.materialType || 'AUXILIARY',
+      description: cat.description || '',
+    });
+    setCategoryFormError('');
+    setShowCategoryModal(true);
+  };
+
+  const handleSubmitCategoryForm = async (e) => {
+    e.preventDefault();
+    setCategoryFormError('');
+
+    if (!categoryForm.categoryName.trim()) {
+      setCategoryFormError('Vui lòng nhập tên danh mục');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      if (editingCategory) {
+        await garmentTechnicalService.materials.updateCategory(editingCategory._id, {
+          categoryName: categoryForm.categoryName.trim(),
+          description: categoryForm.description.trim(),
+        });
+        showAlert('success', `Đã cập nhật danh mục "${categoryForm.categoryName}" thành công!`);
+      } else {
+        await garmentTechnicalService.materials.createCategory({
+          categoryCode: categoryForm.categoryCode.trim() || undefined,
+          categoryName: categoryForm.categoryName.trim(),
+          materialType: categoryForm.materialType,
+          description: categoryForm.description.trim(),
+        });
+        showAlert('success', `Đã tạo mới danh mục "${categoryForm.categoryName}" thành công!`);
+      }
+
+      setShowCategoryModal(false);
+      fetchCategories();
+      fetchMeta();
+    } catch (err) {
+      setCategoryFormError(err.message || 'Lỗi khi lưu danh mục');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleConfirmDeleteCategory = async () => {
+    if (!deletingCategory) return;
+
+    if (deletingCategory.itemCount > 0) {
+      showAlert(
+        'error',
+        `Không thể xóa danh mục "${deletingCategory.categoryName}" vì vẫn còn ${deletingCategory.itemCount} nguyên phụ liệu thuộc danh mục này! Bạn phải xóa hết toàn bộ các nguyên phụ liệu trước khi xóa danh mục.`
+      );
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const res = await garmentTechnicalService.materials.deleteCategory(deletingCategory._id);
+      showAlert('success', res.message || `Đã xóa danh mục "${deletingCategory.categoryName}" khỏi hệ thống.`);
+      setDeletingCategory(null);
+      fetchCategories();
+      fetchMeta();
+    } catch (err) {
+      showAlert('error', err.message || 'Không thể xóa danh mục');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Chuyển sang xem danh sách NPL của một danh mục cụ thể
+  const handleViewCategoryItems = (catCode) => {
+    setCategoryFilter(catCode);
+    setActiveTab('MATERIALS');
+    setPage(1);
+  };
+
+  // Helper nhãn hiển thị danh mục
   const getCategoryLabel = (catValue) => {
     const found = meta.categories.find((c) => c.value === catValue);
     return found ? found.label : catValue;
   };
 
-  // Format tiền tệ VNĐ
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val || 0);
   };
@@ -336,8 +478,8 @@ export default function GarmentRawMaterialsPage() {
           <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--ara-noir)', margin: 0 }}>
             Kho & Danh Mục Nguyên Phụ Liệu
           </h1>
-          <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.92rem', margin: '0.35rem 0 0', maxWidth: '850px' }}>
-            Quản lý danh mục nguyên vật liệu, vải cuộn và phụ liệu may mặc, thiết lập thông số kỹ thuật (khổ, GSM, màu sắc), định mức giá vốn và theo dõi tồn kho an toàn.
+          <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.92rem', margin: '0.35rem 0 0', maxWidth: '880px' }}>
+            Quản lý danh mục phân loại và hồ sơ nguyên vật liệu, cấu hình khổ vải, GSM, màu sắc, đơn giá vốn tham chiếu và dọn dẹp đồng bộ cấu hình kho khi xóa nguyên phụ liệu.
           </p>
         </div>
 
@@ -345,450 +487,658 @@ export default function GarmentRawMaterialsPage() {
           <button
             type="button"
             className="btn-ara-secondary"
-            onClick={fetchMaterials}
-            title="Làm mới danh sách"
+            onClick={() => (activeTab === 'MATERIALS' ? fetchMaterials() : fetchCategories())}
+            title="Làm mới"
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
           >
-            <RefreshCw size={15} className={loading ? 'spinning' : ''} /> Làm mới
+            <RefreshCw size={15} className={loading || categoryLoading ? 'spinning' : ''} /> Làm mới
           </button>
-          <button
-            type="button"
-            className="btn-ara-primary"
-            onClick={handleOpenCreate}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-          >
-            <Plus size={16} /> Thêm nguyên phụ liệu mới
-          </button>
+          {activeTab === 'MATERIALS' ? (
+            <button
+              type="button"
+              className="btn-ara-primary"
+              onClick={handleOpenCreate}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              <Plus size={16} /> Thêm nguyên phụ liệu mới
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-ara-primary"
+              onClick={handleOpenCreateCategory}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              <FolderPlus size={16} /> Thêm danh mục mới
+            </button>
+          )}
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* Tabs */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-        gap: '1rem',
-        marginBottom: '1.5rem',
-      }}>
-        <div style={{ background: '#FFFFFF', padding: '1.1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
-          <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-            Tổng số mặt hàng
-          </div>
-          <div style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--ara-noir)', marginTop: '0.2rem' }}>
-            {stats.totalMaterials}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-light)', marginTop: '0.2rem' }}>
-            Trong danh mục kho NPL
-          </div>
-        </div>
-
-        <div style={{ background: '#FFFFFF', padding: '1.1rem', borderRadius: 'var(--radius-md)', border: '1px solid #BFDBFE', boxShadow: 'var(--ara-shadow-sm)' }}>
-          <div style={{ fontSize: '0.78rem', color: '#1E40AF', textTransform: 'uppercase', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <Layers size={14} /> Vải chính & Vải lót
-          </div>
-          <div style={{ fontSize: '1.65rem', fontWeight: 700, color: '#1E40AF', marginTop: '0.2rem' }}>
-            {stats.fabricMaterials}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: '#3B82F6', marginTop: '0.2rem' }}>
-            Quản lý theo cuộn, mét, khổ, GSM
-          </div>
-        </div>
-
-        <div style={{ background: '#FFFFFF', padding: '1.1rem', borderRadius: 'var(--radius-md)', border: '1px solid #E9D5FF', boxShadow: 'var(--ara-shadow-sm)' }}>
-          <div style={{ fontSize: '0.78rem', color: '#6B21A8', textTransform: 'uppercase', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <Sliders size={14} /> Phụ liệu may mặc
-          </div>
-          <div style={{ fontSize: '1.65rem', fontWeight: 700, color: '#6B21A8', marginTop: '0.2rem' }}>
-            {stats.auxiliaryMaterials}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: '#9333EA', marginTop: '0.2rem' }}>
-            Chỉ may, cúc, khóa, mác áo...
-          </div>
-        </div>
-
-        <div style={{ background: '#FFFFFF', padding: '1.1rem', borderRadius: 'var(--radius-md)', border: '1px solid #A7F3D0', boxShadow: 'var(--ara-shadow-sm)' }}>
-          <div style={{ fontSize: '0.78rem', color: '#065F46', textTransform: 'uppercase', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <CheckCircle2 size={14} /> Đang hoạt động
-          </div>
-          <div style={{ fontSize: '1.65rem', fontWeight: 700, color: '#065F46', marginTop: '0.2rem' }}>
-            {stats.activeMaterials}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: '#047857', marginTop: '0.2rem' }}>
-            Sẵn sàng nhập / xuất may
-          </div>
-        </div>
-
-        <div style={{
-          background: stats.lowStockMaterials > 0 ? '#FEF2F2' : '#FFFFFF',
-          padding: '1.1rem',
-          borderRadius: 'var(--radius-md)',
-          border: `1px solid ${stats.lowStockMaterials > 0 ? '#FCA5A5' : 'var(--ara-border)'}`,
-          boxShadow: 'var(--ara-shadow-sm)',
-        }}>
-          <div style={{ fontSize: '0.78rem', color: '#B91C1C', textTransform: 'uppercase', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <AlertTriangle size={14} /> Cảnh báo thiếu hàng
-          </div>
-          <div style={{ fontSize: '1.65rem', fontWeight: 700, color: '#B91C1C', marginTop: '0.2rem' }}>
-            {stats.lowStockMaterials}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: '#991B1B', marginTop: '0.2rem' }}>
-            Tồn khả dụng ≤ Ngưỡng an toàn
-          </div>
-        </div>
-      </div>
-
-      {/* Filters Toolbar */}
-      <div style={{
-        background: '#FFFFFF',
-        padding: '1rem 1.25rem',
-        borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--ara-border)',
-        marginBottom: '1.25rem',
         display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '0.85rem',
+        borderBottom: '2px solid var(--ara-border)',
+        marginBottom: '1.25rem',
+        gap: '1.5rem',
       }}>
-        {/* Search */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '240px' }}>
-          <Search size={17} color="var(--ara-text-muted)" />
-          <input
-            type="text"
-            placeholder="Tìm theo mã NPL, tên vật tư, màu sắc..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && fetchMaterials()}
-            style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.9rem' }}
-          />
-        </div>
+        <button
+          type="button"
+          onClick={() => setActiveTab('MATERIALS')}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: '0.75rem 0.2rem',
+            fontSize: '0.98rem',
+            fontWeight: activeTab === 'MATERIALS' ? 700 : 500,
+            color: activeTab === 'MATERIALS' ? 'var(--ara-noir)' : 'var(--ara-text-muted)',
+            borderBottom: activeTab === 'MATERIALS' ? '3px solid var(--ara-gold)' : '3px solid transparent',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+          }}
+        >
+          <Boxes size={17} /> Danh sách Nguyên Phụ Liệu ({stats.totalMaterials})
+        </button>
 
-        {/* Dropdowns */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
-          {/* Type Filter */}
-          <select
-            value={typeFilter}
-            onChange={(e) => {
-              setTypeFilter(e.target.value);
-              setPage(1);
-            }}
-            style={{ padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.86rem', background: '#FFFFFF' }}
-          >
-            <option value="ALL">Tất cả loại NPL</option>
-            <option value="FABRIC">Chỉ xem Vải (FABRIC)</option>
-            <option value="AUXILIARY">Chỉ xem Phụ liệu (AUXILIARY)</option>
-          </select>
-
-          {/* Category Filter */}
-          <select
-            value={categoryFilter}
-            onChange={(e) => {
-              setCategoryFilter(e.target.value);
-              setPage(1);
-            }}
-            style={{ padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.86rem', background: '#FFFFFF' }}
-          >
-            <option value="ALL">Tất cả danh mục</option>
-            {meta.categories.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPage(1);
-            }}
-            style={{ padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.86rem', background: '#FFFFFF' }}
-          >
-            <option value="ALL">Tất cả trạng thái</option>
-            <option value="ACTIVE">Đang hoạt động</option>
-            <option value="INACTIVE">Ngừng sử dụng</option>
-          </select>
-
-          {/* Low Stock Toggle Button */}
-          <button
-            type="button"
-            onClick={() => {
-              setLowStockFilter(!lowStockFilter);
-              setPage(1);
-            }}
-            style={{
-              padding: '0.45rem 0.8rem',
-              borderRadius: 'var(--radius-sm)',
-              border: lowStockFilter ? '1px solid #DC2626' : '1px solid var(--ara-border)',
-              background: lowStockFilter ? '#FEF2F2' : '#FFFFFF',
-              color: lowStockFilter ? '#DC2626' : 'var(--ara-noir)',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-              cursor: 'pointer',
-            }}
-          >
-            <AlertTriangle size={14} color={lowStockFilter ? '#DC2626' : 'var(--ara-text-muted)'} />
-            Hàng sắp hết
-          </button>
-        </div>
-      </div>
-
-      {/* Main Table */}
-      <div style={{ background: '#FFFFFF', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', overflow: 'hidden', boxShadow: 'var(--ara-shadow-sm)' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="table-ara" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
-            <thead>
-              <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)', color: 'var(--ara-text-muted)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                <th style={{ padding: '0.85rem 1rem' }}>Mã NPL</th>
-                <th style={{ padding: '0.85rem 1rem' }}>Tên Nguyên Phụ Liệu</th>
-                <th style={{ padding: '0.85rem 1rem' }}>Phân Loại & ĐVT</th>
-                <th style={{ padding: '0.85rem 1rem' }}>Quy Cách Kỹ Thuật</th>
-                <th style={{ padding: '0.85rem 1rem' }}>Nhà Cung Cấp</th>
-                <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Tồn Kho Thực Tế</th>
-                <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Khả Dụng</th>
-                <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Đơn Giá Vốn</th>
-                <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Trạng Thái</th>
-                <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Thao Tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={10} style={{ textAlign: 'center', padding: '3rem', color: 'var(--ara-text-muted)' }}>
-                    <RefreshCw size={24} className="spinning" style={{ margin: '0 auto 0.5rem' }} />
-                    <div>Đang tải dữ liệu nguyên phụ liệu...</div>
-                  </td>
-                </tr>
-              ) : materials.length === 0 ? (
-                <tr>
-                  <td colSpan={10} style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--ara-text-muted)' }}>
-                    <Package size={36} style={{ margin: '0 auto 0.6rem', opacity: 0.5 }} />
-                    <div style={{ fontWeight: 600 }}>Không tìm thấy nguyên phụ liệu nào</div>
-                    <div style={{ fontSize: '0.82rem', marginTop: '0.2rem' }}>Thử thay đổi bộ lọc hoặc thêm nguyên phụ liệu mới</div>
-                  </td>
-                </tr>
-              ) : (
-                materials.map((item) => (
-                  <tr key={item._id} style={{ borderBottom: '1px solid var(--ara-border-subtle)', transition: 'background 0.2s' }}>
-                    {/* Mã NPL */}
-                    <td style={{ padding: '0.85rem 1rem', fontWeight: 700 }}>
-                      <button
-                        type="button"
-                        onClick={() => setViewingMaterial(item)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: 0,
-                          cursor: 'pointer',
-                          fontFamily: 'monospace',
-                          fontSize: '0.92rem',
-                          color: 'var(--ara-gold)',
-                          textDecoration: 'underline',
-                          fontWeight: 700,
-                        }}
-                        title="Xem chi tiết nguyên phụ liệu"
-                      >
-                        {item.materialCode}
-                      </button>
-                    </td>
-
-                    {/* Tên NPL */}
-                    <td style={{ padding: '0.85rem 1rem' }}>
-                      <div style={{ fontWeight: 600, color: 'var(--ara-noir)' }}>{item.materialName}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', marginTop: '2px' }}>
-                        {getCategoryLabel(item.category)}
-                      </div>
-                    </td>
-
-                    {/* Phân loại & ĐVT */}
-                    <td style={{ padding: '0.85rem 1rem' }}>
-                      <span style={{
-                        display: 'inline-block',
-                        padding: '0.15rem 0.5rem',
-                        borderRadius: '4px',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        background: item.materialType === 'FABRIC' ? '#DBEAFE' : '#F3E8FF',
-                        color: item.materialType === 'FABRIC' ? '#1D4ED8' : '#7E22CE',
-                        marginBottom: '3px',
-                      }}>
-                        {item.materialType === 'FABRIC' ? 'Vải' : 'Phụ liệu'}
-                      </span>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)' }}>
-                        ĐVT: <strong>{item.unit}</strong>
-                      </div>
-                    </td>
-
-                    {/* Quy cách kỹ thuật */}
-                    <td style={{ padding: '0.85rem 1rem', fontSize: '0.82rem' }}>
-                      {item.color && (
-                        <div>Màu: <strong>{item.color}</strong></div>
-                      )}
-                      {item.widthCm && (
-                        <div>Khổ: {item.widthCm} cm</div>
-                      )}
-                      {item.gsm && (
-                        <div>GSM: {item.gsm} g/m²</div>
-                      )}
-                      {!item.color && !item.widthCm && !item.gsm && (
-                        <span style={{ color: 'var(--ara-text-light)' }}>Tiêu chuẩn</span>
-                      )}
-                    </td>
-
-                    {/* Nhà cung cấp */}
-                    <td style={{ padding: '0.85rem 1rem' }}>
-                      {item.supplierId ? (
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{item.supplierId.supplierName}</div>
-                          <div style={{ fontSize: '0.74rem', color: 'var(--ara-text-muted)' }}>
-                            {item.supplierId.supplierCode} {item.supplierId.phone ? `· ${item.supplierId.phone}` : ''}
-                          </div>
-                        </div>
-                      ) : (
-                        <span style={{ color: 'var(--ara-text-light)' }}>—</span>
-                      )}
-                    </td>
-
-                    {/* Tồn thực tế */}
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 600 }}>
-                      {item.onHandQty || 0} {item.unit}
-                      {Number(item.pendingPutawayQty) > 0 && (
-                        <div style={{ fontSize: '0.72rem', color: '#B45309' }}>
-                          (+{item.pendingPutawayQty} chờ cất)
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Tồn khả dụng */}
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
-                      <div style={{
-                        fontWeight: 700,
-                        color: item.isLowStock ? '#DC2626' : '#047857',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'flex-end',
-                        gap: '0.3rem',
-                      }}>
-                        {item.isLowStock && <AlertTriangle size={13} />}
-                        {item.availableQty} {item.unit}
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--ara-text-muted)' }}>
-                        Định mức: {item.safetyStockThreshold}
-                      </div>
-                    </td>
-
-                    {/* Đơn giá vốn */}
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 600 }}>
-                      {formatCurrency(item.unitCost)}
-                    </td>
-
-                    {/* Trạng thái */}
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                      {item.isActive ? (
-                        <span style={{ padding: '0.2rem 0.55rem', borderRadius: '4px', background: '#D1FAE5', color: '#065F46', fontSize: '0.75rem', fontWeight: 700 }}>
-                          Hoạt động
-                        </span>
-                      ) : (
-                        <span style={{ padding: '0.2rem 0.55rem', borderRadius: '4px', background: '#F3F4F6', color: '#6B7280', fontSize: '0.75rem', fontWeight: 700 }}>
-                          Ngừng dùng
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Thao tác */}
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          onClick={() => setViewingMaterial(item)}
-                          title="Xem chi tiết"
-                          style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid var(--ara-border)', background: '#FFFFFF', cursor: 'pointer' }}
-                        >
-                          <Eye size={15} color="var(--ara-text-muted)" />
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          onClick={() => handleOpenEdit(item)}
-                          title="Chỉnh sửa thông số NPL"
-                          style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid var(--ara-border)', background: '#FFFFFF', cursor: 'pointer' }}
-                        >
-                          <Edit3 size={15} color="var(--ara-gold)" />
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          onClick={() => handleToggleStatus(item)}
-                          title={item.isActive ? "Chuyển sang Ngừng sử dụng" : "Kích hoạt lại NPL"}
-                          style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid var(--ara-border)', background: '#FFFFFF', cursor: 'pointer' }}
-                        >
-                          {item.isActive ? <ToggleRight size={16} color="#059669" /> : <ToggleLeft size={16} color="#9CA3AF" />}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          onClick={() => setDeletingMaterial(item)}
-                          title="Xóa / Vô hiệu hóa NPL"
-                          style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid #FECACA', background: '#FEF2F2', cursor: 'pointer' }}
-                        >
-                          <Trash2 size={15} color="#DC2626" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination Toolbar */}
-        <div style={{
-          padding: '0.85rem 1.25rem',
-          borderTop: '1px solid var(--ara-border)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'var(--ara-bg-surface)',
-          fontSize: '0.85rem',
-          color: 'var(--ara-text-muted)',
-        }}>
-          <div>
-            Hiển thị <strong>{materials.length}</strong> trên tổng số <strong>{totalCount}</strong> nguyên phụ liệu
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <button
-              type="button"
-              className="btn-ara-secondary"
-              disabled={page <= 1 || loading}
-              onClick={() => setPage(page - 1)}
-              style={{ padding: '0.3rem 0.65rem', fontSize: '0.8rem' }}
-            >
-              Trang trước
-            </button>
-            <span style={{ fontWeight: 600, color: 'var(--ara-noir)' }}>
-              Trang {page} / {totalPages}
-            </span>
-            <button
-              type="button"
-              className="btn-ara-secondary"
-              disabled={page >= totalPages || loading}
-              onClick={() => setPage(page + 1)}
-              style={{ padding: '0.3rem 0.65rem', fontSize: '0.8rem' }}
-            >
-              Trang sau
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={() => setActiveTab('CATEGORIES')}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: '0.75rem 0.2rem',
+            fontSize: '0.98rem',
+            fontWeight: activeTab === 'CATEGORIES' ? 700 : 500,
+            color: activeTab === 'CATEGORIES' ? 'var(--ara-noir)' : 'var(--ara-text-muted)',
+            borderBottom: activeTab === 'CATEGORIES' ? '3px solid var(--ara-gold)' : '3px solid transparent',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+          }}
+        >
+          <FolderTree size={17} /> Quản lý Danh Mục Phân Loại ({meta.categories?.length || 0})
+        </button>
       </div>
 
       {/* ========================================================================= */}
-      {/* MODAL 1: CREATE / EDIT RAW MATERIAL                                       */}
+      {/* TAB 1: DANH SÁCH NGUYÊN PHỤ LIỆU                                          */}
+      {/* ========================================================================= */}
+      {activeTab === 'MATERIALS' && (
+        <>
+          {/* KPI Cards */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+            gap: '1rem',
+            marginBottom: '1.5rem',
+          }}>
+            <div style={{ background: '#FFFFFF', padding: '1.1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', boxShadow: 'var(--ara-shadow-sm)' }}>
+              <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                Tổng số mặt hàng
+              </div>
+              <div style={{ fontSize: '1.65rem', fontWeight: 700, color: 'var(--ara-noir)', marginTop: '0.2rem' }}>
+                {stats.totalMaterials}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-light)', marginTop: '0.2rem' }}>
+                Trong danh mục kho NPL
+              </div>
+            </div>
+
+            <div style={{ background: '#FFFFFF', padding: '1.1rem', borderRadius: 'var(--radius-md)', border: '1px solid #BFDBFE', boxShadow: 'var(--ara-shadow-sm)' }}>
+              <div style={{ fontSize: '0.78rem', color: '#1E40AF', textTransform: 'uppercase', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Layers size={14} /> Vải chính & Vải lót
+              </div>
+              <div style={{ fontSize: '1.65rem', fontWeight: 700, color: '#1E40AF', marginTop: '0.2rem' }}>
+                {stats.fabricMaterials}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#3B82F6', marginTop: '0.2rem' }}>
+                Quản lý theo cuộn, mét, khổ, GSM
+              </div>
+            </div>
+
+            <div style={{ background: '#FFFFFF', padding: '1.1rem', borderRadius: 'var(--radius-md)', border: '1px solid #E9D5FF', boxShadow: 'var(--ara-shadow-sm)' }}>
+              <div style={{ fontSize: '0.78rem', color: '#6B21A8', textTransform: 'uppercase', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Sliders size={14} /> Phụ liệu may mặc
+              </div>
+              <div style={{ fontSize: '1.65rem', fontWeight: 700, color: '#6B21A8', marginTop: '0.2rem' }}>
+                {stats.auxiliaryMaterials}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#9333EA', marginTop: '0.2rem' }}>
+                Chỉ may, cúc, khóa, mác áo...
+              </div>
+            </div>
+
+            <div style={{ background: '#FFFFFF', padding: '1.1rem', borderRadius: 'var(--radius-md)', border: '1px solid #A7F3D0', boxShadow: 'var(--ara-shadow-sm)' }}>
+              <div style={{ fontSize: '0.78rem', color: '#065F46', textTransform: 'uppercase', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <CheckCircle2 size={14} /> Đang hoạt động
+              </div>
+              <div style={{ fontSize: '1.65rem', fontWeight: 700, color: '#065F46', marginTop: '0.2rem' }}>
+                {stats.activeMaterials}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#047857', marginTop: '0.2rem' }}>
+                Sẵn sàng nhập / xuất may
+              </div>
+            </div>
+
+            <div style={{
+              background: stats.lowStockMaterials > 0 ? '#FEF2F2' : '#FFFFFF',
+              padding: '1.1rem',
+              borderRadius: 'var(--radius-md)',
+              border: `1px solid ${stats.lowStockMaterials > 0 ? '#FCA5A5' : 'var(--ara-border)'}`,
+              boxShadow: 'var(--ara-shadow-sm)',
+            }}>
+              <div style={{ fontSize: '0.78rem', color: '#B91C1C', textTransform: 'uppercase', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <AlertTriangle size={14} /> Cảnh báo thiếu hàng
+              </div>
+              <div style={{ fontSize: '1.65rem', fontWeight: 700, color: '#B91C1C', marginTop: '0.2rem' }}>
+                {stats.lowStockMaterials}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#991B1B', marginTop: '0.2rem' }}>
+                Tồn khả dụng ≤ Ngưỡng an toàn
+              </div>
+            </div>
+          </div>
+
+          {/* Filters Toolbar */}
+          <div style={{
+            background: '#FFFFFF',
+            padding: '1rem 1.25rem',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--ara-border)',
+            marginBottom: '1.25rem',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.85rem',
+          }}>
+            {/* Search */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '240px' }}>
+              <Search size={17} color="var(--ara-text-muted)" />
+              <input
+                type="text"
+                placeholder="Tìm theo mã NPL, tên vật tư, màu sắc..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && fetchMaterials()}
+                style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.9rem' }}
+              />
+            </div>
+
+            {/* Dropdowns */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+              <select
+                value={typeFilter}
+                onChange={(e) => {
+                  setTypeFilter(e.target.value);
+                  setPage(1);
+                }}
+                style={{ padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.86rem', background: '#FFFFFF' }}
+              >
+                <option value="ALL">Tất cả loại NPL</option>
+                <option value="FABRIC">Chỉ xem Vải (FABRIC)</option>
+                <option value="AUXILIARY">Chỉ xem Phụ liệu (AUXILIARY)</option>
+              </select>
+
+              <select
+                value={categoryFilter}
+                onChange={(e) => {
+                  setCategoryFilter(e.target.value);
+                  setPage(1);
+                }}
+                style={{ padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.86rem', background: '#FFFFFF' }}
+              >
+                <option value="ALL">Tất cả danh mục</option>
+                {meta.categories.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label} {c.itemCount ? `(${c.itemCount})` : ''}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setPage(1);
+                }}
+                style={{ padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.86rem', background: '#FFFFFF' }}
+              >
+                <option value="ALL">Tất cả trạng thái</option>
+                <option value="ACTIVE">Đang hoạt động</option>
+                <option value="INACTIVE">Ngừng sử dụng</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setLowStockFilter(!lowStockFilter);
+                  setPage(1);
+                }}
+                style={{
+                  padding: '0.45rem 0.8rem',
+                  borderRadius: 'var(--radius-sm)',
+                  border: lowStockFilter ? '1px solid #DC2626' : '1px solid var(--ara-border)',
+                  background: lowStockFilter ? '#FEF2F2' : '#FFFFFF',
+                  color: lowStockFilter ? '#DC2626' : 'var(--ara-noir)',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  cursor: 'pointer',
+                }}
+              >
+                <AlertTriangle size={14} color={lowStockFilter ? '#DC2626' : 'var(--ara-text-muted)'} />
+                Hàng sắp hết
+              </button>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div style={{ background: '#FFFFFF', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', overflow: 'hidden', boxShadow: 'var(--ara-shadow-sm)' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table-ara" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)', color: 'var(--ara-text-muted)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <th style={{ padding: '0.85rem 1rem' }}>Mã NPL</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Tên Nguyên Phụ Liệu</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Phân Loại & ĐVT</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Quy Cách Kỹ Thuật</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Nhà Cung Cấp</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Tồn Kho Thực Tế</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Khả Dụng</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Đơn Giá Vốn</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Trạng Thái</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={10} style={{ textAlign: 'center', padding: '3rem', color: 'var(--ara-text-muted)' }}>
+                        <RefreshCw size={24} className="spinning" style={{ margin: '0 auto 0.5rem' }} />
+                        <div>Đang tải dữ liệu nguyên phụ liệu...</div>
+                      </td>
+                    </tr>
+                  ) : materials.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--ara-text-muted)' }}>
+                        <Package size={36} style={{ margin: '0 auto 0.6rem', opacity: 0.5 }} />
+                        <div style={{ fontWeight: 600 }}>Không tìm thấy nguyên phụ liệu nào</div>
+                        <div style={{ fontSize: '0.82rem', marginTop: '0.2rem' }}>Thử thay đổi bộ lọc hoặc thêm nguyên phụ liệu mới</div>
+                      </td>
+                    </tr>
+                  ) : (
+                    materials.map((item) => (
+                      <tr key={item._id} style={{ borderBottom: '1px solid var(--ara-border-subtle)', transition: 'background 0.2s' }}>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 700 }}>
+                          <button
+                            type="button"
+                            onClick={() => setViewingMaterial(item)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: 'pointer',
+                              fontFamily: 'monospace',
+                              fontSize: '0.92rem',
+                              color: 'var(--ara-gold)',
+                              textDecoration: 'underline',
+                              fontWeight: 700,
+                            }}
+                            title="Xem chi tiết nguyên phụ liệu"
+                          >
+                            {item.materialCode}
+                          </button>
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <div style={{ fontWeight: 600, color: 'var(--ara-noir)' }}>{item.materialName}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', marginTop: '2px' }}>
+                            {getCategoryLabel(item.category)}
+                          </div>
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '0.15rem 0.5rem',
+                            borderRadius: '4px',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            background: item.materialType === 'FABRIC' ? '#DBEAFE' : '#F3E8FF',
+                            color: item.materialType === 'FABRIC' ? '#1D4ED8' : '#7E22CE',
+                            marginBottom: '3px',
+                          }}>
+                            {item.materialType === 'FABRIC' ? 'Vải' : 'Phụ liệu'}
+                          </span>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)' }}>
+                            ĐVT: <strong>{item.unit}</strong>
+                          </div>
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem', fontSize: '0.82rem' }}>
+                          {item.color && <div>Màu: <strong>{item.color}</strong></div>}
+                          {item.widthCm && <div>Khổ: {item.widthCm} cm</div>}
+                          {item.gsm && <div>GSM: {item.gsm} g/m²</div>}
+                          {!item.color && !item.widthCm && !item.gsm && (
+                            <span style={{ color: 'var(--ara-text-light)' }}>Tiêu chuẩn</span>
+                          )}
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          {item.supplierId ? (
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{item.supplierId.supplierName}</div>
+                              <div style={{ fontSize: '0.74rem', color: 'var(--ara-text-muted)' }}>
+                                {item.supplierId.supplierCode} {item.supplierId.phone ? `· ${item.supplierId.phone}` : ''}
+                              </div>
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--ara-text-light)' }}>—</span>
+                          )}
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 600 }}>
+                          {item.onHandQty || 0} {item.unit}
+                          {Number(item.pendingPutawayQty) > 0 && (
+                            <div style={{ fontSize: '0.72rem', color: '#B45309' }}>
+                              (+{item.pendingPutawayQty} chờ cất)
+                            </div>
+                          )}
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                          <div style={{
+                            fontWeight: 700,
+                            color: item.isLowStock ? '#DC2626' : '#047857',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            gap: '0.3rem',
+                          }}>
+                            {item.isLowStock && <AlertTriangle size={13} />}
+                            {item.availableQty} {item.unit}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--ara-text-muted)' }}>
+                            Định mức: {item.safetyStockThreshold}
+                          </div>
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 600 }}>
+                          {formatCurrency(item.unitCost)}
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                          {item.isActive ? (
+                            <span style={{ padding: '0.2rem 0.55rem', borderRadius: '4px', background: '#D1FAE5', color: '#065F46', fontSize: '0.75rem', fontWeight: 700 }}>
+                              Hoạt động
+                            </span>
+                          ) : (
+                            <span style={{ padding: '0.2rem 0.55rem', borderRadius: '4px', background: '#F3F4F6', color: '#6B7280', fontSize: '0.75rem', fontWeight: 700 }}>
+                              Ngừng dùng
+                            </span>
+                          )}
+                        </td>
+
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
+                            <button
+                              type="button"
+                              className="btn-icon"
+                              onClick={() => setViewingMaterial(item)}
+                              title="Xem chi tiết"
+                              style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid var(--ara-border)', background: '#FFFFFF', cursor: 'pointer' }}
+                            >
+                              <Eye size={15} color="var(--ara-text-muted)" />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-icon"
+                              onClick={() => handleOpenEdit(item)}
+                              title="Chỉnh sửa thông số NPL"
+                              style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid var(--ara-border)', background: '#FFFFFF', cursor: 'pointer' }}
+                            >
+                              <Edit3 size={15} color="var(--ara-gold)" />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-icon"
+                              onClick={() => handleToggleStatus(item)}
+                              title={item.isActive ? "Chuyển sang Ngừng sử dụng" : "Kích hoạt lại NPL"}
+                              style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid var(--ara-border)', background: '#FFFFFF', cursor: 'pointer' }}
+                            >
+                              {item.isActive ? <ToggleRight size={16} color="#059669" /> : <ToggleLeft size={16} color="#9CA3AF" />}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-icon"
+                              onClick={() => setDeletingMaterial(item)}
+                              title="Xóa triệt để NPL (dọn dẹp cấu hình kho & lệnh xuất)"
+                              style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid #FECACA', background: '#FEF2F2', cursor: 'pointer' }}
+                            >
+                              <Trash2 size={15} color="#DC2626" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            <div style={{
+              padding: '0.85rem 1.25rem',
+              borderTop: '1px solid var(--ara-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'var(--ara-bg-surface)',
+              fontSize: '0.85rem',
+              color: 'var(--ara-text-muted)',
+            }}>
+              <div>
+                Hiển thị <strong>{materials.length}</strong> trên tổng số <strong>{totalCount}</strong> nguyên phụ liệu
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="btn-ara-secondary"
+                  disabled={page <= 1 || loading}
+                  onClick={() => setPage(page - 1)}
+                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.8rem' }}
+                >
+                  Trang trước
+                </button>
+                <span style={{ fontWeight: 600, color: 'var(--ara-noir)' }}>
+                  Trang {page} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  className="btn-ara-secondary"
+                  disabled={page >= totalPages || loading}
+                  onClick={() => setPage(page + 1)}
+                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.8rem' }}
+                >
+                  Trang sau
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 2: QUẢN LÝ DANH MỤC PHÂN LOẠI (CATEGORIES)                            */}
+      {/* ========================================================================= */}
+      {activeTab === 'CATEGORIES' && (
+        <div>
+          {/* Important Rule Notice */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: '0.9rem 1.2rem',
+            borderRadius: 'var(--radius-md)',
+            marginBottom: '1.25rem',
+            background: '#FFFBEB',
+            border: '1px solid #FCD34D',
+            color: '#92400E',
+            fontSize: '0.9rem',
+            lineHeight: 1.5,
+          }}>
+            <AlertTriangle size={20} color="#D97706" style={{ flexShrink: 0 }} />
+            <div>
+              <strong>Quy tắc an toàn hệ thống:</strong> Trước khi xóa một danh mục nguyên phụ liệu, bạn <strong>bắt buộc phải xóa hết toàn bộ nguyên phụ liệu</strong> đang thuộc danh mục đó trước. Danh mục chỉ được phép xóa khi số lượng mặt hàng bằng <strong>0</strong>.
+            </div>
+          </div>
+
+          {/* Categories Table */}
+          <div style={{ background: '#FFFFFF', borderRadius: 'var(--radius-md)', border: '1px solid var(--ara-border)', overflow: 'hidden', boxShadow: 'var(--ara-shadow-sm)' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table-ara" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)', color: 'var(--ara-text-muted)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <th style={{ padding: '0.85rem 1.1rem' }}>Mã Danh Mục</th>
+                    <th style={{ padding: '0.85rem 1.1rem' }}>Tên Danh Mục</th>
+                    <th style={{ padding: '0.85rem 1.1rem' }}>Phân Loại</th>
+                    <th style={{ padding: '0.85rem 1.1rem', textAlign: 'center' }}>Số Lượng NPL Chứa</th>
+                    <th style={{ padding: '0.85rem 1.1rem' }}>Mô Tả Danh Mục</th>
+                    <th style={{ padding: '0.85rem 1.1rem', textAlign: 'right' }}>Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categoryLoading ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--ara-text-muted)' }}>
+                        <RefreshCw size={24} className="spinning" style={{ margin: '0 auto 0.5rem' }} />
+                        <div>Đang tải danh sách danh mục...</div>
+                      </td>
+                    </tr>
+                  ) : categoriesList.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--ara-text-muted)' }}>
+                        <FolderTree size={32} style={{ margin: '0 auto 0.5rem', opacity: 0.5 }} />
+                        <div>Chưa có danh mục phân loại nào</div>
+                      </td>
+                    </tr>
+                  ) : (
+                    categoriesList.map((cat) => {
+                      const hasItems = (cat.itemCount || 0) > 0;
+                      return (
+                        <tr key={cat._id} style={{ borderBottom: '1px solid var(--ara-border-subtle)' }}>
+                          <td style={{ padding: '0.9rem 1.1rem', fontWeight: 700, fontFamily: 'monospace', color: 'var(--ara-gold)' }}>
+                            {cat.categoryCode}
+                          </td>
+
+                          <td style={{ padding: '0.9rem 1.1rem', fontWeight: 600, color: 'var(--ara-noir)' }}>
+                            {cat.categoryName}
+                          </td>
+
+                          <td style={{ padding: '0.9rem 1.1rem' }}>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '0.15rem 0.5rem',
+                              borderRadius: '4px',
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              background: cat.materialType === 'FABRIC' ? '#DBEAFE' : '#F3E8FF',
+                              color: cat.materialType === 'FABRIC' ? '#1D4ED8' : '#7E22CE',
+                            }}>
+                              {cat.materialType === 'FABRIC' ? 'Vải' : 'Phụ liệu'}
+                            </span>
+                          </td>
+
+                          <td style={{ padding: '0.9rem 1.1rem', textAlign: 'center' }}>
+                            {hasItems ? (
+                              <button
+                                type="button"
+                                onClick={() => handleViewCategoryItems(cat.categoryCode)}
+                                style={{
+                                  padding: '0.2rem 0.6rem',
+                                  borderRadius: '20px',
+                                  background: '#FEF3C7',
+                                  color: '#92400E',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 700,
+                                  border: '1px solid #FCD34D',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.3rem',
+                                }}
+                                title="Bấm để xem danh sách các NPL của danh mục này"
+                              >
+                                {cat.itemCount} NPL <ArrowRight size={12} />
+                              </button>
+                            ) : (
+                              <span style={{
+                                padding: '0.2rem 0.6rem',
+                                borderRadius: '20px',
+                                background: '#D1FAE5',
+                                color: '#065F46',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                              }}>
+                                0 NPL (Trống)
+                              </span>
+                            )}
+                          </td>
+
+                          <td style={{ padding: '0.9rem 1.1rem', fontSize: '0.85rem', color: 'var(--ara-text-muted)', maxWidth: '280px' }}>
+                            {cat.description || '—'}
+                          </td>
+
+                          <td style={{ padding: '0.9rem 1.1rem', textAlign: 'right' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
+                              <button
+                                type="button"
+                                className="btn-icon"
+                                onClick={() => handleOpenEditCategory(cat)}
+                                title="Chỉnh sửa danh mục"
+                                style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid var(--ara-border)', background: '#FFFFFF', cursor: 'pointer' }}
+                              >
+                                <Edit3 size={15} color="var(--ara-gold)" />
+                              </button>
+
+                              <button
+                                type="button"
+                                className="btn-icon"
+                                onClick={() => setDeletingCategory(cat)}
+                                title={hasItems ? `Còn ${cat.itemCount} NPL. Phải xóa hết NPL trước khi xóa danh mục!` : "Xóa danh mục"}
+                                style={{
+                                  padding: '0.35rem',
+                                  borderRadius: '4px',
+                                  border: hasItems ? '1px solid #E5E7EB' : '1px solid #FECACA',
+                                  background: hasItems ? '#F3F4F6' : '#FEF2F2',
+                                  cursor: 'pointer',
+                                  opacity: hasItems ? 0.6 : 1,
+                                }}
+                              >
+                                <Trash2 size={15} color={hasItems ? '#9CA3AF' : '#DC2626'} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: CREATE / EDIT RAW MATERIAL                                         */}
       {/* ========================================================================= */}
       {showCreateModal && (
         <div style={{
@@ -812,7 +1162,6 @@ export default function GarmentRawMaterialsPage() {
             boxShadow: 'var(--ara-shadow-lg)',
             overflow: 'hidden',
           }}>
-            {/* Header */}
             <div style={{
               padding: '1.2rem 1.5rem',
               borderBottom: '1px solid var(--ara-border)',
@@ -838,7 +1187,6 @@ export default function GarmentRawMaterialsPage() {
               </button>
             </div>
 
-            {/* Form Body */}
             <form onSubmit={handleSubmitForm} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
               <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
                 {formError && (
@@ -859,14 +1207,12 @@ export default function GarmentRawMaterialsPage() {
                   </div>
                 )}
 
-                {/* Section 1: Phân loại & Định danh */}
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--ara-noir)', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <Tag size={16} color="var(--ara-gold)" /> 1. Thông Tin Phân Loại & Tên Gọi
                   </h3>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                    {/* Loại NPL */}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                         Loại nguyên phụ liệu <span style={{ color: '#DC2626' }}>*</span>
@@ -893,10 +1239,9 @@ export default function GarmentRawMaterialsPage() {
                       </div>
                     </div>
 
-                    {/* Danh mục */}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                        Danh mục chi tiết <span style={{ color: '#DC2626' }}>*</span>
+                        Danh mục phân loại <span style={{ color: '#DC2626' }}>*</span>
                       </label>
                       <select
                         value={form.category}
@@ -904,7 +1249,7 @@ export default function GarmentRawMaterialsPage() {
                         style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem' }}
                       >
                         {meta.categories
-                          .filter((c) => form.materialType === 'FABRIC' ? c.type === 'FABRIC' : c.type === 'AUXILIARY')
+                          .filter((c) => (form.materialType === 'FABRIC' ? c.type === 'FABRIC' : c.type === 'AUXILIARY'))
                           .map((c) => (
                             <option key={c.value} value={c.value}>
                               {c.label}
@@ -915,7 +1260,6 @@ export default function GarmentRawMaterialsPage() {
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem' }}>
-                    {/* Mã NPL */}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                         Mã NPL (để trống tự sinh mã):
@@ -929,7 +1273,6 @@ export default function GarmentRawMaterialsPage() {
                       />
                     </div>
 
-                    {/* Tên NPL */}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                         Tên nguyên phụ liệu <span style={{ color: '#DC2626' }}>*</span>
@@ -945,14 +1288,12 @@ export default function GarmentRawMaterialsPage() {
                   </div>
                 </div>
 
-                {/* Section 2: Đơn vị tính & Thông số kỹ thuật */}
                 <div style={{ marginBottom: '1.5rem', borderTop: '1px solid var(--ara-border-subtle)', paddingTop: '1.25rem' }}>
                   <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--ara-noir)', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <Sliders size={16} color="var(--ara-gold)" /> 2. Đơn Vị Tính & Thông Số Kỹ Thuật
                   </h3>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                    {/* Đơn vị tính */}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                         Đơn vị tính <span style={{ color: '#DC2626' }}>*</span>
@@ -965,9 +1306,6 @@ export default function GarmentRawMaterialsPage() {
                             disabled
                             style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', background: '#F3F4F6', color: '#6B7280', fontSize: '0.9rem', fontWeight: 600 }}
                           />
-                          <div style={{ fontSize: '0.72rem', color: 'var(--ara-text-muted)', marginTop: '2px' }}>
-                            Loại Vải cố định là Mét theo chuẩn kho
-                          </div>
                         </div>
                       ) : (
                         <select
@@ -984,21 +1322,19 @@ export default function GarmentRawMaterialsPage() {
                       )}
                     </div>
 
-                    {/* Màu sắc */}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                        Màu sắc (Color):
+                        Màu sắc:
                       </label>
                       <input
                         type="text"
-                        placeholder="Ví dụ: Trắng, Xanh Navy, Đen..."
+                        placeholder="Trắng, Đen, Xanh..."
                         value={form.color}
                         onChange={(e) => setForm({ ...form, color: e.target.value })}
                         style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem' }}
                       />
                     </div>
 
-                    {/* Khổ vải cm */}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                         Khổ rộng (cm):
@@ -1006,14 +1342,13 @@ export default function GarmentRawMaterialsPage() {
                       <input
                         type="number"
                         min="0"
-                        placeholder="Ví dụ: 160"
+                        placeholder="160"
                         value={form.widthCm}
                         onChange={(e) => setForm({ ...form, widthCm: e.target.value })}
                         style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem' }}
                       />
                     </div>
 
-                    {/* Định lượng GSM */}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                         Định lượng GSM (g/m²):
@@ -1021,7 +1356,7 @@ export default function GarmentRawMaterialsPage() {
                       <input
                         type="number"
                         min="0"
-                        placeholder="Ví dụ: 220"
+                        placeholder="220"
                         value={form.gsm}
                         onChange={(e) => setForm({ ...form, gsm: e.target.value })}
                         style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem' }}
@@ -1029,7 +1364,6 @@ export default function GarmentRawMaterialsPage() {
                     </div>
                   </div>
 
-                  {/* Yêu cầu cân kg */}
                   {form.materialType === 'FABRIC' && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
                       <input
@@ -1045,14 +1379,12 @@ export default function GarmentRawMaterialsPage() {
                   )}
                 </div>
 
-                {/* Section 3: Định mức kho & Đơn giá */}
                 <div style={{ borderTop: '1px solid var(--ara-border-subtle)', paddingTop: '1.25rem' }}>
                   <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--ara-noir)', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <Layers size={16} color="var(--ara-gold)" /> 3. Định Mức Tồn Kho, Giá Vốn & Nhà Cung Cấp
                   </h3>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                    {/* Đơn giá vốn */}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                         Đơn giá vốn tham chiếu (VNĐ) <span style={{ color: '#DC2626' }}>*</span>
@@ -1066,7 +1398,6 @@ export default function GarmentRawMaterialsPage() {
                       />
                     </div>
 
-                    {/* Ngưỡng tồn an toàn */}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                         Ngưỡng tồn an toàn (Safety Stock):
@@ -1078,12 +1409,8 @@ export default function GarmentRawMaterialsPage() {
                         onChange={(e) => setForm({ ...form, safetyStockThreshold: e.target.value })}
                         style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem' }}
                       />
-                      <div style={{ fontSize: '0.72rem', color: 'var(--ara-text-muted)', marginTop: '2px' }}>
-                        Cảnh báo khi tồn khả dụng ≤ ngưỡng này
-                      </div>
                     </div>
 
-                    {/* Ngưỡng FIFO */}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                         Ngưỡng cảnh báo tuổi thọ FIFO (ngày):
@@ -1097,7 +1424,6 @@ export default function GarmentRawMaterialsPage() {
                       />
                     </div>
 
-                    {/* Nhà cung cấp */}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                         Nhà cung cấp chính:
@@ -1117,7 +1443,6 @@ export default function GarmentRawMaterialsPage() {
                     </div>
                   </div>
 
-                  {/* Kích hoạt */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
                     <input
                       type="checkbox"
@@ -1132,7 +1457,6 @@ export default function GarmentRawMaterialsPage() {
                 </div>
               </div>
 
-              {/* Footer */}
               <div style={{
                 padding: '1rem 1.5rem',
                 borderTop: '1px solid var(--ara-border)',
@@ -1165,7 +1489,7 @@ export default function GarmentRawMaterialsPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 2: VIEW RAW MATERIAL DETAILS                                        */}
+      {/* MODAL: VIEW RAW MATERIAL DETAILS                                          */}
       {/* ========================================================================= */}
       {viewingMaterial && (
         <div style={{
@@ -1220,7 +1544,6 @@ export default function GarmentRawMaterialsPage() {
             </div>
 
             <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
-              {/* Tồn kho Dashboard */}
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
@@ -1265,7 +1588,6 @@ export default function GarmentRawMaterialsPage() {
                 </div>
               </div>
 
-              {/* Grid thông số */}
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
@@ -1299,13 +1621,9 @@ export default function GarmentRawMaterialsPage() {
                   {viewingMaterial.supplierId?.phone && (
                     <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)' }}>SĐT: {viewingMaterial.supplierId.phone}</div>
                   )}
-                  {viewingMaterial.supplierId?.address && (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)' }}>{viewingMaterial.supplierId.address}</div>
-                  )}
                 </div>
               </div>
 
-              {/* Lô & cuộn vải liên kết */}
               <div style={{
                 padding: '0.9rem',
                 borderRadius: 'var(--radius-sm)',
@@ -1354,7 +1672,7 @@ export default function GarmentRawMaterialsPage() {
                   cursor: 'pointer',
                   marginRight: 'auto',
                 }}
-                title="Xóa hoặc ngừng sử dụng nguyên phụ liệu này"
+                title="Xóa triệt để NPL"
               >
                 <Trash2 size={15} /> Xóa nguyên phụ liệu
               </button>
@@ -1383,7 +1701,7 @@ export default function GarmentRawMaterialsPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 3: CONFIRM DELETE RAW MATERIAL                                      */}
+      {/* MODAL: CONFIRM DELETE RAW MATERIAL (TRIỆT ĐỂ & CASCADE)                   */}
       {/* ========================================================================= */}
       {deletingMaterial && (
         <div style={{
@@ -1400,7 +1718,7 @@ export default function GarmentRawMaterialsPage() {
             background: '#FFFFFF',
             borderRadius: 'var(--radius-md)',
             width: '100%',
-            maxWidth: '520px',
+            maxWidth: '540px',
             boxShadow: 'var(--ara-shadow-lg)',
             overflow: 'hidden',
           }}>
@@ -1415,13 +1733,13 @@ export default function GarmentRawMaterialsPage() {
             }}>
               <AlertTriangle size={22} color="#DC2626" />
               <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0 }}>
-                Xác Nhận Xóa / Vô Hiệu Hóa
+                Xác Nhận Xóa Nguyên Phụ Liệu
               </h3>
             </div>
 
             <div style={{ padding: '1.5rem', fontSize: '0.9rem', lineHeight: 1.5 }}>
               <p style={{ margin: '0 0 0.85rem' }}>
-                Bạn có chắc chắn muốn xóa nguyên phụ liệu:
+                Bạn có chắc chắn muốn xóa nguyên phụ liệu sau?
               </p>
               <div style={{
                 background: '#F9FAFB',
@@ -1432,7 +1750,7 @@ export default function GarmentRawMaterialsPage() {
               }}>
                 <div style={{ fontWeight: 700, color: 'var(--ara-noir)' }}>{deletingMaterial.materialName}</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)', marginTop: '2px' }}>
-                  Mã NPL: <strong>{deletingMaterial.materialCode}</strong> · ĐVT: {deletingMaterial.unit}
+                  Mã NPL: <strong>{deletingMaterial.materialCode}</strong> · Danh mục: {getCategoryLabel(deletingMaterial.category)}
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)' }}>
                   Tồn kho hiện tại: <strong>{deletingMaterial.onHandQty || 0} {deletingMaterial.unit}</strong>
@@ -1441,16 +1759,17 @@ export default function GarmentRawMaterialsPage() {
 
               <div style={{
                 fontSize: '0.82rem',
-                color: '#6B7280',
-                background: '#F3F4F6',
-                padding: '0.75rem',
+                color: '#991B1B',
+                background: '#FEF2F2',
+                padding: '0.85rem',
                 borderRadius: '4px',
+                border: '1px solid #FECACA',
               }}>
-                <strong>* Nguyên tắc an toàn dữ liệu WMS:</strong>
+                <strong>* Cảnh báo tác động đồng bộ:</strong>
                 <ul style={{ margin: '0.35rem 0 0', paddingLeft: '1.2rem' }}>
-                  <li>Nếu mặt hàng còn tồn kho (&gt; 0), hệ thống sẽ từ chối xóa để tránh thất thoát kho.</li>
-                  <li>Nếu mặt hàng đã từng phát sinh chứng từ nhập/xuất/lô kho, hệ thống sẽ tự động chuyển sang trạng thái <strong>"Ngừng sử dụng"</strong> để bảo toàn toàn vẹn lịch sử.</li>
-                  <li>Nếu là mặt hàng mới tạo chưa có phát sinh giao dịch, hệ thống sẽ xóa vĩnh viễn.</li>
+                  <li>Mặt hàng này sẽ <strong>mất hoàn toàn</strong> khỏi kho nguyên phụ liệu.</li>
+                  <li>Cấu hình kho (lô tồn kho, cuộn vải) của mặt hàng này sẽ được <strong>xóa và giải phóng ô kệ</strong>.</li>
+                  <li>Các dòng vật tư tương ứng trong các <strong>lệnh xuất NPL (DRAFT)</strong> cũng sẽ được tự động dọn dẹp sạch sẽ.</li>
                 </ul>
               </div>
             </div>
@@ -1490,8 +1809,297 @@ export default function GarmentRawMaterialsPage() {
                 }}
               >
                 {actionLoading ? <RefreshCw size={15} className="spinning" /> : <Trash2 size={15} />}
-                Đồng ý thực hiện
+                Đồng ý xóa triệt để
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: CREATE / EDIT CATEGORY                                             */}
+      {/* ========================================================================= */}
+      {showCategoryModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem',
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: 'var(--radius-md)',
+            width: '100%',
+            maxWidth: '560px',
+            boxShadow: 'var(--ara-shadow-lg)',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              padding: '1.25rem 1.5rem',
+              borderBottom: '1px solid var(--ara-border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'var(--ara-bg-surface)',
+            }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0, color: 'var(--ara-noir)' }}>
+                {editingCategory ? 'Chỉnh Sửa Danh Mục' : 'Thêm Danh Mục Phân Loại Mới'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowCategoryModal(false)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ara-text-muted)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitCategoryForm}>
+              <div style={{ padding: '1.5rem' }}>
+                {categoryFormError && (
+                  <div style={{
+                    padding: '0.7rem 0.9rem',
+                    borderRadius: 'var(--radius-sm)',
+                    background: '#FDF2F2',
+                    border: '1px solid #FCA5A5',
+                    color: '#991B1B',
+                    fontSize: '0.85rem',
+                    marginBottom: '1rem',
+                  }}>
+                    {categoryFormError}
+                  </div>
+                )}
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+                    Tên danh mục <span style={{ color: '#DC2626' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ví dụ: Dây thun / Chun may, Ruy băng, Vải lót..."
+                    value={categoryForm.categoryName}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, categoryName: e.target.value })}
+                    style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem' }}
+                  />
+                </div>
+
+                {!editingCategory && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+                      Phân loại cấp lớn <span style={{ color: '#DC2626' }}>*</span>
+                    </label>
+                    <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.3rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.9rem' }}>
+                        <input
+                          type="radio"
+                          name="catMatType"
+                          checked={categoryForm.materialType === 'FABRIC'}
+                          onChange={() => setCategoryForm({ ...categoryForm, materialType: 'FABRIC' })}
+                        />
+                        Nhóm Vải (FABRIC)
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.9rem' }}>
+                        <input
+                          type="radio"
+                          name="catMatType"
+                          checked={categoryForm.materialType === 'AUXILIARY'}
+                          onChange={() => setCategoryForm({ ...categoryForm, materialType: 'AUXILIARY' })}
+                        />
+                        Nhóm Phụ liệu (AUXILIARY)
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {!editingCategory && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+                      Mã danh mục (để trống tự sinh mã):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ví dụ: ELASTIC, RIBBON, LINING..."
+                      value={categoryForm.categoryCode}
+                      onChange={(e) => setCategoryForm({ ...categoryForm, categoryCode: e.target.value.toUpperCase() })}
+                      style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem', fontFamily: 'monospace' }}
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+                    Mô tả danh mục:
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Ghi chú chi tiết mục đích sử dụng của danh mục này..."
+                    value={categoryForm.description}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
+                    style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.88rem', resize: 'vertical' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{
+                padding: '1rem 1.5rem',
+                borderTop: '1px solid var(--ara-border)',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '0.75rem',
+                background: 'var(--ara-bg-surface)',
+              }}>
+                <button
+                  type="button"
+                  className="btn-ara-secondary"
+                  onClick={() => setShowCategoryModal(false)}
+                  disabled={actionLoading}
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="btn-ara-primary"
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? <RefreshCw size={15} className="spinning" /> : editingCategory ? 'Lưu cập nhật' : 'Tạo danh mục'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: CONFIRM DELETE CATEGORY (RÀNG BUỘC PHẢI HẾT NPL)                   */}
+      {/* ========================================================================= */}
+      {deletingCategory && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem',
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: 'var(--radius-md)',
+            width: '100%',
+            maxWidth: '520px',
+            boxShadow: 'var(--ara-shadow-lg)',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              padding: '1.25rem 1.5rem',
+              borderBottom: '1px solid var(--ara-border)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.65rem',
+              background: (deletingCategory.itemCount || 0) > 0 ? '#FEF2F2' : '#F9FAFB',
+              color: (deletingCategory.itemCount || 0) > 0 ? '#991B1B' : 'var(--ara-noir)',
+            }}>
+              <AlertTriangle size={22} color={(deletingCategory.itemCount || 0) > 0 ? '#DC2626' : '#B45309'} />
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0 }}>
+                {(deletingCategory.itemCount || 0) > 0 ? 'Chặn Xóa Danh Mục NPL' : 'Xác Nhận Xóa Danh Mục NPL'}
+              </h3>
+            </div>
+
+            <div style={{ padding: '1.5rem', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              <div style={{
+                background: '#F9FAFB',
+                padding: '0.85rem',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--ara-border)',
+                marginBottom: '1rem',
+              }}>
+                <div style={{ fontWeight: 700, color: 'var(--ara-noir)' }}>{deletingCategory.categoryName}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)', marginTop: '2px' }}>
+                  Mã: <strong>{deletingCategory.categoryCode}</strong> · Phân loại: {deletingCategory.materialType === 'FABRIC' ? 'Vải' : 'Phụ liệu'}
+                </div>
+                <div style={{ fontSize: '0.85rem', marginTop: '4px' }}>
+                  Số lượng nguyên phụ liệu đang có: <strong style={{ color: (deletingCategory.itemCount || 0) > 0 ? '#DC2626' : '#059669' }}>{deletingCategory.itemCount || 0} mặt hàng</strong>
+                </div>
+              </div>
+
+              {(deletingCategory.itemCount || 0) > 0 ? (
+                <div style={{
+                  padding: '0.85rem',
+                  borderRadius: '4px',
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  color: '#991B1B',
+                  fontSize: '0.85rem',
+                }}>
+                  <strong>* Quy định an toàn hệ thống:</strong>
+                  <p style={{ margin: '0.35rem 0 0' }}>
+                    Danh mục này vẫn còn <strong>{deletingCategory.itemCount} nguyên phụ liệu</strong>. Bạn phải <strong>xóa hết tất cả {deletingCategory.itemCount} nguyên phụ liệu này</strong> trong tab "Kho & Danh sách NPL" trước khi được phép xóa danh mục!
+                  </p>
+                </div>
+              ) : (
+                <p style={{ margin: 0, color: '#374151' }}>
+                  Danh mục này hiện không còn nguyên phụ liệu nào. Bạn có chắc chắn muốn xóa vĩnh viễn danh mục <strong>"{deletingCategory.categoryName}"</strong> khỏi hệ thống?
+                </p>
+              )}
+            </div>
+
+            <div style={{
+              padding: '1rem 1.5rem',
+              borderTop: '1px solid var(--ara-border)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '0.75rem',
+              background: 'var(--ara-bg-surface)',
+            }}>
+              <button
+                type="button"
+                className="btn-ara-secondary"
+                onClick={() => setDeletingCategory(null)}
+              >
+                {(deletingCategory.itemCount || 0) > 0 ? 'Đóng' : 'Hủy bỏ'}
+              </button>
+
+              {(deletingCategory.itemCount || 0) > 0 ? (
+                <button
+                  type="button"
+                  className="btn-ara-primary"
+                  onClick={() => {
+                    const code = deletingCategory.categoryCode;
+                    setDeletingCategory(null);
+                    handleViewCategoryItems(code);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  <ArrowRight size={15} /> Đi tới xóa NPL trong danh mục này
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteCategory}
+                  disabled={actionLoading}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    borderRadius: 'var(--radius-sm)',
+                    background: '#DC2626',
+                    color: '#FFFFFF',
+                    border: '1px solid #B91C1C',
+                    fontSize: '0.88rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {actionLoading ? <RefreshCw size={15} className="spinning" /> : <Trash2 size={15} />}
+                  Xác nhận xóa danh mục
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1499,4 +2107,3 @@ export default function GarmentRawMaterialsPage() {
     </div>
   );
 }
-

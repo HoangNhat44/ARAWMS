@@ -17,20 +17,10 @@ const rawMaterialSchema = new Schema(
     materialType: { type: String, enum: ['FABRIC', 'AUXILIARY'], required: true, index: true },
     category: {
       type: String,
-      enum: [
-        'FABRIC_ROLL',
-        'BUTTON',
-        'THREAD',
-        'ZIPPER',
-        'CARE_LABEL',
-        'PACKAGING_BAG',
-        'NEEDLE',
-        'CHALK',
-        'MARKER',
-        'ACCESSORY',
-        'OTHER',
-      ],
       required: true,
+      trim: true,
+      uppercase: true,
+      index: true,
     },
     unit: {
       type: String,

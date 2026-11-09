@@ -56,6 +56,10 @@ export const garmentTechnicalService = {
   // 5. Raw Material Warehouse / Catalog Management (CRUD)
   materials: {
     getMeta: () => api.get('/garment-technical/raw-materials/meta'),
+    getCategories: () => api.get('/garment-technical/raw-materials/categories'),
+    createCategory: (payload) => api.post('/garment-technical/raw-materials/categories', payload),
+    updateCategory: (id, payload) => api.put(`/garment-technical/raw-materials/categories/${id}`, payload),
+    deleteCategory: (id) => api.delete(`/garment-technical/raw-materials/categories/${id}`),
     getMaterials: (params = {}) => api.get('/garment-technical/raw-materials', { params }),
     getMaterial: (id) => api.get(`/garment-technical/raw-materials/${id}`),
     createMaterial: (payload) => api.post('/garment-technical/raw-materials', payload),
