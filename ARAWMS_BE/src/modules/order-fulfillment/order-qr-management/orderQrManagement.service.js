@@ -10,6 +10,9 @@ import SalesOrder from '../../../models/SalesOrder.model.js';
 import Sku from '../../../models/Sku.model.js';
 import Product from '../../../models/Product.model.js';
 import OrderQrToken from '../../../models/OrderQrToken.js';
+import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
+import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
+import { usablePickLocationFilter } from './orderReservation.service.js';
 import { ensurePackingIndexes } from '../packing-verification/packingIndexes.js';
 import { canViewOrder, canIssueQr } from '../../../common/services/orderAccessService.js';
 import { uploadOrderQrImage, orderQrImageUrl, removeOrderQrImage } from '../../../common/services/orderQrImageStorage.js';
@@ -126,13 +129,29 @@ export const findOrder = async (idOrCode) => {
 };
 
 /** Lists only orders visible to the user and marks QR eligibility. */
+/** Sums unreserved shelved stock for SKUs on reserved lines that still lack a batch/location pick. */
+const availableShelfStockBySku = async (orders) => {
+  const skuIds = [...new Set(orders.filter((order) => ['CONFIRMED_RESERVED', 'PICKING'].includes(order.status))
+    .flatMap((order) => order.items.filter((item) => !item.fifoPickList?.length).map((item) => String(item.skuId))))];
+  if (!skuIds.length) return new Map();
+  const locations = await WarehouseLocation.find(usablePickLocationFilter).select('_id').lean();
+  const rows = await FinishedGoodsBatch.aggregate([
+    { $match: { skuId: { $in: skuIds.map((id) => new mongoose.Types.ObjectId(id)) },
+      locationId: { $in: locations.map((location) => location._id) },
+      isDefectQuarantine: false, isDeleted: { $ne: true } } },
+    { $group: { _id: '$skuId', available: { $sum: { $max: [0,
+      { $subtract: ['$currentOnHandQty', { $ifNull: ['$reservedPickQty', 0] }] }] } } } },
+  ]);
+  return new Map(rows.map((row) => [String(row._id), row.available]));
+};
+
 export const listOrdersForQr = async (user) => {
   const isAdmin = user.roles?.some((role) => ['OWNER', 'ADMIN'].includes(role));
   const isSales = user.roles?.some((role) => ['SELLER', 'SALES'].includes(role));
   const isWarehouse = user.roles?.includes('WAREHOUSE_STAFF') || user.roles?.includes('WAREHOUSE_MANAGER');
   const query = isAdmin || isWarehouse ? {} : isSales ? { sellerId: user._id } : null;
   const realOrders = query === null ? [] : await SalesOrder.find({ ...query, isDeleted: { $ne: true } })
-    .select('_id orderCode status shippingRecipient.name recipient.name items.quantity items.orderedQty items.fifoPickList.batchId items.fifoPickList.locationId items.fifoPickList.allocatedQty createdAt')
+    .select('_id orderCode status shippingRecipient.name recipient.name items.skuId items.quantity items.orderedQty items.fifoPickList.batchId items.fifoPickList.locationId items.fifoPickList.allocatedQty createdAt')
     .sort({ createdAt: -1 }).lean();
   const visibleRealOrders = realOrders.filter((order) => canViewOrder(user, order));
   const qrOrders = visibleRealOrders.length ? await SalesOrder.find({
@@ -146,6 +165,7 @@ export const listOrdersForQr = async (user) => {
     ...qrOrders.filter((order) => order.qr?.token && !order.qr.revokedAt).map((order) => String(order._id)),
     ...tokens.filter((token) => !embeddedIds.has(String(token.orderId))).map((token) => String(token.orderId)),
   ]);
+  const shelfStock = await availableShelfStockBySku(visibleRealOrders);
   return visibleRealOrders.map((order) => {
     // ADMIN can issue QR for any eligible status
     // Others must meet canIssueQr requirements + status check
@@ -160,6 +180,12 @@ export const listOrdersForQr = async (user) => {
       itemCount: order.items.reduce((sum, item) => sum + (item.quantity ?? item.orderedQty ?? 0), 0),
       createdAt: order.createdAt, hasQr: issuedReal.has(String(order._id)),
       canIssueQr: canIssue,
+      // Same rule the packing station applies; lines without a pick are allocated at scan time from shelved stock.
+      canPack: ['CONFIRMED_RESERVED', 'PICKING'].includes(order.status) && order.items?.length > 0 &&
+        order.items.every((item) => item.fifoPickList?.length
+          ? item.fifoPickList.every((pick) => pick.batchId && pick.locationId && pick.allocatedQty > 0) &&
+            item.fifoPickList.reduce((sum, pick) => sum + pick.allocatedQty, 0) === (item.orderedQty ?? item.quantity)
+          : (shelfStock.get(String(item.skuId)) || 0) >= (item.orderedQty ?? item.quantity)),
     };
   });
 };

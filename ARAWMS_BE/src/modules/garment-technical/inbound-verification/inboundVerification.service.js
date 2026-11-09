@@ -12,7 +12,11 @@ import SupplierContract from '../../../models/SupplierContract.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
-import { createNotification } from '../../notifications/notification.service.js';
+import { publishRealtime } from '../../../common/services/realtime.js';
+
+// Tells the Warehouse Manager's request list to reload when a technician sends a new request.
+const notifyInboundRequestChanged = (ticket) => publishRealtime('material-inbound-request:changed',
+  { requestId: String(ticket._id), status: ticket.status });
 
 /**
  * Returns options for dropdowns (suppliers, materials, contracts, locations)
@@ -275,6 +279,7 @@ export const verifyInboundPlan = async (planId, payload = {}, user) => {
     });
 
     await createdTicket.save();
+    notifyInboundRequestChanged(createdTicket);
   }
 
   return {
@@ -375,6 +380,7 @@ export const createDirectInboundRequest = async (payload = {}, user) => {
   });
 
   await ticket.save();
+  notifyInboundRequestChanged(ticket);
 
   return ticket;
 };

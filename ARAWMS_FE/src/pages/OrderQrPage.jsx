@@ -146,13 +146,15 @@ export default function OrderQrPage() {
 
   const filteredOrders = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
+    // Packable orders first, then other unpacked orders, then packed; server order (newest first) is kept within each group.
+    const rank = (order) => order.canPack ? 0 : packedStatuses.has(order.status) ? 2 : 1;
     return orders.filter((order) => {
       const isPacked = packedStatuses.has(order.status);
       if (packingFilter === 'packed' && !isPacked) return false;
       if (packingFilter === 'unpacked' && isPacked) return false;
       return !term || [order.orderCode, order.id, order.recipientName, order.status, statusLabel(order.status)]
         .some((value) => String(value || '').toLocaleLowerCase().includes(term));
-    });
+    }).sort((a, b) => rank(a) - rank(b));
   }, [orders, search, packingFilter]);
   const eligibleVisibleIds = filteredOrders.filter((order) => order.canIssueQr).map((order) => order.id);
   const allVisibleSelected = eligibleVisibleIds.length > 0 && eligibleVisibleIds.every((id) => selectedIds.includes(id));
@@ -329,7 +331,7 @@ export default function OrderQrPage() {
                 onChange={() => setSelectedIds((current) => current.includes(order.id)
                   ? current.filter((id) => id !== order.id) : [...current, order.id])} /></td>}
               <td>{order.orderCode}</td>
-              <td>{order.recipientName || '—'}</td><td>{order.itemCount}</td><td>{statusLabel(order.status)}</td>
+              <td>{order.recipientName || '—'}</td><td>{order.itemCount}</td><td>{statusLabel(order.status)}{order.canPack && <><br /><small style={{ color: 'var(--ara-success)', fontWeight: 600 }}>Sẵn sàng đóng</small></>}</td>
               <td>{order.hasQr ? 'Đã cấp' : 'Chưa cấp'}</td>
               <td><button className="btn-ara-secondary" type="button" disabled={busy} onClick={(event) => selectOrderById(order.id, event)}>Xem đơn</button></td>
             </tr>)}</tbody>

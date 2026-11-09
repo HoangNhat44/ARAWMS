@@ -9,7 +9,13 @@ import { MATERIAL_UNIT_OPTIONS, isFractionalMaterialUnit } from '../utils/materi
 const field = { width: '100%', padding: '10px', border: '1px solid #ded0bf', borderRadius: 8, background: '#fff' };
 const grid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 14 };
 const id = (value) => String(value?._id || value?.id || value || '');
-const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+/** Formats a stored timestamp as the viewer's calendar date (YYYY-MM-DD), not the UTC date. */
+const localDate = (value) => {
+  const date = value ? new Date(value) : new Date();
+  return Number.isNaN(date.getTime()) ? ''
+    : new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+const today = () => localDate();
 const qty = (value) => Number(value || 0);
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
 const withReceiptObjects = (lines = []) => lines.map((line) => ({ ...line,
@@ -210,7 +216,7 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
           next = { receiptSource: 'DIRECT', draftKey: saved.draftKey, inboundRequestId: id(request),
             supplierId: id(saved.supplierId), purchaseSourceName: saved.purchaseSourceName || '',
             purchasedByName: saved.purchasedByName || user?.fullName || '',
-            receivedAt: saved.receivedAt?.slice(0, 10) || today(),
+            receivedAt: (saved.receivedAt && localDate(saved.receivedAt)) || today(),
             receivingLocationId: id(saved.receivingLocationId), receiptNote: saved.receiptNote || '',
             receiptLines: withReceiptObjects(saved.receiptLines || []) };
           if (saved.status === 'COMPLETED') setLabels((await api.labels(id(saved))).data.labels || []);
@@ -255,7 +261,7 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
             inboundRequestId: id(saved.inboundRequestId) || undefined,
             supplierId: id(saved.supplierId), purchaseSourceName: saved.purchaseSourceName || '',
             purchasedByName: saved.purchasedByName || user?.fullName || '',
-            receivedAt: saved.receivedAt?.slice(0, 10) || today(),
+            receivedAt: (saved.receivedAt && localDate(saved.receivedAt)) || today(),
             receivingLocationId: id(saved.receivingLocationId), receiptNote: saved.receiptNote || '',
             receiptLines: withReceiptObjects(saved.receiptLines || []) };
           setForm(restored); savedSignature.current = JSON.stringify(restored);
@@ -270,6 +276,18 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
   const changeLine = (index, patch) => setForm((current) => ({ ...current,
     receiptLines: current.receiptLines.map((line, row) => row === index
       ? updateLine(line, patch, materials.get(id(line.rawMaterialId))) : line) }));
+  // Older drafts and plan tickets saved rolls without a width; fill it from the material catalog when known.
+  useEffect(() => {
+    if (locked || !form.receiptLines?.length) return;
+    let filled = false;
+    const receiptLines = form.receiptLines.map((line) => {
+      const width = Number(materials.get(id(line.rawMaterialId))?.widthCm) || 0;
+      if (!width || !line.rolls?.some((roll) => !(Number(roll.widthCm) > 0))) return line;
+      filled = true;
+      return { ...line, rolls: line.rolls.map((roll) => Number(roll.widthCm) > 0 ? roll : { ...roll, widthCm: width }) };
+    });
+    if (filled) setForm((current) => ({ ...current, receiptLines }));
+  }, [form.receiptLines, options.materials, savedMaterials, locked]);
   const changeRoll = (lineIndex, rollIndex, patch) => {
     const line = form.receiptLines[lineIndex];
     changeLine(lineIndex, { rolls: line.rolls.map((roll, row) => row === rollIndex ? { ...roll, ...patch } : roll) });
@@ -328,6 +346,10 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
       throw new Error('Mỗi dòng cần có số lượng thực nhận lớn hơn 0.');
     for (const line of form.receiptLines) {
       const material = materials.get(id(line.rawMaterialId));
+      if (material?.materialType === 'FABRIC' && line.rolls?.some((roll) => !(Number(roll.widthCm) > 0)))
+        throw new Error(`Cần nhập khổ vải (cm) cho từng cây vải của ${material.materialName || 'vật tư'}.`);
+      if (material?.materialType === 'FABRIC' && material.requiresWeightKg && line.rolls?.some((roll) => !(Number(roll.weightKg) > 0)))
+        throw new Error(`Cần nhập cân nặng (kg) cho từng cây vải của ${material.materialName || 'vật tư'}.`);
       if (requestMode) {
         const objects = material?.materialType === 'FABRIC' ? line.rolls : line.lots;
         if (!objects?.length || objects.some((item) => material.materialType === 'FABRIC'
@@ -479,6 +501,9 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
                   {requestMode && <small>Cây {roll.supplierRollCode || roll.lotCode || rollIndex + 1} · {roll.lengthMeters} m</small>}
                   <label>Cây {rollIndex + 1} · chiều dài (m)<input style={field} type="number" min="0" step=".001" disabled={locked || requestMode}
                     value={roll.lengthMeters ?? ''} onChange={(event) => changeRoll(index, rollIndex, { lengthMeters: event.target.value })} /></label>
+                  <label>Khổ vải (cm)<input style={field} type="number" min="0" step=".1" disabled={locked}
+                    value={Number(roll.widthCm) > 0 ? roll.widthCm : ''} placeholder="Bắt buộc"
+                    onChange={(event) => changeRoll(index, rollIndex, { widthCm: event.target.value })} /></label>
                   {!requestMode && <label>Kết quả<select style={field} value={roll.quality || ''} disabled={locked} onChange={(event) =>
                     changeRoll(index, rollIndex, { quality: event.target.value, locationId: '' })}>
                     <option value="">Chưa kiểm tra</option><option value="ACCEPTED">Đạt</option><option value="REJECTED">Không đạt</option></select></label>}
@@ -487,7 +512,7 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
                       .map((group) => <optgroup key={`${group.rackCode}:${group.rackName}`} label={`Kệ ${group.rackCode} · ${group.rackName}`}>
                         {group.locations.map((item) => <option key={id(item)} value={id(item)}>{rackBinOptionLabel(item)}</option>)}
                       </optgroup>)}</select></label>
-                  {material.requiresWeightKg && <label>Cân nặng (kg)<input style={field} type="number" min="0" step=".001" disabled={locked || requestMode}
+                  {material.requiresWeightKg && <label>Cân nặng (kg)<input style={field} type="number" min="0" step=".001" disabled={locked}
                     value={roll.weightKg ?? ''} onChange={(event) => changeRoll(index, rollIndex, { weightKg: event.target.value })} /></label>}
                   {roll.quality === 'REJECTED' && <label>Lý do không đạt<input style={field} disabled={locked}
                     value={roll.defectReason || ''} onChange={(event) => changeRoll(index, rollIndex, { defectReason: event.target.value })} /></label>}
@@ -535,7 +560,7 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
             <div><h4>Chi tiết nguồn nhập · {detailLabel.barcode}</h4><p>{detailLabel.materialCode} · {detailLabel.materialName}
               {detailLabel.color ? ` · ${detailLabel.color}` : ''}{detailLabel.widthCm ? ` · khổ ${detailLabel.widthCm} cm` : ''}</p>
               <p>Nhà cung cấp: {detailLabel.supplierName} · Phiếu nhập: {detailLabel.receiptCode}</p>
-              <p>Lô / cây: {detailLabel.lotOrRollCode || '—'} · Ngày nhận: {detailLabel.receivedAt?.slice(0, 10) || '—'}</p>
+              <p>Lô / cây: {detailLabel.lotOrRollCode || '—'} · Ngày nhận: {(detailLabel.receivedAt && localDate(detailLabel.receivedAt)) || '—'}</p>
               <p>Đơn giá: {detailLabel.unitCost == null ? 'Chưa có dữ liệu' : `${Number(detailLabel.unitCost).toLocaleString('vi-VN')} / ${detailLabel.unit}`} · Nhập ban đầu: {detailLabel.quantity} {detailLabel.unit} · Còn lại: {detailLabel.remainingQuantity} {detailLabel.unit}</p>
               <p>Trạng thái nguồn: {detailLabel.stockStatus} · Chất lượng: {detailLabel.quality === 'REJECTED' ? 'Không đạt / cách ly' : 'Đạt'}</p>
               <p>Vị trí dự kiến: {detailLabel.plannedLocationCodes?.join(', ') || '—'} · Vị trí thực tế: {detailLabel.actualLocationCodes?.join(', ') || 'Chưa xếp kho'}</p></div>

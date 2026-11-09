@@ -10,6 +10,13 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[character]);
 
+/** Prints the receipt's calendar date in the viewer's time zone rather than the UTC date. */
+const receivedDate = (value) => {
+  const date = new Date(value);
+  return value && !Number.isNaN(date.getTime())
+    ? new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10) : '—';
+};
+
 /** Reprints the same saved barcode without creating another stock object. */
 export const printMaterialLabels = (labels, tab = window.open('', '_blank')) => {
   if (!tab) throw new Error('Trình duyệt đang chặn cửa sổ in tem');
@@ -18,7 +25,7 @@ export const printMaterialLabels = (labels, tab = window.open('', '_blank')) => 
     ${label.imageUrl ? `<img src="${escapeHtml(label.imageUrl)}" alt="${escapeHtml(label.barcode)}"/>` : code128Svg(label.barcode)}
     <p>Nhà cung cấp: ${escapeHtml(label.supplierName || 'Chưa xác định')}</p>
     <p>Màu: ${escapeHtml(label.color || '—')} · Khổ: ${escapeHtml(label.widthCm ? `${label.widthCm} cm` : '—')}</p>
-    <p>Lô / cây: ${escapeHtml(label.lotOrRollCode || label.supplierLotCode || '—')} · Ngày nhập: ${escapeHtml(label.receivedAt?.slice(0, 10) || '—')}</p>
+    <p>Lô / cây: ${escapeHtml(label.lotOrRollCode || label.supplierLotCode || '—')} · Ngày nhập: ${escapeHtml(receivedDate(label.receivedAt))}</p>
     <p>Vị trí: ${escapeHtml((label.locationCodes || []).join(', ') || '—')} · ${label.quality === 'REJECTED' ? 'HÀNG KHÔNG ĐẠT' : 'HÀNG ĐẠT'}</p>
   </article>`).join('');
   tab.document.write(`<!doctype html><html lang="vi"><meta charset="utf-8"><title>Tem nguyên phụ liệu</title>

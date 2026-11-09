@@ -14,6 +14,66 @@ import InventoryTransaction from '../../../models/InventoryTransaction.model.js'
 
 const createStockReservationError = (code) => Object.assign(new Error(code), { code, status: 409 });
 
+/** Lists shelved finished-goods locations stock may be picked from (excludes the unplaced area). */
+export const usablePickLocationFilter = {
+  warehouseType: 'FINISHED_GOODS', status: { $in: ['ACTIVE', 'FULL'] },
+  isFrozenForStocktake: false, isSystemUnplaced: { $ne: true }, isDeleted: { $ne: true },
+};
+
+/** Assigns FIFO batch/location picks to reserved order lines that have none.
+ * Orders approved by other flows (e.g. marketplace import) reserve SKU totals only,
+ * so the batch and shelf are chosen here, at packing time. SKU reservedQty is not
+ * changed because that flow already reserved it. All lines are allocated or none.
+ * Returns true when the order was changed.
+ */
+export const allocateMissingFifoPicks = async (orderId) => {
+  const session = await mongoose.startSession();
+  try {
+    let changed = false;
+    await session.withTransaction(async () => {
+      changed = false;
+      const order = await SalesOrder.findOne({ _id: orderId, status: { $in: ['CONFIRMED_RESERVED', 'PICKING'] },
+        isDeleted: { $ne: true } }).session(session);
+      if (!order) return;
+      for (const item of order.items) {
+        if (item.fifoPickList?.length) continue;
+        const quantity = item.orderedQty ?? item.quantity;
+        if (!Number.isSafeInteger(quantity) || quantity <= 0) throw createStockReservationError('INVALID_ORDER_QUANTITY');
+        const batches = await FinishedGoodsBatch.find({
+          skuId: item.skuId, isDefectQuarantine: false, isDeleted: { $ne: true }, currentOnHandQty: { $gt: 0 },
+        }).sort({ fifoInboundTimestamp: 1, _id: 1 }).session(session);
+        const usable = new Set((await WarehouseLocation.find({
+          _id: { $in: batches.map((batch) => batch.locationId) }, ...usablePickLocationFilter,
+        }).select('_id').session(session)).map((location) => String(location._id)));
+        let remaining = quantity;
+        const picks = [];
+        for (const batch of batches) {
+          if (!remaining) break;
+          if (!usable.has(String(batch.locationId))) continue;
+          const take = Math.min(remaining, Math.max(0, batch.currentOnHandQty - (batch.reservedPickQty || 0)));
+          if (!take) continue;
+          const reserved = await FinishedGoodsBatch.updateOne({
+            _id: batch._id,
+            $expr: { $gte: [{ $subtract: ['$currentOnHandQty', { $ifNull: ['$reservedPickQty', 0] }] }, take] },
+          }, { $inc: { reservedPickQty: take } }, { session });
+          if (reserved.modifiedCount !== 1) throw createStockReservationError('BATCH_STOCK_CHANGED');
+          picks.push({ batchId: batch._id, locationId: batch.locationId, allocatedQty: take, pickedConfirmed: false });
+          remaining -= take;
+        }
+        if (remaining) {
+          throw Object.assign(createStockReservationError('INSUFFICIENT_SHELF_STOCK'), { skuCode: item.skuCode, missing: remaining });
+        }
+        item.fifoPickList = picks;
+        changed = true;
+      }
+      if (changed) await order.save({ session });
+    });
+    return changed;
+  } finally {
+    await session.endSession();
+  }
+};
+
 /** Reserves stock for every order line from the oldest eligible batches first.
  * Rejects empty orders, invalid line quantities, insufficient unreserved SKU or
  * batch stock, and batches in unusable or frozen locations.

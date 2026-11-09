@@ -6,7 +6,7 @@
  */
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
 import { findOrder, issueQr, listOrdersForQr, replaceQr, publicOrderDetail, resolveQr } from './orderQrManagement.service.js';
-import { canViewOrder, canIssueQr, canPackOrder, canConfirmOrder } from '../../../common/services/orderAccessService.js';
+import { canViewOrder, canIssueQr, canConfirmOrder } from '../../../common/services/orderAccessService.js';
 import { reserveOrderStock } from './orderReservation.service.js';
 
 const sendOrderAccessDenied = (res) => sendError(res, 'Tài khoản chưa có quyền với đơn hàng này', { code: 'FORBIDDEN' }, 403);
@@ -76,13 +76,16 @@ export const getOrderQr = async (req, res, next) => {
   }
 };
 
-/** Resolves a scanned QR value and verifies packing access to its order. */
+/** Resolves a scanned QR value to an order the caller may view.
+ * Packing eligibility (role, batch allocation) is enforced by /packing/prepare, which also
+ * allocates batches for imported orders, so checking it here would wrongly block the lookup.
+ */
 export const resolveOrderQr = async (req, res, next) => {
   try {
     const result = await resolveQr(req.body.qrValue);
     if (result.error) return sendError(res, 'QR không hợp lệ hoặc không còn hiệu lực', { code: result.error }, 404);
     const order = await findOrder(result.order.id);
-    if (!order || !canPackOrder(req.user, order)) return sendOrderAccessDenied(res);
+    if (!order || !canViewOrder(req.user, order)) return sendOrderAccessDenied(res);
     return sendSuccess(res, 'Đã xác thực QR đơn hàng', { order: publicOrderDetail(order) });
   } catch (error) {
     next(error);

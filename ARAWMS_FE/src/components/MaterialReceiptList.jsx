@@ -5,7 +5,9 @@
 import { Link } from 'react-router-dom';
 import { CirclePlus, RefreshCw } from 'lucide-react';
 
-const dateLabel = (value) => value?.slice(0, 10).split('-').reverse().join('/') || '—';
+// Show the viewer's calendar date; receipts are stored at Vietnam midnight, which is the previous UTC day.
+const dateLabel = (value) => value && !Number.isNaN(new Date(value).getTime())
+  ? new Date(value).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
 const priceLabel = (value) => Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + ' ₫';
 const statuses = { DRAFT: 'Nháp', WAITING_QC: 'Chờ kiểm tra', READY_TO_CONFIRM: 'Sẵn sàng xác nhận',
   COMPLETED: 'Đã xác nhận', CANCELLED: 'Đã hủy' };

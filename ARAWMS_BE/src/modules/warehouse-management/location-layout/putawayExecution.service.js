@@ -15,6 +15,9 @@ import WarehouseLayout from '../../../models/WarehouseLayout.model.js';
 import FinishedGoodsBulkDocument from '../../../models/FinishedGoodsBulkDocument.model.js';
 import Sku from '../../../models/Sku.model.js';
 import Product from '../../../models/Product.model.js';
+import FabricRoll from '../../../models/FabricRoll.model.js';
+import MaterialStockLot from '../../../models/MaterialStockLot.model.js';
+import RawMaterial from '../../../models/RawMaterial.model.js';
 import '../../../models/User.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
@@ -23,6 +26,64 @@ import { remainingQuantity } from './allocation.service.js';
 const id = (value) => String(value || '');
 const fail = (code, message, status = 409) => { throw Object.assign(new Error(message), { code, status }); };
 const pendingIssue = (line) => Number(line.reportedShortageQuantity || 0) > 0;
+const roundQty = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
+
+// Fabric rolls physically on a shelf, and rolls already assigned to a shelf but not yet stocked.
+const SHELVED_ROLL_STATUSES = ['IN_STOCK', 'REMNANT_RETURNED'];
+const PENDING_ROLL_STATUSES = ['PENDING_QC', 'QC_PASSED'];
+const OPEN_LOT_STATUSES = ['PENDING_PUTAWAY', 'IN_STOCK'];
+
+/** Lot allocations record placed quantity per bin; never show more than the lot still holds. */
+const lotPlacements = (lot) => {
+  let left = Number(lot.currentQty || 0);
+  return (lot.allocations || []).map((allocation) => {
+    const placed = Math.max(0, Math.min(Number(allocation.putawayQty || 0), left));
+    left -= placed;
+    return { locationId: allocation.locationId, actual: roundQty(placed),
+      pending: roundQty(Math.max(0, Number(allocation.quantity || 0) - Number(allocation.putawayQty || 0))) };
+  });
+};
+
+/** Groups fabric rolls and accessory lots in raw-material bins by material, in the material's own unit. */
+async function materialContentsByBin(binIds) {
+  const result = new Map();
+  if (!binIds.length) return result;
+  const [rolls, lots] = await Promise.all([
+    FabricRoll.find({ locationId: { $in: binIds }, isDeleted: { $ne: true },
+      status: { $in: [...SHELVED_ROLL_STATUSES, ...PENDING_ROLL_STATUSES] } })
+      .select('rawMaterialId locationId status currentLengthMeters').lean(),
+    MaterialStockLot.find({ 'allocations.locationId': { $in: binIds }, isDeleted: { $ne: true },
+      status: { $in: OPEN_LOT_STATUSES } }).select('rawMaterialId status currentQty allocations').lean(),
+  ]);
+  const binSet = new Set(binIds.map(id));
+  const add = (binId, materialId, field, quantity, counter) => {
+    if (!binSet.has(id(binId)) || !(quantity > 0)) return;
+    if (!result.has(id(binId))) result.set(id(binId), new Map());
+    const rows = result.get(id(binId));
+    const row = rows.get(id(materialId)) || { rawMaterialId: materialId, actual: 0, pending: 0, rollCount: 0, lotCount: 0 };
+    row[field] = roundQty(row[field] + quantity);
+    if (field === 'actual') row[counter] += 1;
+    rows.set(id(materialId), row);
+  };
+  for (const roll of rolls) {
+    const field = SHELVED_ROLL_STATUSES.includes(roll.status) ? 'actual' : 'pending';
+    add(roll.locationId, roll.rawMaterialId, field, Number(roll.currentLengthMeters || 0), 'rollCount');
+  }
+  for (const lot of lots) for (const placement of lotPlacements(lot)) {
+    add(placement.locationId, lot.rawMaterialId, 'actual', placement.actual, 'lotCount');
+    add(placement.locationId, lot.rawMaterialId, 'pending', placement.pending, 'lotCount');
+  }
+  const materialIds = [...new Set([...result.values()].flatMap((rows) => [...rows.keys()]))];
+  const materials = await RawMaterial.find({ _id: { $in: materialIds } })
+    .select('materialCode materialName unit color').lean();
+  const materialById = new Map(materials.map((item) => [id(item._id), item]));
+  for (const rows of result.values()) for (const row of rows.values()) {
+    const material = materialById.get(id(row.rawMaterialId));
+    Object.assign(row, { materialCode: material?.materialCode, materialName: material?.materialName,
+      unit: material?.unit || '', color: material?.color });
+  }
+  return result;
+}
 
 /** Loads compact employee tasks from confirmed manager allocations only. */
 export async function listPutawayTasks() {
@@ -283,12 +344,14 @@ export async function rackContents(rackId) {
     .filter((item) => id(item.rackId) === id(rackId)).map((item) => item.id) },
   layoutBin: true, isDeleted: { $ne: true } }).sort({ floorNo: 1, binNo: 1 }).lean();
   const binIds = bins.map((item) => item._id);
-  const [actual, allocations] = await Promise.all([
+  const rawBinIds = bins.filter((bin) => bin.warehouseType === 'RAW_MATERIAL').map((bin) => bin._id);
+  const [actual, allocations, materialRows] = await Promise.all([
     ProductUnit.aggregate([{ $match: { warehouseId: { $in: binIds },
       inventoryStatus: 'AVAILABLE' } },
     { $group: { _id: { binId: '$warehouseId', skuId: '$skuId' }, quantity: { $sum: 1 } } }]),
     PutawayAllocation.find({ status: 'CONFIRMED',
       'lines.targetLocationId': { $in: binIds } }).select('lines').lean(),
+    materialContentsByBin(rawBinIds),
   ]);
   const skuIds = [...new Set([...actual.map((item) => id(item._id.skuId)),
     ...allocations.flatMap((plan) => plan.lines.map((line) => id(line.skuId)))])];
@@ -312,23 +375,69 @@ export async function rackContents(rackId) {
     row.pending += remainingQuantity(line);
     bin.set(key, row);
   }
-  const items = bins.map((bin) => ({ binId: bin._id, locationCode: bin.locationCode,
-    floorNo: bin.floorNo, binNo: bin.binNo, capacity: bin.maxCapacity,
-    actual: [...rows.get(id(bin._id)).values()].reduce((sum, row) => sum + row.actual, 0),
-    pending: [...rows.get(id(bin._id)).values()].reduce((sum, row) => sum + row.pending, 0),
-    products: [...rows.get(id(bin._id)).values()].map((row) => {
-      const sku = skuById.get(id(row.skuId));
-      const product = productById.get(id(sku?.productId));
-      return { ...row, skuCode: sku?.skuCode, productName: product?.productName,
-        color: sku?.color, size: sku?.size };
-    }) }));
+  const items = bins.map((bin) => {
+    const isRaw = bin.warehouseType === 'RAW_MATERIAL';
+    const materials = [...(materialRows.get(id(bin._id))?.values() || [])];
+    const actualUnits = [...rows.get(id(bin._id)).values()].reduce((sum, row) => sum + row.actual, 0);
+    const pendingUnits = [...rows.get(id(bin._id)).values()].reduce((sum, row) => sum + row.pending, 0);
+    return { binId: bin._id, locationCode: bin.locationCode, warehouseType: bin.warehouseType,
+      floorNo: bin.floorNo, binNo: bin.binNo, capacity: bin.maxCapacity,
+      actual: actualUnits, pending: pendingUnits,
+      // Raw-material bins track occupancy in mixed units, so free space comes from the stored counter.
+      available: isRaw ? Math.max(0, Number(bin.maxCapacity || 0) - Number(bin.currentOccupancy || 0))
+        : Math.max(0, bin.maxCapacity - actualUnits - pendingUnits),
+      materials,
+      products: [...rows.get(id(bin._id)).values()].map((row) => {
+        const sku = skuById.get(id(row.skuId));
+        const product = productById.get(id(sku?.productId));
+        return { ...row, skuCode: sku?.skuCode, productName: product?.productName,
+          color: sku?.color, size: sku?.size };
+      }) };
+  });
+  const allMaterials = items.flatMap((item) => item.materials);
   return { rack: { id: rack.id, code: rack.code, name: rack.name, zoneCode: rack.zoneCode },
+    warehouseType: items.length && items.every((item) => item.warehouseType === 'RAW_MATERIAL')
+      ? 'RAW_MATERIAL' : 'FINISHED_GOODS',
     actual: items.reduce((sum, item) => sum + item.actual, 0),
     pending: items.reduce((sum, item) => sum + item.pending, 0),
     skuCount: new Set(items.flatMap((item) => item.products.filter((row) => row.actual)
       .map((row) => id(row.skuId)))).size,
-    available: items.reduce((sum, item) => sum + Math.max(0, item.capacity - item.actual - item.pending), 0),
+    materialCount: new Set(allMaterials.filter((row) => row.actual > 0).map((row) => id(row.rawMaterialId))).size,
+    rollCount: allMaterials.reduce((sum, row) => sum + row.rollCount, 0),
+    lotCount: allMaterials.reduce((sum, row) => sum + row.lotCount, 0),
+    available: items.reduce((sum, item) => sum + item.available, 0),
     bins: items };
+}
+
+/** Lists roll and lot barcodes in a raw-material bin with their remaining quantity. */
+async function binMaterialBarcodes(bin, page, limit) {
+  const [rolls, lots] = await Promise.all([
+    FabricRoll.find({ locationId: bin._id, isDeleted: { $ne: true },
+      status: { $in: [...SHELVED_ROLL_STATUSES, ...PENDING_ROLL_STATUSES] } })
+      .select('rollBarcode rawMaterialId status currentLengthMeters fifoInboundTimestamp')
+      .populate('rawMaterialId', 'materialCode materialName unit').sort({ fifoInboundTimestamp: 1 }).lean(),
+    MaterialStockLot.find({ 'allocations.locationId': bin._id, isDeleted: { $ne: true },
+      status: { $in: OPEN_LOT_STATUSES } })
+      .select('lotBarcode rawMaterialId status currentQty allocations fifoInboundTimestamp')
+      .populate('rawMaterialId', 'materialCode materialName unit').sort({ fifoInboundTimestamp: 1 }).lean(),
+  ]);
+  const rows = [
+    ...rolls.filter((roll) => Number(roll.currentLengthMeters || 0) > 0).map((roll) => ({
+      barcode: roll.rollBarcode, kind: 'ROLL', materialName: roll.rawMaterialId?.materialName,
+      materialCode: roll.rawMaterialId?.materialCode, quantity: roundQty(roll.currentLengthMeters),
+      unit: roll.rawMaterialId?.unit || 'METER', pending: PENDING_ROLL_STATUSES.includes(roll.status),
+      placedAt: roll.fifoInboundTimestamp || null })),
+    ...lots.flatMap((lot) => lotPlacements(lot).filter((placement) => id(placement.locationId) === id(bin._id))
+      .flatMap((placement) => [
+        placement.actual > 0 && { quantity: placement.actual, pending: false },
+        placement.pending > 0 && { quantity: placement.pending, pending: true },
+      ].filter(Boolean).map((part) => ({ barcode: lot.lotBarcode, kind: 'LOT',
+        materialName: lot.rawMaterialId?.materialName, materialCode: lot.rawMaterialId?.materialCode,
+        quantity: part.quantity, unit: lot.rawMaterialId?.unit || '', pending: part.pending,
+        placedAt: lot.fifoInboundTimestamp || null })))),
+  ];
+  return { bin: bin.locationCode, warehouseType: 'RAW_MATERIAL', page, limit, total: rows.length,
+    units: rows.slice((page - 1) * limit, page * limit) };
 }
 
 /** Paginates current unit barcodes and the employee/time of their accepted putaway scan. */
@@ -337,8 +446,9 @@ export async function binUnits(binId, pageInput) {
   const page = Math.max(1, Math.min(100000, Number(pageInput) || 1));
   const limit = 30;
   const bin = await WarehouseLocation.findOne({ _id: binId, layoutBin: true,
-    isDeleted: { $ne: true } }).select('locationCode').lean();
+    isDeleted: { $ne: true } }).select('locationCode warehouseType').lean();
   if (!bin) fail('BIN_NOT_FOUND', 'Không tìm thấy ô', 404);
+  if (bin.warehouseType === 'RAW_MATERIAL') return binMaterialBarcodes(bin, page, limit);
   const [total, units] = await Promise.all([
     ProductUnit.countDocuments({ warehouseId: bin._id, inventoryStatus: 'AVAILABLE' }),
     ProductUnit.find({ warehouseId: bin._id, inventoryStatus: 'AVAILABLE' })

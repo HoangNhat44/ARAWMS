@@ -20,6 +20,7 @@ import {
   toPackingSessionView,
   registerProductUnitBarcode 
 } from './packingVerification.service.js';
+import { allocateMissingFifoPicks } from '../order-qr-management/orderReservation.service.js';
 import { uploadPackingVideo as saveVideo, syncPackingVideo as syncVideo, streamPackingVideo } from './packingVideo.service.js';
 
 const sendPackingErrorResponse = (res, error) => sendError(res, error.code, { code: error.code }, error.status);
@@ -39,8 +40,16 @@ export const openPackingSessionRequest = async (req, res, next) => {
   try {
     const resolved = await resolveQr(req.body.qrValue);
     if (resolved.error) return sendError(res, 'QR không hợp lệ', { code: resolved.error }, 404);
-    const order = await findOrder(resolved.order.id);
+    let order = await findOrder(resolved.order.id);
     if (!order || !canViewOrder(req.user, order)) return sendError(res, 'Không có quyền đóng đơn này', { code: 'FORBIDDEN' }, 403);
+    // Imported orders reserve SKU totals only; pick their batch and shelf now, then reload the updated order.
+    try {
+      if (await allocateMissingFifoPicks(order._id)) order = await findOrder(resolved.order.id);
+    } catch (error) {
+      if (error.code !== 'INSUFFICIENT_SHELF_STOCK') throw error;
+      return sendError(res, `Chưa đủ hàng đã xếp lên kệ cho mã ${error.skuCode} (thiếu ${error.missing}). Hãy xếp hàng từ khu chưa xếp kệ lên kệ trước khi đóng.`,
+        { code: error.code, skuCode: error.skuCode, missing: error.missing }, 409);
+    }
     if (!canPackOrder(req.user, order)) return sendError(res, 'Đơn chưa được phân bổ đủ hàng theo lô', { code: 'ORDER_NOT_PACKABLE' }, 409);
     const session = await openPackingSession(order, req.user._id, req.body.stationId);
     return sendSuccess(res, 'Đã mở phiên soạn hàng', { order: publicOrderDetail(order), session });

@@ -45,7 +45,7 @@ export async function listTechnicianInboundRequests() {
     MaterialTicket.find({ ticketType: 'INBOUND_REQUEST', isDeleted: { $ne: true } })
       .select('ticketCode status requestedByTechnicianId requestedAt inspectionCompletedAt requestVersion requestNote receivingLocationId requestLines createdAt')
       .populate('requestedByTechnicianId', 'fullName employeeCode')
-      .populate('requestLines.rawMaterialId', 'materialCode materialName color unit materialType widthCm gsm')
+      .populate('requestLines.rawMaterialId', 'materialCode materialName color unit materialType widthCm gsm requiresWeightKg')
       .populate('requestLines.supplierId', 'supplierCode supplierName')
       .sort({ createdAt: -1 }).lean(),
     // Older inbound tickets may use any code and have items or receipt lines instead of request lines.
@@ -53,9 +53,9 @@ export async function listTechnicianInboundRequests() {
       isDeleted: { $ne: true } })
       .select('ticketCode ticketType status requestStatus supplierId receivedAt items receiptLines requestLines createdAt')
       .populate('supplierId', 'supplierName supplierCode')
-      .populate('requestLines.rawMaterialId', 'materialCode materialName color unit materialType widthCm gsm')
-      .populate('items.rawMaterialId', 'materialCode materialName color unit materialType')
-      .populate('receiptLines.rawMaterialId', 'materialCode materialName color unit materialType')
+      .populate('requestLines.rawMaterialId', 'materialCode materialName color unit materialType widthCm gsm requiresWeightKg')
+      .populate('items.rawMaterialId', 'materialCode materialName color unit materialType widthCm requiresWeightKg')
+      .populate('receiptLines.rawMaterialId', 'materialCode materialName color unit materialType widthCm requiresWeightKg')
       .sort({ createdAt: -1 }).lean(),
   ]);
   const current = requests.map((request) => ({ ...request, requestLines: requestLinesFor(request).map((line) => ({
