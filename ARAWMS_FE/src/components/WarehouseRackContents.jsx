@@ -6,6 +6,27 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { warehousePutawayService as api } from '../services/warehousePutawayService';
+import { MATERIAL_UNIT_OPTIONS } from '../utils/materialUnits';
+
+const unitShort = new Map(MATERIAL_UNIT_OPTIONS.map((option) => [option.value, option.shortLabel]));
+const qty = (value, unit) => `${Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 3 })} ${
+  unitShort.get(String(unit || '').toUpperCase()) || String(unit || '').toLowerCase()}`.trim();
+
+/** Raw-material bins hold rolls and lots in their own units instead of counted finished-goods pieces. */
+function MaterialBin({ bin, busy, onOpen }) {
+  return <div className="layout-contents-bin"><div className="layout-bin-heading"><div>
+    <strong>Tầng {bin.floorNo} · Ô {String(bin.binNo).padStart(2, '0')}</strong><small>{bin.locationCode}</small></div>
+    <div className="layout-bin-total">Vật tư trong ô <strong>{bin.materials.filter((row) => row.actual > 0).length} loại</strong>
+      <small>Sức chứa {Number(bin.capacity || 0).toLocaleString('vi-VN')} · Còn trống {Number(bin.available || 0).toLocaleString('vi-VN')}</small></div></div>
+    {bin.materials.length ? bin.materials.map((row) => <div key={String(row.rawMaterialId)}
+      className="layout-contents-row"><span><strong>{row.materialName || row.materialCode || 'Vật tư không còn trong danh mục'}</strong>
+        <small>{row.materialCode}{row.color ? ` · ${row.color}` : ''}
+          {row.rollCount ? ` · ${row.rollCount} cuộn vải` : ''}{row.lotCount ? ` · ${row.lotCount} lô` : ''}</small></span>
+      <span><strong>{qty(row.actual, row.unit)} thực tế</strong>
+        <small>{qty(row.pending, row.unit)} chờ xếp</small></span></div>)
+      : <p>Chưa có nguyên phụ liệu trong ô.</p>}
+    <button type="button" disabled={busy} onClick={() => onOpen(bin.binId)}>Xem barcode cuộn / lô</button></div>;
+}
 
 /** Uses current unit locations for actual stock and confirmed allocation lines for pending work. */
 export default function WarehouseRackContents({ rackId, notify, requestConfirm }) {
@@ -38,8 +59,14 @@ export default function WarehouseRackContents({ rackId, notify, requestConfirm }
   useEffect(() => { refresh(); }, [rackId]);
   useEffect(() => {
     const update = (event) => { if (event.detail?.warehouseType === 'FINISHED_GOODS') refresh(); };
+    // Material receipts and outbound picks change what sits on raw-material shelves.
+    const materialEvents = ['arawms-material-request-realtime', 'arawms-material-outbound-realtime'];
     window.addEventListener('arawms-putaway-realtime', update);
-    return () => window.removeEventListener('arawms-putaway-realtime', update);
+    materialEvents.forEach((name) => window.addEventListener(name, refresh));
+    return () => {
+      window.removeEventListener('arawms-putaway-realtime', update);
+      materialEvents.forEach((name) => window.removeEventListener(name, refresh));
+    };
   }, [rackId]);
 
   /** Retrieves one page of barcodes, employee names, and scan times for the selected bin. */
@@ -79,7 +106,18 @@ export default function WarehouseRackContents({ rackId, notify, requestConfirm }
   return <div className="layout-contents">
     <div className="layout-contents-title"><h3>Hàng trong kệ</h3>
       <button type="button" disabled={busy} onClick={refresh}>Làm mới</button></div>
-    {contents && <>
+    {contents?.warehouseType === 'RAW_MATERIAL' && <>
+      <div className="layout-contents-stats">
+        <span>Loại vật tư có hàng <strong>{contents.materialCount}</strong></span>
+        <span>Cuộn vải <strong>{contents.rollCount}</strong></span>
+        <span>Lô phụ liệu <strong>{contents.lotCount}</strong></span>
+        <span>Còn chỗ <strong>{Number(contents.available || 0).toLocaleString('vi-VN')}</strong></span>
+      </div>
+      <h4 className="layout-bin-list-title">Nguyên phụ liệu theo từng ô của kệ</h4>
+      <div className="layout-contents-list">{contents.bins.map((bin) =>
+        <MaterialBin key={bin.binId} bin={bin} busy={busy} onOpen={openBin} />)}</div>
+    </>}
+    {contents && contents.warehouseType !== 'RAW_MATERIAL' && <>
       <div className="layout-contents-stats">
         <span>Tổng hàng thực tế trong kệ <strong>{contents.actual} chiếc</strong></span>
         <span>SKU có hàng <strong>{contents.skuCount}</strong></span>
@@ -102,11 +140,19 @@ export default function WarehouseRackContents({ rackId, notify, requestConfirm }
     {unitPage && <div className="layout-unit-page">
       <div className="layout-contents-title"><h4>Barcode tại {unitPage.bin}</h4>
         <button type="button" onClick={() => { setUnitPage(null); setSelectedBinId(''); }}>Đóng</button></div>
-      {unitPage.units.map((unit) => <div key={unit.barcode} className="layout-unit-row">
-        <code>{unit.barcode}</code><span>{unit.placedBy || 'Chưa có lần quét xếp hàng'}</span>
-        <small>{unit.placedAt ? new Date(unit.placedAt).toLocaleString('vi-VN') : ''}</small>
-      </div>)}
-      <div className="layout-contents-title"><span>Trang {unitPage.page} · {unitPage.total} chiếc</span>
+      {unitPage.warehouseType === 'RAW_MATERIAL'
+        ? unitPage.units.map((unit, index) => <div key={`${unit.barcode}:${index}`} className="layout-unit-row">
+          <code>{unit.barcode}</code>
+          <span>{unit.kind === 'ROLL' ? 'Cuộn vải' : 'Lô'} · {unit.materialName || unit.materialCode} · {qty(unit.quantity, unit.unit)}
+            {unit.pending ? ' (chờ xếp)' : ''}</span>
+          <small>{unit.placedAt ? `Nhập ${new Date(unit.placedAt).toLocaleDateString('vi-VN')}` : ''}</small>
+        </div>)
+        : unitPage.units.map((unit) => <div key={unit.barcode} className="layout-unit-row">
+          <code>{unit.barcode}</code><span>{unit.placedBy || 'Chưa có lần quét xếp hàng'}</span>
+          <small>{unit.placedAt ? new Date(unit.placedAt).toLocaleString('vi-VN') : ''}</small>
+        </div>)}
+      <div className="layout-contents-title"><span>Trang {unitPage.page} · {unitPage.total} {
+        unitPage.warehouseType === 'RAW_MATERIAL' ? 'cuộn / lô' : 'chiếc'}</span>
         <div><button type="button" disabled={busy || unitPage.page <= 1}
           onClick={() => openBin(selectedBinId, unitPage.page - 1)}>Trước</button>
           <button type="button" disabled={busy || unitPage.page * unitPage.limit >= unitPage.total}

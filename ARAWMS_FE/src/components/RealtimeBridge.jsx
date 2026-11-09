@@ -5,7 +5,11 @@ const socketOrigin = () => {
   const configured = import.meta.env.VITE_SOCKET_URL;
   if (configured) return configured;
   const apiBase = import.meta.env.VITE_API_BASE_URL;
-  return apiBase?.startsWith('http') ? new URL(apiBase).origin : undefined;
+  if (apiBase?.startsWith('http')) return new URL(apiBase).origin;
+  // In dev, connect straight to the backend instead of through Vite's ws proxy,
+  // which logs "write ECONNABORTED" every time the browser drops the socket (reload/HMR).
+  if (import.meta.env.DEV) return `${window.location.protocol}//${window.location.hostname}:5000`;
+  return undefined;
 };
 
 /** Converts server warehouse events into app-wide browser events for active pages to refresh. */

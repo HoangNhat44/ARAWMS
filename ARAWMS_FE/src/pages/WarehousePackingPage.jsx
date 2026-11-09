@@ -27,6 +27,12 @@ const createRandomPackingId = (prefix) => {
   crypto.getRandomValues(bytes);
   return `${prefix}_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 };
+/** Explains why the current order cannot be closed before every unit is scanned. */
+const incompleteScanMessage = (session) => {
+  const scanned = session.items.reduce((sum, item) => sum + item.scanned, 0);
+  const total = session.items.reduce((sum, item) => sum + item.quantity, 0);
+  return `Đơn hiện tại mới quét ${scanned}/${total} sản phẩm. Quét đủ trước khi chuyển đơn, hoặc bấm "Kết thúc" để bỏ lần đóng hàng này.`;
+};
 const reasons = {
   CLOUDINARY_AUTH_FAILED: 'Cloudinary từ chối API Key hoặc API Secret. Hãy kiểm tra lại bộ khóa của đúng Cloud name trong backend.',
   BARCODE_NOT_FOUND: 'Barcode chưa có trong danh mục vật phẩm.',
@@ -272,6 +278,8 @@ export default function WarehousePackingPage() {
           return;
         }
         const previous = sessionRef.current;
+        // A video for an incomplete order is rejected by the server (SCAN_INCOMPLETE) and blocks re-packing.
+        if (recorderRef.current && previous.state !== 'READY_TO_RECORD') throw new Error(incompleteScanMessage(previous));
         const queued = (await listPendingVideos()).some((job) => job.sessionId === previous.id && job.status !== 'COMPLETED');
         if (recorderRef.current) await stopRecordingAndQueueVideo(previous);
         else if (!previous.video && !queued) throw new Error('Đơn hiện tại chưa có video để lưu.');
@@ -356,6 +364,10 @@ export default function WarehousePackingPage() {
   /** Queues the recording before releasing the station lease. */
   const saveVideoAndReleaseOrder = async () => {
     if (!session) return;
+    if (recorderRef.current && session.state !== 'READY_TO_RECORD') {
+      setError(incompleteScanMessage(session));
+      return;
+    }
     busyRef.current = true;
     setBusy(true); setError('');
     try {

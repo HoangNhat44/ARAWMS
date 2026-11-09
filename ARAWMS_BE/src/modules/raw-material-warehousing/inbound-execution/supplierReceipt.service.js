@@ -127,8 +127,8 @@ export async function listSupplierReceipts(query, user) {
   }
   if (query.from || query.to) {
     filter.receivedAt = {};
-    if (query.from) filter.receivedAt.$gte = new Date(`${query.from}T00:00:00.000Z`);
-    if (query.to) filter.receivedAt.$lte = new Date(`${query.to}T23:59:59.999Z`);
+    if (query.from) filter.receivedAt.$gte = new Date(`${query.from}T00:00:00.000+07:00`);
+    if (query.to) filter.receivedAt.$lte = new Date(`${query.to}T23:59:59.999+07:00`);
     fail(Object.values(filter.receivedAt).every((date) => !Number.isNaN(date.getTime())), 'Ngày lọc không hợp lệ', 'INVALID_DATE');
   }
   const receipts = await MaterialTicket.find(filter)
@@ -202,7 +202,10 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
     'Phiếu ngoài kế hoạch phải nhận tại ô kho Khu A', 'DIRECT_WAREHOUSE_REQUIRED');
   fail(direct || id(context.plan.supplierId) === id(supplier._id) && id(context.warehouse._id) === id(location._id),
     'Nhà cung cấp hoặc kho nhận không khớp kế hoạch', 'PLAN_RECEIPT_MISMATCH', 409);
-  const receivedAt = new Date(input.receivedAt);
+  // The form sends a date-only value in Vietnam time; parsing it as UTC midnight would put
+  // today's date 7 hours in the future between 00:00 and 07:00.
+  const receivedAt = /^\d{4}-\d{2}-\d{2}$/.test(String(input.receivedAt || ''))
+    ? new Date(`${input.receivedAt}T00:00:00+07:00`) : new Date(input.receivedAt);
   fail(input.receivedAt && !Number.isNaN(receivedAt.getTime()) && receivedAt <= new Date(),
     'Ngày nhận không hợp lệ hoặc ở tương lai', 'INVALID_DATE');
   const handoverName = String(input.handoverName || '').trim();

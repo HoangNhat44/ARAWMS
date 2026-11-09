@@ -124,6 +124,12 @@ export default function SupplierInboundPage() {
     loadData();
   }, [loadData, refreshKey]);
 
+  // Reload when a technician sends or updates an inbound request.
+  useEffect(() => {
+    window.addEventListener('arawms-material-request-realtime', loadData);
+    return () => window.removeEventListener('arawms-material-request-realtime', loadData);
+  }, [loadData]);
+
   // Open the requested material workflow when arriving from the shared technician queue.
   useEffect(() => {
     if (!requestedId || openedRequestId.current === requestedId) return;
@@ -145,7 +151,8 @@ export default function SupplierInboundPage() {
   // Calculate KPIs
   const kpis = {
     totalRequests: requests.length,
-    waitingReceipt: requests.filter(r => ['WAITING_RECEIPT', 'PARTIALLY_RECEIVED'].includes(r.status)).length,
+    waitingReceipt: requests.filter(r => ['WAITING_RECEIPT', 'PARTIALLY_RECEIVED', 'DRAFT', 'WAITING_QC',
+      'READY_TO_CONFIRM'].includes(r.status)).length,
     completed: requests.filter(r => r.status === 'COMPLETED').length,
     totalReceipts: receipts.length,
     pendingConfirm: receipts.filter(r => ['DRAFT', 'WAITING_QC', 'READY_TO_CONFIRM'].includes(r.status)).length
@@ -265,6 +272,7 @@ export default function SupplierInboundPage() {
             onChange={(e) => setFilterStatus(e.target.value)}
           >
             <option value="">Tất cả trạng thái</option>
+            <option value="READY_TO_CONFIRM">Chờ xác nhận</option>
             <option value="WAITING_RECEIPT">Chờ nhập</option>
             <option value="PARTIALLY_RECEIVED">Đã nhập một phần</option>
             <option value="COMPLETED">Đã hoàn thiện</option>
