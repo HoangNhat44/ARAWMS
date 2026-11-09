@@ -1,9 +1,9 @@
 /*
  * File: inboundVerification.service.js
  * Author: Duy Anh & Antigravity
- * Date: 2026-11-06 (Updated 2026-11-09 for multi-batch delivery plans)
+ * Date: 2026-11-06 (Updated 2026-11-09)
  * Description: Business logic for Garment Technician (KCS) to verify MaterialInboundPlans from Accounting and request raw material inbound to Warehouse Manager.
- *              Supports multi-batch (đợt giao hàng) verification: decomposes multi-batch plans into individual inspectable batches.
+ *              Maintains 1 plan per row in list view, with full batch breakdown for multi-delivery inspection.
  */
 import mongoose from 'mongoose';
 import MaterialInboundPlan from '../../../models/MaterialInboundPlan.model.js';
@@ -36,10 +36,14 @@ export const getInboundVerificationOptions = async () => {
 
 /**
  * List MaterialInboundPlans with filtering and statistics.
- * Multi-batch plans are flattened into individual batch items so KCS can inspect each delivery batch independently.
+ * Each MaterialInboundPlan is returned as exactly 1 row, containing its full batches array.
  */
 export const listInboundPlans = async (query = {}, user) => {
   const dbFilter = {};
+
+  if (query.status && query.status !== 'ALL') {
+    dbFilter.status = query.status;
+  }
 
   if (query.supplierId) {
     dbFilter.supplierId = query.supplierId;
@@ -53,6 +57,15 @@ export const listInboundPlans = async (query = {}, user) => {
     ];
   }
 
+  // Count by status for quick stats dashboard
+  const [totalScheduled, totalInspection, totalVerified, totalDeviation, totalPlans] = await Promise.all([
+    MaterialInboundPlan.countDocuments({ status: 'SCHEDULED' }),
+    MaterialInboundPlan.countDocuments({ status: 'IN_INSPECTION' }),
+    MaterialInboundPlan.countDocuments({ status: 'VERIFIED_MATCHED' }),
+    MaterialInboundPlan.countDocuments({ status: 'DEVIATION_REPORTED' }),
+    MaterialInboundPlan.countDocuments({}),
+  ]);
+
   const rawPlans = await MaterialInboundPlan.find(dbFilter)
     .populate('supplierId', 'supplierCode supplierName phone contactName')
     .populate('contractId', 'contractCode title status')
@@ -64,90 +77,20 @@ export const listInboundPlans = async (query = {}, user) => {
     .sort({ scheduledDeliveryDate: -1, createdAt: -1 })
     .lean();
 
-  const flattenedPlans = [];
+  const plans = rawPlans.map((plan) => {
+    const batches = Array.isArray(plan.batches) ? plan.batches : [];
+    const totalBatches = batches.length > 0 ? batches.length : (plan.totalBatches || 1);
+    const completedBatchesCount = batches.filter(
+      (b) => b.status === 'VERIFIED_MATCHED' || b.status === 'DEVIATION_REPORTED'
+    ).length;
 
-  rawPlans.forEach((plan) => {
-    const hasBatches = Array.isArray(plan.batches) && plan.batches.length > 1;
-
-    if (hasBatches) {
-      plan.batches.forEach((b) => {
-        const batchNum = Number(b.batchNumber) || 1;
-        const batchTitle = b.batchTitle || `Đợt ${batchNum}/${plan.batches.length}: Tiếp nhận nguyên liệu`;
-        const batchStatus = b.status || (
-          b.technicianVerification?.complianceStatus === 'MATCHED'
-            ? 'VERIFIED_MATCHED'
-            : (b.technicianVerification?.complianceStatus === 'MISMATCHED'
-                ? 'DEVIATION_REPORTED'
-                : (plan.status || 'SCHEDULED'))
-        );
-
-        // Lấy đúng danh sách vật tư và số lượng dự kiến của riêng đợt này
-        const batchExpectedItems = (Array.isArray(b.expectedItems) && b.expectedItems.length > 0)
-          ? b.expectedItems
-          : plan.expectedItems;
-
-        flattenedPlans.push({
-          ...plan,
-          _id: `${plan._id}_batch_${batchNum}`,
-          planId: plan._id,
-          batchId: b._id,
-          batchNumber: batchNum,
-          batchTitle,
-          batchPercentage: b.batchPercentage || Number((100 / plan.batches.length).toFixed(1)),
-          totalBatches: plan.batches.length,
-          isBatch: true,
-          displayCode: `${plan.planCode} (Đợt ${batchNum}/${plan.batches.length})`,
-          scheduledDeliveryDate: b.scheduledDeliveryDate || plan.scheduledDeliveryDate,
-          status: batchStatus,
-          deliveryComplianceStatus: b.deliveryComplianceStatus || b.technicianVerification?.complianceStatus || 'PENDING',
-          technicianVerification: b.technicianVerification || {
-            complianceStatus: 'PENDING',
-            isMatchedWithPlan: null,
-          },
-          expectedItems: batchExpectedItems,
-          deviationResolution: b.deviationResolution || plan.deviationResolution,
-        });
-      });
-    } else {
-      // Kế hoạch 1 đợt hoặc kế hoạch truyền thống
-      const singleBatch = (Array.isArray(plan.batches) && plan.batches.length === 1) ? plan.batches[0] : null;
-      flattenedPlans.push({
-        ...plan,
-        _id: String(plan._id),
-        planId: plan._id,
-        batchNumber: singleBatch?.batchNumber || 1,
-        totalBatches: 1,
-        isBatch: false,
-        displayCode: plan.planCode,
-        scheduledDeliveryDate: singleBatch?.scheduledDeliveryDate || plan.scheduledDeliveryDate,
-        expectedItems: (singleBatch?.expectedItems?.length ? singleBatch.expectedItems : plan.expectedItems),
-        technicianVerification: singleBatch?.technicianVerification?.verifiedAt
-          ? singleBatch.technicianVerification
-          : plan.technicianVerification,
-        status: singleBatch?.status || plan.status,
-      });
-    }
+    return {
+      ...plan,
+      totalBatches,
+      hasMultipleBatches: batches.length > 1,
+      completedBatchesCount,
+    };
   });
-
-  // Tính toán thống kê dashboard theo các đợt tiếp nhận cụ thể
-  let totalScheduled = 0;
-  let totalInspection = 0;
-  let totalVerified = 0;
-  let totalDeviation = 0;
-
-  flattenedPlans.forEach((p) => {
-    if (p.status === 'SCHEDULED') totalScheduled++;
-    else if (p.status === 'IN_INSPECTION') totalInspection++;
-    else if (p.status === 'VERIFIED_MATCHED') totalVerified++;
-    else if (p.status === 'DEVIATION_REPORTED') totalDeviation++;
-  });
-
-  const totalPlans = flattenedPlans.length;
-
-  // Lọc theo trạng thái KCS nếu có query
-  const plans = (query.status && query.status !== 'ALL')
-    ? flattenedPlans.filter((p) => p.status === query.status)
-    : flattenedPlans;
 
   return {
     plans,
@@ -198,43 +141,18 @@ export const getInboundPlanDetails = async (planId) => {
     throw err;
   }
 
-  // Look for any MaterialTicket already tied to this plan
   const relatedTickets = await MaterialTicket.find({ inboundPlanId: actualPlanId })
     .select('ticketCode ticketType status supplierDeliveryCode receivedAt receiptLines createdAt deliveryBatchId receiptNote')
     .populate('receiptLines.rawMaterialId', 'materialCode materialName unit')
     .sort({ createdAt: -1 })
     .lean();
 
-  if (batchNum && Array.isArray(plan.batches) && plan.batches.length > 0) {
-    const batch = plan.batches.find((b) => Number(b.batchNumber) === batchNum);
-    if (batch) {
-      return {
-        ...plan,
-        _id: `${plan._id}_batch_${batch.batchNumber}`,
-        planId: plan._id,
-        batchId: batch._id,
-        displayCode: `${plan.planCode} (Đợt ${batch.batchNumber}/${plan.batches.length})`,
-        batchNumber: batch.batchNumber,
-        batchTitle: batch.batchTitle || `Đợt ${batch.batchNumber}/${plan.batches.length}`,
-        batchPercentage: batch.batchPercentage,
-        totalBatches: plan.batches.length,
-        isBatch: true,
-        scheduledDeliveryDate: batch.scheduledDeliveryDate || plan.scheduledDeliveryDate,
-        expectedItems: (Array.isArray(batch.expectedItems) && batch.expectedItems.length > 0)
-          ? batch.expectedItems
-          : plan.expectedItems,
-        technicianVerification: batch.technicianVerification || plan.technicianVerification,
-        status: batch.status || (
-          batch.technicianVerification?.complianceStatus === 'MATCHED'
-            ? 'VERIFIED_MATCHED'
-            : (batch.technicianVerification?.complianceStatus === 'MISMATCHED' ? 'DEVIATION_REPORTED' : plan.status)
-        ),
-        relatedTickets,
-      };
-    }
-  }
-
-  return { ...plan, relatedTickets };
+  return {
+    ...plan,
+    totalBatches: plan.batches?.length || plan.totalBatches || 1,
+    hasMultipleBatches: Array.isArray(plan.batches) && plan.batches.length > 1,
+    relatedTickets,
+  };
 };
 
 /**

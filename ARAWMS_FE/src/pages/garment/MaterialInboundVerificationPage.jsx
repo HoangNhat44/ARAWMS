@@ -1,7 +1,8 @@
 /*
  * File: MaterialInboundVerificationPage.jsx
  * Role: GARMENT_TECHNICIAN (Kỹ thuật viên may / KCS)
- * Description: Ghi nhận kế hoạch nhập nguyên phụ liệu từ kế toán, đối soát số lượng và nghiệm thu KCS ngoại quan/vật lý, sau đó tạo phiếu yêu cầu nhập kho gửi Quản lý kho duyệt.
+ * Description: Tiếp nhận kế hoạch nhập nguyên phụ liệu từ Kế toán, hiển thị mỗi kế hoạch là 1 hàng với các đợt nhập phân rã,
+ *              thực hiện nghiệm thu KCS từng đợt hoặc toàn bộ, đối soát số lượng và lập phiếu yêu cầu nhập kho gửi Quản lý kho duyệt.
  */
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -25,6 +26,10 @@ import {
   X,
   Send,
   Layers,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Info,
 } from 'lucide-react';
 import garmentTechnicalService from '../../services/garmentTechnicalService';
 
@@ -46,6 +51,9 @@ export default function MaterialInboundVerificationPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
+  // Accordion state for multi-batch plans in main table
+  const [expandedPlanIds, setExpandedPlanIds] = useState(new Set());
+
   // Options for dropdowns
   const [options, setOptions] = useState({
     suppliers: [],
@@ -54,8 +62,12 @@ export default function MaterialInboundVerificationPage() {
     locations: [],
   });
 
-  // Modal: Verify Plan
+  // Modal: View Plan Details (with all batches)
+  const [selectedPlanForDetail, setSelectedPlanForDetail] = useState(null);
+
+  // Modal: Verify Plan / Specific Batch
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [selectedBatch, setSelectedBatch] = useState(null);
   const [verificationItems, setVerificationItems] = useState([]);
   const [isMatched, setIsMatched] = useState(true);
   const [deviationSummary, setDeviationSummary] = useState('');
@@ -78,6 +90,16 @@ export default function MaterialInboundVerificationPage() {
   const showAlert = (type, message) => {
     setAlertBanner({ type, message });
     setTimeout(() => setAlertBanner(null), 6000);
+  };
+
+  // Toggle expansion of batches for a plan
+  const toggleExpandPlan = (planId) => {
+    setExpandedPlanIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(planId)) next.delete(planId);
+      else next.add(planId);
+      return next;
+    });
   };
 
   // Load initial options
@@ -124,23 +146,44 @@ export default function MaterialInboundVerificationPage() {
     fetchData();
   }, [activeTab, statusFilter]);
 
-  // Open Verify Modal
-  const openVerifyModal = (plan) => {
+  // Open Verify Modal for a plan or a specific batch of that plan
+  const openVerifyModal = (plan, batch = null) => {
+    let targetBatch = batch;
+    if (!targetBatch && Array.isArray(plan.batches) && plan.batches.length > 0) {
+      if (plan.batches.length === 1) {
+        targetBatch = plan.batches[0];
+      } else {
+        targetBatch = plan.batches.find((b) => b.status === 'SCHEDULED' || b.status === 'IN_INSPECTION') || plan.batches[0];
+      }
+    }
+
     setSelectedPlan(plan);
-    setSupplierDeliveryCode('');
-    setIsMatched(plan.technicianVerification?.isMatchedWithPlan ?? true);
-    setDeviationSummary(plan.technicianVerification?.deviationSummary || '');
+    setSelectedBatch(targetBatch);
+
+    const verificationSource = targetBatch?.technicianVerification || plan.technicianVerification;
+    setSupplierDeliveryCode(targetBatch?.deliveryNote || plan.deliveryNote || '');
+    setIsMatched(verificationSource?.isMatchedWithPlan ?? true);
+    setDeviationSummary(verificationSource?.deviationSummary || '');
     setCreateInboundRequest(true);
 
-    // Populate verification items for this batch
-    const items = (plan.expectedItems || []).map((item) => ({
-      rawMaterialId: item.rawMaterialId?._id || item.rawMaterialId,
-      material: item.rawMaterialId,
-      plannedQty: Number(item.plannedQty) || 0,
-      actualVerifiedPassedQty: Number(item.actualVerifiedPassedQty) > 0 ? Number(item.actualVerifiedPassedQty) : (Number(item.plannedQty) || 0),
-      actualDefectiveOrShortQty: Number(item.actualDefectiveOrShortQty) || 0,
-      defectReason: '',
-    }));
+    // Populate verification items for this batch or root plan
+    const rawItems = targetBatch?.expectedItems && targetBatch.expectedItems.length > 0
+      ? targetBatch.expectedItems
+      : (plan.expectedItems || []);
+
+    const items = rawItems.map((item) => {
+      const planned = Number(item.plannedQty) || 0;
+      const passed = Number(item.actualVerifiedPassedQty);
+      const defective = Number(item.actualDefectiveOrShortQty) || 0;
+      return {
+        rawMaterialId: item.rawMaterialId?._id || item.rawMaterialId,
+        material: item.rawMaterialId,
+        plannedQty: planned,
+        actualVerifiedPassedQty: passed > 0 ? passed : (item.actualVerifiedPassedQty === 0 && defective > 0 ? 0 : planned),
+        actualDefectiveOrShortQty: defective,
+        defectReason: item.defectReason || '',
+      };
+    });
     setVerificationItems(items);
   };
 
@@ -175,8 +218,8 @@ export default function MaterialInboundVerificationPage() {
     setActionLoading(true);
     try {
       const payload = {
-        batchNumber: selectedPlan.batchNumber,
-        batchId: selectedPlan.batchId,
+        batchNumber: selectedBatch?.batchNumber,
+        batchId: selectedBatch?._id,
         verifiedItems: verificationItems.map((it) => ({
           rawMaterialId: it.rawMaterialId,
           actualVerifiedPassedQty: Number(it.actualVerifiedPassedQty) || 0,
@@ -190,15 +233,27 @@ export default function MaterialInboundVerificationPage() {
       };
 
       const res = await garmentTechnicalService.inbound.verifyPlan(selectedPlan._id, payload);
-      const batchTitleInfo = selectedPlan.isBatch ? ` (Đợt ${selectedPlan.batchNumber}/${selectedPlan.totalBatches})` : '';
+      const batchTitleInfo = selectedBatch
+        ? ` (Đợt ${selectedBatch.batchNumber}/${selectedPlan.totalBatches || selectedPlan.batches?.length || 1})`
+        : '';
+
       showAlert(
         'success',
         isMatched
           ? `Đã nghiệm thu KCS thành công${batchTitleInfo} và gửi Phiếu yêu cầu nhập kho (${res?.data?.ticket?.ticketCode || 'PNNL'}) tới Quản lý kho!`
           : `Đã ghi nhận sai lệch KCS cho kế hoạch ${selectedPlan.planCode}${batchTitleInfo} và gửi thông báo Realtime tới bộ phận Kế toán!`
       );
+
       setSelectedPlan(null);
-      fetchData();
+      setSelectedBatch(null);
+
+      // Refresh list
+      await fetchData();
+
+      // If Detail Modal is open, update its state with the fresh plan
+      if (selectedPlanForDetail && res?.data?.plan) {
+        setSelectedPlanForDetail(res.data.plan);
+      }
     } catch (err) {
       showAlert('error', err.message || 'Lỗi khi gửi nghiệm thu KCS');
     } finally {
@@ -243,6 +298,69 @@ export default function MaterialInboundVerificationPage() {
       showAlert('error', err.message || 'Lỗi khi tạo yêu cầu nhập kho');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // Status badge renderers
+  const renderPlanStatusBadge = (plan) => {
+    if (plan.status === 'SCHEDULED') {
+      return (
+        <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#FEF3C7', color: '#92400E', fontSize: '0.78rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <Clock size={13} /> Chờ KCS nghiệm thu
+        </span>
+      );
+    }
+    if (plan.status === 'IN_INSPECTION') {
+      return (
+        <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#DBEAFE', color: '#1E40AF', fontSize: '0.78rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <RefreshCw size={13} /> Đang nghiệm thu ({plan.completedBatchesCount || 0}/{plan.totalBatches || 1} đợt)
+        </span>
+      );
+    }
+    if (plan.status === 'VERIFIED_MATCHED') {
+      return (
+        <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#D1FAE5', color: '#065F46', fontSize: '0.78rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <CheckCircle2 size={13} /> Đã nghiệm thu khớp
+        </span>
+      );
+    }
+    if (plan.status === 'DEVIATION_REPORTED') {
+      return (
+        <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', fontSize: '0.78rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <AlertTriangle size={13} /> Có sai lệch KCS
+        </span>
+      );
+    }
+    return <span style={{ fontSize: '0.78rem' }}>{plan.status}</span>;
+  };
+
+  const renderBatchStatusBadge = (status) => {
+    switch (status) {
+      case 'VERIFIED_MATCHED':
+        return (
+          <span style={{ padding: '0.2rem 0.55rem', borderRadius: '4px', background: '#D1FAE5', color: '#065F46', fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+            <CheckCircle2 size={12} /> Đã nghiệm thu khớp
+          </span>
+        );
+      case 'DEVIATION_REPORTED':
+        return (
+          <span style={{ padding: '0.2rem 0.55rem', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+            <AlertTriangle size={12} /> Có sai lệch KCS
+          </span>
+        );
+      case 'IN_INSPECTION':
+        return (
+          <span style={{ padding: '0.2rem 0.55rem', borderRadius: '4px', background: '#DBEAFE', color: '#1E40AF', fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+            <RefreshCw size={12} /> Đang kiểm định
+          </span>
+        );
+      case 'SCHEDULED':
+      default:
+        return (
+          <span style={{ padding: '0.2rem 0.55rem', borderRadius: '4px', background: '#FEF3C7', color: '#92400E', fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+            <Clock size={12} /> Chờ KCS nghiệm thu
+          </span>
+        );
     }
   };
 
@@ -297,8 +415,8 @@ export default function MaterialInboundVerificationPage() {
           <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--ara-noir)', margin: 0 }}>
             Kế Hoạch & Nghiệm Thu Nhập Nguyên Phụ Liệu
           </h1>
-          <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.92rem', margin: '0.35rem 0 0', maxWidth: '820px' }}>
-            Tiếp nhận kế hoạch giao hàng từ Kế toán, kiểm định KCS thực tế tại cửa kho, đối chiếu sai lệch và lập phiếu yêu cầu nhập kho gửi Quản lý kho duyệt.
+          <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.92rem', margin: '0.35rem 0 0', maxWidth: '850px' }}>
+            Tiếp nhận kế hoạch giao hàng từ Kế toán, kiểm định KCS thực tế tại cửa kho theo từng đợt nhập, đối chiếu sai lệch và lập phiếu yêu cầu nhập kho gửi Quản lý kho duyệt.
           </p>
         </div>
 
@@ -351,6 +469,18 @@ export default function MaterialInboundVerificationPage() {
           </div>
           <div style={{ fontSize: '0.75rem', color: '#92400E', marginTop: '0.2rem' }}>
             Cần kiểm tra hàng thực tế
+          </div>
+        </div>
+
+        <div style={{ background: '#FFFFFF', padding: '1.1rem', borderRadius: 'var(--radius-md)', border: '1px solid #93C5FD', boxShadow: 'var(--ara-shadow-sm)' }}>
+          <div style={{ fontSize: '0.8rem', color: '#1D4ED8', textTransform: 'uppercase', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <Layers size={14} /> Đang kiểm tra theo đợt
+          </div>
+          <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#1D4ED8', marginTop: '0.2rem' }}>
+            {stats.totalInspection}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#1E40AF', marginTop: '0.2rem' }}>
+            Đang nghiệm thu dở dang
           </div>
         </div>
 
@@ -445,7 +575,7 @@ export default function MaterialInboundVerificationPage() {
           <input
             type="text"
             className="input-search"
-            placeholder={activeTab === 'PLANS' ? "Tìm theo mã kế hoạch, ghi chú..." : "Tìm mã phiếu, vận đơn..."}
+            placeholder={activeTab === 'PLANS' ? "Tìm theo mã kế hoạch, ghi chú, đợt..." : "Tìm mã phiếu, vận đơn..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && fetchData()}
@@ -470,7 +600,8 @@ export default function MaterialInboundVerificationPage() {
             <option value="ALL">Tất cả trạng thái</option>
             {activeTab === 'PLANS' ? (
               <>
-                <option value="SCHEDULED">Chờ nghiệm thu (SCHEDULED)</option>
+                <option value="SCHEDULED">Chờ KCS nghiệm thu (SCHEDULED)</option>
+                <option value="IN_INSPECTION">Đang nghiệm thu theo đợt (IN_INSPECTION)</option>
                 <option value="VERIFIED_MATCHED">Đã nghiệm thu khớp (VERIFIED_MATCHED)</option>
                 <option value="DEVIATION_REPORTED">Báo cáo có sai lệch (DEVIATION_REPORTED)</option>
               </>
@@ -493,7 +624,7 @@ export default function MaterialInboundVerificationPage() {
             <table className="table-ara" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
               <thead>
                 <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)', color: 'var(--ara-text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <th style={{ padding: '0.9rem 1.1rem' }}>Mã Kế Hoạch</th>
+                  <th style={{ padding: '0.9rem 1.1rem' }}>Mã Kế Hoạch & Đợt Nhập</th>
                   <th style={{ padding: '0.9rem 1.1rem' }}>Nhà Cung Cấp</th>
                   <th style={{ padding: '0.9rem 1.1rem' }}>Hợp Đồng</th>
                   <th style={{ padding: '0.9rem 1.1rem' }}>Ngày Hẹn Giao</th>
@@ -520,95 +651,300 @@ export default function MaterialInboundVerificationPage() {
                   </tr>
                 ) : (
                   plans.map((plan) => {
+                    const isExpanded = expandedPlanIds.has(plan._id);
                     const isPending = plan.status === 'SCHEDULED' || plan.status === 'IN_INSPECTION';
-                    const isMatchedPlan = plan.status === 'VERIFIED_MATCHED';
-                    const isDeviation = plan.status === 'DEVIATION_REPORTED';
 
                     return (
-                      <tr key={plan._id} style={{ borderBottom: '1px solid var(--ara-border-subtle)', transition: 'background 0.2s' }}>
-                        <td style={{ padding: '1rem 1.1rem', fontWeight: 700, color: 'var(--ara-noir)' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-                            <span style={{ fontFamily: 'monospace', fontSize: '0.95rem' }}>{plan.planCode}</span>
-                            {plan.isBatch && (
-                              <span style={{
-                                fontSize: '0.74rem',
-                                background: 'rgba(159, 131, 101, 0.15)',
-                                color: 'var(--ara-gold)',
-                                padding: '0.15rem 0.5rem',
-                                borderRadius: '4px',
-                                fontWeight: 700,
-                                border: '1px solid rgba(159, 131, 101, 0.3)',
-                                whiteSpace: 'nowrap',
-                              }}>
-                                Đợt {plan.batchNumber}/{plan.totalBatches} ({plan.batchPercentage}%)
-                              </span>
+                      <React.Fragment key={plan._id}>
+                        <tr style={{
+                          borderBottom: isExpanded ? 'none' : '1px solid var(--ara-border-subtle)',
+                          background: isExpanded ? 'rgba(159, 131, 101, 0.04)' : undefined,
+                          transition: 'background 0.2s',
+                        }}>
+                          {/* Col 1: Plan Code + Batch Tag */}
+                          <td style={{ padding: '1rem 1.1rem', fontWeight: 700, color: 'var(--ara-noir)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPlanForDetail(plan)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.95rem',
+                                  color: 'var(--ara-gold)',
+                                  textDecoration: 'underline',
+                                  fontWeight: 700,
+                                }}
+                                title="Nhấn để xem chi tiết kế hoạch & các đợt"
+                              >
+                                {plan.planCode}
+                              </button>
+
+                              {plan.hasMultipleBatches ? (
+                                <span style={{
+                                  fontSize: '0.74rem',
+                                  background: 'rgba(159, 131, 101, 0.15)',
+                                  color: 'var(--ara-gold)',
+                                  padding: '0.15rem 0.5rem',
+                                  borderRadius: '4px',
+                                  fontWeight: 700,
+                                  border: '1px solid rgba(159, 131, 101, 0.3)',
+                                  whiteSpace: 'nowrap',
+                                }}>
+                                  Gồm {plan.totalBatches} đợt ({plan.completedBatchesCount}/{plan.totalBatches} đợt xong)
+                                </span>
+                              ) : (
+                                <span style={{
+                                  fontSize: '0.72rem',
+                                  background: '#F3F4F6',
+                                  color: '#6B7280',
+                                  padding: '0.15rem 0.45rem',
+                                  borderRadius: '4px',
+                                  fontWeight: 600,
+                                  whiteSpace: 'nowrap',
+                                }}>
+                                  1 đợt giao
+                                </span>
+                              )}
+                            </div>
+
+                            {plan.deliveryNote && (
+                              <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', fontWeight: 400, marginTop: '4px', maxWidth: '320px' }}>
+                                {plan.deliveryNote}
+                              </div>
                             )}
-                          </div>
-                          {plan.batchTitle && plan.isBatch && (
-                            <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', fontWeight: 500, marginTop: '2px' }}>
-                              {plan.batchTitle}
+                          </td>
+
+                          {/* Col 2: Supplier */}
+                          <td style={{ padding: '1rem 1.1rem' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--ara-noir)' }}>
+                              {plan.supplierId?.supplierName || 'NCC không xác định'}
                             </div>
-                          )}
-                          {plan.deliveryNote && (
-                            <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', fontWeight: 400, marginTop: '2px' }}>
-                              {plan.deliveryNote}
+                            <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)' }}>
+                              {plan.supplierId?.supplierCode} {plan.supplierId?.phone ? `· ${plan.supplierId.phone}` : ''}
                             </div>
-                          )}
-                        </td>
-                        <td style={{ padding: '1rem 1.1rem' }}>
-                          <div style={{ fontWeight: 600, color: 'var(--ara-noir)' }}>
-                            {plan.supplierId?.supplierName || 'NCC không xác định'}
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)' }}>
-                            {plan.supplierId?.supplierCode} {plan.supplierId?.phone ? `· ${plan.supplierId.phone}` : ''}
-                          </div>
-                        </td>
-                        <td style={{ padding: '1rem 1.1rem' }}>
-                          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--ara-gold)' }}>
-                            {plan.contractId?.contractCode || '—'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '1rem 1.1rem' }}>
-                          {plan.scheduledDeliveryDate ? (
-                            <span>{new Date(plan.scheduledDeliveryDate).toLocaleDateString('vi-VN')}</span>
-                          ) : (
-                            <span style={{ color: 'var(--ara-text-light)' }}>Chưa hẹn</span>
-                          )}
-                        </td>
-                        <td style={{ padding: '1rem 1.1rem' }}>
-                          <span style={{ fontWeight: 600 }}>{plan.expectedItems?.length || 0}</span> mục
-                        </td>
-                        <td style={{ padding: '1rem 1.1rem', fontSize: '0.85rem' }}>
-                          {plan.createdByAccountantId?.fullName || plan.createdByAccountantId?.username || 'Kế toán'}
-                        </td>
-                        <td style={{ padding: '1rem 1.1rem' }}>
-                          {isPending && (
-                            <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#FEF3C7', color: '#92400E', fontSize: '0.78rem', fontWeight: 700 }}>
-                              Chờ KCS nghiệm thu
+                          </td>
+
+                          {/* Col 3: Contract */}
+                          <td style={{ padding: '1rem 1.1rem' }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--ara-gold)' }}>
+                              {plan.contractId?.contractCode || '—'}
                             </span>
-                          )}
-                          {isMatchedPlan && (
-                            <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#D1FAE5', color: '#065F46', fontSize: '0.78rem', fontWeight: 700 }}>
-                              Đã khớp KCS
-                            </span>
-                          )}
-                          {isDeviation && (
-                            <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', fontSize: '0.78rem', fontWeight: 700 }}>
-                              Có sai lệch KCS
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ padding: '1rem 1.1rem', textAlign: 'right' }}>
-                          <button
-                            type="button"
-                            className={isPending ? "btn-ara-primary" : "btn-ara-secondary"}
-                            onClick={() => openVerifyModal(plan)}
-                            style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem' }}
-                          >
-                            {isPending ? 'Nghiệm thu KCS & Gửi QL Kho' : 'Xem & Cập nhật KCS'}
-                          </button>
-                        </td>
-                      </tr>
+                          </td>
+
+                          {/* Col 4: Scheduled Delivery Date */}
+                          <td style={{ padding: '1rem 1.1rem' }}>
+                            {plan.scheduledDeliveryDate ? (
+                              <span>{new Date(plan.scheduledDeliveryDate).toLocaleDateString('vi-VN')}</span>
+                            ) : (
+                              <span style={{ color: 'var(--ara-text-light)' }}>Chưa hẹn</span>
+                            )}
+                            {plan.hasMultipleBatches && (
+                              <div style={{ fontSize: '0.73rem', color: 'var(--ara-text-muted)', marginTop: '2px' }}>
+                                (Theo lịch từng đợt)
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Col 5: Materials */}
+                          <td style={{ padding: '1rem 1.1rem' }}>
+                            <span style={{ fontWeight: 600 }}>{plan.expectedItems?.length || 0}</span> loại vật tư
+                          </td>
+
+                          {/* Col 6: Created By */}
+                          <td style={{ padding: '1rem 1.1rem', fontSize: '0.85rem' }}>
+                            {plan.createdByAccountantId?.fullName || plan.createdByAccountantId?.username || 'Kế toán'}
+                          </td>
+
+                          {/* Col 7: Status */}
+                          <td style={{ padding: '1rem 1.1rem' }}>
+                            {renderPlanStatusBadge(plan)}
+                          </td>
+
+                          {/* Col 8: Actions */}
+                          <td style={{ padding: '1rem 1.1rem', textAlign: 'right' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                              {plan.hasMultipleBatches ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn-ara-secondary"
+                                    onClick={() => toggleExpandPlan(plan._id)}
+                                    style={{
+                                      fontSize: '0.8rem',
+                                      padding: '0.4rem 0.65rem',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.35rem',
+                                      background: isExpanded ? 'rgba(159, 131, 101, 0.12)' : undefined,
+                                      borderColor: isExpanded ? 'var(--ara-gold)' : undefined,
+                                      color: isExpanded ? 'var(--ara-gold)' : undefined,
+                                      fontWeight: 600,
+                                    }}
+                                    title={isExpanded ? "Thu gọn các đợt" : "Mở rộng danh sách các đợt nhập"}
+                                  >
+                                    {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                                    {isExpanded ? 'Thu gọn đợt' : `Xem ${plan.totalBatches} đợt`}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-ara-secondary"
+                                    onClick={() => setSelectedPlanForDetail(plan)}
+                                    style={{ fontSize: '0.8rem', padding: '0.4rem 0.6rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                                    title="Xem chi tiết toàn bộ kế hoạch"
+                                  >
+                                    <Eye size={14} /> Chi tiết
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    className={isPending ? "btn-ara-primary" : "btn-ara-secondary"}
+                                    onClick={() => openVerifyModal(plan, plan.batches?.[0] || null)}
+                                    style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
+                                  >
+                                    {isPending ? 'Nghiệm thu KCS & Gửi QL Kho' : 'Xem & Cập nhật KCS'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-ara-secondary"
+                                    onClick={() => setSelectedPlanForDetail(plan)}
+                                    style={{ fontSize: '0.8rem', padding: '0.4rem 0.6rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                                    title="Xem chi tiết kế hoạch"
+                                  >
+                                    <Eye size={14} />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* EXPANDED SUB-ROW: Batches of Multi-Batch Plan */}
+                        {plan.hasMultipleBatches && isExpanded && (
+                          <tr style={{ background: 'rgba(159, 131, 101, 0.03)', borderBottom: '1px solid var(--ara-border)' }}>
+                            <td colSpan={8} style={{ padding: '0.75rem 1.25rem 1.25rem' }}>
+                              <div style={{
+                                background: '#FFFFFF',
+                                border: '1px solid var(--ara-border)',
+                                borderRadius: 'var(--radius-sm)',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                                overflow: 'hidden',
+                              }}>
+                                <div style={{
+                                  background: 'var(--ara-bg-surface)',
+                                  padding: '0.65rem 1rem',
+                                  borderBottom: '1px solid var(--ara-border)',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                }}>
+                                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--ara-noir)', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                                    <Layers size={15} color="var(--ara-gold)" />
+                                    Các đợt giao hàng & nghiệm thu ({plan.batches?.length || 0} đợt) của kế hoạch {plan.planCode}
+                                  </div>
+                                  <span style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)' }}>
+                                    KCS kiểm định từng đợt hàng thực nhận tại cửa kho
+                                  </span>
+                                </div>
+
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', textAlign: 'left' }}>
+                                  <thead>
+                                    <tr style={{ borderBottom: '1px solid var(--ara-border)', color: 'var(--ara-text-muted)', fontSize: '0.76rem', textTransform: 'uppercase', background: '#FAFAFA' }}>
+                                      <th style={{ padding: '0.65rem 0.9rem', width: '90px' }}>Đợt giao</th>
+                                      <th style={{ padding: '0.65rem 0.9rem' }}>Tiêu đề / Tỷ lệ</th>
+                                      <th style={{ padding: '0.65rem 0.9rem' }}>Ngày hẹn giao</th>
+                                      <th style={{ padding: '0.65rem 0.9rem' }}>Vật tư của đợt</th>
+                                      <th style={{ padding: '0.65rem 0.9rem' }}>Trạng thái KCS</th>
+                                      <th style={{ padding: '0.65rem 0.9rem' }}>Kết quả / Ghi chú</th>
+                                      <th style={{ padding: '0.65rem 0.9rem', textAlign: 'right' }}>Thao tác đợt</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {plan.batches && plan.batches.length > 0 ? (
+                                      plan.batches.map((batch, bIdx) => {
+                                        const bPending = batch.status === 'SCHEDULED' || batch.status === 'IN_INSPECTION';
+                                        const bItems = batch.expectedItems || [];
+
+                                        return (
+                                          <tr key={batch._id || bIdx} style={{ borderBottom: '1px solid var(--ara-border-subtle)' }}>
+                                            <td style={{ padding: '0.75rem 0.9rem', fontWeight: 700, color: 'var(--ara-gold)' }}>
+                                              Đợt {batch.batchNumber || (bIdx + 1)}
+                                            </td>
+                                            <td style={{ padding: '0.75rem 0.9rem' }}>
+                                              <div style={{ fontWeight: 600 }}>{batch.batchTitle || `Đợt giao ${batch.batchNumber || (bIdx + 1)}`}</div>
+                                              <span style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)' }}>
+                                                Khối lượng: <strong>{batch.batchPercentage || 0}%</strong>
+                                              </span>
+                                            </td>
+                                            <td style={{ padding: '0.75rem 0.9rem' }}>
+                                              {batch.scheduledDeliveryDate ? (
+                                                new Date(batch.scheduledDeliveryDate).toLocaleDateString('vi-VN')
+                                              ) : (
+                                                <span style={{ color: 'var(--ara-text-light)' }}>Theo kế hoạch</span>
+                                              )}
+                                            </td>
+                                            <td style={{ padding: '0.75rem 0.9rem' }}>
+                                              <div style={{ fontWeight: 600 }}>{bItems.length} loại vật tư</div>
+                                              <div style={{ fontSize: '0.73rem', color: 'var(--ara-text-muted)' }}>
+                                                {bItems.slice(0, 2).map((it) => `${it.rawMaterialId?.materialName || 'Vật tư'}: ${it.plannedQty || 0} ${it.rawMaterialId?.unit || ''}`).join(', ')}
+                                                {bItems.length > 2 ? '...' : ''}
+                                              </div>
+                                            </td>
+                                            <td style={{ padding: '0.75rem 0.9rem' }}>
+                                              {renderBatchStatusBadge(batch.status)}
+                                            </td>
+                                            <td style={{ padding: '0.75rem 0.9rem', fontSize: '0.8rem', color: 'var(--ara-text-muted)', maxWidth: '240px' }}>
+                                              {batch.technicianVerification?.isMatchedWithPlan === false ? (
+                                                <span style={{ color: '#DC2626' }}>
+                                                  Sai lệch: {batch.technicianVerification.deviationSummary || 'Có lỗi/thiếu'}
+                                                </span>
+                                              ) : batch.technicianVerification?.isMatchedWithPlan === true ? (
+                                                <span style={{ color: '#059669' }}>
+                                                  Khớp 100% {batch.technicianVerification.verifiedAt ? `(${new Date(batch.technicianVerification.verifiedAt).toLocaleDateString('vi-VN')})` : ''}
+                                                </span>
+                                              ) : (
+                                                batch.deliveryNote || '—'
+                                              )}
+                                            </td>
+                                            <td style={{ padding: '0.75rem 0.9rem', textAlign: 'right' }}>
+                                              <button
+                                                type="button"
+                                                className={bPending ? "btn-ara-primary" : "btn-ara-secondary"}
+                                                onClick={() => openVerifyModal(plan, batch)}
+                                                style={{
+                                                  fontSize: '0.78rem',
+                                                  padding: '0.35rem 0.7rem',
+                                                  display: 'inline-flex',
+                                                  alignItems: 'center',
+                                                  gap: '0.3rem',
+                                                }}
+                                              >
+                                                <ClipboardCheck size={13} />
+                                                {bPending ? `Nghiệm thu Đợt ${batch.batchNumber}` : `Cập nhật Đợt ${batch.batchNumber}`}
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })
+                                    ) : (
+                                      <tr>
+                                        <td colSpan={7} style={{ textAlign: 'center', padding: '1.25rem', color: 'var(--ara-text-muted)' }}>
+                                          Không có thông tin đợt chi tiết
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })
                 )}
@@ -721,7 +1057,366 @@ export default function MaterialInboundVerificationPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: VERIFY PLAN & SEND INBOUND REQUEST                                */}
+      {/* MODAL 1: VIEW FULL PLAN DETAILS & ALL DELIVERY BATCHES                    */}
+      {/* ========================================================================= */}
+      {selectedPlanForDetail && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9998,
+          padding: '1rem',
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: 'var(--radius-md)',
+            width: '100%',
+            maxWidth: '1020px',
+            maxHeight: '92vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: 'var(--ara-shadow-lg)',
+            overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '1.25rem 1.5rem',
+              borderBottom: '1px solid var(--ara-border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'var(--ara-bg-surface)',
+            }}>
+              <div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--ara-gold)', fontWeight: 700, textTransform: 'uppercase' }}>
+                  Chi Tiết Kế Hoạch Nhập Nguyên Phụ Liệu
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '0.2rem' }}>
+                  <h2 style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--ara-noir)', margin: 0 }}>
+                    {selectedPlanForDetail.planCode}
+                  </h2>
+                  {renderPlanStatusBadge(selectedPlanForDetail)}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedPlanForDetail(null)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ara-text-muted)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
+              {/* Meta Grid */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '1rem',
+                background: 'var(--ara-bg-surface)',
+                padding: '1.1rem',
+                borderRadius: 'var(--radius-sm)',
+                marginBottom: '1.5rem',
+                fontSize: '0.88rem',
+              }}>
+                <div>
+                  <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Nhà cung cấp</span>
+                  <strong style={{ color: 'var(--ara-noir)' }}>{selectedPlanForDetail.supplierId?.supplierName || '—'}</strong>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)' }}>
+                    Mã: {selectedPlanForDetail.supplierId?.supplierCode} {selectedPlanForDetail.supplierId?.phone ? `· SĐT: ${selectedPlanForDetail.supplierId.phone}` : ''}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Hợp đồng kinh tế</span>
+                  <strong style={{ color: 'var(--ara-gold)' }}>{selectedPlanForDetail.contractId?.contractCode || '—'}</strong>
+                  {selectedPlanForDetail.contractId?.title && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)' }}>
+                      {selectedPlanForDetail.contractId.title}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Ngày hẹn giao kế hoạch</span>
+                  <strong>
+                    {selectedPlanForDetail.scheduledDeliveryDate
+                      ? new Date(selectedPlanForDetail.scheduledDeliveryDate).toLocaleDateString('vi-VN')
+                      : 'Chưa có ngày hẹn'}
+                  </strong>
+                </div>
+
+                <div>
+                  <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Phân kỳ đợt giao</span>
+                  <strong style={{ color: 'var(--ara-gold)' }}>
+                    {selectedPlanForDetail.batches?.length || 1} đợt giao hàng
+                  </strong>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)' }}>
+                    Đã nghiệm thu: {selectedPlanForDetail.completedBatchesCount || 0}/{selectedPlanForDetail.batches?.length || 1} đợt
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Kế toán phụ trách</span>
+                  <strong>{selectedPlanForDetail.createdByAccountantId?.fullName || selectedPlanForDetail.createdByAccountantId?.username || 'Kế toán'}</strong>
+                </div>
+
+                <div>
+                  <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Ghi chú giao hàng</span>
+                  <div style={{ fontSize: '0.84rem' }}>{selectedPlanForDetail.deliveryNote || 'Không có ghi chú'}</div>
+                </div>
+              </div>
+
+              {/* SECTION: Delivery Batches (Phân rã theo đợt) */}
+              <div style={{ marginBottom: '1.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, color: 'var(--ara-noir)', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <Layers size={18} color="var(--ara-gold)" />
+                    Danh Sách Các Đợt Giao Hàng & Nghiệm Thu ({selectedPlanForDetail.batches?.length || 1} đợt)
+                  </h3>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)' }}>
+                    KCS kiểm định chi tiết theo từng đợt bên dưới
+                  </span>
+                </div>
+
+                {Array.isArray(selectedPlanForDetail.batches) && selectedPlanForDetail.batches.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {selectedPlanForDetail.batches.map((batch, idx) => {
+                      const bPending = batch.status === 'SCHEDULED' || batch.status === 'IN_INSPECTION';
+                      const bItems = batch.expectedItems || [];
+
+                      return (
+                        <div
+                          key={batch._id || idx}
+                          style={{
+                            border: '1px solid var(--ara-border)',
+                            borderRadius: 'var(--radius-sm)',
+                            overflow: 'hidden',
+                            boxShadow: 'var(--ara-shadow-sm)',
+                          }}
+                        >
+                          {/* Batch Card Header */}
+                          <div style={{
+                            background: '#F9FAFB',
+                            padding: '0.85rem 1.1rem',
+                            borderBottom: '1px solid var(--ara-border)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '0.75rem',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                              <span style={{
+                                background: 'var(--ara-gold)',
+                                color: '#FFFFFF',
+                                fontSize: '0.82rem',
+                                fontWeight: 700,
+                                padding: '0.2rem 0.6rem',
+                                borderRadius: '4px',
+                              }}>
+                                Đợt {batch.batchNumber || (idx + 1)}
+                              </span>
+                              <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--ara-noir)' }}>
+                                {batch.batchTitle || `Đợt giao hàng ${batch.batchNumber || (idx + 1)}`}
+                              </span>
+                              <span style={{ fontSize: '0.82rem', color: 'var(--ara-text-muted)' }}>
+                                ({batch.batchPercentage || 0}% khối lượng)
+                              </span>
+                              {batch.scheduledDeliveryDate && (
+                                <span style={{ fontSize: '0.82rem', color: 'var(--ara-text-muted)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                  <Calendar size={13} /> {new Date(batch.scheduledDeliveryDate).toLocaleDateString('vi-VN')}
+                                </span>
+                              )}
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                              {renderBatchStatusBadge(batch.status)}
+                              <button
+                                type="button"
+                                className={bPending ? "btn-ara-primary" : "btn-ara-secondary"}
+                                onClick={() => openVerifyModal(selectedPlanForDetail, batch)}
+                                style={{
+                                  fontSize: '0.8rem',
+                                  padding: '0.35rem 0.75rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                }}
+                              >
+                                <ClipboardCheck size={14} />
+                                {bPending ? `Nghiệm thu Đợt ${batch.batchNumber}` : `Xem / Cập nhật Đợt ${batch.batchNumber}`}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Batch Items Table */}
+                          <div style={{ padding: '0.75rem 1rem' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem', textAlign: 'left' }}>
+                              <thead>
+                                <tr style={{ color: 'var(--ara-text-muted)', fontSize: '0.76rem', textTransform: 'uppercase', borderBottom: '1px solid var(--ara-border-subtle)' }}>
+                                  <th style={{ padding: '0.5rem 0.6rem' }}>Nguyên phụ liệu</th>
+                                  <th style={{ padding: '0.5rem 0.6rem', width: '100px' }}>Quy cách / Khổ</th>
+                                  <th style={{ padding: '0.5rem 0.6rem', width: '100px' }}>ĐVT</th>
+                                  <th style={{ padding: '0.5rem 0.6rem', width: '110px' }}>Kế hoạch đợt</th>
+                                  <th style={{ padding: '0.5rem 0.6rem', width: '110px' }}>Thực đạt KCS</th>
+                                  <th style={{ padding: '0.5rem 0.6rem', width: '100px' }}>Lỗi / Thiếu</th>
+                                  <th style={{ padding: '0.5rem 0.6rem' }}>Mô tả lỗi</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {bItems.map((item, iIdx) => (
+                                  <tr key={iIdx} style={{ borderBottom: '1px solid var(--ara-border-subtle)' }}>
+                                    <td style={{ padding: '0.6rem 0.6rem' }}>
+                                      <div style={{ fontWeight: 600, color: 'var(--ara-noir)' }}>
+                                        {item.rawMaterialId?.materialName || 'Vật tư'}
+                                      </div>
+                                      <div style={{ fontSize: '0.74rem', color: 'var(--ara-text-muted)' }}>
+                                        Mã: {item.rawMaterialId?.materialCode}
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: '0.6rem 0.6rem', fontSize: '0.8rem', color: 'var(--ara-text-muted)' }}>
+                                      {item.rawMaterialId?.widthCm ? `${item.rawMaterialId.widthCm}cm` : '—'}
+                                      {item.rawMaterialId?.gsm ? ` · ${item.rawMaterialId.gsm}gsm` : ''}
+                                    </td>
+                                    <td style={{ padding: '0.6rem 0.6rem' }}>
+                                      {item.rawMaterialId?.unit || '—'}
+                                    </td>
+                                    <td style={{ padding: '0.6rem 0.6rem', fontWeight: 700 }}>
+                                      {item.plannedQty || 0}
+                                    </td>
+                                    <td style={{ padding: '0.6rem 0.6rem', fontWeight: 700, color: '#047857' }}>
+                                      {item.actualVerifiedPassedQty !== undefined ? item.actualVerifiedPassedQty : '—'}
+                                    </td>
+                                    <td style={{ padding: '0.6rem 0.6rem', fontWeight: 700, color: Number(item.actualDefectiveOrShortQty) > 0 ? '#B91C1C' : '#6B7280' }}>
+                                      {item.actualDefectiveOrShortQty !== undefined ? item.actualDefectiveOrShortQty : '—'}
+                                    </td>
+                                    <td style={{ padding: '0.6rem 0.6rem', fontSize: '0.8rem', color: 'var(--ara-text-muted)' }}>
+                                      {item.defectReason || '—'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+
+                            {/* Batch verification note if verified */}
+                            {batch.technicianVerification && (
+                              <div style={{
+                                marginTop: '0.6rem',
+                                padding: '0.6rem 0.8rem',
+                                background: batch.technicianVerification.isMatchedWithPlan ? '#F1F8F5' : '#FEF2F2',
+                                borderRadius: '4px',
+                                border: `1px solid ${batch.technicianVerification.isMatchedWithPlan ? '#A7F3D0' : '#FECACA'}`,
+                                fontSize: '0.8rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                flexWrap: 'wrap',
+                              }}>
+                                <strong>Biên bản KCS:</strong>
+                                <span>
+                                  {batch.technicianVerification.isMatchedWithPlan
+                                    ? 'Khớp 100% với kế hoạch nhập'
+                                    : `Có sai lệch: ${batch.technicianVerification.deviationSummary || 'Báo cáo sai lệch'}`}
+                                </span>
+                                {batch.technicianVerification.verifiedAt && (
+                                  <span style={{ color: 'var(--ara-text-muted)', marginLeft: 'auto' }}>
+                                    Nghiệm thu: {new Date(batch.technicianVerification.verifiedAt).toLocaleString('vi-VN')}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* Single batch fallback card */
+                  <div style={{
+                    border: '1px solid var(--ara-border)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '1rem',
+                    background: '#FAFAFA',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <div style={{ fontWeight: 700 }}>Giao hàng 1 đợt (Toàn bộ kế hoạch)</div>
+                      <button
+                        type="button"
+                        className="btn-ara-primary"
+                        onClick={() => openVerifyModal(selectedPlanForDetail, null)}
+                        style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                      >
+                        Nghiệm thu KCS & Gửi QL Kho
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION: Root Plan Aggregated Items */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 0.6rem', color: 'var(--ara-noir)' }}>
+                  Tổng Hợp Vật Tư Toàn Bộ Kế Hoạch ({selectedPlanForDetail.expectedItems?.length || 0} loại)
+                </h3>
+                <div style={{ border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)', color: 'var(--ara-text-muted)', fontSize: '0.76rem', textTransform: 'uppercase' }}>
+                        <th style={{ padding: '0.65rem 0.8rem' }}>Nguyên phụ liệu</th>
+                        <th style={{ padding: '0.65rem 0.8rem' }}>ĐVT</th>
+                        <th style={{ padding: '0.65rem 0.8rem' }}>Tổng SL Kế Hoạch</th>
+                        <th style={{ padding: '0.65rem 0.8rem' }}>Tổng Thực Đạt KCS</th>
+                        <th style={{ padding: '0.65rem 0.8rem' }}>Tổng Lỗi / Thiếu</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(selectedPlanForDetail.expectedItems || []).map((item, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid var(--ara-border-subtle)' }}>
+                          <td style={{ padding: '0.65rem 0.8rem' }}>
+                            <div style={{ fontWeight: 600 }}>{item.rawMaterialId?.materialName || 'Vật tư'}</div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--ara-text-muted)' }}>Mã: {item.rawMaterialId?.materialCode}</div>
+                          </td>
+                          <td style={{ padding: '0.65rem 0.8rem' }}>{item.rawMaterialId?.unit || '—'}</td>
+                          <td style={{ padding: '0.65rem 0.8rem', fontWeight: 700 }}>{item.plannedQty || 0}</td>
+                          <td style={{ padding: '0.65rem 0.8rem', fontWeight: 700, color: '#047857' }}>{item.actualVerifiedPassedQty || 0}</td>
+                          <td style={{ padding: '0.65rem 0.8rem', fontWeight: 700, color: Number(item.actualDefectiveOrShortQty) > 0 ? '#B91C1C' : '#6B7280' }}>
+                            {item.actualDefectiveOrShortQty || 0}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '1rem 1.5rem',
+              borderTop: '1px solid var(--ara-border)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              background: 'var(--ara-bg-surface)',
+            }}>
+              <button
+                type="button"
+                className="btn-ara-secondary"
+                onClick={() => setSelectedPlanForDetail(null)}
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 2: VERIFY PLAN / BATCH & SEND INBOUND REQUEST                      */}
       {/* ========================================================================= */}
       {selectedPlan && (
         <div style={{
@@ -756,20 +1451,23 @@ export default function MaterialInboundVerificationPage() {
             }}>
               <div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--ara-gold)', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Nghiệp vụ KCS Kiểm Định Thực Tế
+                  Nghiệp vụ KCS Kiểm Định Thực Tế Tại Cửa Kho
                 </div>
                 <h2 style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--ara-noir)', margin: '0.2rem 0 0' }}>
-                  Nghiệm Thu Kế Hoạch: {selectedPlan.planCode}
-                  {selectedPlan.isBatch && (
+                  Nghiệm Thu: {selectedPlan.planCode}
+                  {selectedBatch && (
                     <span style={{ marginLeft: '0.6rem', fontSize: '1rem', color: 'var(--ara-gold)', fontWeight: 600 }}>
-                      (Đợt {selectedPlan.batchNumber}/{selectedPlan.totalBatches} · {selectedPlan.batchPercentage}%)
+                      (Đợt {selectedBatch.batchNumber}/{selectedPlan.totalBatches || selectedPlan.batches?.length || 1} · {selectedBatch.batchPercentage}% {selectedBatch.batchTitle ? `· ${selectedBatch.batchTitle}` : ''})
                     </span>
                   )}
                 </h2>
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedPlan(null)}
+                onClick={() => {
+                  setSelectedPlan(null);
+                  setSelectedBatch(null);
+                }}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ara-text-muted)' }}
               >
                 <X size={20} />
@@ -799,14 +1497,20 @@ export default function MaterialInboundVerificationPage() {
                 </div>
                 <div>
                   <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>
-                    {selectedPlan.isBatch ? `Ngày hẹn giao (Đợt ${selectedPlan.batchNumber})` : 'Ngày hẹn giao'}
+                    {selectedBatch ? `Ngày hẹn giao (Đợt ${selectedBatch.batchNumber})` : 'Ngày hẹn giao'}
                   </span>
-                  <strong>{selectedPlan.scheduledDeliveryDate ? new Date(selectedPlan.scheduledDeliveryDate).toLocaleDateString('vi-VN') : '—'}</strong>
+                  <strong>
+                    {(selectedBatch?.scheduledDeliveryDate || selectedPlan.scheduledDeliveryDate)
+                      ? new Date(selectedBatch?.scheduledDeliveryDate || selectedPlan.scheduledDeliveryDate).toLocaleDateString('vi-VN')
+                      : '—'}
+                  </strong>
                 </div>
-                {selectedPlan.isBatch && (
+                {selectedBatch && (
                   <div>
                     <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Tiến độ đợt giao</span>
-                    <strong style={{ color: 'var(--ara-gold)' }}>Đợt {selectedPlan.batchNumber}/{selectedPlan.totalBatches} ({selectedPlan.batchPercentage}%)</strong>
+                    <strong style={{ color: 'var(--ara-gold)' }}>
+                      Đợt {selectedBatch.batchNumber}/{selectedPlan.totalBatches || selectedPlan.batches?.length || 1} ({selectedBatch.batchPercentage}%)
+                    </strong>
                   </div>
                 )}
               </div>
@@ -1008,7 +1712,10 @@ export default function MaterialInboundVerificationPage() {
               <button
                 type="button"
                 className="btn-ara-secondary"
-                onClick={() => setSelectedPlan(null)}
+                onClick={() => {
+                  setSelectedPlan(null);
+                  setSelectedBatch(null);
+                }}
                 disabled={actionLoading}
               >
                 Hủy bỏ
@@ -1044,7 +1751,7 @@ export default function MaterialInboundVerificationPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: CREATE DIRECT MATERIAL INBOUND REQUEST                             */}
+      {/* MODAL 3: CREATE DIRECT MATERIAL INBOUND REQUEST                          */}
       {/* ========================================================================= */}
       {showDirectModal && (
         <div style={{
@@ -1298,4 +2005,3 @@ export default function MaterialInboundVerificationPage() {
     </div>
   );
 }
-
