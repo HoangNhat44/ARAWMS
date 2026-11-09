@@ -57,6 +57,7 @@ export { default as CashFlowVoucher } from './CashFlowVoucher.model.js';
 export { default as CodReconciliationBatch } from './CodReconciliationBatch.model.js';
 export { default as CodReconciliationItem } from './CodReconciliationItem.model.js';
 export { default as CarrierDispute } from './CarrierDispute.model.js';
+export { default as Notification } from './Notification.model.js';
 
 // Packing & Fulfillment (custom models)
 export { default as OrderQrToken } from './OrderQrToken.js';

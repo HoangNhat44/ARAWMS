@@ -3,6 +3,7 @@
  * Description: Routes for Supplier Management, Contract Drafting, and Owner Contract Details.
  */
 import express from 'express';
+import mongoose from 'mongoose';
 import * as contractWorkspaceController from './contractWorkspace.controller.js';
 import {
   validateCreateSupplier,
@@ -64,7 +65,7 @@ router.post(
 router.get(
   '/:id',
   asyncHandler(async (req, res, next) => {
-    if (['suppliers', 'materials-catalog', 'contracts'].includes(req.params.id)) {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id) || ['suppliers', 'materials-catalog', 'contracts'].includes(req.params.id)) {
       return next();
     }
     const data = await contractDetail(req.params.id);
