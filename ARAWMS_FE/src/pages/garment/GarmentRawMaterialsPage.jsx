@@ -1329,9 +1329,35 @@ export default function GarmentRawMaterialsPage() {
               borderTop: '1px solid var(--ara-border)',
               display: 'flex',
               justifyContent: 'flex-end',
+              alignItems: 'center',
               gap: '0.75rem',
               background: 'var(--ara-bg-surface)',
             }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const m = viewingMaterial;
+                  setViewingMaterial(null);
+                  setDeletingMaterial(m);
+                }}
+                style={{
+                  padding: '0.45rem 0.85rem',
+                  borderRadius: 'var(--radius-sm)',
+                  background: '#FEF2F2',
+                  color: '#DC2626',
+                  border: '1px solid #FECACA',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  cursor: 'pointer',
+                  marginRight: 'auto',
+                }}
+                title="Xóa hoặc ngừng sử dụng nguyên phụ liệu này"
+              >
+                <Trash2 size={15} /> Xóa nguyên phụ liệu
+              </button>
               <button
                 type="button"
                 className="btn-ara-secondary"
