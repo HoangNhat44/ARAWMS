@@ -9,6 +9,8 @@ import ContractDeviationPage from '../pages/accountant/ContractDeviationPage';
 import PaymentVoucherPage from '../pages/accountant/PaymentVoucherPage';
 import CodReconciliationPage from '../pages/accountant/CodReconciliationPage';
 import SupplierDebtPage from '../pages/accountant/SupplierDebtPage';
+import ProductInventoryValuationPage from '../pages/accountant/ProductInventoryValuationPage';
+import RawMaterialInventoryValuationPage from '../pages/accountant/RawMaterialInventoryValuationPage';
 
 /**
  * Định tuyến nội bộ riêng cho phân hệ Kế toán (`/accountant/*`)
@@ -33,6 +35,12 @@ const AccountantRoutes = () => {
         {/* Đối soát tự động COD & Cảnh báo cờ đỏ (UC 16 & UC 17) */}
         <Route path="cod-reconciliation" element={<CodReconciliationPage />} />
         <Route path="cod-red-flags" element={<CodReconciliationPage />} />
+        {/* Định giá tồn kho thành phẩm (UC 10 - View Total Inventory Valuation) */}
+        <Route path="inventory-valuation" element={<ProductInventoryValuationPage />} />
+        <Route path="product-valuation" element={<ProductInventoryValuationPage />} />
+        {/* Định giá tồn kho nguyên vật liệu (UC 11 - View Total Raw Material Inventory Value) */}
+        <Route path="raw-material-valuation" element={<RawMaterialInventoryValuationPage />} />
+        <Route path="raw-materials-valuation" element={<RawMaterialInventoryValuationPage />} />
         <Route path="*" element={<AccountantOverviewPage />} />
       </Route>
     </Routes>

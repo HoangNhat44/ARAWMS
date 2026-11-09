@@ -495,6 +495,341 @@ body:has(.ara-accountant-shell) .ara-footer {
   background-color: var(--wms-danger);
 }
 
+/* ==========================================================================
+   Realtime Notification Center Dropdown for Accountant Header
+   ========================================================================== */
+.ara-acc-notif-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.ara-acc-notif-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background-color: #ef4444;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  line-height: 14px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 2px solid var(--wms-bg-surface, #ffffff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  z-index: 2;
+  animation: araBadgePulse 2s infinite;
+}
+
+@keyframes araBadgePulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+.ara-acc-notif-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 420px;
+  max-width: 92vw;
+  background-color: var(--wms-bg-surface, #ffffff);
+  border: 1px solid var(--wms-border-strong, #e2e8f0);
+  border-radius: var(--wms-radius-lg, 12px);
+  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.12), 0 6px 12px -3px rgba(0, 0, 0, 0.08);
+  z-index: 1050;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: araDropdownFadeIn 0.18s ease-out;
+}
+
+@keyframes araDropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ara-acc-notif-header {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--wms-border-subtle, #f1f5f9);
+  background: #f8fafc;
+}
+
+.ara-acc-notif-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ara-acc-notif-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.ara-acc-notif-count-tag {
+  font-size: 11px;
+  font-weight: 600;
+  background-color: #fee2e2;
+  color: #b91c1c;
+  padding: 1px 8px;
+  border-radius: 12px;
+}
+
+.ara-acc-notif-mark-all-btn {
+  background: none;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0284c7;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.ara-acc-notif-mark-all-btn:hover {
+  background-color: #e0f2fe;
+  color: #0369a1;
+}
+
+.ara-acc-notif-list {
+  max-height: 380px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ara-acc-notif-item {
+  padding: 12px 16px;
+  display: flex;
+  gap: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.15s ease;
+  position: relative;
+}
+
+.ara-acc-notif-item:hover {
+  background-color: #f8fafc;
+}
+
+.ara-acc-notif-item.is-unread {
+  background-color: #f0fdf4;
+}
+
+.ara-acc-notif-item.is-deviation {
+  background-color: #fffbeb;
+}
+
+.ara-acc-notif-item.is-deviation.is-unread {
+  background-color: #fef2f2;
+}
+
+.ara-acc-notif-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ara-acc-notif-icon-box.deviation {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+.ara-acc-notif-icon-box.cod {
+  background-color: #fef3c7;
+  color: #d97706;
+}
+
+.ara-acc-notif-icon-box.info {
+  background-color: #e0f2fe;
+  color: #0284c7;
+}
+
+.ara-acc-notif-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ara-acc-notif-item-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 3px;
+  line-height: 1.35;
+}
+
+.ara-acc-notif-item-msg {
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.45;
+  margin-bottom: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ara-acc-notif-item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.ara-acc-notif-action-link {
+  color: #2563eb;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ara-acc-notif-empty {
+  padding: 36px 20px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.ara-acc-notif-footer {
+  padding: 10px 16px;
+  background-color: #f8fafc;
+  border-top: 1px solid #f1f5f9;
+  text-align: center;
+}
+
+.ara-acc-notif-footer-link {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.ara-acc-notif-footer-link:hover {
+  text-decoration: underline;
+}
+
+/* ==========================================================================
+   Realtime Toast Notification Banner
+   ========================================================================== */
+.ara-acc-toast-popup {
+  position: fixed;
+  top: 76px;
+  right: 24px;
+  width: 400px;
+  max-width: 90vw;
+  background: #ffffff;
+  border: 1px solid #fca5a5;
+  border-left: 5px solid #dc2626;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px -5px rgba(220, 38, 38, 0.22), 0 6px 12px -3px rgba(0, 0, 0, 0.08);
+  padding: 14px 16px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: araToastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes araToastSlideIn {
+  from {
+    transform: translateX(110%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.ara-acc-toast-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ara-acc-toast-title-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ara-acc-toast-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #991b1b;
+}
+
+.ara-acc-toast-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.ara-acc-toast-close-btn:hover {
+  color: #334155;
+  background: #f1f5f9;
+}
+
+.ara-acc-toast-msg {
+  font-size: 12.5px;
+  color: #334155;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.ara-acc-toast-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.ara-acc-toast-action-btn {
+  background-color: #dc2626;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.15s ease;
+}
+
+.ara-acc-toast-action-btn:hover {
+  background-color: #b91c1c;
+}
+
 .ara-acc-user-badge {
   display: flex;
   align-items: center;

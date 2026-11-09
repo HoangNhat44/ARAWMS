@@ -10,6 +10,8 @@ import deviationResolutionRoutes from '../modules/supplier-contracts/deviation-r
 import accountsPayableRoutes from '../modules/financial-intelligence/accounts-payable/accountsPayable.routes.js';
 import codReconciliationRoutes from '../modules/financial-intelligence/cod-reconciliation/codReconciliation.routes.js';
 import debtManagementRoutes from '../modules/financial-intelligence/debt-management/debtManagement.routes.js';
+import productValuationRoutes from '../modules/financial-intelligence/product-inventory-valuation/productValuation.routes.js';
+import rawMaterialValuationRoutes from '../modules/financial-intelligence/raw-material-valuation/rawMaterialValuation.routes.js';
 import authRoutes from '../modules/system-administration/authentication/auth.routes.js';
 import accountRoutes from '../modules/system-administration/account-governance/accountGovernance.routes.js';
 import employeeRoutes from '../modules/user-management/employee-management/employeeManagement.routes.js';
@@ -41,6 +43,7 @@ import marketplaceOrderImportRoutes from '../modules/order-fulfillment/marketpla
 // 3. Major Feature: Reverse Logistics
 import returnMerchandiseAuthorizationRoutes from '../modules/reverse-logistics/return-merchandise-authorization/returnMerchandiseAuthorization.routes.js';
 import customerExchangeProcessingRoutes from '../modules/reverse-logistics/customer-exchange-processing/customerExchangeProcessing.routes.js';
+import notificationRoutes from '../modules/notifications/notification.routes.js';
 
 const router = express.Router();
 router.use('/owner/contracts', authenticate, authorizeRole('OWNER'), contractWorkspaceRoutes);
@@ -95,6 +98,12 @@ router.use('/financial/cod-reconciliation', authenticate, authorizeRole('ACCOUNT
 // Debt Management routes (Supplier Debt AP & Carrier Debt AR)
 router.use('/financial/debts', authenticate, authorizeRole('ACCOUNTANT', 'OWNER'), debtManagementRoutes);
 
+// Product Inventory Valuation routes (Accountant UC 10 - View Total Inventory Valuation)
+router.use('/financial/inventory-valuation', productValuationRoutes);
+
+// Raw Material Inventory Valuation routes (Accountant UC 11 - View Total Raw Material Inventory Value)
+router.use('/financial/raw-material-valuation', rawMaterialValuationRoutes);
+
 // ====================================================================
 // MAJOR FEATURE 1: CONVERSATIONAL COMMERCE
 // ====================================================================
@@ -130,5 +139,8 @@ router.use('/returns/return-merchandise-authorization', returnMerchandiseAuthori
 // Sub Feature: Customer Exchange Processing (UC-83)
 router.use('/returns/customer-exchange', customerExchangeProcessingRoutes);
 router.use('/returns/rma', customerExchangeProcessingRoutes); // Alias tiện lợi cho /api/returns/rma/:id/create-exchange-order
+
+// Notifications Realtime & History
+router.use('/notifications', notificationRoutes);
 
 export default router;

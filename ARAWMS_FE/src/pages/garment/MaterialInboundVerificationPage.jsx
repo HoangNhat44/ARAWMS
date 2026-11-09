@@ -192,7 +192,7 @@ export default function MaterialInboundVerificationPage() {
         'success',
         isMatched
           ? `Đã nghiệm thu KCS thành công và gửi Phiếu yêu cầu nhập kho (${res?.data?.ticket?.ticketCode || 'PNNL'}) tới Quản lý kho!`
-          : `Đã ghi nhận báo cáo sai lệch KCS cho kế hoạch ${selectedPlan.planCode}!`
+          : `Đã ghi nhận sai lệch KCS cho kế hoạch ${selectedPlan.planCode} và gửi thông báo Realtime tới bộ phận Kế toán!`
       );
       setSelectedPlan(null);
       fetchData();

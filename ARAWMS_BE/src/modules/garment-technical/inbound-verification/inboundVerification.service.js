@@ -12,6 +12,7 @@ import SupplierContract from '../../../models/SupplierContract.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
+import { createNotification } from '../../notifications/notification.service.js';
 
 /**
  * Returns options for dropdowns (suppliers, materials, contracts, locations)
@@ -184,6 +185,46 @@ export const verifyInboundPlan = async (planId, payload = {}, user) => {
     plan.status = 'VERIFIED_MATCHED';
   } else {
     plan.status = 'DEVIATION_REPORTED';
+
+    // Cập nhật trạng thái hợp đồng thành DEVIATION_FLAGGED nếu có contractId
+    if (plan.contractId) {
+      await SupplierContract.findByIdAndUpdate(plan.contractId, {
+        status: 'DEVIATION_FLAGGED',
+      });
+    }
+
+    // Gửi thông báo Realtime lên Kế toán (UC 06)
+    try {
+      const [contract, supplier] = await Promise.all([
+        plan.contractId ? SupplierContract.findById(plan.contractId).select('contractCode contractTitle').lean() : null,
+        plan.supplierId ? Supplier.findById(plan.supplierId).select('supplierName supplierCode').lean() : null,
+      ]);
+
+      const contractCodeStr = contract?.contractCode || '—';
+      const supplierNameStr = supplier?.supplierName || 'Nhà cung ứng';
+      const techNameStr = user?.fullName || user?.name || user?.username || 'Kỹ thuật may KCS';
+
+      await createNotification({
+        title: `⚠️ Sai lệch giao nhận: ${plan.planCode}`,
+        message: `KCS ${techNameStr} đã báo cáo sai lệch khi nghiệm thu kế hoạch ${plan.planCode} (HĐ: ${contractCodeStr} - ${supplierNameStr}). Lý do: ${deviationSummary.trim()}`,
+        type: 'CONTRACT_DEVIATION',
+        recipientRole: 'ACCOUNTANT',
+        targetUrl: `/accountant/contract-deviations?planCode=${encodeURIComponent(plan.planCode)}&planId=${plan._id}`,
+        metadata: {
+          planId: plan._id,
+          planCode: plan.planCode,
+          contractId: plan.contractId,
+          contractCode: contractCodeStr,
+          supplierId: plan.supplierId,
+          supplierName: supplierNameStr,
+          deviationSummary: deviationSummary.trim(),
+          verifiedByTechId: user?._id,
+          verifiedByTechName: techNameStr,
+        },
+      });
+    } catch (notifErr) {
+      console.error('⚠️ [Notification] Lỗi khi tạo thông báo Kế toán:', notifErr.message);
+    }
   }
 
   await plan.save();

@@ -131,7 +131,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
 
       {
         key: 'inventory-valuation',
-        label: 'Tổng định giá tồn kho',
+        label: 'Giá trị tồn kho sản phẩm',
         path: '/accountant/inventory-valuation',
         icon: Boxes,
         ucCode: 'UC 10',

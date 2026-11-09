@@ -43,6 +43,25 @@ export const initSocket = (httpServer) => {
       socket.join('warehouse_workspace');
     });
 
+    // 1c. Tham gia phòng chung Accountant Workspace để nhận thông báo Kế toán (sai lệch hợp đồng, COD, công nợ...)
+    socket.on('join_accountant_workspace', () => {
+      socket.join('accountant_workspace');
+      socket.join('role:ACCOUNTANT');
+    });
+
+    // 1d. Tham gia phòng chung theo Role & User ID (Dùng chung cho toàn bộ 7 Roles hệ thống)
+    socket.on('join_workspace', ({ role, userId } = {}) => {
+      if (role) {
+        socket.join(`role:${role}`);
+        if (role === 'ACCOUNTANT') socket.join('accountant_workspace');
+        if (role === 'SELLER') socket.join('seller_workspace');
+        if (['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'].includes(role)) socket.join('warehouse_workspace');
+      }
+      if (userId) {
+        socket.join(`user:${userId}`);
+      }
+    });
+
     // 2. Tham gia phòng riêng của cuộc hội thoại để stream tin nhắn
     socket.on('join_conversation', (conversationId) => {
       if (conversationId) {
@@ -134,6 +153,40 @@ export const emitOrderStatusUpdated = (orderData) => {
   io.emit('order_status_updated', orderData);
 };
 
+/**
+ * Phát sự kiện thông báo mới tới bất kỳ Role / User nào trong toàn hệ thống ARAWMS
+ */
+export const emitSystemNotification = (notification) => {
+  if (!io || !notification) return;
+  const raw = notification.toObject ? notification.toObject() : notification;
+
+  // 1. Nếu có đích danh userId
+  if (raw.recipientUserId) {
+    io.to(`user:${raw.recipientUserId}`).emit('new_notification', raw);
+  }
+
+  // 2. Phát cho toàn bộ user thuộc Role
+  if (raw.recipientRole && raw.recipientRole !== 'ALL') {
+    io.to(`role:${raw.recipientRole}`).emit('new_notification', raw);
+    if (raw.recipientRole === 'ACCOUNTANT') {
+      io.to('accountant_workspace').emit('accountant_notification', raw);
+    }
+  }
+
+  // 3. Nếu là thông báo toàn hệ thống (ALL)
+  if (!raw.recipientRole || raw.recipientRole === 'ALL') {
+    io.emit('new_notification', raw);
+    io.emit('system_notification', raw);
+  }
+};
+
+/**
+ * Phát sự kiện thông báo mới tới Kế toán (Backward Compatibility)
+ */
+export const emitAccountantNotification = (notification) => {
+  emitSystemNotification(notification);
+};
+
 export default {
   initSocket,
   getIO,
@@ -143,4 +196,6 @@ export default {
   emitRmaAlert,
   emitMarketplaceOrdersImported,
   emitOrderStatusUpdated,
+  emitAccountantNotification,
+  emitSystemNotification,
 };

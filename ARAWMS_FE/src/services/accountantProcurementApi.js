@@ -242,6 +242,44 @@ export const accountantProcurementApi = {
     const res = await apiClient.post('/financial/debts/carrier/settle-shipping-fee', payload);
     return res.data;
   },
+
+  // UC 10: Xem tổng giá trị định giá tài sản tồn kho thành phẩm (Product Inventory Valuation)
+  getProductValuationSummary: async () => {
+    const res = await apiClient.get('/financial/inventory-valuation/summary');
+    return res.data.data;
+  },
+
+  getProductValuationList: async (params = {}) => {
+    const res = await apiClient.get('/financial/inventory-valuation/products', { params });
+    return {
+      items: res.data.data || [],
+      pagination: res.data.pagination || {},
+    };
+  },
+
+  getProductValuationCategories: async () => {
+    const res = await apiClient.get('/financial/inventory-valuation/categories');
+    return res.data.data || [];
+  },
+
+  // UC 11: Xem tổng giá trị định giá tồn kho nguyên vật liệu (Raw Material Inventory Valuation)
+  getRawMaterialValuationSummary: async () => {
+    const res = await apiClient.get('/financial/raw-material-valuation/summary');
+    return res.data.data;
+  },
+
+  getRawMaterialValuationList: async (params = {}) => {
+    const res = await apiClient.get('/financial/raw-material-valuation/materials', { params });
+    return {
+      items: res.data.data || [],
+      pagination: res.data.pagination || {},
+    };
+  },
+
+  getRawMaterialValuationMetadata: async () => {
+    const res = await apiClient.get('/financial/raw-material-valuation/metadata');
+    return res.data.data || {};
+  },
 };
 
 export default accountantProcurementApi;

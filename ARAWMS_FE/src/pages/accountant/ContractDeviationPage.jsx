@@ -19,7 +19,7 @@ import {
   Check,
   Info,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import accountantProcurementApi from '../../services/accountantProcurementApi';
 
 const ACTION_LABELS = {
@@ -32,13 +32,17 @@ const ACTION_LABELS = {
 };
 
 const ContractDeviationPage = () => {
+  const [searchParams] = useSearchParams();
+  const planCodeParam = searchParams.get('planCode') || '';
+  const planIdParam = searchParams.get('planId') || '';
+
   const [deviations, setDeviations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
   // Filters
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(planCodeParam);
   const [statusFilter, setStatusFilter] = useState('ALL'); // ALL | UNRESOLVED | RESOLVED
   const [sortBy, setSortBy] = useState('NEWEST'); // 'NEWEST' (Mặc định: Mới -> Cũ) | 'OLDEST'
 
@@ -73,6 +77,34 @@ const ContractDeviationPage = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Cập nhật searchTerm nếu query params thay đổi
+  useEffect(() => {
+    if (planCodeParam && searchTerm !== planCodeParam) {
+      setSearchTerm(planCodeParam);
+    }
+  }, [planCodeParam]);
+
+  // Tự động mở modal xử lý hoặc chi tiết khi điều hướng từ thông báo chuông
+  useEffect(() => {
+    if (!loading && (planIdParam || planCodeParam) && deviations.length > 0) {
+      const match = deviations.find(
+        (d) =>
+          (planIdParam && String(d._id) === String(planIdParam)) ||
+          (planCodeParam && d.planCode === planCodeParam)
+      );
+      if (match) {
+        const isResolved =
+          match.deviationResolution?.status === 'RESOLVED' ||
+          match.status === 'DEVIATION_RESOLVED';
+        if (!isResolved) {
+          handleOpenResolveModal(match);
+        } else {
+          setSelectedForViewDetail(match);
+        }
+      }
+    }
+  }, [loading, planIdParam, planCodeParam, deviations]);
 
   // Filtered List
   const filteredDeviations = useMemo(() => {
