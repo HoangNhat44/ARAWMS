@@ -182,6 +182,8 @@ export default function MaterialInboundVerificationPage() {
         actualVerifiedPassedQty: passed > 0 ? passed : (item.actualVerifiedPassedQty === 0 && defective > 0 ? 0 : planned),
         actualDefectiveOrShortQty: defective,
         defectReason: item.defectReason || '',
+        rollCount: item.rollCount || item.selectedRolls?.length || 0,
+        selectedRolls: Array.isArray(item.selectedRolls) ? item.selectedRolls : [],
       };
     });
     setVerificationItems(items);
@@ -1569,6 +1571,28 @@ export default function MaterialInboundVerificationPage() {
                               {item.material?.widthCm ? ` · Khổ: ${item.material.widthCm}cm` : ''}
                               {item.material?.gsm ? ` · GSM: ${item.material.gsm}` : ''}
                             </div>
+                            {item.selectedRolls && item.selectedRolls.length > 0 && (
+                              <div style={{ marginTop: '5px', display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: 600 }}>
+                                  🧵 {item.selectedRolls.length} cuộn giao đợt này:
+                                </span>
+                                {item.selectedRolls.map((r, rIdx) => (
+                                  <span
+                                    key={rIdx}
+                                    style={{
+                                      fontSize: '0.7rem',
+                                      background: '#e0f2fe',
+                                      color: '#0369a1',
+                                      padding: '1px 5px',
+                                      borderRadius: '3px',
+                                      border: '1px solid #bae6fd',
+                                    }}
+                                  >
+                                    {r.rollCode || `C-${rIdx + 1}`}: {r.lengthMeters}m {r.note ? `(${r.note})` : ''}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: '0.8rem 0.9rem', fontWeight: 600 }}>
                             {item.plannedQty}

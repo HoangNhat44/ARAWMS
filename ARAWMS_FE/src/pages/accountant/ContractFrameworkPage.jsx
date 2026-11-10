@@ -29,6 +29,7 @@ import {
   Truck,
   Sparkles,
   PackageCheck,
+  Package,
   AlertTriangle,
 } from 'lucide-react';
 import accountantProcurementApi from '../../services/accountantProcurementApi.js';
@@ -265,10 +266,28 @@ export const buildBatches = (
 
     const expectedItems = (materials || []).map((m, mIdx) => {
       const contractedQty = Number(m.contractedQty || 0);
+      const allRolls = Array.isArray(m.rollDetails) && m.rollDetails.length > 0 ? m.rollDetails : [];
       const existingItem = existing?.expectedItems?.[mIdx];
+      let selectedRolls = Array.isArray(existingItem?.selectedRolls) ? [...existingItem.selectedRolls] : [];
       let plannedQty = existingItem ? Number(existingItem.plannedQty) : 0;
 
-      if (!plannedQty || Number.isNaN(plannedQty)) {
+      if (allRolls.length > 0) {
+        if (selectedRolls.length === 0) {
+          if (n === 1) {
+            selectedRolls = [...allRolls];
+          } else if (n === 2) {
+            const half = Math.ceil(allRolls.length / 2);
+            selectedRolls = bIdx === 0 ? allRolls.slice(0, half) : allRolls.slice(half);
+          } else if (bIdx === n - 1) {
+            const perBatch = Math.max(1, Math.floor(allRolls.length / n));
+            selectedRolls = allRolls.slice(perBatch * (n - 1));
+          } else {
+            const perBatch = Math.max(1, Math.floor(allRolls.length / n));
+            selectedRolls = allRolls.slice(perBatch * bIdx, perBatch * (bIdx + 1));
+          }
+        }
+        plannedQty = selectedRolls.reduce((sum, r) => sum + (Number(r.lengthMeters) || 0), 0);
+      } else if (!plannedQty || Number.isNaN(plannedQty)) {
         if (n === 2) {
           if (bIdx === 0) {
             plannedQty = Math.ceil(contractedQty / 2);
@@ -290,6 +309,9 @@ export const buildBatches = (
         unit: m.unitSnapshot || m.rawMaterialId?.unit || m.unit || 'METER',
         contractedQty,
         plannedQty,
+        allRolls,
+        rollCount: selectedRolls.length || m.rollCount || 0,
+        selectedRolls,
       };
     });
 
@@ -354,34 +376,55 @@ export const MATERIAL_CATEGORY_OPTIONS = [
   { value: 'OTHER', label: 'Khác', type: 'AUXILIARY' },
 ];
 
-const createEmptyMaterialLine = (rawMat = null) => ({
-  rawMaterialId: rawMat?._id || rawMat?.id || '',
-  materialCodeSnapshot: rawMat?.materialCode || '',
-  materialNameSnapshot: rawMat?.materialName || '',
-  category: rawMat?.category || 'FABRIC_ROLL',
-  materialType: rawMat?.materialType || (rawMat?.category === 'FABRIC_ROLL' ? 'FABRIC' : 'AUXILIARY'),
-  unitSnapshot: rawMat?.unit || 'METER',
-  isCustomUnit: false,
-  isNewMaterial: false,
-  composition:
-    rawMat?.materialType === 'AUXILIARY'
-      ? 'Hợp kim không gỉ / Polyester cao cấp'
-      : '100% Combed Cotton Compact',
-  colorSpec: rawMat?.color || 'Trắng Sữa (Pantone 11-0602 TCX)',
-  widthCm: rawMat?.widthCm || 160,
-  gsm: rawMat?.gsm || 210,
-  shrinkageTolerancePct: 2.5,
-  colorFastnessGrade: 'Grade 4.0 (ISO 105-C06)',
-  qtyTolerancePct: 3,
-  moq: 100,
-  leadTimeDays: 7,
-  contractedQty: 500,
-  unitPrice: rawMat?.unitCost || 85000,
-  vatRatePct: 8,
-  packagingSpec:
-    'Cuộn bọc nilon 2 lớp chống ẩm, lõi ống giấy cứng, dán tem Barcode đầu cây vải',
-  technicalNote: 'Không nối đầu cây quá 1 lần, không loang màu biên vải',
-});
+const createEmptyMaterialLine = (rawMat = null) => {
+  const isFabric =
+    !rawMat ||
+    rawMat?.category === 'FABRIC_ROLL' ||
+    rawMat?.materialType === 'FABRIC' ||
+    ['METER', 'MET', 'M'].includes(rawMat?.unit);
+  const defaultRolls = isFabric
+    ? [
+        { rollIndex: 1, rollCode: 'C-01', lengthMeters: 100, note: '' },
+        { rollIndex: 2, rollCode: 'C-02', lengthMeters: 100, note: '' },
+        { rollIndex: 3, rollCode: 'C-03', lengthMeters: 100, note: '' },
+        { rollIndex: 4, rollCode: 'C-04', lengthMeters: 100, note: '' },
+        { rollIndex: 5, rollCode: 'C-05', lengthMeters: 100, note: '' },
+      ]
+    : [];
+  const defaultRollCount = defaultRolls.length;
+  const defaultContractedQty = isFabric ? 500 : 100;
+
+  return {
+    rawMaterialId: rawMat?._id || rawMat?.id || '',
+    materialCodeSnapshot: rawMat?.materialCode || '',
+    materialNameSnapshot: rawMat?.materialName || '',
+    category: rawMat?.category || 'FABRIC_ROLL',
+    materialType: rawMat?.materialType || (rawMat?.category === 'FABRIC_ROLL' ? 'FABRIC' : 'AUXILIARY'),
+    unitSnapshot: rawMat?.unit || (isFabric ? 'METER' : 'CAI'),
+    isCustomUnit: false,
+    isNewMaterial: false,
+    composition:
+      rawMat?.materialType === 'AUXILIARY'
+        ? 'Hợp kim không gỉ / Polyester cao cấp'
+        : '100% Combed Cotton Compact',
+    colorSpec: rawMat?.color || 'Trắng Sữa (Pantone 11-0602 TCX)',
+    widthCm: rawMat?.widthCm || 160,
+    gsm: rawMat?.gsm || 210,
+    shrinkageTolerancePct: 2.5,
+    colorFastnessGrade: 'Grade 4.0 (ISO 105-C06)',
+    qtyTolerancePct: 3,
+    moq: 100,
+    leadTimeDays: 7,
+    rollCount: defaultRollCount,
+    rollDetails: defaultRolls,
+    contractedQty: defaultContractedQty,
+    unitPrice: rawMat?.unitCost || 85000,
+    vatRatePct: 8,
+    packagingSpec:
+      'Cuộn bọc nilon 2 lớp chống ẩm, lõi ống giấy cứng, dán tem Barcode đầu cây vải',
+    technicalNote: 'Không nối đầu cây quá 1 lần, không loang màu biên vải',
+  };
+};
 
 // UC: Soạn thảo khung hợp đồng với nhà cung cấp
 const ContractFrameworkPage = () => {
@@ -975,6 +1018,20 @@ const ContractFrameworkPage = () => {
               foundMat.materialType === 'AUXILIARY'
                 ? 'Phụ liệu tiêu chuẩn xuất khẩu'
                 : '100% Combed Cotton Compact';
+
+            // Nếu là vải cuộn và chưa có danh sách cuộn thì khởi tạo 5 cuộn chuẩn
+            const isFabricType = foundMat.category === 'FABRIC_ROLL' || foundMat.materialType === 'FABRIC' || ['METER', 'MET', 'M'].includes(foundMat.unit);
+            if (isFabricType && (!currentLine.rollDetails || currentLine.rollDetails.length === 0)) {
+              currentLine.rollCount = 5;
+              currentLine.rollDetails = [
+                { rollIndex: 1, rollCode: 'C-01', lengthMeters: 100, note: '' },
+                { rollIndex: 2, rollCode: 'C-02', lengthMeters: 100, note: '' },
+                { rollIndex: 3, rollCode: 'C-03', lengthMeters: 100, note: '' },
+                { rollIndex: 4, rollCode: 'C-04', lengthMeters: 100, note: '' },
+                { rollIndex: 5, rollCode: 'C-05', lengthMeters: 100, note: '' },
+              ];
+              currentLine.contractedQty = 500;
+            }
           }
         }
       }
@@ -989,6 +1046,157 @@ const ContractFrameworkPage = () => {
       // Đồng bộ các đợt giao (batches) trong kế hoạch tiếp nhận
       let nextBatches = prev.inboundBatches;
       if (['contractedQty', 'materialCodeSnapshot', 'materialNameSnapshot', 'unitSnapshot', 'rawMaterialId'].includes(field)) {
+        nextBatches = buildBatches(
+          prev.inboundBatchesCount || (prev.inboundBatches?.length || 2),
+          updated,
+          prev.effectiveFrom,
+          prev.effectiveTo,
+          prev.inboundBatches
+        );
+      }
+
+      return {
+        ...prev,
+        contractedMaterials: updated,
+        inboundBatches: nextBatches,
+      };
+    });
+  };
+
+  // Tạo danh sách cuộn vải nhanh theo số lượng cuộn và số mét chuẩn mỗi cuộn
+  const handleQuickSetupRolls = (matIndex, countInput, metersInput) => {
+    const count = Math.max(1, Math.min(200, Number(countInput) || 1));
+    const meters = Math.max(1, Number(metersInput) || 100);
+
+    setContractForm((prev) => {
+      const updated = [...prev.contractedMaterials];
+      const line = { ...updated[matIndex] };
+
+      const newRolls = [];
+      for (let i = 1; i <= count; i++) {
+        newRolls.push({
+          rollIndex: i,
+          rollCode: `C-${String(i).padStart(2, '0')}`,
+          lengthMeters: meters,
+          note: '',
+        });
+      }
+
+      line.rollCount = count;
+      line.rollDetails = newRolls;
+      line.contractedQty = count * meters;
+      updated[matIndex] = line;
+
+      const nextBatches = buildBatches(
+        prev.inboundBatchesCount || (prev.inboundBatches?.length || 2),
+        updated,
+        prev.effectiveFrom,
+        prev.effectiveTo,
+        prev.inboundBatches
+      );
+
+      return {
+        ...prev,
+        contractedMaterials: updated,
+        inboundBatches: nextBatches,
+      };
+    });
+  };
+
+  // Thêm 1 cuộn vải mới vào danh sách của dòng nguyên phụ liệu
+  const handleAddRoll = (matIndex) => {
+    setContractForm((prev) => {
+      const updated = [...prev.contractedMaterials];
+      const line = { ...updated[matIndex] };
+      const currentRolls = Array.isArray(line.rollDetails) ? [...line.rollDetails] : [];
+      const nextIdx = currentRolls.length + 1;
+      const lastMeter = currentRolls.length > 0 ? (currentRolls[currentRolls.length - 1].lengthMeters || 100) : 100;
+
+      currentRolls.push({
+        rollIndex: nextIdx,
+        rollCode: `C-${String(nextIdx).padStart(2, '0')}`,
+        lengthMeters: lastMeter,
+        note: '',
+      });
+
+      line.rollCount = currentRolls.length;
+      line.rollDetails = currentRolls;
+      line.contractedQty = currentRolls.reduce((sum, r) => sum + (Number(r.lengthMeters) || 0), 0);
+      updated[matIndex] = line;
+
+      const nextBatches = buildBatches(
+        prev.inboundBatchesCount || (prev.inboundBatches?.length || 2),
+        updated,
+        prev.effectiveFrom,
+        prev.effectiveTo,
+        prev.inboundBatches
+      );
+
+      return {
+        ...prev,
+        contractedMaterials: updated,
+        inboundBatches: nextBatches,
+      };
+    });
+  };
+
+  // Xóa 1 cuộn vải khỏi danh sách
+  const handleRemoveRoll = (matIndex, rollIndexToRemove) => {
+    setContractForm((prev) => {
+      const updated = [...prev.contractedMaterials];
+      const line = { ...updated[matIndex] };
+      const currentRolls = (line.rollDetails || []).filter((_, idx) => idx !== rollIndexToRemove);
+
+      const reindexedRolls = currentRolls.map((r, idx) => ({
+        ...r,
+        rollIndex: idx + 1,
+        rollCode: r.rollCode && r.rollCode.startsWith('C-') ? `C-${String(idx + 1).padStart(2, '0')}` : (r.rollCode || `C-${String(idx + 1).padStart(2, '0')}`),
+      }));
+
+      line.rollCount = reindexedRolls.length;
+      line.rollDetails = reindexedRolls;
+      line.contractedQty = reindexedRolls.reduce((sum, r) => sum + (Number(r.lengthMeters) || 0), 0);
+      updated[matIndex] = line;
+
+      const nextBatches = buildBatches(
+        prev.inboundBatchesCount || (prev.inboundBatches?.length || 2),
+        updated,
+        prev.effectiveFrom,
+        prev.effectiveTo,
+        prev.inboundBatches
+      );
+
+      return {
+        ...prev,
+        contractedMaterials: updated,
+        inboundBatches: nextBatches,
+      };
+    });
+  };
+
+  // Cập nhật thuộc tính của 1 cuộn vải (chiều dài mét, mã cuộn, ghi chú)
+  const handleRollDetailChange = (matIndex, rollIdx, rollField, val) => {
+    setContractForm((prev) => {
+      const updated = [...prev.contractedMaterials];
+      const line = { ...updated[matIndex] };
+      const currentRolls = Array.isArray(line.rollDetails) ? [...line.rollDetails] : [];
+
+      if (!currentRolls[rollIdx]) return prev;
+
+      currentRolls[rollIdx] = {
+        ...currentRolls[rollIdx],
+        [rollField]: rollField === 'lengthMeters' ? (val === '' ? '' : Math.max(0, Number(val))) : val,
+      };
+
+      line.rollDetails = currentRolls;
+      if (rollField === 'lengthMeters') {
+        const sumMeters = currentRolls.reduce((sum, r) => sum + (Number(r.lengthMeters) || 0), 0);
+        line.contractedQty = sumMeters;
+      }
+      updated[matIndex] = line;
+
+      let nextBatches = prev.inboundBatches;
+      if (rollField === 'lengthMeters') {
         nextBatches = buildBatches(
           prev.inboundBatchesCount || (prev.inboundBatches?.length || 2),
           updated,
@@ -1148,6 +1356,99 @@ const ContractFrameworkPage = () => {
         }
         nextErrors.inboundBatchErrors = nextBatchErrors;
       }
+      return nextErrors;
+    });
+  };
+
+  // Chọn/bỏ chọn cuộn vải cho từng đợt nhập trong Hợp đồng, đợt cuối cùng tự động nhận tất cả các cuộn còn thiếu
+  const handleToggleContractBatchRoll = (bIdx, itemIdx, targetRoll) => {
+    setContractForm((prev) => {
+      const next = (prev.inboundBatches || []).map((b) => ({
+        ...b,
+        expectedItems: (b.expectedItems || []).map((it) => ({
+          ...it,
+          selectedRolls: Array.isArray(it.selectedRolls) ? [...it.selectedRolls] : [],
+        })),
+      }));
+
+      if (!next[bIdx] || !next[bIdx].expectedItems[itemIdx]) return prev;
+
+      const targetItem = next[bIdx].expectedItems[itemIdx];
+      const allRolls = targetItem.allRolls || prev.contractedMaterials?.[itemIdx]?.rollDetails || [];
+      const rollKey = targetRoll.rollCode || `R-${targetRoll.rollIndex}`;
+      const isSelected = targetItem.selectedRolls.some(
+        (r) => (r.rollCode || `R-${r.rollIndex}`) === rollKey
+      );
+
+      if (isSelected) {
+        targetItem.selectedRolls = targetItem.selectedRolls.filter(
+          (r) => (r.rollCode || `R-${r.rollIndex}`) !== rollKey
+        );
+      } else {
+        // Gỡ khỏi các đợt khác nếu đang có
+        next.forEach((b, otherBIdx) => {
+          if (otherBIdx !== bIdx && b.expectedItems[itemIdx]) {
+            b.expectedItems[itemIdx].selectedRolls = (b.expectedItems[itemIdx].selectedRolls || []).filter(
+              (r) => (r.rollCode || `R-${r.rollIndex}`) !== rollKey
+            );
+          }
+        });
+        targetItem.selectedRolls.push(targetRoll);
+      }
+
+      // ĐỢT CUỐI CÙNG: Auto-fill toàn bộ các cuộn vải còn thiếu chưa được gán
+      const lastBIdx = next.length - 1;
+      if (lastBIdx >= 0 && allRolls.length > 0) {
+        const allocatedKeys = new Set();
+        for (let b = 0; b < lastBIdx; b++) {
+          (next[b].expectedItems[itemIdx]?.selectedRolls || []).forEach((r) => {
+            allocatedKeys.add(r.rollCode || `R-${r.rollIndex}`);
+          });
+        }
+        const remainingRolls = allRolls.filter(
+          (r) => !allocatedKeys.has(r.rollCode || `R-${r.rollIndex}`)
+        );
+        if (next[lastBIdx].expectedItems[itemIdx]) {
+          next[lastBIdx].expectedItems[itemIdx].selectedRolls = remainingRolls;
+        }
+      }
+
+      // Cập nhật plannedQty và rollCount cho tất cả các đợt đối với mặt hàng này
+      next.forEach((b) => {
+        const it = b.expectedItems[itemIdx];
+        if (it && allRolls.length > 0) {
+          it.plannedQty = (it.selectedRolls || []).reduce(
+            (sum, r) => sum + (Number(r.lengthMeters) || 0),
+            0
+          );
+          it.rollCount = (it.selectedRolls || []).length;
+        }
+      });
+
+      // Cập nhật lại batchPercentage cho các đợt
+      const totalContractQty = next[0].expectedItems.reduce(
+        (sum, it) => sum + (Number(it.contractedQty) || 0),
+        0
+      );
+      if (totalContractQty > 0) {
+        next.forEach((b) => {
+          const bQty = b.expectedItems.reduce(
+            (sum, it) => sum + (Number(it.plannedQty) || 0),
+            0
+          );
+          b.batchPercentage = Number(((bQty / totalContractQty) * 100).toFixed(1));
+        });
+      }
+
+      return {
+        ...prev,
+        inboundBatches: next,
+      };
+    });
+
+    setContractErrors((prev) => {
+      const nextErrors = { ...prev };
+      delete nextErrors.inboundBatches;
       return nextErrors;
     });
   };
@@ -2911,31 +3212,189 @@ const ContractFrameworkPage = () => {
                       )}
                     </div>
 
-                    <div className={`wms-field ${lineErrors.contractedQty ? 'has-error' : ''}`}>
-                      <label className="wms-label">
-                        Số lượng ký Hợp đồng ({line.unitSnapshot}){' '}
-                        <span className="wms-required">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        className="wms-input"
-                        value={line.contractedQty}
-                        onChange={(e) =>
-                          handleMaterialLineChange(
-                            index,
-                            'contractedQty',
-                            e.target.value
-                          )
-                        }
-                        required
-                      />
-                      {lineErrors.contractedQty && (
-                        <span className="wms-field-error-text">
-                          <AlertCircle size={12} /> {lineErrors.contractedQty}
-                        </span>
-                      )}
-                    </div>
+                    {/* KHỐI NHẬP SỐ LƯỢNG: PHÂN BIỆT VẢI CUỘN (CHI TIẾT TỪNG CUỘN) VÀ PHỤ LIỆU */}
+                    {line.category === 'FABRIC_ROLL' || line.materialType === 'FABRIC' || ['METER', 'MET', 'M'].includes(line.unitSnapshot) ? (
+                      <div className="wms-field wms-field-span-full" style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '14px', marginTop: '6px' }}>
+                        {/* Roll Setup Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '13px', color: '#1E293B', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Package size={16} color="var(--wms-primary)" />
+                              Chi tiết Cuộn vải Nhập về (Số cuộn & Chi tiết mét từng cuộn) <span className="wms-required">*</span>
+                            </div>
+                            <div style={{ fontSize: '11.5px', color: '#64748B', marginTop: '2px' }}>
+                              Điền chi tiết số cuộn vải và số mét của mỗi cuộn. Tổng số mét ký hợp đồng sẽ được tự động tính và đồng bộ.
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '12px', background: '#E0F2FE', color: '#0369A1', padding: '3px 10px', borderRadius: '6px', fontWeight: 700 }}>
+                              {line.rollDetails?.length || 0} cuộn · Tổng: {(Number(line.contractedQty) || 0).toLocaleString('vi-VN')} {line.unitSnapshot}
+                            </span>
+                            <button
+                              type="button"
+                              className="wms-btn wms-btn-outline wms-btn-sm"
+                              style={{ fontSize: '11px', padding: '3px 8px' }}
+                              onClick={() => handleAddRoll(index)}
+                            >
+                              <Plus size={12} /> Thêm 1 cuộn
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Quick generator tool */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#FFFFFF', border: '1px solid #E2E8F0', padding: '8px 12px', borderRadius: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
+                            ⚡ Tạo nhanh danh sách cuộn:
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '12px', color: '#64748B' }}>Nhập</span>
+                            <input
+                              type="number"
+                              min="1"
+                              max="200"
+                              placeholder="Số cuộn"
+                              defaultValue={line.rollDetails?.length || 5}
+                              id={`quick-roll-count-${index}`}
+                              style={{ width: '70px', padding: '3px 6px', fontSize: '12px', borderRadius: '4px', border: '1px solid #CBD5E1' }}
+                            />
+                            <span style={{ fontSize: '12px', color: '#64748B' }}>cuộn, mỗi cuộn</span>
+                            <input
+                              type="number"
+                              min="1"
+                              placeholder="Số mét"
+                              defaultValue={line.rollDetails?.[0]?.lengthMeters || 100}
+                              id={`quick-roll-meters-${index}`}
+                              style={{ width: '80px', padding: '3px 6px', fontSize: '12px', borderRadius: '4px', border: '1px solid #CBD5E1' }}
+                            />
+                            <span style={{ fontSize: '12px', color: '#64748B' }}>mét</span>
+                            <button
+                              type="button"
+                              className="wms-btn wms-btn-primary wms-btn-sm"
+                              style={{ fontSize: '11.5px', padding: '3px 10px', marginLeft: '4px' }}
+                              onClick={() => {
+                                const cVal = document.getElementById(`quick-roll-count-${index}`)?.value;
+                                const mVal = document.getElementById(`quick-roll-meters-${index}`)?.value;
+                                handleQuickSetupRolls(index, cVal, mVal);
+                              }}
+                            >
+                              Áp dụng
+                            </button>
+                          </div>
+                          <span style={{ fontSize: '11px', color: '#94A3B8', marginLeft: 'auto' }}>
+                            * Có thể chỉnh sửa riêng từng cuộn sau khi tạo nhanh
+                          </span>
+                        </div>
+
+                        {/* Rolls detail table */}
+                        <div style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid #E2E8F0', borderRadius: '6px', background: '#FFFFFF' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                            <thead>
+                              <tr style={{ background: '#F1F5F9', borderBottom: '1px solid #E2E8F0', color: '#475569', textAlign: 'left' }}>
+                                <th style={{ padding: '6px 10px', width: '50px', textAlign: 'center' }}>STT</th>
+                                <th style={{ padding: '6px 10px', width: '140px' }}>Mã định danh cuộn</th>
+                                <th style={{ padding: '6px 10px', width: '170px' }}>Chiều dài (mét) <span className="wms-required">*</span></th>
+                                <th style={{ padding: '6px 10px' }}>Ghi chú cuộn vải</th>
+                                <th style={{ padding: '6px 10px', width: '60px', textAlign: 'center' }}>Xóa</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(!line.rollDetails || line.rollDetails.length === 0) ? (
+                                <tr>
+                                  <td colSpan={5} style={{ textAlign: 'center', padding: '16px', color: '#94A3B8' }}>
+                                    Chưa có cuộn vải nào. Hãy nhấn "Áp dụng tạo nhanh" hoặc "Thêm 1 cuộn" ở trên.
+                                  </td>
+                                </tr>
+                              ) : (
+                                line.rollDetails.map((roll, rIdx) => (
+                                  <tr key={rIdx} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                    <td style={{ textAlign: 'center', fontWeight: 600, color: '#64748B' }}>
+                                      #{rIdx + 1}
+                                    </td>
+                                    <td style={{ padding: '4px 10px' }}>
+                                      <input
+                                        type="text"
+                                        value={roll.rollCode || `C-${String(rIdx + 1).padStart(2, '0')}`}
+                                        onChange={(e) => handleRollDetailChange(index, rIdx, 'rollCode', e.target.value)}
+                                        style={{ width: '100%', padding: '3px 6px', fontSize: '12px', fontFamily: 'monospace', borderRadius: '4px', border: '1px solid #E2E8F0' }}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '4px 10px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <input
+                                          type="number"
+                                          min="0.1"
+                                          step="0.5"
+                                          value={roll.lengthMeters}
+                                          onChange={(e) => handleRollDetailChange(index, rIdx, 'lengthMeters', e.target.value)}
+                                          style={{ width: '90px', padding: '3px 6px', fontSize: '12px', fontWeight: 700, color: '#0369A1', borderRadius: '4px', border: '1px solid #CBD5E1' }}
+                                        />
+                                        <span style={{ fontSize: '12px', color: '#64748B' }}>mét</span>
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: '4px 10px' }}>
+                                      <input
+                                        type="text"
+                                        placeholder="VD: Cuộn tiêu chuẩn, cuộn mẫu..."
+                                        value={roll.note || ''}
+                                        onChange={(e) => handleRollDetailChange(index, rIdx, 'note', e.target.value)}
+                                        style={{ width: '100%', padding: '3px 6px', fontSize: '12px', borderRadius: '4px', border: '1px solid #E2E8F0' }}
+                                      />
+                                    </td>
+                                    <td style={{ textAlign: 'center', padding: '4px 10px' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveRoll(index, rIdx)}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444', padding: '2px' }}
+                                        title="Xóa cuộn này"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Summary footer */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', fontSize: '12px', fontWeight: 600, flexWrap: 'wrap', gap: '8px' }}>
+                          <span style={{ color: '#475569' }}>
+                            Đã phân rã chi tiết: <strong style={{ color: '#0369A1' }}>{line.rollDetails?.length || 0} cuộn</strong>
+                          </span>
+                          <span style={{ color: '#0F172A', background: '#FFFFFF', padding: '4px 12px', borderRadius: '4px', border: '1px solid #CBD5E1' }}>
+                            Tổng số mét vải ký hợp đồng: <strong style={{ color: '#0284C7', fontSize: '13px' }}>{(Number(line.contractedQty) || 0).toLocaleString('vi-VN')} {line.unitSnapshot}</strong>
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={`wms-field ${lineErrors.contractedQty ? 'has-error' : ''}`}>
+                        <label className="wms-label">
+                          Số lượng ký Hợp đồng ({line.unitSnapshot}){' '}
+                          <span className="wms-required">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="wms-input"
+                          value={line.contractedQty}
+                          onChange={(e) =>
+                            handleMaterialLineChange(
+                              index,
+                              'contractedQty',
+                              e.target.value
+                            )
+                          }
+                          required
+                        />
+                        {lineErrors.contractedQty && (
+                          <span className="wms-field-error-text">
+                            <AlertCircle size={12} /> {lineErrors.contractedQty}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     <div className={`wms-field ${lineErrors.unitPrice ? 'has-error' : ''}`}>
                       <label className="wms-label">
@@ -3231,13 +3690,94 @@ const ContractFrameworkPage = () => {
                           const cQty = Number(cMat?.contractedQty || it.contractedQty || 0);
                           const itErr = bErrors.itemErrors?.[itIdx];
 
+                          const allRolls = it.allRolls || cMat?.rollDetails || [];
                           return (
                             <tr key={itIdx}>
                               <td style={{ textAlign: 'center', color: '#94A3B8' }}>{itIdx + 1}</td>
                               <td style={{ fontWeight: 600 }}>
                                 {it.materialCode || cMat?.materialCodeSnapshot || 'NVL'}
                               </td>
-                              <td>{it.materialName || cMat?.materialNameSnapshot || '—'}</td>
+                              <td>
+                                <div>{it.materialName || cMat?.materialNameSnapshot || '—'}</div>
+                                {allRolls.length > 0 && (
+                                  <div style={{
+                                    marginTop: '6px',
+                                    padding: '6px 8px',
+                                    background: '#F8FAFC',
+                                    border: '1px solid #E2E8F0',
+                                    borderRadius: '6px',
+                                  }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#1E293B' }}>
+                                        🧵 Chọn cuộn vải giao Đợt {bIdx + 1}:
+                                        <span style={{ marginLeft: '4px', color: '#0284C7' }}>
+                                          ({it.selectedRolls?.length || 0}/{allRolls.length} cuộn)
+                                        </span>
+                                      </span>
+                                      {bIdx === (contractForm.inboundBatches || []).length - 1 && (contractForm.inboundBatches || []).length > 1 && (
+                                        <span style={{ fontSize: '10px', background: '#E0F2FE', color: '#0369A1', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+                                          ⚡ Tự động gom {it.selectedRolls?.length || 0} cuộn còn thiếu
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                      {allRolls.map((roll, rIdx) => {
+                                        const rollKey = roll.rollCode || `R-${roll.rollIndex || rIdx + 1}`;
+                                        const isSelectedInThisBatch = (it.selectedRolls || []).some(
+                                          (r) => (r.rollCode || `R-${r.rollIndex || rIdx + 1}`) === rollKey
+                                        );
+                                        const otherBatchIndex = (contractForm.inboundBatches || []).findIndex(
+                                          (otherB, obIdx) =>
+                                            obIdx !== bIdx &&
+                                            (otherB.expectedItems[itIdx]?.selectedRolls || []).some(
+                                              (r) => (r.rollCode || `R-${r.rollIndex || rIdx + 1}`) === rollKey
+                                            )
+                                        );
+                                        const isLastBatch = bIdx === (contractForm.inboundBatches || []).length - 1 && (contractForm.inboundBatches || []).length > 1;
+
+                                        return (
+                                          <button
+                                            key={rollKey}
+                                            type="button"
+                                            disabled={isLastBatch}
+                                            onClick={() => handleToggleContractBatchRoll(bIdx, itIdx, roll)}
+                                            title={
+                                              isLastBatch
+                                                ? 'Đợt cuối cùng tự động nhận tất cả các cuộn vải còn lại'
+                                                : isSelectedInThisBatch
+                                                ? 'Bấm để bỏ cuộn này khỏi đợt'
+                                                : otherBatchIndex >= 0
+                                                ? `Đang gán ở Đợt ${otherBatchIndex + 1}. Bấm để chuyển sang Đợt ${bIdx + 1}`
+                                                : 'Bấm để thêm cuộn này vào đợt'
+                                            }
+                                            style={{
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '3px',
+                                              padding: '2px 6px',
+                                              borderRadius: '4px',
+                                              fontSize: '10.5px',
+                                              cursor: isLastBatch ? 'default' : 'pointer',
+                                              border: isSelectedInThisBatch ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                                              background: isSelectedInThisBatch ? '#E0F2FE' : '#FFFFFF',
+                                              color: isSelectedInThisBatch ? '#0369A1' : '#475569',
+                                              fontWeight: isSelectedInThisBatch ? 600 : 400,
+                                            }}
+                                          >
+                                            <span>{isSelectedInThisBatch ? '☑' : '☐'}</span>
+                                            <strong>{roll.rollCode || `C-${String(rIdx + 1).padStart(2, '0')}`}:</strong>
+                                            <span>{Number(roll.lengthMeters || 0).toLocaleString('vi-VN')}m</span>
+                                            {roll.note && <span style={{ opacity: 0.8, fontStyle: 'italic' }}>({roll.note})</span>}
+                                            {!isSelectedInThisBatch && otherBatchIndex >= 0 && (
+                                              <span style={{ fontSize: '9px', color: '#94A3B8' }}>(Đợt {otherBatchIndex + 1})</span>
+                                            )}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
                               <td style={{ textAlign: 'center' }}>
                                 {it.unit || cMat?.unitSnapshot || 'METER'}
                               </td>
@@ -3255,12 +3795,18 @@ const ContractFrameworkPage = () => {
                                     padding: '4px 8px',
                                     width: '120px',
                                     borderColor: itErr ? '#EF4444' : '#BAE6FD',
-                                    background: '#FFFFFF',
+                                    background: allRolls.length > 0 ? '#F1F5F9' : '#FFFFFF',
                                   }}
                                   min={0}
+                                  readOnly={allRolls.length > 0}
                                   value={it.plannedQty !== undefined ? it.plannedQty : ''}
                                   onChange={(e) => handleInboundBatchItemQtyChange(bIdx, itIdx, e.target.value)}
                                 />
+                                {allRolls.length > 0 && (
+                                  <div style={{ fontSize: '9.5px', color: '#0284C7', marginTop: '2px' }}>
+                                    ⚡ {it.selectedRolls?.length || 0} cuộn đã chọn
+                                  </div>
+                                )}
                                 {itErr && (
                                   <div style={{ fontSize: '11px', color: '#DC2626', marginTop: '2px' }}>
                                     {itErr}
@@ -4284,6 +4830,12 @@ const ContractFrameworkPage = () => {
                                   <div style={{ fontSize: '12px', color: '#4b5563' }}>
                                     Mã: {item.materialCodeSnapshot || item.rawMaterialId?.materialCode || '—'}
                                   </div>
+                                  {Array.isArray(item.rollDetails) && item.rollDetails.length > 0 && (
+                                    <div style={{ fontSize: '11.5px', color: '#0284c7', marginTop: '4px', background: '#f0f9ff', padding: '3px 6px', borderRadius: '4px', border: '1px solid #bae6fd' }}>
+                                      🧵 <strong>Chi tiết {item.rollDetails.length} cuộn vải:</strong>{' '}
+                                      {item.rollDetails.map((r, rIdx) => `${r.rollCode || `C-${rIdx + 1}`}: ${r.lengthMeters}m`).join(' | ')}
+                                    </div>
+                                  )}
                                 </td>
                                 <td style={{ textAlign: 'center' }}>
                                   {item.unitSnapshot || item.rawMaterialId?.unit || 'METER'}
@@ -4302,6 +4854,11 @@ const ContractFrameworkPage = () => {
                                 </td>
                                 <td style={{ textAlign: 'right' }}>
                                   <strong>{lineQty.toLocaleString('vi-VN')}</strong>
+                                  {(item.rollCount > 0 || (Array.isArray(item.rollDetails) && item.rollDetails.length > 0)) && (
+                                    <div style={{ fontSize: '11px', color: '#0369a1', fontWeight: 700 }}>
+                                      ({item.rollCount || item.rollDetails?.length} cuộn)
+                                    </div>
+                                  )}
                                   <div style={{ fontSize: '11px', color: '#6b7280' }}>
                                     (±{item.qtyTolerancePct ?? 3}%)
                                   </div>

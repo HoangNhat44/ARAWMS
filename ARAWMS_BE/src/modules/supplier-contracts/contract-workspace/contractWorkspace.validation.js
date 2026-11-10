@@ -219,6 +219,16 @@ export const validateDraftContract = (req, res, next) => {
         errors.push(`Dòng ${lineNo}: Số lượng ký hợp đồng phải là số lớn hơn 0.`);
       }
 
+      if (Array.isArray(item.rollDetails) && item.rollDetails.length > 0) {
+        item.rollDetails.forEach((r, rIdx) => {
+          const rNo = rIdx + 1;
+          const rMeters = Number(r.lengthMeters);
+          if (!Number.isFinite(rMeters) || rMeters <= 0) {
+            errors.push(`Dòng ${lineNo} - Cuộn #${rNo}: Chiều dài mét vải phải là số lớn hơn 0.`);
+          }
+        });
+      }
+
       const price = Number(item.unitPrice);
       if (!Number.isFinite(price) || price < 0) {
         errors.push(`Dòng ${lineNo}: Đơn giá nguyên phụ liệu không được âm.`);

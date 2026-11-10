@@ -47,16 +47,30 @@ export const validateScheduleInboundPlan = (req, res, next) => {
       if (!Array.isArray(b.expectedItems) || b.expectedItems.length === 0) {
         errors.push(`Đợt ${batchNo}: Phải có ít nhất 1 mặt hàng nguyên phụ liệu dự kiến.`);
       } else {
+        let batchTotalQty = 0;
         b.expectedItems.forEach((item, itemIdx) => {
           const lineNo = itemIdx + 1;
           if (!item.rawMaterialId || !isValidObjectId(item.rawMaterialId)) {
             errors.push(`Đợt ${batchNo} - Dòng ${lineNo}: Mã nguyên vật liệu không hợp lệ.`);
           }
           const qty = Number(item.plannedQty);
-          if (!Number.isFinite(qty) || qty <= 0) {
-            errors.push(`Đợt ${batchNo} - Dòng ${lineNo}: Số lượng giao dự kiến phải lớn hơn 0.`);
+          if (!Number.isFinite(qty) || qty < 0) {
+            errors.push(`Đợt ${batchNo} - Dòng ${lineNo}: Số lượng giao dự kiến không được âm.`);
+          } else {
+            batchTotalQty += qty;
+          }
+
+          if (Array.isArray(item.selectedRolls)) {
+            item.selectedRolls.forEach((r, rIdx) => {
+              if (r.lengthMeters !== undefined && (Number(r.lengthMeters) <= 0 || !Number.isFinite(Number(r.lengthMeters)))) {
+                errors.push(`Đợt ${batchNo} - Dòng ${lineNo} - Cuộn ${rIdx + 1}: Chiều dài cuộn phải lớn hơn 0 mét.`);
+              }
+            });
           }
         });
+        if (batchTotalQty <= 0) {
+          errors.push(`Đợt ${batchNo}: Tổng số lượng giao dự kiến trong đợt phải lớn hơn 0.`);
+        }
       }
     });
   } else {
@@ -175,16 +189,30 @@ export const validateAmendInboundPlan = (req, res, next) => {
       if (!Array.isArray(b.expectedItems) || b.expectedItems.length === 0) {
         errors.push(`Đợt ${batchNo}: Phải có ít nhất 1 mặt hàng nguyên phụ liệu dự kiến.`);
       } else {
+        let batchTotalQty = 0;
         b.expectedItems.forEach((item, itemIdx) => {
           const lineNo = itemIdx + 1;
           if (!item.rawMaterialId || !isValidObjectId(item.rawMaterialId)) {
             errors.push(`Đợt ${batchNo} - Dòng ${lineNo}: Mã nguyên vật liệu không hợp lệ.`);
           }
           const qty = Number(item.plannedQty);
-          if (!Number.isFinite(qty) || qty <= 0) {
-            errors.push(`Đợt ${batchNo} - Dòng ${lineNo}: Số lượng giao dự kiến phải lớn hơn 0.`);
+          if (!Number.isFinite(qty) || qty < 0) {
+            errors.push(`Đợt ${batchNo} - Dòng ${lineNo}: Số lượng giao dự kiến không được âm.`);
+          } else {
+            batchTotalQty += qty;
+          }
+
+          if (Array.isArray(item.selectedRolls)) {
+            item.selectedRolls.forEach((r, rIdx) => {
+              if (r.lengthMeters !== undefined && (Number(r.lengthMeters) <= 0 || !Number.isFinite(Number(r.lengthMeters)))) {
+                errors.push(`Đợt ${batchNo} - Dòng ${lineNo} - Cuộn ${rIdx + 1}: Chiều dài cuộn phải lớn hơn 0 mét.`);
+              }
+            });
           }
         });
+        if (batchTotalQty <= 0) {
+          errors.push(`Đợt ${batchNo}: Tổng số lượng giao dự kiến trong đợt phải lớn hơn 0.`);
+        }
       }
     });
   } else if (Array.isArray(expectedItems) && expectedItems.length > 0) {

@@ -15,6 +15,16 @@ const expectedItemSchema = new Schema(
     rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial', required: true },
     plannedQty: { type: Number, required: true },
     unitSnapshot: { type: String, default: 'METER' },
+    rollCount: { type: Number, default: 0, min: 0 },
+    selectedRolls: [
+      {
+        rollIndex: { type: Number },
+        rollCode: { type: String },
+        lengthMeters: { type: Number, min: 0 },
+        weightKg: { type: Number, min: 0 },
+        note: { type: String, default: '' },
+      },
+    ],
     actualVerifiedPassedQty: { type: Number, default: 0 },
     actualDefectiveOrShortQty: { type: Number, default: 0 },
   },

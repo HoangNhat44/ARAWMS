@@ -222,10 +222,29 @@ const buildBatches = (count, materials = [], effectiveFrom = null, effectiveTo =
     // Phân bổ số lượng từng mặt hàng cho đợt này
     const expectedItems = (materials || []).map((m, mIdx) => {
       const contractedQty = Number(m.contractedQty || 0);
+      const allRolls = Array.isArray(m.rollDetails) && m.rollDetails.length > 0 ? m.rollDetails : [];
       const existingItem = existing?.expectedItems?.[mIdx];
+      let selectedRolls = Array.isArray(existingItem?.selectedRolls) ? [...existingItem.selectedRolls] : [];
       let plannedQty = existingItem ? Number(existingItem.plannedQty) : 0;
 
-      if (!plannedQty || Number.isNaN(plannedQty)) {
+      // Phân bổ danh sách cuộn vải nếu mặt hàng có quản lý theo cuộn
+      if (allRolls.length > 0) {
+        if (selectedRolls.length === 0) {
+          if (n === 1) {
+            selectedRolls = [...allRolls];
+          } else if (n === 2) {
+            const half = Math.ceil(allRolls.length / 2);
+            selectedRolls = bIdx === 0 ? allRolls.slice(0, half) : allRolls.slice(half);
+          } else if (bIdx === n - 1) {
+            const perBatch = Math.max(1, Math.floor(allRolls.length / n));
+            selectedRolls = allRolls.slice(perBatch * (n - 1));
+          } else {
+            const perBatch = Math.max(1, Math.floor(allRolls.length / n));
+            selectedRolls = allRolls.slice(perBatch * bIdx, perBatch * (bIdx + 1));
+          }
+        }
+        plannedQty = selectedRolls.reduce((sum, r) => sum + (Number(r.lengthMeters) || 0), 0);
+      } else if (!plannedQty || Number.isNaN(plannedQty)) {
         if (n === 2) {
           // Khi chia 2 đợt: đợt 1 nhận phần nửa đầu (làm tròn lên), đợt 2 nhận phần còn lại sao cho tổng 2 đợt luôn = đúng 100% contractedQty
           if (bIdx === 0) {
@@ -249,6 +268,9 @@ const buildBatches = (count, materials = [], effectiveFrom = null, effectiveTo =
         unit: m.unitSnapshot || m.rawMaterialId?.unit || m.unit || 'METER',
         contractedQty,
         plannedQty,
+        allRolls,
+        rollCount: selectedRolls.length || m.rollCount || 0,
+        selectedRolls,
       };
     });
 
@@ -610,6 +632,94 @@ const InboundPlanningPage = () => {
         if (batches.length === 2 && nextBatchErrors[bIdx === 0 ? 1 : 0]?.itemErrors?.[itemIdx]) {
           delete nextBatchErrors[bIdx === 0 ? 1 : 0].itemErrors[itemIdx];
         }
+        return { ...prev, batchErrors: nextBatchErrors };
+      });
+    }
+  };
+
+  // Chọn/bỏ chọn cuộn vải cho từng đợt nhập, đợt cuối cùng tự động nhận tất cả các cuộn còn thiếu
+  const handleToggleBatchRoll = (bIdx, itemIdx, targetRoll) => {
+    setBatches((prev) => {
+      const next = prev.map((b) => ({
+        ...b,
+        expectedItems: b.expectedItems.map((it) => ({
+          ...it,
+          selectedRolls: Array.isArray(it.selectedRolls) ? [...it.selectedRolls] : [],
+        })),
+      }));
+
+      const targetItem = next[bIdx].expectedItems[itemIdx];
+      const allRolls = targetItem.allRolls || [];
+      const rollKey = targetRoll.rollCode || `R-${targetRoll.rollIndex}`;
+      const isSelected = targetItem.selectedRolls.some(
+        (r) => (r.rollCode || `R-${r.rollIndex}`) === rollKey
+      );
+
+      if (isSelected) {
+        targetItem.selectedRolls = targetItem.selectedRolls.filter(
+          (r) => (r.rollCode || `R-${r.rollIndex}`) !== rollKey
+        );
+      } else {
+        // Gỡ khỏi các đợt khác nếu đang có
+        next.forEach((b, otherBIdx) => {
+          if (otherBIdx !== bIdx) {
+            b.expectedItems[itemIdx].selectedRolls = b.expectedItems[itemIdx].selectedRolls.filter(
+              (r) => (r.rollCode || `R-${r.rollIndex}`) !== rollKey
+            );
+          }
+        });
+        targetItem.selectedRolls.push(targetRoll);
+      }
+
+      // ĐỢT CUỐI CÙNG: Auto-fill toàn bộ các cuộn vải còn thiếu chưa được gán
+      const lastBIdx = next.length - 1;
+      if (lastBIdx >= 0 && allRolls.length > 0) {
+        const allocatedKeys = new Set();
+        for (let b = 0; b < lastBIdx; b++) {
+          (next[b].expectedItems[itemIdx].selectedRolls || []).forEach((r) => {
+            allocatedKeys.add(r.rollCode || `R-${r.rollIndex}`);
+          });
+        }
+        const remainingRolls = allRolls.filter(
+          (r) => !allocatedKeys.has(r.rollCode || `R-${r.rollIndex}`)
+        );
+        next[lastBIdx].expectedItems[itemIdx].selectedRolls = remainingRolls;
+      }
+
+      // Cập nhật plannedQty và rollCount cho tất cả các đợt đối với mặt hàng này
+      next.forEach((b) => {
+        const it = b.expectedItems[itemIdx];
+        if (it.allRolls && it.allRolls.length > 0) {
+          it.plannedQty = (it.selectedRolls || []).reduce(
+            (sum, r) => sum + (Number(r.lengthMeters) || 0),
+            0
+          );
+          it.rollCount = (it.selectedRolls || []).length;
+        }
+      });
+
+      // Cập nhật lại batchPercentage cho các đợt
+      const totalContractQty = next[0].expectedItems.reduce(
+        (sum, it) => sum + (Number(it.contractedQty) || 0),
+        0
+      );
+      if (totalContractQty > 0) {
+        next.forEach((b) => {
+          const bQty = b.expectedItems.reduce(
+            (sum, it) => sum + (Number(it.plannedQty) || 0),
+            0
+          );
+          b.batchPercentage = Number(((bQty / totalContractQty) * 100).toFixed(1));
+        });
+      }
+
+      return next;
+    });
+
+    if (planErrors.batchErrors?.[bIdx]?.itemErrors?.[itemIdx]) {
+      setPlanErrors((prev) => {
+        const nextBatchErrors = { ...prev.batchErrors };
+        delete nextBatchErrors[bIdx].itemErrors[itemIdx];
         return { ...prev, batchErrors: nextBatchErrors };
       });
     }
@@ -2464,7 +2574,91 @@ const InboundPlanningPage = () => {
                               return (
                                 <tr key={itIdx}>
                                   <td>
-                                    <strong>{item.materialCode}</strong> — {item.materialName}
+                                    <div>
+                                      <strong>{item.materialCode}</strong> — {item.materialName}
+                                    </div>
+                                    {item.allRolls && item.allRolls.length > 0 && (
+                                      <div style={{
+                                        marginTop: '6px',
+                                        padding: '8px 10px',
+                                        background: '#f8fafc',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: '6px',
+                                      }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                          <span style={{ fontSize: '11.5px', fontWeight: 600, color: '#1e293b' }}>
+                                            🧵 Chọn cuộn vải giao trong Đợt {batch.batchNumber}:
+                                            <span style={{ marginLeft: '6px', color: '#0284c7' }}>
+                                              ({item.selectedRolls?.length || 0}/{item.allRolls.length} cuộn)
+                                            </span>
+                                          </span>
+                                          {bIdx === batches.length - 1 && batches.length > 1 && (
+                                            <span style={{ fontSize: '10.5px', background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                              ⚡ Tự động gom {item.selectedRolls?.length || 0} cuộn còn thiếu
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                          {item.allRolls.map((roll, rIdx) => {
+                                            const rollKey = roll.rollCode || `R-${roll.rollIndex || rIdx + 1}`;
+                                            const isSelectedInThisBatch = (item.selectedRolls || []).some(
+                                              (r) => (r.rollCode || `R-${r.rollIndex || rIdx + 1}`) === rollKey
+                                            );
+                                            const otherBatchIndex = batches.findIndex(
+                                              (otherB, obIdx) =>
+                                                obIdx !== bIdx &&
+                                                (otherB.expectedItems[itIdx]?.selectedRolls || []).some(
+                                                  (r) => (r.rollCode || `R-${r.rollIndex || rIdx + 1}`) === rollKey
+                                                )
+                                            );
+                                            const isLastBatch = bIdx === batches.length - 1 && batches.length > 1;
+
+                                            return (
+                                              <button
+                                                key={rollKey}
+                                                type="button"
+                                                disabled={isLastBatch}
+                                                onClick={() => handleToggleBatchRoll(bIdx, itIdx, roll)}
+                                                title={
+                                                  isLastBatch
+                                                    ? 'Đợt cuối cùng tự động nhận tất cả các cuộn vải còn lại'
+                                                    : isSelectedInThisBatch
+                                                    ? 'Bấm để bỏ cuộn này khỏi đợt'
+                                                    : otherBatchIndex >= 0
+                                                    ? `Đang gán ở Đợt ${otherBatchIndex + 1}. Bấm để chuyển sang Đợt ${batch.batchNumber}`
+                                                    : 'Bấm để thêm cuộn này vào đợt'
+                                                }
+                                                style={{
+                                                  display: 'inline-flex',
+                                                  alignItems: 'center',
+                                                  gap: '4px',
+                                                  padding: '3px 8px',
+                                                  borderRadius: '4px',
+                                                  fontSize: '11px',
+                                                  cursor: isLastBatch ? 'default' : 'pointer',
+                                                  border: isSelectedInThisBatch
+                                                    ? '1px solid #0284c7'
+                                                    : '1px solid #cbd5e1',
+                                                  background: isSelectedInThisBatch ? '#e0f2fe' : '#ffffff',
+                                                  color: isSelectedInThisBatch ? '#0369a1' : '#475569',
+                                                  fontWeight: isSelectedInThisBatch ? 600 : 400,
+                                                  boxShadow: isSelectedInThisBatch ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                                                }}
+                                              >
+                                                <span>{isSelectedInThisBatch ? '☑' : '☐'}</span>
+                                                <strong>{roll.rollCode || `C-${String(rIdx + 1).padStart(2, '0')}`}:</strong>
+                                                <span>{Number(roll.lengthMeters || 0).toLocaleString('vi-VN')}m</span>
+                                                {roll.note && <span style={{ opacity: 0.8, fontStyle: 'italic' }}>({roll.note})</span>}
+                                                {!isSelectedInThisBatch && otherBatchIndex >= 0 && (
+                                                  <span style={{ fontSize: '9.5px', color: '#94a3b8' }}>(Đợt {otherBatchIndex + 1})</span>
+                                                )}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
                                   </td>
                                   <td>{item.unit}</td>
                                   <td className="wms-td-number">
@@ -2476,11 +2670,17 @@ const InboundPlanningPage = () => {
                                         type="number"
                                         min="0"
                                         className="wms-input"
-                                        style={{ height: '34px', fontSize: '13px', fontWeight: 600 }}
+                                        style={{ height: '34px', fontSize: '13px', fontWeight: 600, background: item.allRolls?.length > 0 ? '#f1f5f9' : '#ffffff' }}
                                         value={item.plannedQty === '' ? '' : item.plannedQty}
                                         onChange={(e) => handleBatchItemQtyChange(bIdx, itIdx, e.target.value)}
+                                        readOnly={item.allRolls && item.allRolls.length > 0}
                                         required
                                       />
+                                      {item.allRolls && item.allRolls.length > 0 && (
+                                        <div style={{ fontSize: '10px', color: '#0284c7', marginTop: '2px' }}>
+                                          ⚡ Tự động tính từ {item.selectedRolls?.length || 0} cuộn đã chọn
+                                        </div>
+                                      )}
                                       {itErr && (
                                         <span className="wms-field-error-text">
                                           <AlertCircle size={11} /> {itErr}

@@ -134,6 +134,13 @@ export const validateContractForm = (contractForm) => {
       if (!Number.isFinite(qty) || qty <= 0) {
         lineErr.contractedQty = 'Số lượng ký phải > 0.';
       }
+      const isFabric = item.category === 'FABRIC_ROLL' || item.materialType === 'FABRIC' || ['METER', 'MET', 'M'].includes(item.unitSnapshot);
+      if (isFabric && Array.isArray(item.rollDetails) && item.rollDetails.length > 0) {
+        const hasInvalidRoll = item.rollDetails.some((r) => !Number(r.lengthMeters) || Number(r.lengthMeters) <= 0);
+        if (hasInvalidRoll) {
+          lineErr.rollDetails = 'Mỗi cuộn vải phải có chiều dài mét lớn hơn 0.';
+        }
+      }
       const price = Number(item.unitPrice);
       if (!Number.isFinite(price) || price < 0) {
         lineErr.unitPrice = 'Đơn giá không được âm.';

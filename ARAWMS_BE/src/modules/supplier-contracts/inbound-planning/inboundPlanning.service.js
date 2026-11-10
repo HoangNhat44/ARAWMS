@@ -104,6 +104,8 @@ export const getContractInboundSummary = async (contractId) => {
       materialName: mat.materialNameSnapshot || mat.rawMaterialId?.materialName || '',
       unit: mat.unitSnapshot || mat.rawMaterialId?.unit || 'METER',
       contractedQty,
+      rollCount: mat.rollCount || (mat.rollDetails?.length || 0),
+      rollDetails: mat.rollDetails || [],
       totalScheduledQty,
       remainingQty,
       scheduledPercentage,
@@ -193,10 +195,13 @@ export const scheduleInboundPlan = async (payload, currentUserId) => {
           const contractMat = (contract.contractedMaterials || []).find(
             (cm) => String(cm.rawMaterialId?._id || cm.rawMaterialId) === String(item.rawMaterialId)
           );
+          const selectedRolls = Array.isArray(item.selectedRolls) ? item.selectedRolls : [];
           return {
             rawMaterialId: item.rawMaterialId,
             plannedQty: Number(item.plannedQty || 0),
             unitSnapshot: item.unit || item.unitSnapshot || contractMat?.unitSnapshot || 'METER',
+            rollCount: selectedRolls.length || Number(item.rollCount || 0),
+            selectedRolls,
             actualVerifiedPassedQty: 0,
             actualDefectiveOrShortQty: 0,
           };
@@ -216,12 +221,18 @@ export const scheduleInboundPlan = async (payload, currentUserId) => {
             rawMaterialId: it.rawMaterialId,
             plannedQty: it.plannedQty,
             unitSnapshot: it.unitSnapshot,
+            rollCount: it.rollCount || 0,
+            selectedRolls: it.selectedRolls || [],
             actualVerifiedPassedQty: 0,
             actualDefectiveOrShortQty: 0,
           });
         } else {
           const cur = aggregatedItemsMap.get(idStr);
           cur.plannedQty += it.plannedQty;
+          cur.rollCount = (cur.rollCount || 0) + (it.rollCount || 0);
+          if (Array.isArray(it.selectedRolls) && it.selectedRolls.length > 0) {
+            cur.selectedRolls = [...(cur.selectedRolls || []), ...it.selectedRolls];
+          }
         }
       });
     });
@@ -375,6 +386,7 @@ export const amendInboundPlanVersion = async (planId, payload, currentUserId) =>
               String(cm.rawMaterialId?._id || cm.rawMaterialId) ===
               String(item.rawMaterialId)
           );
+          const selectedRolls = Array.isArray(item.selectedRolls) ? item.selectedRolls : [];
           return {
             rawMaterialId: item.rawMaterialId,
             plannedQty: Number(item.plannedQty || 0),
@@ -383,6 +395,8 @@ export const amendInboundPlanVersion = async (planId, payload, currentUserId) =>
               item.unitSnapshot ||
               contractMat?.unitSnapshot ||
               'METER',
+            rollCount: selectedRolls.length || Number(item.rollCount || 0),
+            selectedRolls,
             actualVerifiedPassedQty: 0,
             actualDefectiveOrShortQty: 0,
           };
@@ -402,12 +416,18 @@ export const amendInboundPlanVersion = async (planId, payload, currentUserId) =>
             rawMaterialId: it.rawMaterialId,
             plannedQty: it.plannedQty,
             unitSnapshot: it.unitSnapshot,
+            rollCount: it.rollCount || 0,
+            selectedRolls: it.selectedRolls || [],
             actualVerifiedPassedQty: 0,
             actualDefectiveOrShortQty: 0,
           });
         } else {
           const cur = aggregatedItemsMap.get(idStr);
           cur.plannedQty += it.plannedQty;
+          cur.rollCount = (cur.rollCount || 0) + (it.rollCount || 0);
+          if (Array.isArray(it.selectedRolls) && it.selectedRolls.length > 0) {
+            cur.selectedRolls = [...(cur.selectedRolls || []), ...it.selectedRolls];
+          }
         }
       });
     });
