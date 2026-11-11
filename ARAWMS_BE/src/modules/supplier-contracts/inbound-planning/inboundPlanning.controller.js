@@ -107,6 +107,23 @@ export const verifyInboundPlanDelivery = async (req, res, next) => {
   }
 };
 
+export const reportDeviationToOwner = async (req, res, next) => {
+  try {
+    const data = await inboundPlanningService.reportDeviationToOwner(
+      req.params.id,
+      req.user?._id,
+      req.body?.notes
+    );
+    res.status(200).json({
+      success: true,
+      message: `Đã trình báo biên bản sai lệch của kế hoạch ${data.planCode} lên Chủ sở hữu (Owner) thành công.`,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   getInboundPlans,
   getInboundPlanById,
@@ -116,4 +133,5 @@ export default {
   amendInboundPlan,
   getPlanVersions,
   verifyInboundPlanDelivery,
+  reportDeviationToOwner,
 };

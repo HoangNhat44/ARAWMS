@@ -162,6 +162,12 @@ const materialInboundPlanSchema = new Schema(
       replacementContractId: { type: Schema.Types.ObjectId, ref: 'SupplierContract' },
       replacementPlanId: { type: Schema.Types.ObjectId, ref: 'MaterialInboundPlan' },
     },
+    reportedToOwner: {
+      isReported: { type: Boolean, default: false },
+      reportedAt: Date,
+      reportedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+      reportNotes: { type: String, default: '' },
+    },
   },
   { collection: 'material_inbound_plans' }
 );

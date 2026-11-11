@@ -68,7 +68,7 @@ export const listInboundPlans = async (query = {}, user) => {
 
   const rawPlans = await MaterialInboundPlan.find(dbFilter)
     .populate('supplierId', 'supplierCode supplierName phone contactName')
-    .populate('contractId', 'contractCode title status')
+    .populate('contractId', 'contractCode title status versionNumber isLatestVersion amendmentReason')
     .populate('expectedItems.rawMaterialId', 'materialCode materialName category unit color gsm widthCm unitCost')
     .populate('batches.expectedItems.rawMaterialId', 'materialCode materialName category unit color gsm widthCm unitCost')
     .populate('createdByAccountantId', 'fullName username email')
@@ -126,7 +126,7 @@ export const getInboundPlanDetails = async (planId) => {
 
   const plan = await MaterialInboundPlan.findById(actualPlanId)
     .populate('supplierId', 'supplierCode supplierName phone contactName address')
-    .populate('contractId', 'contractCode title status signedAt')
+    .populate('contractId', 'contractCode title status signedAt versionNumber isLatestVersion amendmentReason')
     .populate('expectedItems.rawMaterialId', 'materialCode materialName materialType category unit color gsm widthCm unitCost')
     .populate('batches.expectedItems.rawMaterialId', 'materialCode materialName materialType category unit color gsm widthCm unitCost')
     .populate('deliveryBatches.items.rawMaterialId', 'materialCode materialName unit')
@@ -186,6 +186,27 @@ export const verifyInboundPlan = async (planId, payload = {}, user) => {
     throw err;
   }
 
+  // 1. Kiểm tra trạng thái Kế hoạch: chỉ xem nếu đã thay thế hoặc hủy
+  if (['RESOLVED_SUPERSEDED', 'CANCELLED'].includes(plan.status) || plan.supersededByPlanId) {
+    const statusText = plan.status === 'RESOLVED_SUPERSEDED' ? 'đã có phiên bản mới thay thế' : 'đã bị hủy';
+    const err = new Error(`Kế hoạch [${plan.planCode}] ${statusText}. Kỹ thuật viên chỉ có quyền xem dữ liệu, không thể thực hiện nghiệm thu KCS.`);
+    err.status = 400;
+    throw err;
+  }
+
+  // 2. Kiểm tra trạng thái Hợp đồng: chỉ xem nếu hợp đồng đã có phiên bản mới hoặc đã hủy / chấm dứt
+  if (plan.contractId) {
+    const contract = await SupplierContract.findById(plan.contractId).select('status contractCode versionNumber isLatestVersion');
+    if (contract && ['SUPERSEDED', 'CANCELLED', 'TERMINATED'].includes(contract.status)) {
+      let cMsg = 'đã có phiên bản mới thay thế';
+      if (contract.status === 'CANCELLED') cMsg = 'đã bị hủy';
+      if (contract.status === 'TERMINATED') cMsg = 'đã chấm dứt hiệu lực';
+      const err = new Error(`Hợp đồng kinh tế [${contract.contractCode}] ${cMsg}. Kỹ thuật viên chỉ có quyền xem dữ liệu, không thể thực hiện nghiệm thu KCS.`);
+      err.status = 400;
+      throw err;
+    }
+  }
+
   const {
     verifiedItems = [],
     isMatchedWithPlan = true,
@@ -217,6 +238,27 @@ export const verifyInboundPlan = async (planId, payload = {}, user) => {
   const targetBatch = (batchNum && Array.isArray(plan.batches) && plan.batches.length > 0)
     ? plan.batches.find((b) => Number(b.batchNumber) === batchNum || (payload.batchId && String(b._id) === String(payload.batchId)))
     : null;
+
+  // Validation ràng buộc toàn vẹn: thực đạt + lỗi/thiếu phải bằng đúng kế hoạch
+  const itemsToVerify = targetBatch ? targetBatch.expectedItems : plan.expectedItems;
+  for (const item of itemsToVerify) {
+    const key = String(item.rawMaterialId?._id || item.rawMaterialId);
+    if (verifiedMap.has(key)) {
+      const v = verifiedMap.get(key);
+      const planned = Number(item.plannedQty || 0);
+      const passed = Number(v.actualVerifiedPassedQty || 0);
+      const defective = Number(v.actualDefectiveOrShortQty || 0);
+      const total = passed + defective;
+      if (total !== planned) {
+        const matName = item.materialCodeSnapshot || item.rawMaterialId?.materialName || 'nguyên phụ liệu';
+        const err = new Error(
+          `Mặt hàng [${matName}]: Tổng số lượng thực nhận đạt chuẩn (${passed}) cộng với số lượng lỗi/thiếu (${defective}) bằng ${total}, không khớp với số lượng kế hoạch (${planned}). Vui lòng điều chỉnh để tổng đúng bằng số lượng kế hoạch.`
+        );
+        err.status = 400;
+        throw err;
+      }
+    }
+  }
 
   const now = new Date();
   const complianceStatus = isMatchedWithPlan ? 'MATCHED' : 'MISMATCHED';

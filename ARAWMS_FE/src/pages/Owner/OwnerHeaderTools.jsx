@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AutoComplete, Badge, Button, Empty, Input, Popover, Skeleton } from 'antd';
-import { Bell, FileText, Search } from 'lucide-react';
+import { Bell, FileText, Search, AlertTriangle, CheckCheck } from 'lucide-react';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
+import notificationService from '../../services/notificationService';
 import { datetime } from './OwnerUI';
 
 const normalize = (value) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').trim();
@@ -13,8 +14,72 @@ export default function OwnerHeaderTools({ groups }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState('');
+
+  // 1. Quản lý Báo cáo quản trị (Legacy reports)
   const reports = useOwnerResource('manager-reports', { limit: 10, status: 'SUBMITTED' });
-  const total = reports.data?.total;
+  const reportsTotal = reports.data?.total || 0;
+
+  // 2. Quản lý Thông báo hệ thống & Cảnh báo KCS (Universal Notifications)
+  const [systemNotifs, setSystemNotifs] = useState([]);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const [loadingNotifs, setLoadingNotifs] = useState(false);
+
+  const fetchSystemNotifications = async () => {
+    try {
+      setLoadingNotifs(true);
+      const res = await notificationService.getNotifications({ role: 'OWNER', limit: 25 });
+      const items = Array.isArray(res?.items) ? res.items : Array.isArray(res?.data) ? res.data : [];
+      setSystemNotifs(items);
+      setUnreadNotifCount(typeof res?.unreadCount === 'number' ? res.unreadCount : items.filter((n) => !n.isRead).length);
+    } catch (err) {
+      console.warn('Lỗi khi tải thông báo của Owner:', err);
+    } finally {
+      setLoadingNotifs(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSystemNotifications();
+    const timer = setInterval(fetchSystemNotifications, 20000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const totalUnread = unreadNotifCount + reportsTotal;
+
+  const handleNotificationClick = async (notif) => {
+    try {
+      if (!notif.isRead) {
+        await notificationService.markAsRead(notif._id);
+        setSystemNotifs((prev) =>
+          prev.map((n) => (String(n._id) === String(notif._id) ? { ...n, isRead: true } : n))
+        );
+        setUnreadNotifCount((prev) => Math.max(0, prev - 1));
+      }
+    } catch (err) {
+      console.error('Lỗi khi đánh dấu đã đọc thông báo:', err);
+    }
+
+    setNotificationsOpen(false);
+    if (notif.targetUrl) {
+      let dest = notif.targetUrl;
+      const planId = notif.metadata?.planId;
+      if (dest.startsWith('/accountant/contract-deviations')) {
+        dest = planId ? `/owner/deviations/${planId}` : '/owner/plan-deviations';
+      }
+      navigate(dest);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await notificationService.markAllAsRead('OWNER');
+      setSystemNotifs((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadNotifCount(0);
+    } catch (err) {
+      console.error('Lỗi khi đánh dấu tất cả đã đọc:', err);
+    }
+  };
+
   const options = groups.flatMap((group) => group.items
     .filter(([path, label]) => normalize(`${label} ${group.title} ${path}`).includes(normalize(search)))
     .map(([path, label]) => ({ value: `/owner/${path}`, label })));
@@ -36,23 +101,120 @@ export default function OwnerHeaderTools({ groups }) {
     <Input allowClear prefix={<Search size={18} aria-hidden="true" />} placeholder="Tìm chức năng…" maxLength={100} aria-label="Tìm chức năng" />
   </AutoComplete>;
 
-  const notifications = <section className="owner-notifications" aria-label="Danh sách thông báo">
-    <div className="owner-notifications-heading"><h2>Thông báo</h2><span>{total == null ? 'Báo cáo quản lý' : `${total} chưa xem`}</span></div>
-    <div className="owner-notifications-list" aria-busy={reports.loading}>
-      {reports.loading ? <div className="owner-notifications-state" role="status"><span className="wms-sr-only">Đang tải thông báo…</span><Skeleton active paragraph={{ rows: 3 }} /></div>
-        : reports.error ? <div className="owner-notifications-state" role="alert"><p>Không tải được thông báo.</p><Button onClick={reports.reload}>Thử lại</Button></div>
-          : !reports.data?.items?.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Bạn không có thông báo mới" />
-            : <ul>{reports.data.items.map((report) => <li key={report.id}>
-              <Link className="owner-notification-item" to={`/owner/manager-reports/${report.id}`}
-                state={{ from: location.pathname + location.search }} onClick={() => setNotificationsOpen(false)}>
-                <span className="owner-notification-icon"><FileText size={22} aria-hidden="true" /></span>
-                <span className="owner-notification-copy"><strong>{report.title || report.code}</strong><span>Báo cáo {report.code} đang chờ bạn xem</span><time dateTime={report.submittedAt || undefined}>{datetime(report.submittedAt)}</time></span>
-                <span className="owner-notification-dot" aria-label="Chưa xem" />
-              </Link>
-            </li>)}</ul>}
-    </div>
-    <Link className="owner-notifications-footer" to="/owner/manager-reports?status=SUBMITTED" onClick={() => setNotificationsOpen(false)}>Xem tất cả báo cáo</Link>
-  </section>;
+  const hasAnyItems = (systemNotifs && systemNotifs.length > 0) || (reports.data?.items && reports.data.items.length > 0);
+
+  const notifications = (
+    <section className="owner-notifications" aria-label="Danh sách thông báo">
+      <div className="owner-notifications-heading">
+        <h2>Thông báo</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '12px', color: '#64748B' }}>
+            {totalUnread > 0 ? `${totalUnread} chưa xem` : 'Đã xem hết'}
+          </span>
+          {unreadNotifCount > 0 && (
+            <Button
+              type="text"
+              size="small"
+              onClick={handleMarkAllRead}
+              title="Đánh dấu tất cả đã đọc"
+              style={{ fontSize: '11.5px', padding: '0 4px', height: '22px', color: '#0284c7' }}
+            >
+              <CheckCheck size={14} style={{ marginRight: '3px' }} /> Đã đọc
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="owner-notifications-list" aria-busy={loadingNotifs || reports.loading}>
+        {loadingNotifs && !systemNotifs.length ? (
+          <div className="owner-notifications-state" role="status">
+            <Skeleton active paragraph={{ rows: 3 }} />
+          </div>
+        ) : !hasAnyItems ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Bạn không có thông báo mới" />
+        ) : (
+          <ul>
+            {/* 1. Danh sách thông báo hệ thống & sai lệch KCS */}
+            {systemNotifs.map((notif) => {
+              const isDeviation = notif.type === 'CONTRACT_DEVIATION';
+              return (
+                <li key={notif._id}>
+                  <div
+                    className="owner-notification-item"
+                    style={{
+                      cursor: 'pointer',
+                      backgroundColor: !notif.isRead ? (isDeviation ? '#FFF1F2' : '#F0F9FF') : 'transparent',
+                    }}
+                    onClick={() => handleNotificationClick(notif)}
+                  >
+                    <span
+                      className="owner-notification-icon"
+                      style={{
+                        backgroundColor: isDeviation ? '#FEE2E2' : '#E0F2FE',
+                        color: isDeviation ? '#DC2626' : '#0284C7',
+                      }}
+                    >
+                      {isDeviation ? <AlertTriangle size={20} /> : <Bell size={20} />}
+                    </span>
+                    <span className="owner-notification-copy">
+                      <strong style={{ color: isDeviation ? '#9F1239' : 'inherit' }}>
+                        {notif.title}
+                      </strong>
+                      <span style={{ fontSize: '12.5px', color: '#475569', lineHeight: 1.4 }}>
+                        {notif.message}
+                      </span>
+                      <time dateTime={notif.createdAt || undefined}>
+                        {datetime(notif.createdAt)}
+                      </time>
+                    </span>
+                    {!notif.isRead && (
+                      <span
+                        className="owner-notification-dot"
+                        style={{ backgroundColor: isDeviation ? '#E11D48' : '#0284C7' }}
+                        aria-label="Chưa xem"
+                      />
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+
+            {/* 2. Danh sách báo cáo quản lý kho */}
+            {(reports.data?.items || []).map((report) => (
+              <li key={report.id}>
+                <Link
+                  className="owner-notification-item"
+                  to={`/owner/manager-reports/${report.id}`}
+                  state={{ from: location.pathname + location.search }}
+                  onClick={() => setNotificationsOpen(false)}
+                >
+                  <span className="owner-notification-icon">
+                    <FileText size={22} aria-hidden="true" />
+                  </span>
+                  <span className="owner-notification-copy">
+                    <strong>{report.title || report.code}</strong>
+                    <span>Báo cáo {report.code} đang chờ bạn xem</span>
+                    <time dateTime={report.submittedAt || undefined}>
+                      {datetime(report.submittedAt)}
+                    </time>
+                  </span>
+                  <span className="owner-notification-dot" aria-label="Chưa xem" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <Link
+        className="owner-notifications-footer"
+        to="/owner/purchases"
+        onClick={() => setNotificationsOpen(false)}
+      >
+        Xem tổng quan Mua sắm & Kế hoạch
+      </Link>
+    </section>
+  );
 
   return <>
     <div className="owner-header-search-desktop">{searchField}</div>
@@ -61,10 +223,10 @@ export default function OwnerHeaderTools({ groups }) {
       <Button type="text" className="owner-icon-button" aria-label="Mở tìm kiếm" aria-expanded={searchOpen} icon={<Search size={20} />} />
     </Popover></div>
     <Popover trigger="click" placement="bottomRight" open={notificationsOpen} content={notifications} overlayClassName="owner-notifications-popover"
-      onOpenChange={(open) => { setNotificationsOpen(open); if (open) { setSearchOpen(false); reports.reload(); } }}>
+      onOpenChange={(open) => { setNotificationsOpen(open); if (open) { setSearchOpen(false); fetchSystemNotifications(); reports.reload(); } }}>
       <Button type="text" className={`owner-icon-button${notificationsOpen ? ' owner-notifications-active' : ''}`}
-        aria-label={`Thông báo${total == null ? '' : `: ${total} báo cáo chưa xem`}`} aria-expanded={notificationsOpen}>
-        <Badge count={total || 0} size="small" overflowCount={99}><Bell size={20} /></Badge>
+        aria-label={`Thông báo${totalUnread === 0 ? '' : `: ${totalUnread} chưa xem`}`} aria-expanded={notificationsOpen}>
+        <Badge count={totalUnread || 0} size="small" overflowCount={99}><Bell size={20} /></Badge>
       </Button>
     </Popover>
   </>;

@@ -28,34 +28,34 @@ import {
   Info,
   Wrench,
   Ban,
+  Truck,
+  PackageCheck,
+  Send,
+  ChevronDown,
 } from 'lucide-react';
 import accountantProcurementApi from '../../services/accountantProcurementApi.js';
 import { validateInboundPlanForm } from '../../utils/procurementValidation.js';
 
 const PLAN_STATUS_BADGE = {
   SCHEDULED: {
-    label: 'Chờ tiếp nhận (Hiện hành)',
+    label: 'Chờ tiếp nhận',
     cls: 'wms-status-reserved',
   },
   IN_INSPECTION: {
-    label: 'Đang kiểm định KCS',
+    label: 'Đang kiểm định',
     cls: 'wms-status-processing',
   },
   VERIFIED_MATCHED: {
-    label: 'KCS Đạt chuẩn',
+    label: 'KCS đạt chuẩn',
     cls: 'wms-status-available',
   },
   DEVIATION_REPORTED: {
     label: 'Sai lệch KCS',
     cls: 'wms-status-damaged',
   },
-  DEVIATION_RESOLVED: {
-    label: 'Đã xử lý sai lệch',
-    cls: 'wms-status-available',
-  },
   RESOLVED_SUPERSEDED: {
-    label: 'Đã thay thế (SUPERSEDED)',
-    cls: 'wms-status-completed',
+    label: 'Đã thay thế',
+    cls: 'wms-status-superseded',
   },
   CANCELLED: {
     label: 'Đã hủy lịch',
@@ -83,9 +83,7 @@ const renderComplianceBadge = (plan) => {
     );
   }
 
-  const isResolved =
-    plan.deviationResolution?.status === 'RESOLVED' ||
-    plan.status === 'DEVIATION_RESOLVED';
+  const isResolved = plan.deviationResolution?.status === 'RESOLVED';
   const isMismatched =
     plan.deliveryComplianceStatus === 'MISMATCHED' ||
     plan.status === 'DEVIATION_REPORTED' ||
@@ -94,6 +92,7 @@ const renderComplianceBadge = (plan) => {
     plan.deliveryComplianceStatus === 'MATCHED' ||
     plan.status === 'VERIFIED_MATCHED' ||
     plan.technicianVerification?.isMatchedWithPlan === true;
+  const isUnderInspection = plan.status === 'UNDER_INSPECTION';
 
   if (isResolved) {
     return (
@@ -113,9 +112,9 @@ const renderComplianceBadge = (plan) => {
         <span
           className="wms-status-badge"
           style={{ background: '#FFE4E6', color: '#BE123C' }}
-          title={plan.technicianVerification?.deviationSummary || 'Có sai lệch'}
+          title={plan.technicianVerification?.deviationSummary || 'Có sai lệch KCS'}
         >
-          <AlertTriangle size={11} style={{ marginRight: 3 }} /> Sai kế hoạch
+          <AlertTriangle size={11} style={{ marginRight: 3 }} /> Sai lệch KCS
         </span>
         <Link
           to="/accountant/contract-deviations"
@@ -127,9 +126,20 @@ const renderComplianceBadge = (plan) => {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          Xử lý sai lệch →
+          chi tiết sai lệch →
         </Link>
       </div>
+    );
+  }
+
+  if (isUnderInspection) {
+    return (
+      <span
+        className="wms-status-badge"
+        style={{ background: '#FEF3C7', color: '#B45309' }}
+      >
+        <Clock size={11} style={{ marginRight: 3 }} /> Đang kiểm định
+      </span>
     );
   }
 
@@ -139,7 +149,7 @@ const renderComplianceBadge = (plan) => {
         className="wms-status-badge"
         style={{ background: '#F0FDF4', color: '#16A34A' }}
       >
-        <CheckCircle2 size={11} style={{ marginRight: 3 }} /> Đúng kế hoạch
+        <CheckCircle2 size={11} style={{ marginRight: 3 }} /> KCS đạt chuẩn
       </span>
     );
   }
@@ -148,8 +158,9 @@ const renderComplianceBadge = (plan) => {
     <span
       className="wms-badge-batch"
       style={{ color: '#64748B', background: '#F1F5F9' }}
+      title="Lô hàng đang theo lịch trình giao nhận, chưa kiểm định KCS"
     >
-      <Clock size={11} style={{ marginRight: 3 }} /> Chờ kiểm tra
+      <Clock size={11} style={{ marginRight: 3 }} /> Chờ tiếp nhận
     </span>
   );
 };
@@ -372,10 +383,53 @@ const InboundPlanningPage = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [reportingOwner, setReportingOwner] = useState(false);
+
+  const handleReportToOwner = async (plan) => {
+    const planId = plan?._id || plan?.id;
+    if (!planId) return;
+    if (
+      !window.confirm(
+        `Bạn có chắc chắn muốn trình báo biên bản sai lệch KCS của kế hoạch [${plan.planCode}] lên Chủ sở hữu (Owner)?`
+      )
+    ) {
+      return;
+    }
+    try {
+      setReportingOwner(true);
+      await accountantProcurementApi.reportDeviationToOwner(planId, {
+        notes: 'Kế toán trình báo biên bản sai lệch kiểm định KCS cần Owner xem xét và phê duyệt phương án giải quyết.',
+      });
+      setFeedback({
+        type: 'success',
+        text: `Đã gửi báo cáo sai lệch của kế hoạch [${plan.planCode}] lên Chủ sở hữu (Owner) thành công!`,
+      });
+      if (
+        selectedPlanForDetail &&
+        String(selectedPlanForDetail._id || selectedPlanForDetail.id) === String(planId)
+      ) {
+        setSelectedPlanForDetail((prev) => ({
+          ...prev,
+          reportedToOwner: { isReported: true, reportedAt: new Date() },
+        }));
+      }
+      loadData();
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        text: err.response?.data?.message || 'Không thể gửi báo cáo lên Owner',
+      });
+    } finally {
+      setReportingOwner(false);
+    }
+  };
 
   const activeContracts = useMemo(() => {
     return (contracts || []).filter((c) => c.status === 'ACTIVE');
   }, [contracts]);
+
+  // Chi tiết hợp đồng gắn liền với kế hoạch đang thao tác (đặc biệt khi tạo version mới)
+  const [selectedContractInfo, setSelectedContractInfo] = useState(null);
 
   // Search inside Contract selector
   const [showContractSearch, setShowContractSearch] = useState(false);
@@ -398,6 +452,19 @@ const InboundPlanningPage = () => {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('NEWEST'); // 'NEWEST' (Mặc định: Mới -> Cũ) | 'OLDEST' | 'DELIVERY_DESC' | 'DELIVERY_ASC'
   const [viewMode, setViewMode] = useState('GROUPED'); // 'GROUPED' (Gộp chung theo Hợp đồng) | 'FLAT' (Danh sách tất cả)
+  const [expandedFamilies, setExpandedFamilies] = useState(new Set());
+
+  const toggleExpandFamily = (rootKey) => {
+    setExpandedFamilies((prev) => {
+      const next = new Set(prev);
+      if (next.has(rootKey)) {
+        next.delete(rootKey);
+      } else {
+        next.add(rootKey);
+      }
+      return next;
+    });
+  };
 
   // Multi-batch State (Mặc định 2 đợt giao hàng tự chia đều 50% - 50%)
   const [batchesCount, setBatchesCount] = useState(2);
@@ -417,6 +484,18 @@ const InboundPlanningPage = () => {
     originalPlanCode: '',
     versionNumber: 1,
   });
+
+  // Hợp đồng hiện hành đang chọn/gắn liền với kế hoạch
+  const currentContract = useMemo(() => {
+    const cId = String(planForm.contractId || '');
+    if (!cId) return selectedContractInfo || null;
+    return (
+      activeContracts.find((c) => String(c._id || c.id) === cId) ||
+      (contracts || []).find((c) => String(c._id || c.id) === cId) ||
+      selectedContractInfo ||
+      null
+    );
+  }, [planForm.contractId, activeContracts, contracts, selectedContractInfo]);
 
   // Modal Detail View & Version History
   const [selectedPlanForDetail, setSelectedPlanForDetail] = useState(null);
@@ -527,10 +606,7 @@ const InboundPlanningPage = () => {
     }
     const c = Math.max(1, Math.min(24, Math.floor(Number(newCount) || 1)));
     setBatchesCount(c);
-    const selectedContract =
-      activeContracts.find(
-        (ct) => String(ct._id || ct.id) === String(planForm.contractId)
-      ) || activeContracts[0];
+    const selectedContract = currentContract || activeContracts[0];
     const newBatches = buildBatches(
       c,
       selectedContract?.contractedMaterials || [],
@@ -772,10 +848,30 @@ const InboundPlanningPage = () => {
     handleBatchRollQtyChange(bIdx, itemIdx, targetRoll, isCurrentlySelected ? 0 : totalRollQty);
   };
 
-  const handleAutoBalanceBatches = () => {
-    const selectedContract = activeContracts.find(
-      (ct) => (ct._id || ct.id) === planForm.contractId
+  const handleRemoveBatch = (bIdxToRemove) => {
+    if (batches.length <= 1) return;
+    const nextCount = batches.length - 1;
+    setBatchesCount(nextCount);
+    const selectedContract = currentContract || activeContracts[0];
+    const updatedBatches = buildBatches(
+      nextCount,
+      selectedContract?.contractedMaterials || [],
+      selectedContract?.effectiveFrom,
+      selectedContract?.effectiveTo,
+      []
     );
+    setBatches(updatedBatches);
+    setPlanErrors((prev) => {
+      const next = { ...prev };
+      delete next.batchErrors;
+      return next;
+    });
+  };
+
+  const handleAutoBalanceBatches = () => {
+    const selectedContract =
+      currentContract ||
+      activeContracts.find((ct) => String(ct._id || ct.id) === String(planForm.contractId));
     const freshBatches = buildBatches(
       batchesCount,
       selectedContract?.contractedMaterials || [],
@@ -792,9 +888,9 @@ const InboundPlanningPage = () => {
 
   // Đối soát cân đối giữa Tổng cam kết trên Hợp đồng và Tổng các đợt đã phân bổ (khớp chính xác theo từng dòng mIdx)
   const allocationBalance = useMemo(() => {
-    const selectedContract = activeContracts.find(
-      (c) => (c._id || c.id) === planForm.contractId
-    );
+    const selectedContract =
+      currentContract ||
+      activeContracts.find((c) => String(c._id || c.id) === String(planForm.contractId));
     if (!selectedContract || !Array.isArray(selectedContract.contractedMaterials)) {
       return [];
     }
@@ -825,7 +921,7 @@ const InboundPlanningPage = () => {
         isBalanced,
       };
     });
-  }, [activeContracts, planForm.contractId, batches]);
+  }, [currentContract, activeContracts, planForm.contractId, batches]);
 
   const [highlightedMismatchItem, setHighlightedMismatchItem] = useState(null);
 
@@ -914,7 +1010,18 @@ const InboundPlanningPage = () => {
 
   const handleOpenDetailModal = async (plan) => {
     setSelectedPlanForDetail(plan);
-    setPlanVersions([]);
+    const planBaseCode = (plan.planCode || '').replace(/-V\d+$/i, '').trim().toUpperCase();
+    const pRootId = String(plan.rootPlanId?._id || plan.rootPlanId || '');
+
+    // Khởi tạo trước từ state plans để giao diện hiển thị ngay lập tức
+    const localFamilyVersions = (plans || []).filter((p) => {
+      const bCode = (p.planCode || '').replace(/-V\d+$/i, '').trim().toUpperCase();
+      const rId = String(p.rootPlanId?._id || p.rootPlanId || '');
+      return (pRootId && (rId === pRootId || String(p._id) === pRootId)) || (bCode === planBaseCode);
+    }).sort((a, b) => (Number(b.versionNumber) || 1) - (Number(a.versionNumber) || 1));
+
+    setPlanVersions(localFamilyVersions.length > 0 ? localFamilyVersions : [plan]);
+
     const planId = plan._id || plan.id;
     if (planId) {
       try {
@@ -925,11 +1032,27 @@ const InboundPlanningPage = () => {
         if (fullDetail) {
           setSelectedPlanForDetail(fullDetail);
         }
-        if (Array.isArray(versions)) {
+        if (Array.isArray(versions) && versions.length > 0) {
           setPlanVersions(versions);
         }
       } catch (err) {
         console.warn('Lấy chi tiết kế hoạch qua API không thành công, hiển thị bản ghi đã tải:', err);
+      }
+    }
+  };
+
+  const handleSwitchViewingVersion = async (versionPlan) => {
+    if (!versionPlan) return;
+    setSelectedPlanForDetail(versionPlan);
+    const vId = versionPlan._id || versionPlan.id;
+    if (vId) {
+      try {
+        const full = await accountantProcurementApi.getInboundPlanDetail(vId);
+        if (full) {
+          setSelectedPlanForDetail(full);
+        }
+      } catch (e) {
+        console.warn('Lỗi tải chi tiết phiên bản:', e);
       }
     }
   };
@@ -941,16 +1064,31 @@ const InboundPlanningPage = () => {
     }));
   };
 
-  const handleOpenAmendModal = (plan) => {
+  const handleOpenAmendModal = async (plan) => {
     setPlanErrors({});
     setFeedback(null);
     setShowContractSearch(false);
     setContractSearchKeyword('');
 
-    const targetContract =
-      activeContracts.find(
-        (c) => String(c._id || c.id) === String(plan.contractId?._id || plan.contractId)
-      ) || plan.contractId;
+    const planContractId = String(plan.contractId?._id || plan.contractId?.id || plan.contractId || '');
+    let targetContract =
+      activeContracts.find((c) => String(c._id || c.id) === planContractId) ||
+      (contracts || []).find((c) => String(c._id || c.id) === planContractId) ||
+      (typeof plan.contractId === 'object' && plan.contractId !== null ? plan.contractId : null);
+
+    if (planContractId && (!targetContract || !Array.isArray(targetContract.contractedMaterials) || targetContract.contractedMaterials.length === 0)) {
+      try {
+        const detail = await accountantProcurementApi.getContractDetail(planContractId);
+        if (detail && Array.isArray(detail.contractedMaterials) && detail.contractedMaterials.length > 0) {
+          targetContract = detail;
+        }
+      } catch (err) {
+        console.warn('Không thể tải chi tiết hợp đồng cho kế hoạch:', err);
+      }
+    }
+
+    setSelectedContractInfo(targetContract);
+    const targetMaterials = Array.isArray(targetContract?.contractedMaterials) ? targetContract.contractedMaterials : [];
 
     const baseCode = (plan.planCode || 'KH-NHAP-001').replace(/-V\d+$/i, '');
     const currentVer = plan.versionNumber || 1;
@@ -959,34 +1097,46 @@ const InboundPlanningPage = () => {
 
     let sourceBatches = [];
     if (Array.isArray(plan.batches) && plan.batches.length > 0) {
-      sourceBatches = plan.batches.map((b, idx) => ({
-        batchNumber: b.batchNumber || idx + 1,
-        batchTitle: b.batchTitle || `Đợt ${idx + 1}: Tiếp nhận nguyên liệu (v${nextVer})`,
-        batchPercentage: b.batchPercentage || 50,
-        scheduledDeliveryDate: b.scheduledDeliveryDate
-          ? String(b.scheduledDeliveryDate).slice(0, 10)
-          : new Date().toISOString().slice(0, 10),
-        notes: b.notes || '',
-        expectedItems: (b.expectedItems || []).map((it) => {
-          const contractMat = (targetContract?.contractedMaterials || []).find(
-            (cm) =>
-              String(cm.rawMaterialId?._id || cm.rawMaterialId) ===
-              String(it.rawMaterialId?._id || it.rawMaterialId)
+      const totalLen = plan.batches.length;
+      sourceBatches = plan.batches.map((b, idx) => {
+        const expectedItems = (b.expectedItems || []).map((it) => {
+          const itRawId = String(it.rawMaterialId?._id || it.rawMaterialId?.id || it.rawMaterialId || '');
+          const contractMat = targetMaterials.find(
+            (cm) => String(cm.rawMaterialId?._id || cm.rawMaterialId?.id || cm.rawMaterialId || '') === itRawId
           );
+          const contractedQty = Number(contractMat?.contractedQty || it.contractedQty || it.plannedQty || 0);
+          const allRolls = Array.isArray(contractMat?.rollDetails) && contractMat.rollDetails.length > 0
+            ? contractMat.rollDetails
+            : Array.isArray(it.allRolls) ? it.allRolls : [];
+
           return {
             rawMaterialId: it.rawMaterialId?._id || it.rawMaterialId?.id || it.rawMaterialId,
-            materialCode: it.rawMaterialId?.materialCode || contractMat?.materialCodeSnapshot || 'NVL',
-            materialName: it.rawMaterialId?.materialName || contractMat?.materialNameSnapshot || '',
-            unit: it.unitSnapshot || it.rawMaterialId?.unit || contractMat?.unitSnapshot || 'METER',
-            contractedQty: Number(contractMat?.contractedQty || it.contractedQty || it.plannedQty || 0),
+            materialCode: it.rawMaterialId?.materialCode || contractMat?.materialCodeSnapshot || it.materialCode || 'NVL',
+            materialName: it.rawMaterialId?.materialName || contractMat?.materialNameSnapshot || it.materialName || '',
+            unit: it.unitSnapshot || it.rawMaterialId?.unit || contractMat?.unitSnapshot || it.unit || 'METER',
+            contractedQty,
             plannedQty: Number(it.plannedQty || 0),
+            allRolls,
+            selectedRolls: Array.isArray(it.selectedRolls) ? it.selectedRolls : [],
           };
-        }),
-      }));
+        });
+
+        return {
+          batchNumber: b.batchNumber || idx + 1,
+          totalBatches: totalLen,
+          batchTitle: b.batchTitle || (idx === 0 ? `Đợt 1/${totalLen}: Giao nguyên liệu đợt đầu` : idx === totalLen - 1 ? `Đợt ${totalLen}/${totalLen}: Giao toàn bộ nguyên liệu còn lại` : `Đợt ${idx + 1}/${totalLen}: Giao nguyên liệu theo tiến độ`),
+          batchPercentage: b.batchPercentage || Math.round(100 / totalLen),
+          scheduledDeliveryDate: b.scheduledDeliveryDate
+            ? String(b.scheduledDeliveryDate).slice(0, 10)
+            : new Date().toISOString().slice(0, 10),
+          notes: b.notes || '',
+          expectedItems,
+        };
+      });
     } else {
       sourceBatches = buildBatches(
         2,
-        targetContract?.contractedMaterials || [],
+        targetMaterials,
         targetContract?.effectiveFrom,
         targetContract?.effectiveTo
       );
@@ -997,7 +1147,7 @@ const InboundPlanningPage = () => {
 
     setPlanForm({
       planCode: nextCode,
-      contractId: targetContract?._id || targetContract?.id || '',
+      contractId: targetContract?._id || targetContract?.id || planContractId,
       physicalContractPhotos: Array.isArray(plan.physicalContractPhotos)
         ? [...plan.physicalContractPhotos]
         : [],
@@ -1121,7 +1271,7 @@ const InboundPlanningPage = () => {
   };
 
   const filteredPlans = useMemo(() => {
-    return plans.filter((p) => {
+    const list = plans.filter((p) => {
       const q = searchTerm.trim().toLowerCase();
       const matchSearch =
         !q ||
@@ -1137,14 +1287,9 @@ const InboundPlanningPage = () => {
           p.technicianVerification?.isMatchedWithPlan === true;
       } else if (statusFilter === 'DEVIATION_REPORTED') {
         matchStatus =
-          (p.status === 'DEVIATION_REPORTED' ||
-            p.deliveryComplianceStatus === 'MISMATCHED' ||
-            p.technicianVerification?.isMatchedWithPlan === false) &&
-          p.deviationResolution?.status !== 'RESOLVED';
-      } else if (statusFilter === 'DEVIATION_RESOLVED') {
-        matchStatus =
-          p.status === 'DEVIATION_RESOLVED' ||
-          p.deviationResolution?.status === 'RESOLVED';
+          p.status === 'DEVIATION_REPORTED' ||
+          p.deliveryComplianceStatus === 'MISMATCHED' ||
+          p.technicianVerification?.isMatchedWithPlan === false;
       }
 
       return matchSearch && matchStatus;
@@ -1177,9 +1322,7 @@ const InboundPlanningPage = () => {
     let resolved = 0;
 
     plans.forEach((p) => {
-      const isResolved =
-        p.deviationResolution?.status === 'RESOLVED' ||
-        p.status === 'DEVIATION_RESOLVED';
+      const isResolved = p.deviationResolution?.status === 'RESOLVED';
       const isMismatched =
         p.deliveryComplianceStatus === 'MISMATCHED' ||
         p.status === 'DEVIATION_REPORTED' ||
@@ -1212,6 +1355,93 @@ const InboundPlanningPage = () => {
     const match = (contracts || []).find((c) => String(c._id || c.id) === cId);
     return match?.terminationReason || '';
   };
+
+  const planFamilies = useMemo(() => {
+    const familiesMap = new Map();
+
+    filteredPlans.forEach((plan) => {
+      const contractObj = typeof plan.contractId === 'object' ? plan.contractId : null;
+      const contractIdStr = String(
+        contractObj?._id || contractObj?.id || plan.contractId || ''
+      );
+      const fullContract = (contracts || []).find(
+        (c) => String(c._id || c.id) === contractIdStr
+      ) || contractObj;
+
+      const planBaseCode = (plan.planCode || '').replace(/-V\d+$/i, '').trim().toUpperCase();
+      const contractBaseCode = (fullContract?.contractCode || '').replace(/-V\d+$/i, '').trim().toUpperCase();
+
+      // Group key: gom nhóm toàn bộ các phiên bản của cùng 1 kế hoạch/hợp đồng gốc (ưu tiên planBaseCode)
+      const rootKey = planBaseCode || contractBaseCode || String(plan._id || plan.id);
+
+      if (!familiesMap.has(rootKey)) {
+        familiesMap.set(rootKey, {
+          rootKey,
+          baseCode: planBaseCode,
+          contract: fullContract,
+          contractCode: fullContract?.contractCode || '—',
+          supplierName:
+            plan.supplierId?.supplierName ||
+            fullContract?.supplierId?.supplierName ||
+            'Nhà cung ứng',
+          supplierCode:
+            plan.supplierId?.supplierCode ||
+            fullContract?.supplierId?.supplierCode ||
+            '',
+          isTerminated: fullContract?.status === 'TERMINATED',
+          terminationReason: fullContract?.terminationReason || '',
+          versions: [],
+        });
+      }
+      familiesMap.get(rootKey).versions.push(plan);
+    });
+
+    const families = Array.from(familiesMap.values()).map((fam) => {
+      fam.versions.sort((a, b) => {
+        const vA = Number(a.versionNumber) || 1;
+        const vB = Number(b.versionNumber) || 1;
+        if (vB !== vA) return vB - vA;
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      });
+      fam.totalVersions = fam.versions.length;
+      fam.hasMultipleVersions = fam.totalVersions > 1;
+
+      // Primary plan: prefer latest version that is not RESOLVED_SUPERSEDED or CANCELLED, else top version
+      fam.primaryPlan =
+        fam.versions.find((v) => v.status !== 'RESOLVED_SUPERSEDED' && v.status !== 'CANCELLED') ||
+        fam.versions[0];
+
+      fam.baseCode = (fam.primaryPlan.planCode || '').replace(/-V\d+$/i, '');
+      if (!fam.baseCode && fam.versions[0]) {
+        fam.baseCode = (fam.versions[0].planCode || '').replace(/-V\d+$/i, '');
+      }
+
+      // Cập nhật thông tin Hợp đồng đại diện theo phiên bản kế hoạch mới nhất
+      if (fam.primaryPlan?.contractId) {
+        const pContract = typeof fam.primaryPlan.contractId === 'object'
+          ? fam.primaryPlan.contractId
+          : (contracts || []).find((c) => String(c._id || c.id) === String(fam.primaryPlan.contractId));
+        if (pContract?.contractCode) {
+          fam.contractCode = pContract.contractCode;
+          fam.contract = pContract;
+        }
+      }
+
+      return fam;
+    });
+
+    // Mặc định: Kế hoạch có ngày tạo/lịch giao mới nhất lên đầu (NEWEST)
+    families.sort((a, b) => {
+      const timeA = new Date(a.primaryPlan?.createdAt || a.primaryPlan?.scheduledDeliveryDate || 0).getTime();
+      const timeB = new Date(b.primaryPlan?.createdAt || b.primaryPlan?.scheduledDeliveryDate || 0).getTime();
+      if (sortBy === 'OLDEST') {
+        return timeA - timeB;
+      }
+      return timeB - timeA;
+    });
+
+    return families;
+  }, [filteredPlans, contracts, sortBy]);
 
   const plansByContract = useMemo(() => {
     const map = new Map();
@@ -1380,12 +1610,11 @@ const InboundPlanningPage = () => {
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option value="ALL">Tất cả trạng thái</option>
-              <option value="SCHEDULED">Chờ tiếp nhận (Hiện hành)</option>
-              <option value="IN_INSPECTION">Đang kiểm định KCS</option>
-              <option value="VERIFIED_MATCHED">Đúng kế hoạch (KCS Đạt chuẩn)</option>
-              <option value="DEVIATION_REPORTED">Sai kế hoạch (Cần xử lý)</option>
-              <option value="DEVIATION_RESOLVED">Đã xử lý sai lệch</option>
-              <option value="RESOLVED_SUPERSEDED">Đã thay thế (SUPERSEDED)</option>
+              <option value="SCHEDULED">Chờ tiếp nhận</option>
+              <option value="IN_INSPECTION">Đang kiểm định</option>
+              <option value="VERIFIED_MATCHED">KCS đạt chuẩn</option>
+              <option value="DEVIATION_REPORTED">Sai lệch KCS</option>
+              <option value="RESOLVED_SUPERSEDED">Đã thay thế</option>
               <option value="CANCELLED">Đã hủy lịch</option>
             </select>
           </div>
@@ -1406,391 +1635,48 @@ const InboundPlanningPage = () => {
               <option value="DELIVERY_ASC">Ngày giao hàng gần nhất</option>
             </select>
           </div>
-
-          <div className="wms-filter-field" style={{ minWidth: '240px' }}>
-            <label className="wms-label">Chế độ hiển thị danh sách</label>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button
-                type="button"
-                className={`wms-btn wms-btn-sm ${viewMode === 'GROUPED' ? 'wms-btn-primary' : 'wms-btn-default'}`}
-                onClick={() => setViewMode('GROUPED')}
-                style={{ flex: 1, height: '36px', whiteSpace: 'nowrap' }}
-                title="Gom nhóm các kế hoạch theo từng Hợp đồng để dễ phân biệt"
-              >
-                <Building2 size={13} /> Gom theo HĐ
-              </button>
-              <button
-                type="button"
-                className={`wms-btn wms-btn-sm ${viewMode === 'FLAT' ? 'wms-btn-primary' : 'wms-btn-default'}`}
-                onClick={() => setViewMode('FLAT')}
-                style={{ flex: 1, height: '36px', whiteSpace: 'nowrap' }}
-                title="Hiển thị danh sách tất cả các kế hoạch"
-              >
-                <Layers size={13} /> Tất cả kế hoạch
-              </button>
-            </div>
-          </div>
         </div>
       </section>
 
-      {/* Content Section: Grouped by Contract or Flat Table */}
+      {/* Content Section: Unified Plan Family Table with Version Expansion */}
       {loading ? (
         <section className="wms-table-card" style={{ padding: '30px', textAlign: 'center' }}>
           <RefreshCw size={24} className="wms-spinner" style={{ margin: '0 auto 10px', color: 'var(--wms-accent)' }} />
           <div>Đang tải kế hoạch lịch trình tiếp nhận nguyên liệu...</div>
         </section>
-      ) : filteredPlans.length === 0 ? (
+      ) : planFamilies.length === 0 ? (
         <section className="wms-table-card" style={{ padding: '30px', textAlign: 'center' }}>
           <AlertCircle size={28} style={{ margin: '0 auto 8px', color: 'var(--wms-secondary)' }} />
           <div>Chưa có kế hoạch lịch trình tiếp nhận nào khớp với bộ lọc.</div>
         </section>
-      ) : viewMode === 'GROUPED' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {plansByContract.map((group) => (
-            <section
-              key={group.contractId}
-              style={{
-                border: group.isTerminated ? '1.5px solid #FCA5A5' : '1px solid var(--wms-border)',
-                borderRadius: '10px',
-                backgroundColor: group.isTerminated ? '#FFFBFB' : '#FFFFFF',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
-                overflow: 'hidden',
-              }}
-            >
-              {/* Header của Nhóm Hợp đồng */}
-              <div
-                style={{
-                  padding: '12px 16px',
-                  background: group.isTerminated ? '#FEF2F2' : 'var(--wms-bg-subtle)',
-                  borderBottom: '1px solid var(--wms-border)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '10px',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div
-                    style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '8px',
-                      background: group.isTerminated ? '#FEE2E2' : 'var(--wms-primary-subtle)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: group.isTerminated ? '#DC2626' : 'var(--wms-accent)',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {group.isTerminated ? <Ban size={18} /> : <Building2 size={18} />}
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '15px', fontWeight: 700, color: group.isTerminated ? '#991B1B' : 'var(--wms-text-primary)' }}>
-                        Hợp đồng [{group.contractCode}]
-                      </span>
-                      <span
-                        className="wms-badge-batch"
-                        style={{ fontSize: '11px', padding: '2px 8px', background: 'var(--wms-primary-subtle)', color: 'var(--wms-accent)' }}
-                      >
-                        {group.plans.length} Kế hoạch / Phiên bản
-                      </span>
-                      {group.isTerminated && (
-                        <span
-                          className="wms-status-badge wms-status-rejected"
-                          style={{
-                            fontSize: '11px',
-                            padding: '2px 8px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            fontWeight: 700,
-                            backgroundColor: '#FEE2E2',
-                            color: '#DC2626',
-                            border: '1px solid #FCA5A5',
-                          }}
-                        >
-                          <Ban size={12} /> Hợp đồng đã chấm dứt
-                        </span>
-                      )}
-                    </div>
-                    <div className="wms-helper-text" style={{ fontSize: '12.5px', marginTop: '2px' }}>
-                      Nhà cung ứng: <strong>{group.supplierName}</strong> {group.supplierCode && `(${group.supplierCode})`}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Thông báo hợp đồng đã chấm dứt */}
-              {group.isTerminated && (
-                <div
-                  style={{
-                    padding: '10px 16px',
-                    backgroundColor: '#FEF2F2',
-                    borderBottom: '1px solid #FCA5A5',
-                    color: '#991B1B',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '10px',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Ban size={16} color="#DC2626" style={{ flexShrink: 0 }} />
-                    <span>
-                      HỢP ĐỒNG ĐÃ CHẤM DỨT: Toàn bộ kế hoạch và lịch trình tiếp nhận của hợp đồng này đã bị ngừng hiệu lực.
-                    </span>
-                  </div>
-                  {group.terminationReason && (
-                    <span style={{ fontSize: '12px', fontWeight: 500, color: '#B91C1C', fontStyle: 'italic' }}>
-                      • Ghi chú: {group.terminationReason}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Bảng Kế hoạch & Phiên bản của Hợp đồng này */}
-              <div className="wms-table-scroll no-horizontal-scroll">
-                <table className="wms-table wms-table-responsive-fit" style={{ margin: 0, fontSize: '12.5px' }}>
-                  <colgroup>
-                    <col style={{ width: '21%' }} />
-                    <col style={{ width: '22%' }} />
-                    <col style={{ width: '24%' }} />
-                    <col style={{ width: '15%' }} />
-                    <col style={{ width: '18%' }} />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>Mã Kế hoạch & Phiên bản</th>
-                      <th>Lộ trình các đợt giao hàng</th>
-                      <th>Tổng quy mô & Chi tiết đợt</th>
-                      <th style={{ textAlign: 'center' }}>Trạng thái KCS</th>
-                      <th style={{ textAlign: 'center' }}>Thao tác</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.plans.map((plan, idx) => {
-                      const badge = PLAN_STATUS_BADGE[plan.status] || {
-                        label: plan.status,
-                        cls: 'wms-status-pending',
-                      };
-                      const totalQty = (plan.expectedItems || []).reduce(
-                        (acc, item) => acc + (Number(item.plannedQty) || 0),
-                        0
-                      );
-                      const primaryUnit =
-                        plan.expectedItems?.[0]?.unitSnapshot ||
-                        plan.expectedItems?.[0]?.rawMaterialId?.unit ||
-                        plan.expectedItems?.[0]?.unit ||
-                        'METER';
-                      const photosCount = plan.physicalContractPhotos?.length || 0;
-                      const hasBatches = Array.isArray(plan.batches) && plan.batches.length > 0;
-                      const batchCount = hasBatches ? plan.batches.length : (plan.totalBatches || 1);
-                      const isSuperseded = plan.status === 'RESOLVED_SUPERSEDED';
-
-                      return (
-                        <tr
-                          key={plan._id || plan.id || plan.planCode || idx}
-                          className="wms-interactive-row wms-row-expandable"
-                          style={{
-                            opacity: group.isTerminated ? 0.55 : isSuperseded ? 0.75 : 1,
-                            filter: group.isTerminated ? 'grayscale(35%)' : undefined,
-                            backgroundColor: group.isTerminated ? '#F9FAFB' : undefined,
-                          }}
-                          onClick={() => handleOpenDetailModal(plan)}
-                          title={
-                            group.isTerminated
-                              ? 'Hợp đồng đã chấm dứt - Nhấn để xem chi tiết lưu trữ'
-                              : 'Nhấn vào hàng để xem chi tiết đầy đủ kế hoạch và ảnh hợp đồng vật lý'
-                          }
-                        >
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              <span className="wms-code-pill" style={{ fontWeight: 700 }}>
-                                {plan.planCode}
-                              </span>
-                              <span
-                                className="wms-badge-batch"
-                                style={{
-                                  fontSize: '11px',
-                                  padding: '1px 6px',
-                                  background: isSuperseded ? 'var(--wms-gray-200)' : '#0284c7',
-                                  color: isSuperseded ? 'var(--wms-text-secondary)' : '#FFFFFF',
-                                }}
-                                title={`Phiên bản v${plan.versionNumber || 1}`}
-                              >
-                                v{plan.versionNumber || 1}
-                              </span>
-                              {group.isTerminated && (
-                                <span
-                                  className="wms-status-badge wms-status-rejected"
-                                  style={{
-                                    fontSize: '10.5px',
-                                    padding: '1px 6px',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
-                                    fontWeight: 700,
-                                    backgroundColor: '#FEE2E2',
-                                    color: '#DC2626',
-                                    border: '1px solid #FCA5A5',
-                                  }}
-                                  title="Kế hoạch thuộc hợp đồng đã chấm dứt"
-                                >
-                                  <Ban size={11} /> HĐ đã chấm dứt
-                                </span>
-                              )}
-                              {batchCount > 1 && (
-                                <span className="wms-badge-batch" title={`Kế hoạch gồm ${batchCount} đợt giao`}>
-                                  {batchCount} đợt
-                                </span>
-                              )}
-                              {photosCount > 0 && (
-                                <span className="wms-photo-badge" title={`Có ${photosCount} ảnh hợp đồng đính kèm`}>
-                                  <ImageIcon size={11} /> {photosCount}
-                                </span>
-                              )}
-                            </div>
-                            {plan.amendmentReason && (
-                              <div
-                                style={{
-                                  fontSize: '11.5px',
-                                  color: 'var(--wms-accent-hover)',
-                                  marginTop: '4px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                }}
-                              >
-                                <Info size={11} style={{ flexShrink: 0 }} />
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '280px' }}>
-                                  {plan.amendmentReason}
-                                </span>
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            {hasBatches && plan.batches.length > 1 ? (
-                              <div style={{ fontSize: '12px', lineHeight: '1.4' }}>
-                                {plan.batches.slice(0, 2).map((b, bIdx) => (
-                                  <div key={bIdx}>
-                                    <strong>Đợt {b.batchNumber}:</strong> {formatDate(b.scheduledDeliveryDate)}
-                                  </div>
-                                ))}
-                                {plan.batches.length > 2 && (
-                                  <div className="wms-helper-text" style={{ fontSize: '11px', fontStyle: 'italic' }}>
-                                    + {plan.batches.length - 2} đợt tiếp theo...
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <div>
-                                <strong>{formatDate(plan.scheduledDeliveryDate)}</strong>
-                                <div className="wms-helper-text" style={{ fontSize: '11px' }}>
-                                  Kho Tân Bình
-                                </div>
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            <div style={{ fontWeight: 600 }}>
-                              Tổng: {Number(totalQty).toLocaleString('vi-VN')} {primaryUnit}
-                            </div>
-                            {hasBatches && plan.batches.length > 1 ? (
-                              <div className="wms-helper-text" style={{ fontSize: '11px', color: 'var(--wms-accent-hover)', marginTop: '2px' }}>
-                                {plan.batches.map((b) => {
-                                  const bQty = (b.expectedItems || []).reduce(
-                                    (sum, it) => sum + (Number(it.plannedQty) || 0),
-                                    0
-                                  );
-                                  return `Đ${b.batchNumber}: ${Number(bQty).toLocaleString('vi-VN')} (${b.batchPercentage}%)`;
-                                }).join(' • ')}
-                              </div>
-                            ) : (
-                              <div className="wms-helper-text" style={{ fontSize: '11px', color: 'var(--wms-accent-hover)' }}>
-                                {plan.batchTitle || `${plan.expectedItems?.length || 0} loại nguyên phụ liệu`}
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            {renderComplianceBadge(plan)}
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div
-                              className="wms-action-cell"
-                              style={{ justifyContent: 'center', gap: '6px' }}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <button
-                                type="button"
-                                className="wms-btn wms-btn-default wms-btn-xs"
-                                onClick={() => handleOpenDetailModal(plan)}
-                                title="Xem chi tiết kế hoạch tiếp nhận và ảnh hợp đồng vật lý"
-                              >
-                                <Eye size={12} />
-                                <span>Chi tiết</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="wms-btn wms-btn-primary wms-btn-xs"
-                                onClick={() => handleOpenAmendModal(plan)}
-                                disabled={isSuperseded || plan.status === 'CANCELLED' || group.isTerminated}
-                                title={
-                                  group.isTerminated
-                                    ? 'Hợp đồng đã chấm dứt, không thể tạo phiên bản mới'
-                                    : isSuperseded
-                                    ? 'Kế hoạch này đã được thay thế bởi phiên bản mới hơn'
-                                    : `Cập nhật kế hoạch và lưu thành phiên bản v${(plan.versionNumber || 1) + 1}`
-                                }
-                              >
-                                <GitBranch size={12} />
-                                <span>Tạo v{(plan.versionNumber || 1) + 1}</span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          ))}
-        </div>
       ) : (
-        /* Flat Table View */
         <section className="wms-table-card">
           <div className="wms-table-scroll no-horizontal-scroll">
             <table className="wms-table wms-table-responsive-fit">
               <colgroup>
-                <col style={{ width: '16%' }} />
+                <col style={{ width: '22%' }} />
                 <col style={{ width: '20%' }} />
                 <col style={{ width: '16%' }} />
-                <col style={{ width: '20%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '15%' }} />
+                <col style={{ width: '18%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '12%' }} />
               </colgroup>
               <thead>
                 <tr>
                   <th>Mã Kế hoạch & Phiên bản</th>
                   <th>Hợp đồng & Đối tác Cung ứng</th>
                   <th>Lịch trình giao hàng</th>
-                  <th>Tổng quy mô & Các đợt giao</th>
+                  <th>Tổng quy mô & Chi tiết đợt</th>
                   <th style={{ textAlign: 'center' }}>Trạng thái KCS</th>
                   <th style={{ textAlign: 'center' }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredPlans.map((plan, idx) => {
-                  const badge = PLAN_STATUS_BADGE[plan.status] || {
-                    label: plan.status,
-                    cls: 'wms-status-pending',
-                  };
+                {planFamilies.map((family) => {
+                  const plan = family.primaryPlan;
+                  const isExpanded = expandedFamilies.has(family.rootKey);
+                  const isContractTerminated = family.isTerminated || isPlanContractTerminated(plan);
+                  const isSuperseded = plan.status === 'RESOLVED_SUPERSEDED';
                   const totalQty = (plan.expectedItems || []).reduce(
                     (acc, item) => acc + (Number(item.plannedQty) || 0),
                     0
@@ -1803,182 +1689,313 @@ const InboundPlanningPage = () => {
                   const photosCount = plan.physicalContractPhotos?.length || 0;
                   const hasBatches = Array.isArray(plan.batches) && plan.batches.length > 0;
                   const batchCount = hasBatches ? plan.batches.length : (plan.totalBatches || 1);
-                  const isSuperseded = plan.status === 'RESOLVED_SUPERSEDED';
-                  const isContractTerminated = isPlanContractTerminated(plan);
 
                   return (
-                    <tr
-                      key={plan._id || plan.id || plan.planCode || idx}
-                      className="wms-interactive-row wms-row-expandable"
-                      style={{
-                        opacity: isContractTerminated ? 0.55 : isSuperseded ? 0.75 : 1,
-                        filter: isContractTerminated ? 'grayscale(35%)' : undefined,
-                        backgroundColor: isContractTerminated ? '#F9FAFB' : undefined,
-                      }}
-                      onClick={() => handleOpenDetailModal(plan)}
-                      title={
-                        isContractTerminated
-                          ? 'Hợp đồng đã chấm dứt - Nhấn để xem chi tiết lưu trữ'
-                          : 'Nhấn vào hàng để xem chi tiết đầy đủ kế hoạch và ảnh hợp đồng vật lý'
-                      }
-                    >
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <span className="wms-code-pill" style={{ fontWeight: 700 }}>
-                            {plan.planCode}
-                          </span>
-                          <span
-                            className="wms-badge-batch"
-                            style={{
-                              fontSize: '11px',
-                              padding: '1px 6px',
-                              background: isSuperseded ? 'var(--wms-gray-200)' : '#0284c7',
-                              color: isSuperseded ? 'var(--wms-text-secondary)' : '#FFFFFF',
-                            }}
-                          >
-                            v{plan.versionNumber || 1}
-                          </span>
-                          {isContractTerminated && (
-                            <span
-                              className="wms-status-badge wms-status-rejected"
-                              style={{
-                                fontSize: '10.5px',
-                                padding: '1px 6px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px',
-                                fontWeight: 700,
-                                backgroundColor: '#FEE2E2',
-                                color: '#DC2626',
-                                border: '1px solid #FCA5A5',
-                              }}
-                              title="Kế hoạch thuộc hợp đồng đã chấm dứt"
-                            >
-                              <Ban size={11} /> HĐ đã chấm dứt
+                    <React.Fragment key={family.rootKey}>
+                      <tr
+                        className={`wms-interactive-row wms-row-expandable ${isExpanded ? 'wms-row-parent-expanded' : ''}`}
+                        style={{
+                          opacity: isContractTerminated ? 0.6 : isSuperseded ? 0.8 : 1,
+                          backgroundColor: isExpanded ? 'rgba(2, 132, 199, 0.03)' : undefined,
+                        }}
+                        onClick={() => handleOpenDetailModal(plan)}
+                        title="Nhấn để xem chi tiết đầy đủ kế hoạch tiếp nhận"
+                      >
+                        {/* 1. Mã Kế hoạch & Phiên bản */}
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span className="wms-code-pill" style={{ fontWeight: 700, fontSize: '13px' }}>
+                              {family.baseCode || plan.planCode}
                             </span>
-                          )}
-                          {batchCount > 1 && (
-                            <span className="wms-badge-batch" title={`Kế hoạch gồm ${batchCount} đợt giao`}>
-                              {batchCount} đợt
-                            </span>
-                          )}
-                          {photosCount > 0 && (
-                            <span className="wms-photo-badge" title={`Có ${photosCount} ảnh hợp đồng đính kèm`}>
-                              <ImageIcon size={11} /> {photosCount}
-                            </span>
-                          )}
-                        </div>
-                        {plan.amendmentReason && (
-                          <div
-                            style={{
-                              fontSize: '11.5px',
-                              color: 'var(--wms-accent-hover)',
-                              marginTop: '3px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            <Info size={11} style={{ flexShrink: 0 }} />
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '280px' }}>
-                              {plan.amendmentReason}
-                            </span>
+
+                            {/* Nút bấm mở rộng xem lịch sử phiên bản */}
+                            {family.hasMultipleVersions ? (
+                              <button
+                                type="button"
+                                className={`wms-btn-version-pill ${isExpanded ? 'expanded' : ''}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleExpandFamily(family.rootKey);
+                                }}
+                                title="Nhấn để mở rộng/thu gọn lịch sử các phiên bản kế hoạch này"
+                              >
+                                v{plan.versionNumber || 1} ({family.totalVersions} pb)
+                                <ChevronDown size={12} className="wms-pill-caret" />
+                              </button>
+                            ) : (
+                              <span className="wms-badge-version">
+                                v{plan.versionNumber || 1}
+                              </span>
+                            )}
+
+                            {isContractTerminated && (
+                              <span
+                                className="wms-status-badge wms-status-rejected"
+                                style={{
+                                  fontSize: '10.5px',
+                                  padding: '1px 6px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  fontWeight: 700,
+                                  backgroundColor: '#FEE2E2',
+                                  color: '#DC2626',
+                                  border: '1px solid #FCA5A5',
+                                }}
+                                title="Kế hoạch thuộc hợp đồng đã chấm dứt"
+                              >
+                                <Ban size={11} /> HĐ đã chấm dứt
+                              </span>
+                            )}
+
+                            {batchCount > 1 && (
+                              <span className="wms-badge-batch" title={`Kế hoạch gồm ${batchCount} đợt giao`}>
+                                {batchCount} đợt
+                              </span>
+                            )}
+
+                            {photosCount > 0 && (
+                              <span className="wms-photo-badge" title={`Có ${photosCount} ảnh biên bản/hợp đồng đính kèm`}>
+                                <ImageIcon size={11} /> {photosCount}
+                              </span>
+                            )}
                           </div>
-                        )}
-                      </td>
-                      <td>
-                        <div>
-                          <strong>{plan.contractId?.contractCode || 'Hợp đồng'}</strong>
-                          {isContractTerminated && (
-                            <div style={{ color: '#DC2626', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px', marginTop: '2px' }}>
-                              <Ban size={11} /> Hợp đồng đã chấm dứt
+
+                          {plan.amendmentReason && (
+                            <div
+                              style={{
+                                fontSize: '11.5px',
+                                color: 'var(--wms-accent-hover)',
+                                marginTop: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <Info size={11} style={{ flexShrink: 0 }} />
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '280px' }}>
+                                {plan.amendmentReason}
+                              </span>
                             </div>
                           )}
-                        </div>
-                        <div className="wms-helper-text">
-                          NCC: {plan.supplierId?.supplierName || '—'}
-                        </div>
-                      </td>
-                      <td>
-                        {hasBatches && plan.batches.length > 1 ? (
-                          <div style={{ fontSize: '12px', lineHeight: '1.4' }}>
-                            {plan.batches.slice(0, 2).map((b, bIdx) => (
-                              <div key={bIdx}>
-                                <strong>Đợt {b.batchNumber}:</strong> {formatDate(b.scheduledDeliveryDate)}
-                              </div>
-                            ))}
-                            {plan.batches.length > 2 && (
-                              <div className="wms-helper-text" style={{ fontSize: '11px', fontStyle: 'italic' }}>
-                                + {plan.batches.length - 2} đợt tiếp theo...
+                        </td>
+
+                        {/* 2. Hợp đồng & Đối tác Cung ứng */}
+                        <td>
+                          <div>
+                            <strong style={{ color: '#0F172A' }}>
+                              {plan.contractId?.contractCode || family.contractCode || '—'}
+                            </strong>
+                            {isContractTerminated && (
+                              <div style={{ color: '#DC2626', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px', marginTop: '2px' }}>
+                                <Ban size={11} /> Hợp đồng đã chấm dứt
                               </div>
                             )}
                           </div>
-                        ) : (
-                          <div>
-                            <strong>{formatDate(plan.scheduledDeliveryDate)}</strong>
-                            <div className="wms-helper-text" style={{ fontSize: '11px' }}>
-                              Kho Tân Bình
+                          <div className="wms-helper-text" style={{ fontSize: '12px', marginTop: '2px' }}>
+                            {plan.supplierId?.supplierName || family.supplierName || '—'}
+                          </div>
+                        </td>
+
+                        {/* 3. Lịch trình giao hàng */}
+                        <td>
+                          {hasBatches && plan.batches.length > 1 ? (
+                            <div style={{ fontSize: '12px', lineHeight: '1.4' }}>
+                              {plan.batches.slice(0, 2).map((b, bIdx) => (
+                                <div key={bIdx}>
+                                  <strong>Đợt {b.batchNumber}:</strong> {formatDate(b.scheduledDeliveryDate)}
+                                </div>
+                              ))}
+                              {plan.batches.length > 2 && (
+                                <div className="wms-helper-text" style={{ fontSize: '11px', fontStyle: 'italic' }}>
+                                  + {plan.batches.length - 2} đợt tiếp theo...
+                                </div>
+                              )}
                             </div>
+                          ) : (
+                            <div>
+                              <strong>{formatDate(plan.scheduledDeliveryDate)}</strong>
+                              <div className="wms-helper-text" style={{ fontSize: '11px' }}>
+                                Kho Tân Bình
+                              </div>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 4. Tổng quy mô & Chi tiết đợt */}
+                        <td>
+                          <div style={{ fontWeight: 600 }}>
+                            Tổng: {Number(totalQty).toLocaleString('vi-VN')} {primaryUnit}
                           </div>
-                        )}
-                      </td>
-                      <td>
-                        <div style={{ fontWeight: 600 }}>
-                          Tổng: {Number(totalQty).toLocaleString('vi-VN')} {primaryUnit}
-                        </div>
-                        {hasBatches && plan.batches.length > 1 ? (
-                          <div className="wms-helper-text" style={{ fontSize: '11px', color: 'var(--wms-accent-hover)', marginTop: '2px' }}>
-                            {plan.batches.map((b) => {
-                              const bQty = (b.expectedItems || []).reduce(
-                                (sum, it) => sum + (Number(it.plannedQty) || 0),
-                                0
-                              );
-                              return `Đ${b.batchNumber}: ${Number(bQty).toLocaleString('vi-VN')} (${b.batchPercentage}%)`;
-                            }).join(' • ')}
-                          </div>
-                        ) : (
-                          <div className="wms-helper-text" style={{ fontSize: '11px', color: 'var(--wms-accent-hover)' }}>
-                            {plan.batchTitle || `${plan.expectedItems?.length || 0} loại nguyên phụ liệu`}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        {renderComplianceBadge(plan)}
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <div
-                          className="wms-action-cell"
-                          style={{ justifyContent: 'center', gap: '6px' }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            className="wms-btn wms-btn-default wms-btn-xs"
-                            onClick={() => handleOpenDetailModal(plan)}
-                            title="Xem chi tiết kế hoạch tiếp nhận và ảnh hợp đồng vật lý"
+                          {hasBatches && plan.batches.length > 1 ? (
+                            <div className="wms-helper-text" style={{ fontSize: '11px', color: 'var(--wms-accent-hover)', marginTop: '2px' }}>
+                              {plan.batches.map((b) => {
+                                const bQty = (b.expectedItems || []).reduce(
+                                  (sum, it) => sum + (Number(it.plannedQty) || 0),
+                                  0
+                                );
+                                return `Đ${b.batchNumber}: ${Number(bQty).toLocaleString('vi-VN')} (${b.batchPercentage}%)`;
+                              }).join(' • ')}
+                            </div>
+                          ) : (
+                            <div className="wms-helper-text" style={{ fontSize: '11px', color: 'var(--wms-accent-hover)' }}>
+                              {plan.batchTitle || `${plan.expectedItems?.length || 0} loại nguyên phụ liệu`}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 5. Trạng thái KCS */}
+                        <td style={{ textAlign: 'center' }}>
+                          {renderComplianceBadge(plan)}
+                        </td>
+
+                        {/* 6. Thao tác */}
+                        <td style={{ textAlign: 'center' }}>
+                          <div
+                            className="wms-action-cell"
+                            style={{ justifyContent: 'center', gap: '6px' }}
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <Eye size={12} />
-                            <span>Chi tiết</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="wms-btn wms-btn-primary wms-btn-xs"
-                            onClick={() => handleOpenAmendModal(plan)}
-                            disabled={isSuperseded || plan.status === 'CANCELLED' || isContractTerminated}
-                            title={
-                              isContractTerminated
-                                ? 'Hợp đồng đã chấm dứt, không thể tạo phiên bản mới'
-                                : isSuperseded
-                                ? 'Kế hoạch này đã được thay thế bởi phiên bản mới hơn'
-                                : `Cập nhật kế hoạch và lưu thành phiên bản v${(plan.versionNumber || 1) + 1}`
-                            }
-                          >
-                            <GitBranch size={12} />
-                            <span>Tạo v{(plan.versionNumber || 1) + 1}</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                            <button
+                              type="button"
+                              className="wms-btn wms-btn-default wms-btn-xs"
+                              onClick={() => handleOpenDetailModal(plan)}
+                              title="Xem chi tiết kế hoạch tiếp nhận và ảnh hợp đồng vật lý"
+                            >
+                              <Eye size={12} />
+                              <span>Chi tiết</span>
+                            </button>
+                            {plan.status === 'DEVIATION_REPORTED' && (
+                              plan.reportedToOwner?.isReported ? (
+                                <span
+                                  className="wms-status-badge wms-status-completed"
+                                  style={{ fontSize: '11px', padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                  title={`Đã trình báo Owner lúc ${formatDate(plan.reportedToOwner.reportedAt)}`}
+                                >
+                                  <CheckCircle2 size={11} /> Đã báo Owner
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="wms-btn wms-btn-danger wms-btn-xs"
+                                  onClick={() => handleReportToOwner(plan)}
+                                  disabled={reportingOwner}
+                                  title="Trình báo biên bản sai lệch KCS này lên Chủ sở hữu (Owner)"
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                >
+                                  <Send size={11} />
+                                  <span>Trình báo Owner</span>
+                                </button>
+                              )
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Sub-table mở rộng danh sách các phiên bản của kế hoạch này */}
+                      {isExpanded && (
+                        <tr className="wms-family-subtable-row">
+                          <td colSpan={6} style={{ padding: 0 }}>
+                            <div className="wms-family-subtable-container">
+                              <div className="wms-family-subtable-title">
+                                <GitBranch size={14} color="#0284c7" />
+                                <span>
+                                  Lịch sử các phiên bản kế hoạch tiếp nhận: <strong>{family.baseCode}</strong> ({family.totalVersions} phiên bản)
+                                </span>
+                              </div>
+                              <table className="wms-nested-table">
+                                <thead>
+                                  <tr>
+                                    <th style={{ width: '80px', textAlign: 'center' }}>Phiên bản</th>
+                                    <th style={{ width: '150px' }}>Mã Kế hoạch</th>
+                                    <th style={{ width: '160px' }}>Hợp đồng liên kết</th>
+                                    <th>Nội dung điều chỉnh / Ghi chú</th>
+                                    <th style={{ width: '150px' }}>Lịch trình</th>
+                                    <th style={{ width: '130px' }}>Quy mô</th>
+                                    <th style={{ width: '140px', textAlign: 'center' }}>Trạng thái KCS</th>
+                                    <th style={{ width: '100px', textAlign: 'center' }}>Thao tác</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {family.versions.map((vPlan) => {
+                                    const vTotalQty = (vPlan.expectedItems || []).reduce(
+                                      (acc, item) => acc + (Number(item.plannedQty) || 0),
+                                      0
+                                    );
+                                    const vUnit =
+                                      vPlan.expectedItems?.[0]?.unitSnapshot ||
+                                      vPlan.expectedItems?.[0]?.rawMaterialId?.unit ||
+                                      'METER';
+                                    const vIsSuperseded = vPlan.status === 'RESOLVED_SUPERSEDED';
+
+                                    return (
+                                      <tr
+                                        key={vPlan._id || vPlan.id}
+                                        style={{
+                                          opacity: vIsSuperseded ? 0.75 : 1,
+                                          backgroundColor: vIsSuperseded ? '#F8FAFC' : '#FFFFFF',
+                                        }}
+                                      >
+                                        <td style={{ textAlign: 'center' }}>
+                                          <span
+                                            className="wms-badge-version"
+                                            style={{
+                                              backgroundColor: vIsSuperseded ? '#CBD5E1' : '#0284c7',
+                                              color: '#FFFFFF',
+                                            }}
+                                          >
+                                            v{vPlan.versionNumber || 1}
+                                          </span>
+                                        </td>
+                                        <td>
+                                          <strong style={{ color: '#0F172A' }}>{vPlan.planCode}</strong>
+                                          {vIsSuperseded && (
+                                            <div style={{ fontSize: '11px', color: '#64748B' }}>
+                                              (Đã được thay thế)
+                                            </div>
+                                          )}
+                                        </td>
+                                        <td>
+                                          <strong>{vPlan.contractId?.contractCode || '—'}</strong>
+                                        </td>
+                                        <td>
+                                          <div style={{ fontSize: '12px', color: '#334155' }}>
+                                            {vPlan.amendmentReason || 'Khởi tạo theo hợp đồng gốc'}
+                                          </div>
+                                        </td>
+                                        <td>
+                                          <div style={{ fontSize: '12px' }}>
+                                            {vPlan.batches && vPlan.batches.length > 1
+                                              ? `${vPlan.batches.length} đợt giao`
+                                              : formatDate(vPlan.scheduledDeliveryDate)}
+                                          </div>
+                                        </td>
+                                        <td>
+                                          <strong>{Number(vTotalQty).toLocaleString('vi-VN')} {vUnit}</strong>
+                                        </td>
+                                        <td style={{ textAlign: 'center' }}>
+                                          {renderComplianceBadge(vPlan)}
+                                        </td>
+                                        <td style={{ textAlign: 'center' }}>
+                                          <button
+                                            type="button"
+                                            className="wms-btn wms-btn-default wms-btn-xs"
+                                            onClick={() => handleOpenDetailModal(vPlan)}
+                                            title="Xem chi tiết phiên bản này"
+                                          >
+                                            <Eye size={12} /> Chi tiết
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -2035,79 +2052,120 @@ const InboundPlanningPage = () => {
                 </div>
               )}
 
-              {/* PHẦN 1: HỢP ĐỒNG & MÃ KẾ HOẠCH GỐC */}
+              {/* THÔNG TIN HỢP ĐỒNG GẮN LIỀN & PHIÊN BẢN KẾ HOẠCH TIẾP NHẬN */}
               <div className="wms-form-section">
                 <div className="wms-form-section-header">
                   <h3 className="wms-form-section-title">
                     <CalendarClock size={18} />
-                    1. Thông tin Hợp đồng Mua sắm & Thiết lập Lịch trình Tiếp nhận
+                    1. Hợp đồng Mua sắm & Định danh Phiên bản Kế hoạch
                   </h3>
                 </div>
 
-                <div className="wms-form-grid-3">
-                  <div className={`wms-field ${planErrors.planCode ? 'has-error' : ''}`}>
-                    <label htmlFor="pf-code" className="wms-label">
-                      Mã Kế hoạch Gốc <span className="wms-required">*</span>
-                    </label>
-                    <input
-                      id="pf-code"
-                      type="text"
-                      className="wms-input"
-                      value={planForm.planCode}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (planErrors.planCode) {
-                          setPlanErrors((prev) => {
-                            const next = { ...prev };
-                            delete next.planCode;
-                            return next;
-                          });
-                        }
-                        setPlanForm((prev) => ({
-                          ...prev,
-                          planCode: val,
-                        }));
-                      }}
-                      required
-                    />
-                    {planErrors.planCode && (
-                      <span className="wms-field-error-text">
-                        <AlertCircle size={12} /> {planErrors.planCode}
+                {planForm.isNewVersion ? (
+                  <div
+                    style={{
+                      background: '#F8FAFC',
+                      border: '1px solid #CBD5E1',
+                      borderRadius: '8px',
+                      padding: '14px',
+                      marginBottom: '14px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span
+                          style={{
+                            background: '#0F172A',
+                            color: '#FFFFFF',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                          }}
+                        >
+                          HỢP ĐỒNG GỐC: [{currentContract?.contractCode || 'HD-2026-003'}]
+                        </span>
+                        <strong style={{ fontSize: '13.5px', color: '#0F172A' }}>
+                          {currentContract?.contractTitle || 'Hợp đồng Cung ứng Nguyên phụ liệu'}
+                        </strong>
+                      </div>
+                      <span style={{ fontSize: '12px', color: '#475569' }}>
+                        Thời hạn HĐ: <strong>{currentContract?.effectiveFrom ? new Date(currentContract.effectiveFrom).toLocaleDateString('vi-VN') : '—'}</strong> đến <strong>{currentContract?.effectiveTo ? new Date(currentContract.effectiveTo).toLocaleDateString('vi-VN') : '—'}</strong>
                       </span>
-                    )}
-                  </div>
+                    </div>
 
-                  <div className={`wms-field ${planErrors.contractId ? 'has-error' : ''}`} style={{ position: 'relative' }}>
-                    <label htmlFor="pf-contract" className="wms-label">
-                      Hợp đồng Nguyên phụ liệu (ACTIVE) <span className="wms-required">*</span>
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <select
-                        id="pf-contract"
-                        className="wms-select"
-                        style={{ flex: 1, minWidth: 0 }}
-                        value={planForm.contractId}
-                        onChange={(e) => handleSelectContract(e.target.value)}
-                        disabled={planForm.isNewVersion}
+                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12.5px', color: '#334155', borderTop: '1px solid #E2E8F0', paddingTop: '8px' }}>
+                      <div>
+                        Nhà cung cấp: <strong>{currentContract?.supplierId?.supplierName || '—'}</strong> ({currentContract?.supplierId?.supplierCode || 'NCC'})
+                      </div>
+                      <div>
+                        Mã Kế hoạch mới: <strong style={{ color: '#0284C7' }}>{planForm.planCode}</strong> (Nâng cấp từ: <em>{planForm.originalPlanCode}</em>)
+                      </div>
+                      <div>
+                        Số mặt hàng ký HĐ: <strong>{(currentContract?.contractedMaterials || []).length} mặt hàng</strong>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="wms-form-grid-3">
+                    <div className={`wms-field ${planErrors.planCode ? 'has-error' : ''}`}>
+                      <label htmlFor="pf-code" className="wms-label">
+                        Mã Kế hoạch <span className="wms-required">*</span>
+                      </label>
+                      <input
+                        id="pf-code"
+                        type="text"
+                        className="wms-input"
+                        value={planForm.planCode}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (planErrors.planCode) {
+                            setPlanErrors((prev) => {
+                              const next = { ...prev };
+                              delete next.planCode;
+                              return next;
+                            });
+                          }
+                          setPlanForm((prev) => ({
+                            ...prev,
+                            planCode: val,
+                          }));
+                        }}
                         required
-                      >
-                        <option value="">-- Chọn Hợp đồng --</option>
-                        {activeContracts.map((c) => {
-                          const cid = c._id || c.id;
-                          const hasPlan = (plans || []).some(
-                            (p) => String(p.contractId?._id || p.contractId) === String(cid) && p.status !== 'CANCELLED'
-                          );
-                          return (
-                            <option
-                              key={cid || c.contractCode}
-                              value={cid}
-                            >
-                              [{c.contractCode}] {c.supplierId?.supplierName} {hasPlan ? '— (Đã có KH nhập hàng)' : ''}
-                            </option>
-                          );
-                        })}
-                      </select>
-                      {!planForm.isNewVersion && (
+                      />
+                      {planErrors.planCode && (
+                        <span className="wms-field-error-text">
+                          <AlertCircle size={12} /> {planErrors.planCode}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className={`wms-field wms-field-span-2 ${planErrors.contractId ? 'has-error' : ''}`} style={{ position: 'relative' }}>
+                      <label htmlFor="pf-contract" className="wms-label">
+                        Hợp đồng Nguyên phụ liệu (ACTIVE) <span className="wms-required">*</span>
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <select
+                          id="pf-contract"
+                          className="wms-select"
+                          style={{ flex: 1, minWidth: 0 }}
+                          value={planForm.contractId}
+                          onChange={(e) => handleSelectContract(e.target.value)}
+                          required
+                        >
+                          <option value="">-- Chọn Hợp đồng --</option>
+                          {activeContracts.map((c) => {
+                            const cid = c._id || c.id;
+                            const hasPlan = (plans || []).some(
+                              (p) => String(p.contractId?._id || p.contractId) === String(cid) && p.status !== 'CANCELLED'
+                            );
+                            return (
+                              <option key={cid || c.contractCode} value={cid}>
+                                [{c.contractCode}] {c.supplierId?.supplierName} {hasPlan ? '— (Đã có KH nhập hàng)' : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
                         <button
                           type="button"
                           className={`wms-btn ${showContractSearch ? 'wms-btn-primary' : 'wms-btn-default'}`}
@@ -2125,232 +2183,142 @@ const InboundPlanningPage = () => {
                         >
                           <Search size={15} />
                         </button>
-                      )}
-                    </div>
+                      </div>
 
-                    {showContractSearch && !planForm.isNewVersion && (
-                      <div
-                        style={{
-                          marginTop: '6px',
-                          padding: '8px',
-                          borderRadius: '6px',
-                          border: '1px solid var(--wms-border-strong)',
-                          backgroundColor: '#FFFFFF',
-                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
-                        }}
-                      >
-                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                          <Search
-                            size={14}
-                            style={{
-                              position: 'absolute',
-                              left: '10px',
-                              color: 'var(--wms-secondary)',
-                              pointerEvents: 'none',
-                            }}
-                          />
-                          <input
-                            type="text"
-                            className="wms-input"
-                            style={{
-                              paddingLeft: '30px',
-                              paddingRight: '28px',
-                              height: '34px',
-                              fontSize: '12.5px',
-                            }}
-                            placeholder="Nhập mã HĐ, tên hoặc mã NCC để tìm..."
-                            value={contractSearchKeyword}
-                            onChange={(e) => setContractSearchKeyword(e.target.value)}
-                            autoFocus
-                          />
-                          {contractSearchKeyword && (
-                            <button
-                              type="button"
-                              onClick={() => setContractSearchKeyword('')}
-                              title="Xóa từ khóa"
-                              style={{
-                                position: 'absolute',
-                                right: '8px',
-                                background: 'none',
-                                border: 'none',
-                                cursor: 'pointer',
-                                color: 'var(--wms-secondary)',
-                                display: 'inline-flex',
-                                padding: '2px',
-                              }}
-                            >
-                              <X size={13} />
-                            </button>
-                          )}
-                        </div>
-
+                      {showContractSearch && (
                         <div
                           style={{
-                            maxHeight: '180px',
-                            overflowY: 'auto',
                             marginTop: '6px',
-                            borderTop: '1px solid var(--wms-border)',
-                            paddingTop: '4px',
+                            padding: '8px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--wms-border-strong)',
+                            backgroundColor: '#FFFFFF',
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
                           }}
                         >
-                          {filteredActiveContracts.length === 0 ? (
-                            <div
-                              className="wms-helper-text"
-                              style={{ padding: '6px 8px', textAlign: 'center' }}
-                            >
-                              Không tìm thấy hợp đồng ACTIVE phù hợp.
-                            </div>
-                          ) : (
-                            filteredActiveContracts.map((c) => {
-                              const cid = String(c._id || c.id);
-                              const isSelected = String(planForm.contractId) === cid;
-                              const hasPlan = (plans || []).some(
-                                (p) => String(p.contractId?._id || p.contractId) === cid && p.status !== 'CANCELLED'
-                              );
+                          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                            <Search
+                              size={14}
+                              style={{
+                                position: 'absolute',
+                                left: '10px',
+                                color: 'var(--wms-secondary)',
+                                pointerEvents: 'none',
+                              }}
+                            />
+                            <input
+                              type="text"
+                              className="wms-input"
+                              style={{
+                                paddingLeft: '30px',
+                                paddingRight: '28px',
+                                height: '34px',
+                                fontSize: '12.5px',
+                              }}
+                              placeholder="Nhập mã HĐ, tên hoặc mã NCC để tìm..."
+                              value={contractSearchKeyword}
+                              onChange={(e) => setContractSearchKeyword(e.target.value)}
+                              autoFocus
+                            />
+                            {contractSearchKeyword && (
+                              <button
+                                type="button"
+                                onClick={() => setContractSearchKeyword('')}
+                                title="Xóa từ khóa"
+                                style={{
+                                  position: 'absolute',
+                                  right: '8px',
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  color: 'var(--wms-secondary)',
+                                  display: 'inline-flex',
+                                  padding: '2px',
+                                }}
+                              >
+                                <X size={13} />
+                              </button>
+                            )}
+                          </div>
 
-                              return (
-                                <button
-                                  key={cid || c.contractCode}
-                                  type="button"
-                                  onClick={() => {
-                                    handleSelectContract(cid);
-                                    setShowContractSearch(false);
-                                  }}
-                                  style={{
-                                    width: '100%',
-                                    textAlign: 'left',
-                                    padding: '6px 8px',
-                                    borderRadius: '4px',
-                                    border: 'none',
-                                    background: isSelected
-                                      ? 'var(--wms-primary-subtle)'
-                                      : 'transparent',
-                                    cursor: 'pointer',
-                                    fontSize: '12.5px',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                  }}
-                                >
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    <strong>[{c.contractCode}]</strong> {c.supplierId?.supplierName}
-                                  </span>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                                    {hasPlan && (
-                                      <span
-                                        className="wms-badge-batch"
-                                        style={{ fontSize: '10px', padding: '1px 5px', background: '#FEF3C7', color: '#B45309' }}
-                                      >
-                                        Đã có KH
-                                      </span>
-                                    )}
-                                    {isSelected && (
-                                      <CheckCircle2 size={14} style={{ color: 'var(--wms-accent)', flexShrink: 0 }} />
-                                    )}
-                                  </div>
-                                </button>
-                              );
-                            })
-                          )}
+                          <div
+                            style={{
+                              maxHeight: '180px',
+                              overflowY: 'auto',
+                              marginTop: '6px',
+                              borderTop: '1px solid var(--wms-border)',
+                              paddingTop: '4px',
+                            }}
+                          >
+                            {filteredActiveContracts.length === 0 ? (
+                              <div className="wms-helper-text" style={{ padding: '6px 8px', textAlign: 'center' }}>
+                                Không tìm thấy hợp đồng ACTIVE phù hợp.
+                              </div>
+                            ) : (
+                              filteredActiveContracts.map((c) => {
+                                const cid = String(c._id || c.id);
+                                const isSelected = String(planForm.contractId) === cid;
+                                const hasPlan = (plans || []).some(
+                                  (p) => String(p.contractId?._id || p.contractId) === cid && p.status !== 'CANCELLED'
+                                );
+
+                                return (
+                                  <button
+                                    key={cid || c.contractCode}
+                                    type="button"
+                                    onClick={() => {
+                                      handleSelectContract(cid);
+                                      setShowContractSearch(false);
+                                    }}
+                                    style={{
+                                      width: '100%',
+                                      textAlign: 'left',
+                                      padding: '6px 8px',
+                                      borderRadius: '4px',
+                                      border: 'none',
+                                      background: isSelected ? 'var(--wms-primary-subtle)' : 'transparent',
+                                      cursor: 'pointer',
+                                      fontSize: '12.5px',
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                    }}
+                                  >
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      <strong>[{c.contractCode}]</strong> {c.supplierId?.supplierName}
+                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                                      {hasPlan && (
+                                        <span className="wms-badge-batch" style={{ fontSize: '10px', padding: '1px 5px', background: '#FEF3C7', color: '#B45309' }}>
+                                          Đã có KH
+                                        </span>
+                                      )}
+                                      {isSelected && <CheckCircle2 size={14} style={{ color: 'var(--wms-accent)', flexShrink: 0 }} />}
+                                    </div>
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {planErrors.contractId && (
-                      <span className="wms-field-error-text">
-                        <AlertCircle size={12} /> {planErrors.contractId}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="wms-field">
-                    <label className="wms-label">
-                      Số lần / đợt giao hàng dự kiến (Tùy chọn)
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid var(--wms-border-strong)', borderRadius: '6px', overflow: 'hidden', background: '#FFFFFF' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleBatchesCountChange(Math.max(1, (Number(batchesCount) || batches.length || 1) - 1))}
-                          disabled={(Number(batchesCount) || 1) <= 1}
-                          style={{
-                            border: 'none',
-                            background: 'var(--wms-bg-subtle)',
-                            color: 'var(--wms-text-primary)',
-                            fontWeight: 700,
-                            fontSize: '15px',
-                            width: '32px',
-                            height: '36px',
-                            cursor: (Number(batchesCount) || 1) <= 1 ? 'not-allowed' : 'pointer',
-                          }}
-                          title="Giảm 1 đợt giao"
-                        >
-                          −
-                        </button>
-                        <input
-                          type="number"
-                          min={1}
-                          max={24}
-                          value={batchesCount}
-                          onChange={(e) => handleBatchesCountChange(e.target.value)}
-                          onBlur={(e) => {
-                            if (!e.target.value || Number(e.target.value) < 1) {
-                              handleBatchesCountChange(1);
-                            }
-                          }}
-                          style={{
-                            width: '54px',
-                            height: '36px',
-                            border: 'none',
-                            borderLeft: '1px solid var(--wms-border)',
-                            borderRight: '1px solid var(--wms-border)',
-                            textAlign: 'center',
-                            fontWeight: 700,
-                            fontSize: '14px',
-                            color: 'var(--wms-accent)',
-                            outline: 'none',
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleBatchesCountChange(Math.min(24, (Number(batchesCount) || batches.length || 1) + 1))}
-                          style={{
-                            border: 'none',
-                            background: 'var(--wms-bg-subtle)',
-                            color: 'var(--wms-text-primary)',
-                            fontWeight: 700,
-                            fontSize: '15px',
-                            width: '32px',
-                            height: '36px',
-                            cursor: 'pointer',
-                          }}
-                          title="Tăng 1 đợt giao"
-                        >
-                          +
-                        </button>
-                      </div>
-                      {Number(batchesCount) > 1 && (
-                        <button
-                          type="button"
-                          className="wms-btn wms-btn-default wms-btn-sm"
-                          onClick={handleAutoBalanceBatches}
-                          title="Tự động chia đều số lượng các mặt hàng cho từng đợt"
-                          style={{ whiteSpace: 'nowrap', height: '38px' }}
-                        >
-                          <Scale size={14} /> Chia đều
-                        </button>
+                      )}
+                      {planErrors.contractId && (
+                        <span className="wms-field-error-text">
+                          <AlertCircle size={12} /> {planErrors.contractId}
+                        </span>
                       )}
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Ô NHẬP LÝ DO ĐIỀU CHỈNH KẾ HOẠCH TIẾP NHẬN (KHI TẠO PHIÊN BẢN MỚI) */}
                 {planForm.isNewVersion && (
                   <div
                     className={`wms-field wms-field-span-full ${planErrors.amendmentReason ? 'has-error' : ''}`}
-                    style={{ marginTop: '12px', background: 'var(--wms-bg-subtle)', padding: '12px', borderRadius: '6px', border: '1px dashed var(--wms-primary)' }}
+                    style={{ background: '#F8FAFC', padding: '12px', borderRadius: '6px', border: '1px dashed #0284C7' }}
                   >
-                    <label className="wms-label" style={{ fontWeight: 700, color: 'var(--wms-text-primary)' }}>
+                    <label className="wms-label" style={{ fontWeight: 700, color: '#0F172A' }}>
                       Lý do điều chỉnh / Nội dung phụ lục Kế hoạch tiếp nhận <span className="wms-required">*</span>
                     </label>
                     <textarea
@@ -2378,537 +2346,657 @@ const InboundPlanningPage = () => {
                     )}
                   </div>
                 )}
+              </div>
 
-                {/* BẢNG LỘ TRÌNH VÀ NGÀY GIAO HÀNG DỰ KIẾN CỤ THỂ CHO TỪNG ĐỢT */}
-                {batches.length > 0 && (
-                  <div style={{ marginTop: '14px', border: '1px solid var(--wms-border)', borderRadius: '6px', overflow: 'hidden' }}>
-                    <div style={{ padding: '8px 12px', background: 'var(--wms-bg-subtle)', borderBottom: '1px solid var(--wms-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Calendar size={14} color="var(--wms-accent)" />
-                        Lộ trình & Ngày giao hàng dự kiến cụ thể cho từng Đợt ({batches.length} đợt)
+              {/* PHẦN LẬP LỊCH & PHÂN BỔ ĐỢT GIAO HÀNG (CHUẨN FORM HỢP ĐỒNG PHẦN IV) */}
+              <div className="wms-form-section">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <h2 className="wms-form-section-title" style={{ color: '#0369A1', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Truck size={20} color="#0284C7" />
+                      Kế hoạch Lịch trình Tiếp nhận Nguyên vật liệu (Lập lịch & Phân bổ đợt giao)
+                    </h2>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: '#64748B' }}>
+                      Tùy chọn số đợt giao hàng theo nhu cầu thực tế (1 đợt, 2 đợt, 3 đợt, 4 đợt...). Khi điều chỉnh số lượng các đợt trước, đợt cuối cùng sẽ tự động điền phần số lượng còn thiếu để luôn khớp 100% hợp đồng.
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="wms-btn"
+                      style={{ background: '#0284C7', color: '#FFFFFF', border: '1px solid #0284C7', fontWeight: 600, fontSize: '12px' }}
+                      onClick={() => handleBatchesCountChange((Number(batchesCount) || batches.length || 1) + 1)}
+                      title="Thêm 1 đợt giao hàng mới"
+                    >
+                      <Plus size={13} style={{ marginRight: 4 }} />
+                      Thêm 1 đợt giao
+                    </button>
+                    <button
+                      type="button"
+                      className="wms-btn"
+                      style={{ background: '#E0F2FE', color: '#0284C7', border: '1px solid #7DD3FC', fontWeight: 600, fontSize: '12px' }}
+                      onClick={handleAutoBalanceBatches}
+                      title="Tự động chia đều lại số lượng cho tất cả các đợt"
+                    >
+                      <RefreshCw size={13} style={{ marginRight: 4 }} />
+                      Chia đều các đợt
+                    </button>
+                  </div>
+                </div>
+
+                {/* Cấu hình 3 trường chuẩn: Số đợt tiếp nhận, Ghi chú lịch trình, Kho tiếp nhận vật lý */}
+                <div className="wms-form-grid-3" style={{ marginTop: '14px', background: '#FFFFFF', padding: '14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                  <div className="wms-field">
+                    <label className="wms-label" style={{ fontWeight: 700, color: '#0F172A' }}>
+                      Số đợt tiếp nhận nguyên liệu (Tùy chọn số đợt giao)
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #0284C7', borderRadius: '6px', overflow: 'hidden', background: '#FFFFFF' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleBatchesCountChange(Math.max(1, (Number(batchesCount) || batches.length || 1) - 1))}
+                          disabled={(Number(batchesCount) || 1) <= 1}
+                          style={{
+                            border: 'none',
+                            background: '#F0F9FF',
+                            color: '#0369A1',
+                            fontWeight: 700,
+                            fontSize: '15px',
+                            width: '34px',
+                            height: '36px',
+                            cursor: (Number(batchesCount) || 1) <= 1 ? 'not-allowed' : 'pointer',
+                          }}
+                          title="Giảm 1 đợt giao"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={24}
+                          value={batchesCount}
+                          onChange={(e) => handleBatchesCountChange(e.target.value)}
+                          onBlur={(e) => {
+                            if (!e.target.value || Number(e.target.value) < 1) {
+                              handleBatchesCountChange(1);
+                            }
+                          }}
+                          style={{
+                            width: '56px',
+                            height: '36px',
+                            border: 'none',
+                            borderLeft: '1px solid #BAE6FD',
+                            borderRight: '1px solid #BAE6FD',
+                            textAlign: 'center',
+                            fontWeight: 700,
+                            fontSize: '14px',
+                            color: '#0284C7',
+                            outline: 'none',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleBatchesCountChange(Math.min(24, (Number(batchesCount) || batches.length || 1) + 1))}
+                          style={{
+                            border: 'none',
+                            background: '#F0F9FF',
+                            color: '#0369A1',
+                            fontWeight: 700,
+                            fontSize: '15px',
+                            width: '34px',
+                            height: '36px',
+                            cursor: 'pointer',
+                          }}
+                          title="Tăng 1 đợt giao"
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {[1, 2, 3, 4, 5].map((presetNum) => {
+                          const isCurr = Number(batchesCount || batches.length) === presetNum;
+                          return (
+                            <button
+                              key={presetNum}
+                              type="button"
+                              onClick={() => handleBatchesCountChange(presetNum)}
+                              style={{
+                                padding: '5px 9px',
+                                fontSize: '11.5px',
+                                fontWeight: isCurr ? 700 : 500,
+                                borderRadius: '5px',
+                                border: isCurr ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                                background: isCurr ? '#0284C7' : '#F8FAFC',
+                                color: isCurr ? '#FFFFFF' : '#334155',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {presetNum} đợt
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <span className="wms-helper-text">
+                      Nhập trực tiếp số đợt bất kỳ (1–24 đợt) hoặc chọn nhanh. Hệ thống sẽ tự động chia lịch giao tương ứng.
+                    </span>
+                  </div>
+
+                  <div className="wms-field">
+                    <label className="wms-label">Ghi chú lịch trình tiếp nhận</label>
+                    <input
+                      type="text"
+                      className="wms-input"
+                      placeholder="Ghi chú về địa điểm bốc dỡ, điều kiện lưu kho..."
+                      value={planForm.notes || ''}
+                      onChange={(e) => setPlanForm((prev) => ({ ...prev, notes: e.target.value }))}
+                    />
+                    <span className="wms-helper-text">Lưu ý cho Kỹ thuật viên & Quản lý kho khi hàng về</span>
+                  </div>
+
+                  <div className="wms-field">
+                    <label className="wms-label">Kho tiếp nhận vật lý</label>
+                    <input
+                      type="text"
+                      className="wms-input"
+                      disabled
+                      value={currentContract?.buyerInfo?.receivingWarehouseAddress || 'Kho Tổng Nguyên Phụ Liệu AraStore'}
+                      style={{ background: '#F1F5F9', color: '#475569' }}
+                    />
+                    <span className="wms-helper-text">Địa chỉ nhập kho theo thông tin Bên Mua</span>
+                  </div>
+                </div>
+
+                {/* Chi tiết từng đợt tiếp nhận */}
+                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {batches.map((batch, bIdx) => {
+                    const bErr = planErrors.batchErrors?.[bIdx] || {};
+                    const totalBatchesLen = batches.length;
+                    const isLastBatchMulti = totalBatchesLen > 1 && bIdx === totalBatchesLen - 1;
+
+                    return (
+                      <div
+                        key={bIdx}
+                        style={{
+                          background: '#FFFFFF',
+                          border: '1px solid #CBD5E1',
+                          borderRadius: '10px',
+                          padding: '16px',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            borderBottom: '1px solid #F1F5F9',
+                            paddingBottom: '10px',
+                            marginBottom: '12px',
+                            flexWrap: 'wrap',
+                            gap: '8px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span
+                              style={{
+                                background: '#0284C7',
+                                color: '#FFFFFF',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                padding: '3px 8px',
+                                borderRadius: '12px',
+                              }}
+                            >
+                              Đợt {batch.batchNumber || bIdx + 1}/{totalBatchesLen}
+                            </span>
+                            <input
+                              type="text"
+                              className="wms-input"
+                              style={{ fontWeight: 700, color: '#0F172A', maxWidth: '320px', padding: '4px 8px' }}
+                              value={batch.batchTitle || ''}
+                              onChange={(e) => handleBatchFieldChange(bIdx, 'batchTitle', e.target.value)}
+                            />
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '12px', color: '#64748B' }}>Tỷ lệ:</span>
+                              <span style={{ fontWeight: 700, color: '#0284C7', fontSize: '13px' }}>
+                                {batch.batchPercentage || 0}%
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '12px', color: '#64748B', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <Calendar size={13} /> Ngày giao dự kiến:
+                              </span>
+                              <input
+                                type="date"
+                                className="wms-input"
+                                style={{
+                                  padding: '4px 8px',
+                                  fontSize: '12px',
+                                  width: '135px',
+                                  borderColor: bErr.scheduledDeliveryDate ? '#EF4444' : '#CBD5E1',
+                                }}
+                                min={currentContract?.effectiveFrom ? String(currentContract.effectiveFrom).slice(0, 10) : undefined}
+                                max={currentContract?.effectiveTo ? String(currentContract.effectiveTo).slice(0, 10) : undefined}
+                                value={batch.scheduledDeliveryDate ? String(batch.scheduledDeliveryDate).slice(0, 10) : ''}
+                                onChange={(e) => handleBatchFieldChange(bIdx, 'scheduledDeliveryDate', e.target.value)}
+                              />
+                            </div>
+
+                            {totalBatchesLen > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveBatch(bIdx)}
+                                title="Xóa đợt giao hàng này"
+                                style={{
+                                  border: '1px solid #FCA5A5',
+                                  background: '#FEF2F2',
+                                  color: '#DC2626',
+                                  borderRadius: '6px',
+                                  padding: '4px 8px',
+                                  fontSize: '11.5px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <Trash2 size={12} /> Xóa đợt
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {bErr.scheduledDeliveryDate && (
+                          <div style={{ fontSize: '12px', color: '#DC2626', marginBottom: '8px' }}>
+                            ⚠️ {bErr.scheduledDeliveryDate}
+                          </div>
+                        )}
+
+                        {/* Bảng phân bổ nguyên vật liệu đợt này */}
+                        <div className="wms-table-scroll">
+                          <table className="wms-table" style={{ fontSize: '12.5px', marginTop: '6px' }}>
+                            <thead>
+                              <tr style={{ background: '#F8FAFC' }}>
+                                <th style={{ width: '40px', textAlign: 'center' }}>#</th>
+                                <th style={{ width: '130px' }}>Mã NVL</th>
+                                <th>Tên nguyên phụ liệu</th>
+                                <th style={{ width: '80px', textAlign: 'center' }}>ĐVT</th>
+                                <th style={{ width: '130px', textAlign: 'right' }}>SL Ký HĐ</th>
+                                <th style={{ width: '190px', textAlign: 'right', background: '#E0F2FE', color: '#0369A1' }}>
+                                  Số lượng phân bổ đợt này
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(batch.expectedItems || []).map((it, itIdx) => {
+                                const cMat =
+                                  (currentContract?.contractedMaterials || [])[itIdx] ||
+                                  (currentContract?.contractedMaterials || []).find(
+                                    (cm) =>
+                                      String(cm.rawMaterialId?._id || cm.rawMaterialId?.id || cm.rawMaterialId) ===
+                                      String(it.rawMaterialId?._id || it.rawMaterialId?.id || it.rawMaterialId)
+                                  );
+                                const cQty = Number(cMat?.contractedQty || it.contractedQty || 0);
+                                const itErr = bErr.itemErrors?.[itIdx];
+                                const allRolls = it.allRolls || cMat?.rollDetails || [];
+                                const isHighlightedMismatch = highlightedMismatchItem?.itemIdx === itIdx;
+
+                                return (
+                                  <tr
+                                    key={itIdx}
+                                    id={`plan-batch-row-${bIdx}-item-${itIdx}`}
+                                    style={
+                                      isHighlightedMismatch
+                                        ? {
+                                            background: '#FEF2F2',
+                                            outline: '2px solid #EF4444',
+                                            transition: 'all 0.25s ease',
+                                          }
+                                        : undefined
+                                    }
+                                  >
+                                    <td style={{ textAlign: 'center', color: '#94A3B8' }}>{itIdx + 1}</td>
+                                    <td style={{ fontWeight: 600 }}>
+                                      {it.materialCode || cMat?.materialCodeSnapshot || 'NVL'}
+                                    </td>
+                                    <td>
+                                      <div>{it.materialName || cMat?.materialNameSnapshot || '—'}</div>
+                                      {allRolls.length > 0 && totalBatchesLen > 1 && (
+                                        <div
+                                          onClick={() => {
+                                            if (!isLastBatchMulti && allRolls.length === 1) {
+                                              handleToggleBatchRoll(bIdx, itIdx, allRolls[0]);
+                                            }
+                                          }}
+                                          style={{
+                                            marginTop: '6px',
+                                            padding: '6px 8px',
+                                            background: '#F8FAFC',
+                                            border: '1px solid #E2E8F0',
+                                            borderRadius: '6px',
+                                            cursor: !isLastBatchMulti && allRolls.length === 1 ? 'pointer' : 'default',
+                                            userSelect: 'none',
+                                          }}
+                                        >
+                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', flexWrap: 'wrap', gap: '4px' }}>
+                                            <span style={{ fontSize: '11px', fontWeight: 600, color: '#1E293B' }}>
+                                              🧵 Chọn cuộn vải giao Đợt {bIdx + 1}:
+                                              <span style={{ marginLeft: '4px', color: '#0284C7' }}>
+                                                ({(it.selectedRolls || []).reduce((s, r) => s + (Number(r.rollQty ?? 1) || 0), 0)}/{allRolls.reduce((s, r) => s + Math.max(1, Number(r.rollQty ?? 1) || 1), 0)} cuộn)
+                                              </span>
+                                            </span>
+                                            {isLastBatchMulti && (
+                                              <span style={{ fontSize: '10px', background: '#E0F2FE', color: '#0369A1', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+                                                ⚡ Tự động gom {(it.selectedRolls || []).reduce((s, r) => s + (Number(r.rollQty ?? 1) || 0), 0)} cuộn còn thiếu
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                            {allRolls.map((roll, rIdx) => {
+                                              const rollKey = roll.rollCode || `R-${roll.rollIndex || rIdx + 1}`;
+                                              const totalRollQty = Math.max(1, Math.floor(Number(roll.rollQty ?? 1) || 1));
+                                              const selectedEntry = (it.selectedRolls || []).find(
+                                                (r) => (r.rollCode || `R-${r.rollIndex || rIdx + 1}`) === rollKey
+                                              );
+                                              const selectedRollQty = selectedEntry ? Math.max(0, Math.floor(Number(selectedEntry.rollQty ?? 1) || 0)) : 0;
+                                              const isSelectedInThisBatch = selectedRollQty > 0;
+                                              const otherBatchIndex = batches.findIndex(
+                                                (otherB, obIdx) =>
+                                                  obIdx !== bIdx &&
+                                                  (otherB.expectedItems[itIdx]?.selectedRolls || []).some(
+                                                    (r) =>
+                                                      (r.rollCode || `R-${r.rollIndex || rIdx + 1}`) === rollKey &&
+                                                      Number(r.rollQty ?? 1) > 0
+                                                  )
+                                              );
+                                              const rollLen = Number(roll.lengthMeters || 0);
+
+                                              if (totalRollQty > 1) {
+                                                return (
+                                                  <div
+                                                    key={rollKey}
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      if (!isLastBatchMulti) {
+                                                        handleToggleBatchRoll(bIdx, itIdx, roll);
+                                                      }
+                                                    }}
+                                                    title={
+                                                      isLastBatchMulti
+                                                        ? 'Đợt cuối tự động nhận số cuộn còn thiếu'
+                                                        : 'Bấm vào khối này để chọn / bỏ chọn dòng cuộn'
+                                                    }
+                                                    style={{
+                                                      display: 'inline-flex',
+                                                      alignItems: 'center',
+                                                      gap: '5px',
+                                                      padding: '3px 8px',
+                                                      borderRadius: '6px',
+                                                      fontSize: '11px',
+                                                      cursor: isLastBatchMulti ? 'default' : 'pointer',
+                                                      userSelect: 'none',
+                                                      border: isSelectedInThisBatch ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                                                      background: isSelectedInThisBatch ? '#E0F2FE' : '#FFFFFF',
+                                                      color: isSelectedInThisBatch ? '#0369A1' : '#475569',
+                                                    }}
+                                                  >
+                                                    <span
+                                                      style={{
+                                                        fontWeight: 700,
+                                                        fontSize: '11px',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '3px',
+                                                      }}
+                                                    >
+                                                      <span>{isSelectedInThisBatch ? '☑' : '☐'}</span>
+                                                      <span>#{rIdx + 1} ({rollLen.toLocaleString('vi-VN')}m/cuộn):</span>
+                                                    </span>
+
+                                                    {isLastBatchMulti ? (
+                                                      <span style={{ fontWeight: 700 }}>
+                                                        {selectedRollQty}/{totalRollQty} cuộn ({(selectedRollQty * rollLen).toLocaleString('vi-VN')}m)
+                                                      </span>
+                                                    ) : (
+                                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                                        <span>SL giao:</span>
+                                                        <input
+                                                          type="number"
+                                                          min={0}
+                                                          max={totalRollQty}
+                                                          step={1}
+                                                          value={selectedRollQty}
+                                                          onClick={(e) => e.stopPropagation()}
+                                                          onChange={(e) =>
+                                                            handleBatchRollQtyChange(bIdx, itIdx, roll, e.target.value)
+                                                          }
+                                                          style={{
+                                                            width: '46px',
+                                                            padding: '1px 4px',
+                                                            fontSize: '11px',
+                                                            fontWeight: 700,
+                                                            textAlign: 'center',
+                                                            color: '#0369A1',
+                                                            background: '#FFFFFF',
+                                                            border: '1px solid #7DD3FC',
+                                                            borderRadius: '4px',
+                                                          }}
+                                                        />
+                                                        <span>/{totalRollQty} cuộn</span>
+                                                        <strong style={{ marginLeft: '2px' }}>
+                                                          ({(selectedRollQty * rollLen).toLocaleString('vi-VN')}m)
+                                                        </strong>
+                                                      </span>
+                                                    )}
+                                                    {roll.note && (
+                                                      <span style={{ opacity: 0.8, fontStyle: 'italic' }}>({roll.note})</span>
+                                                    )}
+                                                  </div>
+                                                );
+                                              }
+
+                                              return (
+                                                <button
+                                                  key={rollKey}
+                                                  type="button"
+                                                  disabled={isLastBatchMulti}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleToggleBatchRoll(bIdx, itIdx, roll);
+                                                  }}
+                                                  title={
+                                                    isLastBatchMulti
+                                                      ? 'Đợt cuối cùng tự động nhận tất cả các cuộn vải còn lại'
+                                                      : isSelectedInThisBatch
+                                                      ? 'Bấm để bỏ cuộn này khỏi đợt'
+                                                      : otherBatchIndex >= 0
+                                                      ? `Đang gán ở Đợt ${otherBatchIndex + 1}. Bấm để chuyển sang Đợt ${bIdx + 1}`
+                                                      : 'Bấm để thêm cuộn này vào đợt'
+                                                  }
+                                                  style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '3px',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '10.5px',
+                                                    cursor: isLastBatchMulti ? 'default' : 'pointer',
+                                                    border: isSelectedInThisBatch ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                                                    background: isSelectedInThisBatch ? '#E0F2FE' : '#FFFFFF',
+                                                    color: isSelectedInThisBatch ? '#0369A1' : '#475569',
+                                                    fontWeight: isSelectedInThisBatch ? 600 : 400,
+                                                  }}
+                                                >
+                                                  <span>{isSelectedInThisBatch ? '☑' : '☐'}</span>
+                                                  <strong>#{rIdx + 1}:</strong>
+                                                  <span>{rollLen.toLocaleString('vi-VN')}m</span>
+                                                  {roll.note && <span style={{ opacity: 0.8, fontStyle: 'italic' }}>({roll.note})</span>}
+                                                  {!isSelectedInThisBatch && otherBatchIndex >= 0 && (
+                                                    <span style={{ fontSize: '9px', color: '#94A3B8' }}>(Đợt {otherBatchIndex + 1})</span>
+                                                  )}
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                      {it.unit || cMat?.unitSnapshot || 'METER'}
+                                    </td>
+                                    <td style={{ textAlign: 'right', fontWeight: 600, color: '#475569' }}>
+                                      {cQty.toLocaleString('vi-VN')}
+                                    </td>
+                                    <td style={{ textAlign: 'right', background: '#F0F9FF' }}>
+                                      <input
+                                        id={`plan-batch-input-${bIdx}-item-${itIdx}`}
+                                        type="number"
+                                        className="wms-input"
+                                        style={{
+                                          textAlign: 'right',
+                                          fontWeight: 700,
+                                          color: '#0284C7',
+                                          padding: '4px 8px',
+                                          width: '125px',
+                                          borderColor: itErr || isHighlightedMismatch ? '#EF4444' : '#BAE6FD',
+                                          background: isLastBatchMulti ? '#F1F5F9' : '#FFFFFF',
+                                        }}
+                                        min={0}
+                                        max={cQty}
+                                        readOnly={isLastBatchMulti}
+                                        value={it.plannedQty !== undefined ? it.plannedQty : ''}
+                                        onChange={(e) => handleBatchItemQtyChange(bIdx, itIdx, e.target.value)}
+                                      />
+                                      {isLastBatchMulti && (
+                                        <div style={{ fontSize: '10px', color: '#0369A1', marginTop: '2px', fontWeight: 600 }}>
+                                          Tự động điền phần còn thiếu
+                                        </div>
+                                      )}
+                                      {itErr && (
+                                        <div style={{ fontSize: '11px', color: '#DC2626', marginTop: '2px' }}>
+                                          {itErr}
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="wms-field" style={{ marginTop: '10px', marginBottom: 0 }}>
+                          <input
+                            type="text"
+                            className="wms-input"
+                            style={{ height: '32px', fontSize: '12px' }}
+                            placeholder={`Ghi chú riêng cho Đợt ${batch.batchNumber || bIdx + 1} (VD: xe tải 5 tấn, yêu cầu giao buổi sáng...)`}
+                            value={batch.notes || ''}
+                            onChange={(e) => handleBatchFieldChange(bIdx, 'notes', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Bảng đối soát cân đối tổng thể giữa Hợp đồng & Các đợt giao */}
+                {allocationBalance.length > 0 && (
+                  <div style={{ marginTop: '16px', background: '#FFFFFF', padding: '14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <PackageCheck size={16} color="#059669" />
+                        Đối soát cân đối giữa Hợp đồng & Các đợt giao (Bảo toàn 100% số lượng cam kết)
                       </span>
-                      <span className="wms-helper-text" style={{ fontSize: '11.5px' }}>
-                        Chỉnh sửa ngày giao dự kiến cho từng đợt tại đây hoặc ở thẻ chi tiết bên dưới
+                      <span style={{ fontSize: '12px', color: '#64748B' }}>
+                        {allocationBalance.every((b) => b.isBalanced) ? (
+                          <span style={{ color: '#059669', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <CheckCircle2 size={13} /> Đã cân bằng khớp 100% tất cả các mặt hàng
+                          </span>
+                        ) : (
+                          <span style={{ color: '#DC2626', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <AlertTriangle size={13} /> Có mặt hàng chưa cân bằng số lượng
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleScrollToPlanMismatchItem()}
+                              style={{
+                                background: '#DC2626',
+                                color: '#FFFFFF',
+                                border: 'none',
+                                borderRadius: '6px',
+                                padding: '3px 10px',
+                                fontSize: '11.5px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                boxShadow: '0 1px 2px rgba(220,38,38,0.2)',
+                              }}
+                              title="Cuộn đến dòng nhập số lượng bị lệch để kiểm tra"
+                            >
+                              <Search size={12} /> Kiểm tra
+                            </button>
+                          </span>
+                        )}
                       </span>
                     </div>
+
                     <div className="wms-table-scroll">
                       <table className="wms-table" style={{ fontSize: '12px', margin: 0 }}>
                         <thead>
-                          <tr>
-                            <th style={{ width: '80px' }}>Đợt</th>
-                            <th>Mục đích / Tiêu đề đợt</th>
-                            <th style={{ width: '190px' }}>Ngày giao dự kiến về kho *</th>
-                            <th style={{ width: '110px', textAlign: 'center' }}>Tỷ lệ đợt</th>
-                            <th className="wms-td-number" style={{ width: '150px' }}>Tổng quy mô đợt</th>
+                          <tr style={{ background: '#F8FAFC' }}>
+                            <th>Mã NVL</th>
+                            <th>Tên nguyên phụ liệu</th>
+                            <th style={{ width: '80px', textAlign: 'center' }}>ĐVT</th>
+                            <th style={{ width: '130px', textAlign: 'right' }}>SL Ký HĐ</th>
+                            <th style={{ width: '140px', textAlign: 'right' }}>Tổng các đợt đã chia</th>
+                            <th style={{ width: '120px', textAlign: 'right' }}>Chênh lệch</th>
+                            <th style={{ width: '190px', textAlign: 'center' }}>Trạng thái</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {batches.map((b, bIdx) => {
-                            const bTotal = (b.expectedItems || []).reduce(
-                              (sum, it) => sum + (Number(it.plannedQty) || 0),
-                              0
-                            );
-                            const bErr = planErrors.batchErrors?.[bIdx] || {};
-                            return (
-                              <tr key={bIdx}>
-                                <td>
-                                  <span className="wms-badge-batch" style={{ fontSize: '11px', padding: '2px 6px' }}>
-                                    Đợt {b.batchNumber}
+                          {allocationBalance.map((bal, idx) => (
+                            <tr key={idx} style={{ background: bal.isBalanced ? '#F0FDF4' : '#FEF2F2' }}>
+                              <td style={{ fontWeight: 600 }}>{bal.materialCode}</td>
+                              <td>{bal.materialName}</td>
+                              <td style={{ textAlign: 'center' }}>{bal.unit}</td>
+                              <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                                {bal.contractedQty.toLocaleString('vi-VN')}
+                              </td>
+                              <td style={{ textAlign: 'right', fontWeight: 700, color: '#0284C7' }}>
+                                {bal.totalAllocated.toLocaleString('vi-VN')}
+                              </td>
+                              <td style={{ textAlign: 'right', fontWeight: 700, color: bal.isBalanced ? '#059669' : '#DC2626' }}>
+                                {bal.diff === 0 ? '0' : bal.diff > 0 ? `Thiếu ${bal.diff}` : `Thừa ${Math.abs(bal.diff)}`}
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                {bal.isBalanced ? (
+                                  <span style={{ color: '#059669', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                    <CheckCircle2 size={13} /> Khớp 100%
                                   </span>
-                                </td>
-                                <td>
-                                  <input
-                                    type="text"
-                                    className="wms-input"
-                                    style={{ height: '30px', fontSize: '12px' }}
-                                    value={b.batchTitle}
-                                    placeholder={`Đợt ${b.batchNumber}`}
-                                    onChange={(e) => handleBatchFieldChange(bIdx, 'batchTitle', e.target.value)}
-                                  />
-                                </td>
-                                <td>
-                                  <input
-                                    type="date"
-                                    className={`wms-input ${bErr.scheduledDeliveryDate ? 'has-error' : ''}`}
-                                    style={{ height: '30px', fontSize: '12px', fontWeight: 600 }}
-                                    value={b.scheduledDeliveryDate}
-                                    onChange={(e) => handleBatchFieldChange(bIdx, 'scheduledDeliveryDate', e.target.value)}
-                                    required
-                                  />
-                                  {bErr.scheduledDeliveryDate && (
-                                    <span className="wms-field-error-text" style={{ fontSize: '11px' }}>
-                                      {bErr.scheduledDeliveryDate}
-                                    </span>
-                                  )}
-                                </td>
-                                <td style={{ textAlign: 'center', fontWeight: 600 }}>
-                                  {b.batchPercentage}%
-                                </td>
-                                <td className="wms-td-number" style={{ fontWeight: 600 }}>
-                                  {Number(bTotal).toLocaleString('vi-VN')} {b.expectedItems?.[0]?.unit || 'METER'}
-                                </td>
-                              </tr>
-                            );
-                          })}
+                                ) : (
+                                  <span style={{ color: '#DC2626', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                    <AlertTriangle size={13} /> {bal.diff > 0 ? 'Chưa phân bổ đủ' : 'Vượt số lượng HĐ'}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
                     </div>
                   </div>
                 )}
-              </div>
-
-              {/* PHẦN 2: BẢNG ĐỐI SOÁT & CÂN ĐỐI TIẾN ĐỘ PHÂN BỔ CÁC ĐỢT */}
-              {allocationBalance.length > 0 && (
-                <div className="wms-form-section" style={{ backgroundColor: 'var(--wms-bg-subtle)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--wms-border)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Scale size={15} color="var(--wms-accent)" />
-                      Đối soát Tiến độ Phân bổ Số lượng qua {batchesCount} Đợt nhập
-                    </h4>
-                    <span className="wms-helper-text" style={{ fontSize: '12px' }}>
-                      Tổng số lượng các đợt phải khớp với số lượng cam kết trên Hợp đồng
-                    </span>
-                  </div>
-
-                  <div className="wms-table-scroll">
-                    <table className="wms-table" style={{ fontSize: '12.5px' }}>
-                      <thead>
-                        <tr>
-                          <th>Mặt hàng</th>
-                          <th className="wms-td-number" style={{ width: '140px' }}>Tổng cam kết HĐ</th>
-                          <th className="wms-td-number" style={{ width: '150px' }}>Đã chia ({batchesCount} đợt)</th>
-                          <th className="wms-td-number" style={{ width: '130px' }}>Chênh lệch</th>
-                          <th style={{ width: '150px', textAlign: 'center' }}>Trạng thái đối soát</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {allocationBalance.map((item, abIdx) => (
-                          <tr key={abIdx}>
-                            <td>
-                              <strong>{item.materialCode}</strong> — {item.materialName}
-                            </td>
-                            <td className="wms-td-number" style={{ fontWeight: 600 }}>
-                              {Number(item.contractedQty).toLocaleString('vi-VN')} {item.unit}
-                            </td>
-                            <td className="wms-td-number" style={{ fontWeight: 700, color: 'var(--wms-accent-hover)' }}>
-                              {Number(item.totalAllocated).toLocaleString('vi-VN')} {item.unit}
-                            </td>
-                            <td className="wms-td-number" style={{ fontWeight: 600, color: item.diff === 0 ? 'var(--wms-success)' : item.diff > 0 ? 'var(--wms-warning)' : 'var(--wms-danger)' }}>
-                              {item.diff === 0 ? '0' : (item.diff > 0 ? `Thiếu ${Number(item.diff).toLocaleString('vi-VN')}` : `Dư ${Number(Math.abs(item.diff)).toLocaleString('vi-VN')}`)} {item.unit}
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              {item.isBalanced ? (
-                                <span className="wms-status-badge wms-status-available">
-                                  ✓ Khớp 100%
-                                </span>
-                              ) : (
-                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                                  <span className={`wms-status-badge ${item.diff > 0 ? 'wms-status-pending' : 'wms-status-damaged'}`}>
-                                    {item.diff > 0 ? 'Chưa chia đủ' : 'Vượt hợp đồng'}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleScrollToPlanMismatchItem(abIdx)}
-                                    style={{
-                                      background: '#FFFFFF',
-                                      color: '#B91C1C',
-                                      border: '1px solid #FCA5A5',
-                                      borderRadius: '6px',
-                                      padding: '2px 8px',
-                                      fontSize: '11px',
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '3px',
-                                    }}
-                                    title="Nhấn để cuộn đến ô nhập số lượng của mặt hàng này"
-                                  >
-                                    <Search size={11} /> Kiểm tra
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* PHẦN 3: DANH SÁCH CHI TIẾT CÁC ĐỢT NHẬP */}
-              <div className="wms-form-section">
-                <div className="wms-form-section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 className="wms-form-section-title">
-                    <Layers size={18} />
-                    Chi tiết Lịch trình & Số lượng Dự kiến từng Đợt tiếp nhận ({batches.length} đợt)
-                  </h3>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button
-                      type="button"
-                      className="wms-btn wms-btn-default wms-btn-sm"
-                      onClick={() => handleBatchesCountChange(batchesCount + 1)}
-                      title="Thêm một đợt giao hàng tiếp theo"
-                    >
-                      <Plus size={13} /> Thêm đợt nhập
-                    </button>
-                    {batchesCount > 1 && (
-                      <button
-                        type="button"
-                        className="wms-btn wms-btn-default wms-btn-sm"
-                        onClick={() => handleBatchesCountChange(batchesCount - 1)}
-                        title="Bớt đợt giao hàng cuối cùng"
-                      >
-                        <Trash2 size={13} /> Bớt đợt cuối
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {batches.map((batch, bIdx) => {
-                  const bErr = planErrors.batchErrors?.[bIdx] || {};
-                  const batchTotalQty = (batch.expectedItems || []).reduce(
-                    (sum, it) => sum + (Number(it.plannedQty) || 0),
-                    0
-                  );
-
-                  return (
-                    <div key={bIdx} className="wms-batch-card">
-                      <div className="wms-batch-card-header">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <span className="wms-badge-batch">
-                            ĐỢT {batch.batchNumber} / {batches.length}
-                          </span>
-                          <strong style={{ fontSize: '14px', color: 'var(--wms-text-primary)' }}>
-                            {batch.batchTitle}
-                          </strong>
-                          <span className="wms-helper-text">
-                            (Thuộc kế hoạch: <strong>{planForm.planCode}</strong>)
-                          </span>
-                        </div>
-                        <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--wms-accent-hover)' }}>
-                          Quy mô đợt: {Number(batchTotalQty).toLocaleString('vi-VN')} {batch.expectedItems?.[0]?.unit || 'METER'}
-                        </div>
-                      </div>
-
-                      <div className="wms-form-grid-3" style={{ marginBottom: '12px' }}>
-                        <div className="wms-field wms-field-span-2">
-                          <label className="wms-label">Tiêu đề / Mục đích đợt nhập</label>
-                          <input
-                            type="text"
-                            className="wms-input"
-                            value={batch.batchTitle}
-                            placeholder={`VD: Đợt ${batch.batchNumber}: Giao nguyên liệu đợt đầu`}
-                            onChange={(e) => handleBatchFieldChange(bIdx, 'batchTitle', e.target.value)}
-                          />
-                        </div>
-
-                        <div className={`wms-field ${bErr.scheduledDeliveryDate ? 'has-error' : ''}`}>
-                          <label className="wms-label">
-                            Ngày giao dự kiến về kho <span className="wms-required">*</span>
-                          </label>
-                          <input
-                            type="date"
-                            className="wms-input"
-                            value={batch.scheduledDeliveryDate}
-                            onChange={(e) => handleBatchFieldChange(bIdx, 'scheduledDeliveryDate', e.target.value)}
-                            required
-                          />
-                          {bErr.scheduledDeliveryDate && (
-                            <span className="wms-field-error-text">
-                              <AlertCircle size={12} /> {bErr.scheduledDeliveryDate}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Bảng số lượng từng mặt hàng của đợt */}
-                      <div className="wms-table-scroll" style={{ marginBottom: '8px' }}>
-                        <table className="wms-table" style={{ fontSize: '12.5px' }}>
-                          <thead>
-                            <tr>
-                              <th>Mã & Tên Nguyên phụ liệu</th>
-                              <th style={{ width: '70px' }}>ĐVT</th>
-                              <th className="wms-td-number" style={{ width: '130px' }}>Tổng SL Hợp đồng</th>
-                              <th style={{ width: '160px' }}>SL giao trong Đợt {batch.batchNumber}</th>
-                              <th style={{ width: '100px', textAlign: 'center' }}>Tỷ lệ đợt</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {batch.expectedItems.map((item, itIdx) => {
-                              const itErr = bErr.itemErrors?.[itIdx];
-                              const contracted = Number(item.contractedQty || 0);
-                              const planned = Number(item.plannedQty || 0);
-                              const pct = contracted > 0 ? Math.round((planned / contracted) * 100) : 0;
-
-                              const isHighlightedMismatch =
-                                highlightedMismatchItem?.itemIdx === itIdx;
-
-                              return (
-                                <tr
-                                  key={itIdx}
-                                  id={`plan-batch-row-${bIdx}-item-${itIdx}`}
-                                  style={
-                                    isHighlightedMismatch
-                                      ? {
-                                          background: '#FEF2F2',
-                                          outline: '2px solid #EF4444',
-                                          transition: 'all 0.25s ease',
-                                        }
-                                      : undefined
-                                  }
-                                >
-                                  <td>
-                                    <div>
-                                      <strong>{item.materialCode}</strong> — {item.materialName}
-                                    </div>
-                                    {item.allRolls && item.allRolls.length > 0 && (
-                                      <div
-                                        onClick={() => {
-                                          if (!(bIdx === batches.length - 1 && batches.length > 1) && item.allRolls.length === 1) {
-                                            handleToggleBatchRoll(bIdx, itIdx, item.allRolls[0]);
-                                          }
-                                        }}
-                                        style={{
-                                          marginTop: '6px',
-                                          padding: '8px 10px',
-                                          background: '#f8fafc',
-                                          border: '1px solid #e2e8f0',
-                                          borderRadius: '6px',
-                                          cursor:
-                                            !(bIdx === batches.length - 1 && batches.length > 1) && item.allRolls.length === 1
-                                              ? 'pointer'
-                                              : 'default',
-                                          userSelect: 'none',
-                                        }}
-                                      >
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
-                                          <span style={{ fontSize: '11.5px', fontWeight: 600, color: '#1e293b' }}>
-                                            🧵 Chọn cuộn vải giao trong Đợt {batch.batchNumber}:
-                                            <span style={{ marginLeft: '6px', color: '#0284c7' }}>
-                                              ({(item.selectedRolls || []).reduce((s, r) => s + (Number(r.rollQty ?? 1) || 0), 0)}/{item.allRolls.reduce((s, r) => s + Math.max(1, Number(r.rollQty ?? 1) || 1), 0)} cuộn)
-                                            </span>
-                                          </span>
-                                          {bIdx === batches.length - 1 && batches.length > 1 && (
-                                            <span style={{ fontSize: '10.5px', background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                                              ⚡ Tự động gom {(item.selectedRolls || []).reduce((s, r) => s + (Number(r.rollQty ?? 1) || 0), 0)} cuộn còn thiếu
-                                            </span>
-                                          )}
-                                        </div>
-
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                          {item.allRolls.map((roll, rIdx) => {
-                                            const rollKey = roll.rollCode || `R-${roll.rollIndex || rIdx + 1}`;
-                                            const totalRollQty = Math.max(1, Math.floor(Number(roll.rollQty ?? 1) || 1));
-                                            const selectedEntry = (item.selectedRolls || []).find(
-                                              (r) => (r.rollCode || `R-${r.rollIndex || rIdx + 1}`) === rollKey
-                                            );
-                                            const selectedRollQty = selectedEntry ? Math.max(0, Math.floor(Number(selectedEntry.rollQty ?? 1) || 0)) : 0;
-                                            const isSelectedInThisBatch = selectedRollQty > 0;
-                                            const otherBatchIndex = batches.findIndex(
-                                              (otherB, obIdx) =>
-                                                obIdx !== bIdx &&
-                                                (otherB.expectedItems[itIdx]?.selectedRolls || []).some(
-                                                  (r) =>
-                                                    (r.rollCode || `R-${r.rollIndex || rIdx + 1}`) === rollKey &&
-                                                    Number(r.rollQty ?? 1) > 0
-                                                )
-                                            );
-                                            const isLastBatch = bIdx === batches.length - 1 && batches.length > 1;
-                                            const rollLen = Number(roll.lengthMeters || 0);
-
-                                            if (totalRollQty > 1) {
-                                              return (
-                                                <div
-                                                  key={rollKey}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (!isLastBatch) {
-                                                      handleToggleBatchRoll(bIdx, itIdx, roll);
-                                                    }
-                                                  }}
-                                                  title={
-                                                    isLastBatch
-                                                      ? 'Đợt cuối tự động nhận số cuộn còn thiếu'
-                                                      : 'Bấm vào khối này để chọn / bỏ chọn dòng cuộn'
-                                                  }
-                                                  style={{
-                                                    display: 'inline-flex',
-                                                    alignItems: 'center',
-                                                    gap: '5px',
-                                                    padding: '3px 8px',
-                                                    borderRadius: '6px',
-                                                    fontSize: '11px',
-                                                    cursor: isLastBatch ? 'default' : 'pointer',
-                                                    userSelect: 'none',
-                                                    border: isSelectedInThisBatch ? '1px solid #0284c7' : '1px solid #cbd5e1',
-                                                    background: isSelectedInThisBatch ? '#e0f2fe' : '#ffffff',
-                                                    color: isSelectedInThisBatch ? '#0369a1' : '#475569',
-                                                  }}
-                                                >
-                                                  <span
-                                                    style={{
-                                                      fontWeight: 700,
-                                                      fontSize: '11px',
-                                                      display: 'inline-flex',
-                                                      alignItems: 'center',
-                                                      gap: '3px',
-                                                    }}
-                                                  >
-                                                    <span>{isSelectedInThisBatch ? '☑' : '☐'}</span>
-                                                    <span>#{rIdx + 1} ({rollLen.toLocaleString('vi-VN')}m/cuộn):</span>
-                                                  </span>
-                                                  {isLastBatch ? (
-                                                    <span style={{ fontWeight: 700 }}>
-                                                      {selectedRollQty}/{totalRollQty} cuộn ({(selectedRollQty * rollLen).toLocaleString('vi-VN')}m)
-                                                    </span>
-                                                  ) : (
-                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                                      <span>SL giao:</span>
-                                                      <input
-                                                        type="number"
-                                                        min={0}
-                                                        max={totalRollQty}
-                                                        step={1}
-                                                        value={selectedRollQty}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        onChange={(e) =>
-                                                          handleBatchRollQtyChange(bIdx, itIdx, roll, e.target.value)
-                                                        }
-                                                        style={{
-                                                          width: '46px',
-                                                          padding: '1px 4px',
-                                                          fontSize: '11px',
-                                                          fontWeight: 700,
-                                                          textAlign: 'center',
-                                                          color: '#0369a1',
-                                                          background: '#ffffff',
-                                                          border: '1px solid #7dd3fc',
-                                                          borderRadius: '4px',
-                                                        }}
-                                                      />
-                                                      <span>/{totalRollQty} cuộn</span>
-                                                      <strong style={{ marginLeft: '2px' }}>
-                                                        ({(selectedRollQty * rollLen).toLocaleString('vi-VN')}m)
-                                                      </strong>
-                                                    </span>
-                                                  )}
-                                                  {roll.note && (
-                                                    <span style={{ opacity: 0.8, fontStyle: 'italic' }}>({roll.note})</span>
-                                                  )}
-                                                </div>
-                                              );
-                                            }
-
-                                            return (
-                                              <button
-                                                key={rollKey}
-                                                type="button"
-                                                disabled={isLastBatch}
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  handleToggleBatchRoll(bIdx, itIdx, roll);
-                                                }}
-                                                title={
-                                                  isLastBatch
-                                                    ? 'Đợt cuối cùng tự động nhận tất cả các cuộn vải còn lại'
-                                                    : isSelectedInThisBatch
-                                                    ? 'Bấm để bỏ cuộn này khỏi đợt'
-                                                    : otherBatchIndex >= 0
-                                                    ? `Đang gán ở Đợt ${otherBatchIndex + 1}. Bấm để chuyển sang Đợt ${batch.batchNumber}`
-                                                    : 'Bấm để thêm cuộn này vào đợt'
-                                                }
-                                                style={{
-                                                  display: 'inline-flex',
-                                                  alignItems: 'center',
-                                                  gap: '4px',
-                                                  padding: '3px 8px',
-                                                  borderRadius: '4px',
-                                                  fontSize: '11px',
-                                                  cursor: isLastBatch ? 'default' : 'pointer',
-                                                  border: isSelectedInThisBatch
-                                                    ? '1px solid #0284c7'
-                                                    : '1px solid #cbd5e1',
-                                                  background: isSelectedInThisBatch ? '#e0f2fe' : '#ffffff',
-                                                  color: isSelectedInThisBatch ? '#0369a1' : '#475569',
-                                                  fontWeight: isSelectedInThisBatch ? 600 : 400,
-                                                  boxShadow: isSelectedInThisBatch ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                                                }}
-                                              >
-                                                <span>{isSelectedInThisBatch ? '☑' : '☐'}</span>
-                                                <strong>#{rIdx + 1}:</strong>
-                                                <span>{rollLen.toLocaleString('vi-VN')}m</span>
-                                                {roll.note && <span style={{ opacity: 0.8, fontStyle: 'italic' }}>({roll.note})</span>}
-                                                {!isSelectedInThisBatch && otherBatchIndex >= 0 && (
-                                                  <span style={{ fontSize: '9.5px', color: '#94a3b8' }}>(Đợt {otherBatchIndex + 1})</span>
-                                                )}
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </td>
-                                  <td>{item.unit}</td>
-                                  <td className="wms-td-number">
-                                    {Number(contracted).toLocaleString('vi-VN')}
-                                  </td>
-                                  <td>
-                                    <div className={`wms-field ${itErr ? 'has-error' : ''}`} style={{ marginBottom: 0 }}>
-                                      <input
-                                        id={`plan-batch-input-${bIdx}-item-${itIdx}`}
-                                        type="number"
-                                        min="0"
-                                        max={contracted}
-                                        className="wms-input"
-                                        style={{
-                                          height: '34px',
-                                          fontSize: '13px',
-                                          fontWeight: 600,
-                                          borderColor: itErr || isHighlightedMismatch ? '#EF4444' : undefined,
-                                          background: batches.length > 1 && bIdx === batches.length - 1 ? '#f1f5f9' : '#ffffff',
-                                        }}
-                                        value={item.plannedQty === '' ? '' : item.plannedQty}
-                                        onChange={(e) => handleBatchItemQtyChange(bIdx, itIdx, e.target.value)}
-                                        readOnly={batches.length > 1 && bIdx === batches.length - 1}
-                                        required
-                                      />
-                                      {batches.length > 1 && bIdx === batches.length - 1 && (
-                                        <div style={{ fontSize: '10px', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
-                                          Tự động điền phần còn thiếu
-                                        </div>
-                                      )}
-                                      {itErr && (
-                                        <span className="wms-field-error-text">
-                                          <AlertCircle size={11} /> {itErr}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td style={{ textAlign: 'center', fontWeight: 600, color: 'var(--wms-secondary)' }}>
-                                    {pct}%
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <div className="wms-field" style={{ marginBottom: 0 }}>
-                        <input
-                          type="text"
-                          className="wms-input"
-                          style={{ height: '32px', fontSize: '12px' }}
-                          placeholder={`Ghi chú riêng cho Đợt ${batch.batchNumber} (VD: xe tải 5 tấn, yêu cầu giao buổi sáng...)`}
-                          value={batch.notes}
-                          onChange={(e) => handleBatchFieldChange(bIdx, 'notes', e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
 
               {/* PHẦN 4: ẢNH CHỤP HỢP ĐỒNG VẬT LÝ & GHI CHÚ CHUNG */}
@@ -3020,12 +3108,53 @@ const InboundPlanningPage = () => {
           <div className="wms-modal-dialog wide">
             <div className="wms-modal-header">
               <div>
-                <h2 className="wms-modal-title">
-                  Chi tiết Kế hoạch Tiếp nhận Nguyên phụ liệu: {selectedPlanForDetail.planCode}
-                </h2>
-                <div className="wms-helper-text" style={{ fontSize: '12px' }}>
-                  Hợp đồng căn cứ: <strong>{selectedPlanForDetail.contractId?.contractCode || '—'}</strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <h2 className="wms-modal-title" style={{ margin: 0 }}>
+                    Chi tiết Kế hoạch Tiếp nhận: {selectedPlanForDetail.planCode}
+                  </h2>
+                  <span className="wms-badge-version" style={{ backgroundColor: '#0284C7', color: '#FFFFFF', padding: '2px 8px' }}>
+                    v{selectedPlanForDetail.versionNumber || 1}
+                  </span>
                 </div>
+                <div className="wms-helper-text" style={{ fontSize: '12px', marginTop: '4px' }}>
+                  Hợp đồng căn cứ: <strong>{selectedPlanForDetail.contractId?.contractCode || '—'}</strong>
+                  {selectedPlanForDetail.supplierId?.supplierName && ` · NCC: ${selectedPlanForDetail.supplierId.supplierName}`}
+                </div>
+
+                {/* Các nút chuyển đổi version nhanh nếu có nhiều hơn 1 phiên bản */}
+                {planVersions && planVersions.length > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '12px', color: '#64748B', fontWeight: 600 }}>Xem phiên bản:</span>
+                    {planVersions.map((pv, pIdx) => {
+                      const isViewing = String(pv._id || pv.id) === String(selectedPlanForDetail._id || selectedPlanForDetail.id);
+                      return (
+                        <button
+                          key={pIdx}
+                          type="button"
+                          onClick={() => handleSwitchViewingVersion(pv)}
+                          style={{
+                            fontSize: '11.5px',
+                            padding: '2px 9px',
+                            borderRadius: '4px',
+                            border: isViewing ? '1.5px solid #0284C7' : '1px solid #CBD5E1',
+                            background: isViewing ? '#0284C7' : '#FFFFFF',
+                            color: isViewing ? '#FFFFFF' : '#334155',
+                            fontWeight: isViewing ? 700 : 500,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            boxShadow: isViewing ? '0 1px 2px rgba(2, 132, 199, 0.2)' : 'none',
+                          }}
+                          title={`Chuyển sang xem phiên bản v${pv.versionNumber || 1} (${pv.planCode})`}
+                        >
+                          <GitBranch size={11} />
+                          v{pv.versionNumber || 1} {isViewing ? '(Đang xem)' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <button
                 type="button"
@@ -3193,27 +3322,29 @@ const InboundPlanningPage = () => {
               </div>
 
               {/* Thẻ: Cây Lịch sử Phiên bản (Version History) */}
-              {planVersions && planVersions.length > 1 && (
+              {planVersions && planVersions.length > 0 && (
                 <div className="wms-detail-card">
                   <div className="wms-detail-card-title">
                     <History size={16} color="var(--wms-accent)" />
-                    <span>Lịch sử các Phiên bản Kế hoạch ({planVersions.length} phiên bản)</span>
+                    <span>Lịch sử các Phiên bản của Kế hoạch này ({planVersions.length} phiên bản)</span>
                   </div>
                   <div className="wms-table-scroll">
                     <table className="wms-table" style={{ fontSize: '12px' }}>
                       <thead>
                         <tr>
-                          <th style={{ width: '80px' }}>Phiên bản</th>
-                          <th>Mã Kế hoạch</th>
-                          <th>Lý do Điều chỉnh / Cập nhật</th>
-                          <th style={{ width: '130px' }}>Ngày lập</th>
-                          <th style={{ width: '150px', textAlign: 'center' }}>Trạng thái</th>
+                          <th style={{ width: '80px', textAlign: 'center' }}>Phiên bản</th>
+                          <th style={{ width: '150px' }}>Mã Kế hoạch</th>
+                          <th style={{ width: '150px' }}>Hợp đồng liên kết</th>
+                          <th>Lý do Điều chỉnh / Ghi chú</th>
+                          <th style={{ width: '110px' }}>Ngày lập</th>
+                          <th style={{ width: '140px', textAlign: 'center' }}>Trạng thái KCS</th>
+                          <th style={{ width: '100px', textAlign: 'center' }}>Thao tác</th>
                         </tr>
                       </thead>
                       <tbody>
                         {planVersions.map((v, vIdx) => {
                           const vBadge = PLAN_STATUS_BADGE[v.status] || { label: v.status, cls: 'wms-status-pending' };
-                          const isCurrentViewing = (v._id || v.id) === (selectedPlanForDetail._id || selectedPlanForDetail.id);
+                          const isCurrentViewing = String(v._id || v.id) === String(selectedPlanForDetail._id || selectedPlanForDetail.id);
                           return (
                             <tr
                               key={vIdx}
@@ -3221,10 +3352,10 @@ const InboundPlanningPage = () => {
                                 background: isCurrentViewing ? 'var(--wms-primary-subtle)' : 'transparent',
                                 cursor: 'pointer',
                               }}
-                              onClick={() => setSelectedPlanForDetail(v)}
+                              onClick={() => handleSwitchViewingVersion(v)}
                               title="Nhấn để xem chi tiết phiên bản này"
                             >
-                              <td>
+                              <td style={{ textAlign: 'center' }}>
                                 <span className="wms-badge-batch" style={{ fontSize: '11px', background: isCurrentViewing ? '#0284c7' : 'var(--wms-gray-200)', color: isCurrentViewing ? '#fff' : 'inherit' }}>
                                   v{v.versionNumber || 1}
                                 </span>
@@ -3237,6 +3368,9 @@ const InboundPlanningPage = () => {
                                   </span>
                                 )}
                               </td>
+                              <td>
+                                <strong style={{ color: '#0F172A' }}>{v.contractId?.contractCode || '—'}</strong>
+                              </td>
                               <td style={{ color: v.amendmentReason ? 'var(--wms-text-primary)' : 'var(--wms-secondary)' }}>
                                 {v.amendmentReason || 'Khởi tạo kế hoạch ban đầu'}
                               </td>
@@ -3245,6 +3379,19 @@ const InboundPlanningPage = () => {
                                 <span className={`wms-status-badge ${vBadge.cls}`} style={{ fontSize: '11px' }}>
                                   {vBadge.label}
                                 </span>
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  className={`wms-btn ${isCurrentViewing ? 'wms-btn-primary' : 'wms-btn-default'} wms-btn-xs`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSwitchViewingVersion(v);
+                                  }}
+                                  style={{ fontSize: '11px', padding: '2px 8px' }}
+                                >
+                                  {isCurrentViewing ? 'Đang xem' : 'Xem bản này'}
+                                </button>
                               </td>
                             </tr>
                           );
@@ -3680,7 +3827,30 @@ const InboundPlanningPage = () => {
               )}
             </div>
 
-            <div className="wms-modal-footer">
+            <div className="wms-modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                {(selectedPlanForDetail.status === 'DEVIATION_REPORTED' || selectedPlanForDetail.deliveryComplianceStatus === 'MISMATCHED') && (
+                  selectedPlanForDetail.reportedToOwner?.isReported ? (
+                    <span
+                      className="wms-status-badge wms-status-completed"
+                      style={{ fontSize: '12px', padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <CheckCircle2 size={13} /> Đã trình báo Owner ({formatDate(selectedPlanForDetail.reportedToOwner.reportedAt)})
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="wms-btn wms-btn-danger"
+                      onClick={() => handleReportToOwner(selectedPlanForDetail)}
+                      disabled={reportingOwner}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Send size={13} />
+                      <span>{reportingOwner ? 'Đang gửi trình báo...' : 'Trình báo lên Owner'}</span>
+                    </button>
+                  )
+                )}
+              </div>
               <button
                 type="button"
                 className="wms-btn wms-btn-default"

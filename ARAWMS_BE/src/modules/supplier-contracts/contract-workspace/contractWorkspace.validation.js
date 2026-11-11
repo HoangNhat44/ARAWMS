@@ -6,7 +6,20 @@ const TAX_CODE_REGEX = /^[0-9]{10}(-[0-9]{3})?$/;
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const CODE_REGEX = /^[A-Z0-9_-]{2,50}$/;
 
-const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+const resolveObjectIdString = (val) => {
+  if (!val) return '';
+  if (typeof val === 'string') return val.trim();
+  if (typeof val === 'object') {
+    if (val._id) return String(val._id).trim();
+    if (val.id) return String(val.id).trim();
+  }
+  return String(val).trim();
+};
+
+const isValidObjectId = (id) => {
+  const cleanId = resolveObjectIdString(id);
+  return cleanId ? mongoose.Types.ObjectId.isValid(cleanId) : false;
+};
 
 const isValidDate = (d) => {
   const date = new Date(d);
@@ -378,7 +391,6 @@ export const validateDraftContract = (req, res, next) => {
     }
 
     let prevDeliveryKey = '';
-    const matQtySumMap = new Map();
 
     batchesToValidate.forEach((b, bIdx) => {
       const bNo = b.batchNumber || bIdx + 1;
@@ -403,26 +415,55 @@ export const validateDraftContract = (req, res, next) => {
         }
         prevDeliveryKey = dKey;
       }
-
-      if (Array.isArray(b.expectedItems)) {
-        b.expectedItems.forEach((it) => {
-          const rawId = String(it.rawMaterialId);
-          const q = Number(it.plannedQty || 0);
-          matQtySumMap.set(rawId, (matQtySumMap.get(rawId) || 0) + q);
-        });
-      }
     });
 
-    // Đối soát tổng số lượng từng nguyên phụ liệu qua các đợt phải khớp với contractedQty
+    // Đối soát tổng số lượng từng dòng nguyên phụ liệu qua các đợt phải khớp với contractedQty
+    // Lưu ý: Trong một hợp đồng có thể có nhiều dòng nguyên phụ liệu cùng rawMaterialId (khác quy cách/đơn giá/số lượng).
+    // Phải đối soát độc lập theo từng dòng (dựa trên itemIndex hoặc vị trí dòng trong mảng contractedMaterials).
     if (Array.isArray(contractedMaterials)) {
       contractedMaterials.forEach((cm, cIdx) => {
-        const rawId = String(cm.rawMaterialId);
+        const cmRawId = resolveObjectIdString(cm.rawMaterialId);
         const expectedTotal = Number(cm.contractedQty || 0);
-        const scheduledTotal = matQtySumMap.get(rawId) || 0;
+
+        let scheduledTotal = 0;
+        batchesToValidate.forEach((b) => {
+          if (!Array.isArray(b.expectedItems)) return;
+
+          let matchedItem = null;
+          // 1. Khớp theo itemIndex nếu có
+          matchedItem = b.expectedItems.find(
+            (it) => it.itemIndex !== undefined && it.itemIndex !== null && Number(it.itemIndex) === cIdx
+          );
+
+          // 2. Khớp theo vị trí cIdx nếu trong expectedItems có phần tử ở vị trí này
+          if (!matchedItem && b.expectedItems[cIdx]) {
+            const itRawId = resolveObjectIdString(b.expectedItems[cIdx].rawMaterialId);
+            if (!itRawId || !cmRawId || itRawId === cmRawId) {
+              matchedItem = b.expectedItems[cIdx];
+            }
+          }
+
+          // 3. Fallback tìm theo rawMaterialId nếu trong hợp đồng chỉ có duy nhất 1 dòng có rawId đó
+          if (!matchedItem && cmRawId) {
+            const sameRawInContract = contractedMaterials.filter(
+              (m) => resolveObjectIdString(m.rawMaterialId) === cmRawId
+            );
+            if (sameRawInContract.length === 1) {
+              matchedItem = b.expectedItems.find(
+                (it) => resolveObjectIdString(it.rawMaterialId) === cmRawId
+              );
+            }
+          }
+
+          if (matchedItem) {
+            scheduledTotal += Number(matchedItem.plannedQty || 0);
+          }
+        });
+
         if (Math.abs(expectedTotal - scheduledTotal) > 0.001) {
           const matLabel = cm.materialNameSnapshot || `dòng ${cIdx + 1}`;
           errors.push(
-            `Mặt hàng "${matLabel}": Tổng số lượng phân bổ qua các đợt (${scheduledTotal}) chưa khớp với số lượng cam kết trên hợp đồng (${expectedTotal}).`
+            `Mặt hàng "${matLabel}" (Dòng #${cIdx + 1}): Tổng số lượng phân bổ qua các đợt (${scheduledTotal}) chưa khớp với số lượng cam kết trên hợp đồng (${expectedTotal}).`
           );
         }
       });

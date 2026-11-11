@@ -18,11 +18,15 @@ import {
   Wrench,
   Check,
   Info,
+  Ban,
+  GitBranch,
 } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import accountantProcurementApi from '../../services/accountantProcurementApi';
 
 const ACTION_LABELS = {
+  TERMINATE_CONTRACT: 'Chấm dứt hợp đồng mua bán',
+  AMEND_NEW_VERSION: 'Lập phụ lục & Tạo phiên bản mới (v2)',
   SUPPLIER_RE_DELIVERY: 'Nhà cung cấp giao bù số lượng',
   CONTRACT_PENALTY: 'Lập biên bản phạt hợp đồng',
   DEBT_DEDUCTION: 'Khấu trừ công nợ phải trả',
@@ -32,6 +36,7 @@ const ACTION_LABELS = {
 };
 
 const ContractDeviationPage = () => {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const planCodeParam = searchParams.get('planCode') || '';
   const planIdParam = searchParams.get('planId') || '';
@@ -51,12 +56,25 @@ const ContractDeviationPage = () => {
   const [selectedForViewDetail, setSelectedForViewDetail] = useState(null);
 
   // Resolve Form
+  const [resolveOption, setResolveOption] = useState('AMEND_NEW_VERSION'); // 'AMEND_NEW_VERSION' | 'TERMINATE'
   const [resolveForm, setResolveForm] = useState({
-    actionTaken: 'SUPPLIER_RE_DELIVERY',
+    actionTaken: 'TERMINATE_CONTRACT',
     resolutionNotes: '',
     batchNumber: null,
   });
   const [resolveErrors, setResolveErrors] = useState({});
+
+  const isItemResolved = (item) => {
+    if (!item) return false;
+    return (
+      item.deviationResolution?.status === 'RESOLVED' ||
+      item.status === 'DEVIATION_RESOLVED' ||
+      item.status === 'RESOLVED_SUPERSEDED' ||
+      item.contractId?.status === 'SUPERSEDED' ||
+      item.contractId?.status === 'TERMINATED' ||
+      item.status === 'CANCELLED'
+    );
+  };
 
   const loadData = async () => {
     try {
@@ -94,9 +112,7 @@ const ContractDeviationPage = () => {
           (planCodeParam && d.planCode === planCodeParam)
       );
       if (match) {
-        const isResolved =
-          match.deviationResolution?.status === 'RESOLVED' ||
-          match.status === 'DEVIATION_RESOLVED';
+        const isResolved = isItemResolved(match);
         if (!isResolved) {
           handleOpenResolveModal(match);
         } else {
@@ -108,7 +124,7 @@ const ContractDeviationPage = () => {
 
   // Filtered List
   const filteredDeviations = useMemo(() => {
-    return (deviations || []).filter((item) => {
+    const list = (deviations || []).filter((item) => {
       const q = searchTerm.trim().toLowerCase();
       const matchSearch =
         !q ||
@@ -117,9 +133,7 @@ const ContractDeviationPage = () => {
         (item.supplierId?.supplierName || '').toLowerCase().includes(q) ||
         (item.technicianVerification?.deviationSummary || '').toLowerCase().includes(q);
 
-      const isResolved =
-        item.deviationResolution?.status === 'RESOLVED' ||
-        item.status === 'DEVIATION_RESOLVED';
+      const isResolved = isItemResolved(item);
 
       let matchStatus = true;
       if (statusFilter === 'UNRESOLVED') {
@@ -149,10 +163,7 @@ const ContractDeviationPage = () => {
     let resolved = 0;
 
     deviations.forEach((d) => {
-      const isResolved =
-        d.deviationResolution?.status === 'RESOLVED' ||
-        d.status === 'DEVIATION_RESOLVED';
-      if (isResolved) resolved++;
+      if (isItemResolved(d)) resolved++;
       else unresolved++;
     });
 
@@ -162,24 +173,41 @@ const ContractDeviationPage = () => {
   const handleOpenResolveModal = (item) => {
     setSelectedForResolve(item);
     setResolveErrors({});
+    setResolveOption('AMEND_NEW_VERSION');
     setResolveForm({
-      actionTaken: item.deviationResolution?.actionTaken || 'SUPPLIER_RE_DELIVERY',
-      resolutionNotes: item.deviationResolution?.resolutionNotes || '',
+      actionTaken: 'TERMINATE_CONTRACT',
+      resolutionNotes: '',
       batchNumber: item.batchNumber || null,
     });
   };
 
+  const handleNavigateToAmendContract = (contractId) => {
+    if (!contractId) return;
+    setSelectedForResolve(null);
+    navigate(`/accountant/contracts?amendContractId=${contractId}`);
+  };
+
   const handleConfirmResolve = async (e) => {
     e.preventDefault();
+    if (resolveOption === 'AMEND_NEW_VERSION') {
+      const contractId =
+        selectedForResolve?.contractId?._id ||
+        selectedForResolve?.contractId?.id ||
+        selectedForResolve?.contractId;
+      handleNavigateToAmendContract(contractId);
+      return;
+    }
+
+    // Trường hợp TERMINATE
     if (!resolveForm.resolutionNotes || !resolveForm.resolutionNotes.trim()) {
       setResolveErrors({
-        resolutionNotes: 'Vui lòng nhập ghi chú mô tả phương án đã xử lý sai lệch.',
+        resolutionNotes: 'Vui lòng nhập lý do/căn cứ chấm dứt hợp đồng.',
       });
       return;
     }
     if (resolveForm.resolutionNotes.trim().length < 5) {
       setResolveErrors({
-        resolutionNotes: 'Ghi chú xử lý phải có độ dài tối thiểu 5 ký tự.',
+        resolutionNotes: 'Lý do chấm dứt hợp đồng phải có độ dài tối thiểu 5 ký tự.',
       });
       return;
     }
@@ -190,14 +218,14 @@ const ContractDeviationPage = () => {
         selectedForResolve._id,
         {
           resolutionNotes: resolveForm.resolutionNotes.trim(),
-          actionTaken: resolveForm.actionTaken,
+          actionTaken: 'TERMINATE_CONTRACT',
           batchNumber: resolveForm.batchNumber,
         }
       );
 
       setFeedback({
         type: 'success',
-        text: res.message || 'Đã xác nhận xử lý sai lệch thành công.',
+        text: res.message || 'Đã chấm dứt hợp đồng và cập nhật trạng thái sai lệch thành công.',
       });
       setSelectedForResolve(null);
       await loadData();
@@ -408,9 +436,11 @@ const ContractDeviationPage = () => {
               </thead>
               <tbody>
                 {filteredDeviations.map((item) => {
-                  const isResolved =
-                    item.deviationResolution?.status === 'RESOLVED' ||
-                    item.status === 'DEVIATION_RESOLVED';
+                  const isResolved = isItemResolved(item);
+                  const isAmendedNewVersion =
+                    item.deviationResolution?.actionTaken === 'AMEND_NEW_VERSION' ||
+                    item.status === 'RESOLVED_SUPERSEDED' ||
+                    item.contractId?.status === 'SUPERSEDED';
                   const verification = item.technicianVerification;
                   const resolution = item.deviationResolution;
 
@@ -494,9 +524,19 @@ const ContractDeviationPage = () => {
                           <span
                             className="wms-status-badge wms-status-verified"
                             style={{ background: '#DCFCE7', color: '#15803D' }}
-                            title={resolution?.resolutionNotes}
+                            title={
+                              resolution?.resolutionNotes ||
+                              (isAmendedNewVersion
+                                ? 'Đã xử lý sai lệch bằng việc lập Phụ lục & tạo Phiên bản mới (v2)'
+                                : 'Đã xử lý')
+                            }
                           >
                             <Check size={12} style={{ marginRight: '3px' }} /> Đã xử lý
+                            {isAmendedNewVersion && (
+                              <span style={{ fontSize: '10.5px', marginLeft: '4px', opacity: 0.85, fontWeight: 600 }}>
+                                (Đã tạo v2)
+                              </span>
+                            )}
                           </span>
                         ) : (
                           <span
@@ -511,15 +551,30 @@ const ContractDeviationPage = () => {
                       <td style={{ textAlign: 'center' }}>
                         <div className="wms-action-cell" style={{ justifyContent: 'center', gap: '6px' }}>
                           {!isResolved ? (
-                            <button
-                              type="button"
-                              className="wms-btn wms-btn-primary wms-btn-sm"
-                              onClick={() => handleOpenResolveModal(item)}
-                              title="Ghi nhận phương án xử lý sai lệch cho đợt giao này"
-                            >
-                              <Wrench size={13} />
-                              <span>Xử lý</span>
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                className="wms-btn wms-btn-primary wms-btn-sm"
+                                onClick={() => handleOpenResolveModal(item)}
+                                title="Xử lý sai lệch: Chấm dứt Hợp đồng hoặc Tạo Phiên bản mới"
+                              >
+                                <Wrench size={13} />
+                                <span>Xử lý</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="wms-btn wms-btn-default wms-btn-sm"
+                                onClick={() => {
+                                  const cId = item.contractId?._id || item.contractId?.id || item.contractId;
+                                  handleNavigateToAmendContract(cId);
+                                }}
+                                title="Chuyển sang Lập Hợp đồng Phiên bản mới (v2)"
+                                style={{ color: 'var(--wms-accent)', fontWeight: 600 }}
+                              >
+                                <GitBranch size={13} />
+                                <span>Tạo HĐ v2</span>
+                              </button>
+                            </>
                           ) : (
                             <button
                               type="button"
@@ -542,10 +597,10 @@ const ContractDeviationPage = () => {
         )}
       </section>
 
-      {/* Modal 1: Xử lý sai lệch (Ghi chú mô tả đã xử lý như thế nào) */}
+      {/* Modal 1: Xử lý sai lệch (2 Options: Tạo Version mới hoặc Chấm dứt Hợp đồng) */}
       {selectedForResolve && (
         <div className="wms-modal-backdrop" role="dialog" aria-modal="true">
-          <div className="wms-modal-dialog" style={{ maxWidth: '640px' }}>
+          <div className="wms-modal-dialog" style={{ maxWidth: '680px' }}>
             <div className="wms-modal-header">
               <div>
                 <h2 className="wms-modal-title">
@@ -607,63 +662,162 @@ const ContractDeviationPage = () => {
                   </div>
                 </div>
 
-                {/* Chọn phương án xử lý */}
-                <div className="wms-field" style={{ marginBottom: '14px' }}>
-                  <label className="wms-label">
-                    Phương án xử lý sai lệch <span className="wms-required">*</span>
+                {/* Chọn 1 trong 2 Phương án xử lý */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label className="wms-label" style={{ marginBottom: '8px', display: 'block' }}>
+                    Chọn Phương án giải quyết sai lệch <span className="wms-required">*</span>
                   </label>
-                  <select
-                    className="wms-select"
-                    value={resolveForm.actionTaken}
-                    onChange={(e) =>
-                      setResolveForm((prev) => ({ ...prev, actionTaken: e.target.value }))
-                    }
-                  >
-                    {Object.entries(ACTION_LABELS).map(([key, label]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    {/* Option A: Tạo Version mới */}
+                    <div
+                      onClick={() => setResolveOption('AMEND_NEW_VERSION')}
+                      style={{
+                        padding: '14px',
+                        borderRadius: '8px',
+                        border: `2px solid ${resolveOption === 'AMEND_NEW_VERSION' ? 'var(--wms-accent, #0284c7)' : '#E2E8F0'}`,
+                        backgroundColor: resolveOption === 'AMEND_NEW_VERSION' ? '#F0F9FF' : '#FFFFFF',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <span
+                          style={{
+                            fontWeight: 700,
+                            fontSize: '13px',
+                            color: resolveOption === 'AMEND_NEW_VERSION' ? '#0369A1' : '#1E293B',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <GitBranch size={16} color={resolveOption === 'AMEND_NEW_VERSION' ? '#0284c7' : '#64748B'} />
+                          Tạo Version mới (v2)
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '10.5px',
+                            fontWeight: 600,
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: '#E0F2FE',
+                            color: '#0284c7',
+                          }}
+                        >
+                          Khuyến nghị
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '11.5px', color: '#64748B', margin: 0, lineHeight: 1.45 }}>
+                        Lập phụ lục điều chỉnh lịch trình hoặc số lượng các đợt giao tiếp theo. Sau khi tạo HĐ v2, Kế hoạch v2 sẽ tự động sinh ra tương ứng.
+                      </p>
+                    </div>
+
+                    {/* Option B: Chấm dứt Hợp đồng */}
+                    <div
+                      onClick={() => setResolveOption('TERMINATE')}
+                      style={{
+                        padding: '14px',
+                        borderRadius: '8px',
+                        border: `2px solid ${resolveOption === 'TERMINATE' ? '#EF4444' : '#E2E8F0'}`,
+                        backgroundColor: resolveOption === 'TERMINATE' ? '#FEF2F2' : '#FFFFFF',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <span
+                          style={{
+                            fontWeight: 700,
+                            fontSize: '13px',
+                            color: resolveOption === 'TERMINATE' ? '#DC2626' : '#1E293B',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <Ban size={16} color={resolveOption === 'TERMINATE' ? '#EF4444' : '#64748B'} />
+                          Chấm dứt Hợp đồng
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '10.5px',
+                            fontWeight: 600,
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: '#FEE2E2',
+                            color: '#DC2626',
+                          }}
+                        >
+                          Chấm dứt
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '11.5px', color: '#64748B', margin: 0, lineHeight: 1.45 }}>
+                        Hủy bỏ hoàn toàn hợp đồng do vi phạm nghiêm trọng. Hợp đồng chuyển sang ĐÃ CHẤM DỨT, kế hoạch sang ĐÃ HỦY LỊCH và tất toán công nợ.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Textarea: Ghi chú mô tả đã xử lý như thế nào */}
-                <div
-                  className={`wms-field ${resolveErrors.resolutionNotes ? 'has-error' : ''}`}
-                  style={{ marginBottom: '10px' }}
-                >
-                  <label htmlFor="res-notes" className="wms-label">
-                    Ghi chú mô tả đã xử lý như thế nào <span className="wms-required">*</span>
-                  </label>
-                  <textarea
-                    id="res-notes"
-                    className="wms-textarea"
-                    rows={4}
-                    placeholder="Mô tả cụ thể giải pháp đã xử lý (Ví dụ: Đã liên hệ NCC yêu cầu giao bổ sung 300m còn thiếu vào ngày mai; NCC đã ký biên bản cam kết phạt 5% giá trị đợt hàng theo điều khoản hợp đồng...)"
-                    value={resolveForm.resolutionNotes}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (resolveErrors.resolutionNotes) {
-                        setResolveErrors((prev) => {
-                          const next = { ...prev };
-                          delete next.resolutionNotes;
-                          return next;
-                        });
-                      }
-                      setResolveForm((prev) => ({ ...prev, resolutionNotes: val }));
+                {/* Nội dung chi tiết cho từng Option */}
+                {resolveOption === 'AMEND_NEW_VERSION' ? (
+                  <div
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: '8px',
+                      backgroundColor: '#F8FAFC',
+                      border: '1px dashed #CBD5E1',
+                      marginBottom: '10px',
                     }}
-                    autoFocus
-                    required
-                  />
-                  {resolveErrors.resolutionNotes && (
-                    <span className="wms-field-error-text">
-                      <AlertCircle size={12} /> {resolveErrors.resolutionNotes}
+                  >
+                    <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      Quy trình Tự động khi Tạo Phiên bản mới:
+                    </div>
+                    <ul style={{ fontSize: '12px', color: '#475569', margin: 0, paddingLeft: '18px', lineHeight: 1.6 }}>
+                      <li>Điều hướng sang màn hình Hợp đồng cung ứng với mã: <strong>{selectedForResolve.contractId?.contractCode || '—'}</strong>.</li>
+                      <li>Cho phép điều chỉnh số đợt giao, ngày giao dự kiến và số lượng từng loại NVL.</li>
+                      <li>Sau khi lưu Hợp đồng v2 (ACTIVE), hệ thống sẽ <strong>tự động sinh Kế hoạch tiếp nhận v2</strong> (SCHEDULED) tương ứng.</li>
+                      <li>Bản Hợp đồng v1 chuyển sang <code>SUPERSEDED</code> và Kế hoạch v1 chuyển sang <code>RESOLVED_SUPERSEDED</code>.</li>
+                    </ul>
+                  </div>
+                ) : (
+                  <div
+                    className={`wms-field ${resolveErrors.resolutionNotes ? 'has-error' : ''}`}
+                    style={{ marginBottom: '10px' }}
+                  >
+                    <label htmlFor="res-notes" className="wms-label">
+                      Lý do & Căn cứ Chấm dứt Hợp đồng <span className="wms-required">*</span>
+                    </label>
+                    <textarea
+                      id="res-notes"
+                      className="wms-textarea"
+                      rows={4}
+                      placeholder="Mô tả cụ thể lý do vi phạm hoặc thỏa thuận chấm dứt hợp đồng (Ví dụ: NCC giao thiếu 500m vải không thể khắc phục kịp tiến độ; Hai bên thống nhất lập biên bản chấm dứt hợp đồng và hoàn tiền cọc...)"
+                      value={resolveForm.resolutionNotes}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (resolveErrors.resolutionNotes) {
+                          setResolveErrors((prev) => {
+                            const next = { ...prev };
+                            delete next.resolutionNotes;
+                            return next;
+                          });
+                        }
+                        setResolveForm((prev) => ({ ...prev, resolutionNotes: val }));
+                      }}
+                      autoFocus
+                      required
+                    />
+                    {resolveErrors.resolutionNotes && (
+                      <span className="wms-field-error-text">
+                        <AlertCircle size={12} /> {resolveErrors.resolutionNotes}
+                      </span>
+                    )}
+                    <span className="wms-helper-text" style={{ fontSize: '11.5px', marginTop: '4px' }}>
+                      Cảnh báo: Hành động này sẽ chuyển trạng thái Hợp đồng sang ĐÃ CHẤM DỨT và không thể đảo ngược.
                     </span>
-                  )}
-                  <span className="wms-helper-text" style={{ fontSize: '11.5px', marginTop: '4px' }}>
-                    Ghi chú này sẽ được lưu cố định vào biên bản kiểm toán để đối soát công nợ và lưu vết xử lý sai lệch hợp đồng.
-                  </span>
-                </div>
+                  </div>
+                )}
               </div>
 
               <div className="wms-modal-footer">
@@ -675,13 +829,28 @@ const ContractDeviationPage = () => {
                 >
                   Hủy bỏ
                 </button>
-                <button
-                  type="submit"
-                  className="wms-btn wms-btn-primary"
-                  disabled={submitting}
-                >
-                  {submitting ? 'Đang xác nhận...' : 'Xác nhận đã xử lý'}
-                </button>
+                {resolveOption === 'AMEND_NEW_VERSION' ? (
+                  <button
+                    type="submit"
+                    className="wms-btn wms-btn-primary"
+                    disabled={submitting}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <GitBranch size={14} />
+                    <span>Chuyển sang Lập Hợp đồng Phiên bản mới (v2)</span>
+                    <ArrowRight size={14} />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className="wms-btn wms-btn-danger"
+                    disabled={submitting}
+                    style={{ backgroundColor: '#DC2626', color: '#FFFFFF', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Ban size={14} />
+                    <span>{submitting ? 'Đang chấm dứt...' : 'Xác nhận Chấm dứt Hợp đồng'}</span>
+                  </button>
+                )}
               </div>
             </form>
           </div>
@@ -772,8 +941,11 @@ const ContractDeviationPage = () => {
                   <span className="wms-detail-label">Phương án:</span>
                   <span className="wms-detail-value" style={{ fontWeight: 600 }}>
                     {ACTION_LABELS[selectedForViewDetail.deviationResolution?.actionTaken] ||
-                      selectedForViewDetail.deviationResolution?.actionTaken ||
-                      'Thỏa thuận xử lý'}
+                      (selectedForViewDetail.contractId?.status === 'SUPERSEDED' || selectedForViewDetail.status === 'RESOLVED_SUPERSEDED'
+                        ? 'Lập phụ lục & Tạo phiên bản mới (v2)'
+                        : (selectedForViewDetail.contractId?.status === 'TERMINATED'
+                            ? 'Chấm dứt hợp đồng mua bán'
+                            : selectedForViewDetail.deviationResolution?.actionTaken || 'Đã giải quyết sai lệch'))}
                   </span>
                 </div>
 
@@ -783,7 +955,12 @@ const ContractDeviationPage = () => {
                     className="wms-detail-value"
                     style={{ fontWeight: 600, color: '#15803D', lineHeight: 1.5 }}
                   >
-                    {selectedForViewDetail.deviationResolution?.resolutionNotes || '—'}
+                    {selectedForViewDetail.deviationResolution?.resolutionNotes ||
+                      (selectedForViewDetail.contractId?.status === 'SUPERSEDED' || selectedForViewDetail.status === 'RESOLVED_SUPERSEDED'
+                        ? 'Đã xử lý sai lệch bằng việc lập Phụ lục & tạo Phiên bản mới thay thế hợp đồng này.'
+                        : (selectedForViewDetail.contractId?.status === 'TERMINATED'
+                            ? `Hợp đồng đã chấm dứt: ${selectedForViewDetail.contractId?.terminationReason || 'Chấm dứt do sai lệch KCS'}`
+                            : 'Đã giải quyết sai lệch theo thỏa thuận.'))}
                   </span>
                 </div>
 
@@ -792,7 +969,7 @@ const ContractDeviationPage = () => {
                   <span className="wms-detail-value" style={{ fontSize: '12px' }}>
                     {selectedForViewDetail.deviationResolution?.resolvedByAccountantId?.fullName ||
                       'Kế toán Kho & Tài chính'}{' '}
-                    • {formatDateTime(selectedForViewDetail.deviationResolution?.resolvedAt)}
+                    • {formatDateTime(selectedForViewDetail.deviationResolution?.resolvedAt || selectedForViewDetail.updatedAt)}
                   </span>
                 </div>
               </div>

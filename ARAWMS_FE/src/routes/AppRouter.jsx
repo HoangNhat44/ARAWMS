@@ -65,6 +65,8 @@ const StockAdjustmentPage = lazy(() => import('../pages/Owner/StockAdjustmentPag
 const EmployeeCreatePage = lazy(() => import('../pages/Owner/EmployeeCreatePage'));
 const OwnerRecordDetailPage = lazy(() => import('../pages/Owner/OwnerRecordDetailPage'));
 const StockAdjustmentDetailPage = lazy(() => import('../pages/Owner/StockAdjustmentDetailPage'));
+const OwnerDeviationDetailPage = lazy(() => import('../pages/Owner/OwnerDeviationDetailPage'));
+const OwnerPlanDeviationsPage = lazy(() => import('../pages/Owner/OwnerPlanDeviationsPage'));
 
 const SessionError = ({ message, retry }) => (
   <div className="ara-account-page" style={{ padding: '2rem', textAlign: 'center' }}>
@@ -180,7 +182,14 @@ export default function AppRouter() {
           <Route path="dashboard" element={<OperationsPage key="dashboard" />} />
           <Route path="bi" element={<OperationsPage key="bi" mode="bi" />} />
           <Route path="profit" element={<Navigate to="/owner/bi" replace />} />
-          <Route path="contracts/:id/plans/:planId" element={<InboundPlanDetailPage />} />
+          <Route path="plan-deviations" element={<OwnerPlanDeviationsPage />} />
+          <Route path="plan-deviations/:planId" element={<OwnerDeviationDetailPage />} />
+          <Route path="deviations" element={<OwnerDeviationDetailPage />} />
+          <Route path="deviations/:planId" element={<OwnerDeviationDetailPage />} />
+          <Route path="inbound-plans" element={<OwnerPlanDeviationsPage />} />
+          <Route path="inbound-plans/:planId" element={<OwnerDeviationDetailPage />} />
+          <Route path="plans/:planId" element={<OwnerDeviationDetailPage />} />
+          <Route path="contracts/:id/plans/:planId" element={<OwnerDeviationDetailPage />} />
           <Route path="contracts/:id" element={<ContractDetailPage />} />
           <Route path="purchases" element={<OperationsPage key="purchases" mode="purchases" />} />
           <Route path="tasks" element={<Navigate to="/owner/dashboard" replace />} />

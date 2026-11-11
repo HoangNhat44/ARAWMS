@@ -34,16 +34,12 @@ import {
   Search,
 } from 'lucide-react';
 import accountantProcurementApi from '../../services/accountantProcurementApi.js';
-import { validateContractForm } from '../../utils/procurementValidation.js';
+import { validateContractForm, isRollFabricLine } from '../../utils/procurementValidation.js';
 
 const CONTRACT_STATUS_BADGE = {
   DRAFT_FRAMEWORK: {
     label: 'Bản thảo khung',
     cls: 'wms-status-pending',
-  },
-  PENDING_OWNER_APPROVAL: {
-    label: 'Chờ Owner duyệt',
-    cls: 'wms-status-processing',
   },
   ACTIVE: {
     label: 'Đang hiệu lực',
@@ -292,10 +288,7 @@ export const buildBatches = (
 
     const expectedItems = (materials || []).map((m, mIdx) => {
       const contractedQty = Number(m.contractedQty || 0);
-      const isRollLine =
-        m.category === 'FABRIC_ROLL' ||
-        m.materialType === 'FABRIC' ||
-        ['METER', 'MET', 'M', 'ROLL', 'YARD'].includes(m.unitSnapshot || m.unit);
+      const isRollLine = isRollFabricLine(m);
       const allRolls =
         isRollLine && Array.isArray(m.rollDetails) && m.rollDetails.length > 0
           ? m.rollDetails
@@ -477,14 +470,10 @@ export const MATERIAL_CATEGORY_OPTIONS = [
 ];
 
 const createEmptyMaterialLine = (rawMat = null) => {
-  const isFabric =
-    !rawMat ||
-    rawMat?.category === 'FABRIC_ROLL' ||
-    rawMat?.materialType === 'FABRIC' ||
-    ['METER', 'MET', 'M'].includes(rawMat?.unit);
+  const isFabric = !rawMat || isRollFabricLine(rawMat);
   const defaultRolls = isFabric
     ? [
-        { rollIndex: 1, rollCode: 'C-01', rollQty: 1, lengthMeters: 100, note: '' },
+        { rollIndex: 1, rollCode: 'C-01', rollQty: 1, lengthMeters: 100, weightKg: 100, note: '' },
       ]
     : [];
   const defaultRollCount = defaultRolls.length;
@@ -526,11 +515,12 @@ const createEmptyMaterialLine = (rawMat = null) => {
 // UC: Soạn thảo khung hợp đồng với nhà cung cấp
 const ContractFrameworkPage = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const preselectedSupplierId = searchParams.get('supplierId') || '';
+  const amendContractIdParam = searchParams.get('amendContractId') || '';
 
   const [activeTab, setActiveTab] = useState(
-    preselectedSupplierId ? 'DRAFT_FORM' : 'CONTRACT_LIST'
+    preselectedSupplierId || amendContractIdParam ? 'DRAFT_FORM' : 'CONTRACT_LIST'
   );
   const [contracts, setContracts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -651,40 +641,63 @@ const ContractFrameworkPage = () => {
       setSuppliers(suppliersData);
       setMaterialsCatalog(materialsData);
 
-      setContractForm((prev) => {
-        const nextCode =
-          prev.contractCode ||
-          `HDK-2026-${String(contractsData.length + 1).padStart(3, '0')}`;
-        const nextSupplierId =
-          preselectedSupplierId ||
-          prev.supplierId ||
-          suppliersData[0]?._id ||
-          suppliersData[0]?.id ||
-          '';
-        const nextLines =
-          prev.contractedMaterials.length > 0
-            ? prev.contractedMaterials
-            : materialsData.length > 0
-            ? [createEmptyMaterialLine(materialsData[0])]
-            : [createEmptyMaterialLine()];
-
-        const nextBatches = buildBatches(
-          prev.inboundBatchesCount || 2,
-          nextLines,
-          prev.effectiveFrom,
-          prev.effectiveTo,
-          prev.inboundBatches
+      if (amendContractIdParam) {
+        let target = contractsData.find(
+          (c) => String(c._id || c.id) === String(amendContractIdParam)
         );
+        if (target) {
+          if (target.status === 'SUPERSEDED') {
+            const rootId = String(target.rootContractId?._id || target.rootContractId || target._id);
+            const activeOrLatest = contractsData.find(
+              (c) =>
+                (String(c.rootContractId?._id || c.rootContractId) === rootId || String(c._id) === rootId) &&
+                (c.status === 'ACTIVE' || c.status === 'DEVIATION_FLAGGED')
+            );
+            if (activeOrLatest) {
+              target = activeOrLatest;
+            }
+          }
+          await handleEditExistingContract(target);
+          const newParams = new URLSearchParams(searchParams);
+          newParams.delete('amendContractId');
+          setSearchParams(newParams, { replace: true });
+        }
+      } else {
+        setContractForm((prev) => {
+          const nextCode =
+            prev.contractCode ||
+            `HDK-2026-${String(contractsData.length + 1).padStart(3, '0')}`;
+          const nextSupplierId =
+            preselectedSupplierId ||
+            prev.supplierId ||
+            suppliersData[0]?._id ||
+            suppliersData[0]?.id ||
+            '';
+          const nextLines =
+            prev.contractedMaterials.length > 0
+              ? prev.contractedMaterials
+              : materialsData.length > 0
+              ? [createEmptyMaterialLine(materialsData[0])]
+              : [createEmptyMaterialLine()];
 
-        return {
-          ...prev,
-          contractCode: nextCode,
-          supplierId: nextSupplierId,
-          contractedMaterials: nextLines,
-          inboundBatchesCount: prev.inboundBatchesCount || 2,
-          inboundBatches: nextBatches,
-        };
-      });
+          const nextBatches = buildBatches(
+            prev.inboundBatchesCount || 2,
+            nextLines,
+            prev.effectiveFrom,
+            prev.effectiveTo,
+            prev.inboundBatches
+          );
+
+          return {
+            ...prev,
+            contractCode: nextCode,
+            supplierId: nextSupplierId,
+            contractedMaterials: nextLines,
+            inboundBatchesCount: prev.inboundBatchesCount || 2,
+            inboundBatches: nextBatches,
+          };
+        });
+      }
     } catch (error) {
       setFeedback({
         type: 'error',
@@ -698,6 +711,32 @@ const ContractFrameworkPage = () => {
   useEffect(() => {
     loadWorkspaceData();
   }, []);
+
+  // Tự động mở form tạo Version mới (v2) khi nhận param amendContractId từ trang Xử lý Sai lệch
+  useEffect(() => {
+    if (amendContractIdParam && contracts.length > 0 && !loading) {
+      let target = contracts.find(
+        (c) => String(c._id || c.id) === String(amendContractIdParam)
+      );
+      if (target) {
+        if (target.status === 'SUPERSEDED') {
+          const rootId = String(target.rootContractId?._id || target.rootContractId || target._id);
+          const activeOrLatest = contracts.find(
+            (c) =>
+              (String(c.rootContractId?._id || c.rootContractId) === rootId || String(c._id) === rootId) &&
+              (c.status === 'ACTIVE' || c.status === 'DEVIATION_FLAGGED')
+          );
+          if (activeOrLatest) {
+            target = activeOrLatest;
+          }
+        }
+        handleEditExistingContract(target);
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('amendContractId');
+        setSearchParams(newParams, { replace: true });
+      }
+    }
+  }, [amendContractIdParam, contracts, loading]);
 
   useEffect(() => {
     const handleOutsideClick = (e) => {
@@ -883,18 +922,18 @@ const ContractFrameworkPage = () => {
   const contractKpis = useMemo(() => {
     const total = contracts.length;
     let active = 0;
-    let pendingApproval = 0;
+    let deviationFlagged = 0;
     let draft = 0;
     let terminated = 0;
 
     contracts.forEach((c) => {
       if (c.status === 'ACTIVE') active++;
-      else if (c.status === 'PENDING_OWNER_APPROVAL') pendingApproval++;
+      else if (c.status === 'DEVIATION_FLAGGED') deviationFlagged++;
       else if (c.status === 'DRAFT_FRAMEWORK') draft++;
       else if (c.status === 'TERMINATED') terminated++;
     });
 
-    return { total, active, pendingApproval, draft, terminated };
+    return { total, active, deviationFlagged, draft, terminated };
   }, [contracts]);
 
   const handleOpenTerminateModal = (contract) => {
@@ -1233,15 +1272,12 @@ const ContractFrameworkPage = () => {
                 : '100% Combed Cotton Compact';
 
             // Nếu là vải cuộn và chưa có danh sách cuộn thì khởi tạo 1 cuộn mặc định; nếu là phụ liệu thì xóa cuộn cũ
-            const isFabricType =
-              foundMat.category === 'FABRIC_ROLL' ||
-              foundMat.materialType === 'FABRIC' ||
-              ['METER', 'MET', 'M', 'ROLL', 'YARD'].includes(foundMat.unit);
+            const isFabricType = isRollFabricLine(foundMat) || isRollFabricLine(currentLine);
             if (isFabricType) {
               if (!currentLine.rollDetails || currentLine.rollDetails.length === 0) {
                 currentLine.rollCount = 1;
                 currentLine.rollDetails = [
-                  { rollIndex: 1, rollCode: 'C-01', rollQty: 1, lengthMeters: 100, note: '' },
+                  { rollIndex: 1, rollCode: 'C-01', rollQty: 1, lengthMeters: 100, weightKg: 100, note: '' },
                 ];
                 currentLine.contractedQty = 100;
               }
@@ -1950,9 +1986,22 @@ const ContractFrameworkPage = () => {
     setActiveTab('DRAFT_FORM');
   };
 
-  const handleEditExistingContract = (contract) => {
-    const isContractActive = contract.status === 'ACTIVE';
-    const contractId = contract._id || contract.id;
+  const handleEditExistingContract = async (contractOrTarget) => {
+    let contract = contractOrTarget;
+    const contractId = contract?._id || contract?.id || contractOrTarget;
+
+    // Tự động tải bản ghi chi tiết đầy đủ nhất của hợp đồng nếu cần
+    if (typeof contractOrTarget === 'string' || !contract?.contractedMaterials || !contract?.commercialTerms) {
+      try {
+        const detail = await accountantProcurementApi.getContractDetail(contractId);
+        if (detail) contract = detail;
+      } catch (err) {
+        console.warn('Không thể tải chi tiết hợp đồng, dùng dữ liệu có sẵn:', err);
+      }
+    }
+
+    // Chỉ có DRAFT_FRAMEWORK mới là bản thảo được sửa đè; mọi trạng thái khác đều phải tạo version mới
+    const isContractActive = contract.status !== 'DRAFT_FRAMEWORK';
     setEditingContractId(contractId);
     setContractErrors({});
     setFeedback(null);
@@ -1965,14 +2014,17 @@ const ContractFrameworkPage = () => {
     setIsAmendingActive(isContractActive);
     setSourceActiveContract(isContractActive ? contract : null);
 
-    const resolvedEffFrom = isContractActive
-      ? todayIso
-      : contract.effectiveFrom
+    // GIỮ NGUYÊN TOÀN BỘ GIÁ TRỊ ĐÃ NHẬP TỪ HỢP ĐỒNG GỐC (V1)
+    const resolvedSigningDate = contract.signingDate
+      ? new Date(contract.signingDate).toISOString().slice(0, 10)
+      : todayIso;
+    const resolvedEffFrom = contract.effectiveFrom
       ? new Date(contract.effectiveFrom).toISOString().slice(0, 10)
       : todayIso;
     const resolvedEffTo = contract.effectiveTo
       ? new Date(contract.effectiveTo).toISOString().slice(0, 10)
       : sixMonthsLaterIso;
+
     const resolvedDepositPct = Number(contract.commercialTerms?.depositPercent ?? 30);
     const existingSchedule = Array.isArray(contract.commercialTerms?.paymentSchedule)
       ? contract.commercialTerms.paymentSchedule
@@ -1985,16 +2037,30 @@ const ContractFrameworkPage = () => {
               existingSchedule.length ||
               2
           );
-    const resolvedSchedule = buildPaymentSchedule(
-      resolvedInstallmentsCount,
-      resolvedDepositPct,
-      existingSchedule,
-      resolvedEffFrom,
-      resolvedEffTo,
-      existingSchedule.length > 0
-    );
 
-    // Load kế hoạch tiếp nhận hiện có của Hợp đồng
+    // Giữ nguyên các lần thanh toán đã thiết lập ở v1
+    const resolvedSchedule = existingSchedule.length > 0
+      ? existingSchedule.map((inst, idx) => ({
+          installmentNumber: inst.installmentNumber || idx + 1,
+          installmentTitle: inst.installmentTitle || `Đợt ${idx + 1}: Thanh toán tiền hàng`,
+          paymentPercent: inst.paymentPercent ?? 0,
+          paymentAmount: inst.paymentAmount ?? 0,
+          dueDate: inst.dueDate
+            ? new Date(inst.dueDate).toISOString().slice(0, 10)
+            : resolvedEffFrom,
+          paymentMilestone: inst.paymentMilestone || 'GIAO_HANG_THANH_CONG',
+          notes: inst.notes || '',
+        }))
+      : buildPaymentSchedule(
+          resolvedInstallmentsCount,
+          resolvedDepositPct,
+          existingSchedule,
+          resolvedEffFrom,
+          resolvedEffTo,
+          false
+        );
+
+    // Load và giữ nguyên kế hoạch lịch trình tiếp nhận hiện có của Hợp đồng v1
     const existingPlan = contract.latestInboundPlan || contract.inboundPlans?.[0];
     const existingBatchesFromPlan = existingPlan?.batches?.length > 0
       ? existingPlan.batches.map((b, idx) => ({
@@ -2027,11 +2093,11 @@ const ContractFrameworkPage = () => {
     setContractForm({
       contractCode: nextCode,
       contractTitle: isContractActive
-        ? `${contract.contractTitle?.replace(/\s*\(Phụ lục.*\)/i, '') || 'khung hợp đồng cung ứng'} (Phụ lục v${nextVer})`
+        ? `${contract.contractTitle?.replace(/\s*\(Phụ lục.*\)/i, '') || 'Khung hợp đồng cung ứng'} (Phụ lục v${nextVer})`
         : (contract.contractTitle ||
           `Hợp đồng cung ứng nguyên phụ liệu – ${contract.supplierId?.supplierName || ''}`),
       contractType: contract.contractType || 'FRAMEWORK_AGREEMENT',
-      signingDate: todayIso,
+      signingDate: resolvedSigningDate,
       effectiveFrom: resolvedEffFrom,
       effectiveTo: resolvedEffTo,
       supplierId: contract.supplierId?._id || contract.supplierId?.id || contract.supplierId || '',
@@ -2039,7 +2105,7 @@ const ContractFrameworkPage = () => {
       versionNumber: nextVer,
       isNewVersion: isContractActive,
       amendmentReason: isContractActive
-        ? 'Điều chỉnh phụ lục: Cập nhật đơn giá nguyên phụ liệu & gia hạn thời gian giao nhận'
+        ? (contract.amendmentReason || `Điều chỉnh phụ lục tiến độ & quy cách nguyên phụ liệu (Phiên bản v${nextVer})`)
         : (contract.amendmentReason || ''),
       parentSupersededContractId: isContractActive
         ? contractId
@@ -2084,35 +2150,88 @@ const ContractFrameworkPage = () => {
       },
       latePenaltyPercentPerDay: contract.latePenaltyPercentPerDay ?? 0.5,
       maxPenaltyPercent: contract.maxPenaltyPercent ?? 8,
-      breachPenaltyClause: contract.breachPenaltyClause || '',
+      breachPenaltyClause: contract.breachPenaltyClause || 'Bên B cam kết bồi thường 100% thiệt hại nếu giao thiếu, chậm hoặc lỗi chất lượng nguyên phụ liệu so với thỏa thuận.',
       disputeResolutionClause:
         contract.disputeResolutionClause ||
         'Mọi tranh chấp phát sinh được ưu tiên giải quyết qua thương lượng trên cơ sở Biên bản KCS thực tế tại kho Bên A.',
       notes: contract.notes || '',
-      contractedMaterials: (contract.contractedMaterials || []).map((m) => ({
-        rawMaterialId: m.rawMaterialId?._id || m.rawMaterialId?.id || m.rawMaterialId || '',
-        materialCodeSnapshot:
-          m.materialCodeSnapshot || m.rawMaterialId?.materialCode || '',
-        materialNameSnapshot:
-          m.materialNameSnapshot || m.rawMaterialId?.materialName || '',
-        unitSnapshot: m.unitSnapshot || m.rawMaterialId?.unit || 'METER',
-        composition: m.composition || '100% Combed Cotton Compact',
-        colorSpec: m.colorSpec || m.rawMaterialId?.color || 'Trắng Sữa',
-        widthCm: m.widthCm ?? m.rawMaterialId?.widthCm ?? 160,
-        gsm: m.gsm ?? m.rawMaterialId?.gsm ?? 210,
-        shrinkageTolerancePct: m.shrinkageTolerancePct ?? 2.5,
-        colorFastnessGrade: m.colorFastnessGrade || 'Grade 4.0 (ISO 105)',
-        qtyTolerancePct: m.qtyTolerancePct ?? 3,
-        moq: m.moq ?? 100,
-        leadTimeDays: m.leadTimeDays ?? 7,
-        contractedQty: m.contractedQty || 100,
-        unitPrice: m.unitPrice || 0,
-        vatRatePct: m.vatRatePct ?? 8,
-        packagingSpec:
-          m.packagingSpec ||
-          'Cuộn bọc nilon 2 lớp chống ẩm, lõi ống giấy cứng, dán tem Barcode từng cây vải',
-        technicalNote: m.technicalNote || '',
-      })),
+      contractedMaterials: (contract.contractedMaterials || []).map((m) => {
+        const matId = String(m.rawMaterialId?._id || m.rawMaterialId?.id || m.rawMaterialId || '');
+        const foundCatalogMat = materialsCatalog.find(
+          (cat) => String(cat._id || cat.id) === matId
+        );
+        const isFabric =
+          isRollFabricLine(m) ||
+          isRollFabricLine(foundCatalogMat) ||
+          isRollFabricLine(m.rawMaterialId) ||
+          m.category === 'FABRIC_ROLL' ||
+          m.materialType === 'FABRIC' ||
+          ['METER', 'MET', 'M', 'ROLL', 'YARD', 'KG'].includes(String(m.unitSnapshot || m.rawMaterialId?.unit || foundCatalogMat?.unit).toUpperCase()) ||
+          String(m.materialNameSnapshot || m.rawMaterialId?.materialName || foundCatalogMat?.materialName || '').toLowerCase().includes('vải') ||
+          String(m.materialNameSnapshot || m.rawMaterialId?.materialName || foundCatalogMat?.materialName || '').toLowerCase().includes('thun');
+
+        const category =
+          m.category ||
+          m.rawMaterialId?.category ||
+          foundCatalogMat?.category ||
+          (isFabric ? 'FABRIC_ROLL' : 'AUXILIARY');
+
+        const materialType =
+          m.materialType ||
+          m.rawMaterialId?.materialType ||
+          foundCatalogMat?.materialType ||
+          (isFabric ? 'FABRIC' : 'AUXILIARY');
+
+        let rawRolls = Array.isArray(m.rollDetails) && m.rollDetails.length > 0 ? m.rollDetails : [];
+        if (isFabric && rawRolls.length === 0) {
+          rawRolls = [
+            {
+              rollIndex: 1,
+              rollCode: 'C-01',
+              rollQty: 1,
+              lengthMeters: Number(m.contractedQty) || 100,
+              weightKg: Number(m.contractedQty) || 0,
+              note: '',
+            },
+          ];
+        }
+
+        return {
+          rawMaterialId: matId,
+          materialCodeSnapshot:
+            m.materialCodeSnapshot || m.rawMaterialId?.materialCode || foundCatalogMat?.materialCode || '',
+          materialNameSnapshot:
+            m.materialNameSnapshot || m.rawMaterialId?.materialName || foundCatalogMat?.materialName || '',
+          category,
+          materialType,
+          unitSnapshot: m.unitSnapshot || m.rawMaterialId?.unit || foundCatalogMat?.unit || (isFabric ? 'METER' : 'CAI'),
+          composition: m.composition || m.rawMaterialId?.composition || foundCatalogMat?.composition || '100% Combed Cotton Compact',
+          colorSpec: m.colorSpec || m.rawMaterialId?.color || foundCatalogMat?.color || 'Trắng Sữa',
+          widthCm: m.widthCm ?? m.rawMaterialId?.widthCm ?? foundCatalogMat?.widthCm ?? 160,
+          gsm: m.gsm ?? m.rawMaterialId?.gsm ?? foundCatalogMat?.gsm ?? 210,
+          shrinkageTolerancePct: m.shrinkageTolerancePct ?? 2.5,
+          colorFastnessGrade: m.colorFastnessGrade || 'Grade 4.0 (ISO 105)',
+          qtyTolerancePct: m.qtyTolerancePct ?? 3,
+          moq: m.moq ?? 100,
+          leadTimeDays: m.leadTimeDays ?? 7,
+          contractedQty: m.contractedQty || (isFabric ? 100 : 100),
+          unitPrice: m.unitPrice || foundCatalogMat?.unitCost || 0,
+          vatRatePct: m.vatRatePct ?? contract.commercialTerms?.vatRatePct ?? 8,
+          packagingSpec:
+            m.packagingSpec ||
+            'Cuộn bọc nilon 2 lớp chống ẩm, lõi ống giấy cứng, dán tem Barcode từng cây vải',
+          technicalNote: m.technicalNote || '',
+          rollCount: rawRolls.reduce((sum, r) => sum + (Number(r.rollQty ?? 1) || 0), 0),
+          rollDetails: rawRolls.map((r, rIdx) => ({
+            rollIndex: r.rollIndex || rIdx + 1,
+            rollCode: r.rollCode || `C-${String(rIdx + 1).padStart(2, '0')}`,
+            rollQty: r.rollQty || 1,
+            lengthMeters: r.lengthMeters ?? (Number(m.contractedQty) || 100),
+            weightKg: r.weightKg ?? 0,
+            note: r.note || '',
+          })),
+        };
+      }),
       inboundBatchesCount: existingBatchesFromPlan.length,
       inboundBatches: existingBatchesFromPlan,
     });
@@ -2176,30 +2295,64 @@ const ContractFrameworkPage = () => {
       return;
     }
 
+    const isCreatingVersion =
+      isAmendingActive ||
+      Boolean(contractForm.isNewVersion) ||
+      Boolean(contractForm.createVersion) ||
+      Number(contractForm.versionNumber) > 1 ||
+      (sourceActiveContract && sourceActiveContract.status !== 'DRAFT_FRAMEWORK') ||
+      (editingContractId &&
+        contracts.some(
+          (c) =>
+            String(c._id || c.id) === String(editingContractId) &&
+            c.status !== 'DRAFT_FRAMEWORK'
+        ));
+
+    const sanitizedForm = {
+      ...contractForm,
+      supplierId: contractForm.supplierId?._id || contractForm.supplierId?.id || contractForm.supplierId,
+      contractedMaterials: (contractForm.contractedMaterials || []).map((m) => ({
+        ...m,
+        rawMaterialId: m.rawMaterialId?._id || m.rawMaterialId?.id || m.rawMaterialId,
+      })),
+      inboundBatches: (contractForm.inboundBatches || []).map((b) => ({
+        ...b,
+        expectedItems: (b.expectedItems || []).map((it, itIdx) => ({
+          ...it,
+          itemIndex: it.itemIndex !== undefined && it.itemIndex !== null ? Number(it.itemIndex) : itIdx,
+          rawMaterialId: it.rawMaterialId?._id || it.rawMaterialId?.id || it.rawMaterialId,
+        })),
+      })),
+      createVersion: isCreatingVersion,
+      isNewVersion: isCreatingVersion,
+    };
+
     try {
       setSubmitting(true);
       setFeedback(null);
       setContractErrors({});
-      if (isAmendingActive) {
-        const res = await accountantProcurementApi.amendContract(editingContractId, {
-          ...contractForm,
-          createVersion: true,
-        });
+      if (isCreatingVersion) {
+        const res = await accountantProcurementApi.amendContract(editingContractId, sanitizedForm);
         setFeedback({ type: 'success', text: res.message });
       } else if (editingContractId) {
         const res = await accountantProcurementApi.updateContract(
           editingContractId,
-          contractForm
+          sanitizedForm
         );
         setFeedback({ type: 'success', text: res.message });
       } else {
-        const res = await accountantProcurementApi.draftContract(contractForm);
+        const res = await accountantProcurementApi.draftContract(sanitizedForm);
         setFeedback({ type: 'success', text: res.message });
       }
       setIsAmendingActive(false);
+      setEditingContractId(null);
       setSourceActiveContract(null);
-      await loadWorkspaceData();
-      setActiveTab('CONTRACT_LIST');
+      if (searchParams.has('amendContractId')) {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('amendContractId');
+        setSearchParams(newParams, { replace: true });
+      }
+      navigate('/accountant/inbound-plans');
     } catch (error) {
       setFeedback({
         type: 'error',
@@ -2342,11 +2495,11 @@ const ContractFrameworkPage = () => {
             </div>
 
             <div className="wms-kpi-card">
-              <span className="wms-kpi-label">Chờ Owner Phê duyệt</span>
-              <span className="wms-kpi-value" style={{ color: '#0284c7' }}>
-                {contractKpis.pendingApproval} hợp đồng
+              <span className="wms-kpi-label">Cảnh báo Sai lệch KCS</span>
+              <span className="wms-kpi-value" style={{ color: '#D97706' }}>
+                {contractKpis.deviationFlagged} hợp đồng
               </span>
-              <span className="wms-kpi-meta">Đã gửi trình duyệt lên Ban Giám đốc</span>
+              <span className="wms-kpi-meta">Cần xử lý: Chấm dứt hoặc Tạo v2</span>
             </div>
 
             <div className="wms-kpi-card">
@@ -2386,12 +2539,12 @@ const ContractFrameworkPage = () => {
                 >
                   <option value="ALL">Tất cả trạng thái</option>
                   <option value="ACTIVE">Đang hiệu lực (Active)</option>
-                  <option value="PENDING_OWNER_APPROVAL">Chờ Owner phê duyệt</option>
+                  <option value="DEVIATION_FLAGGED">Cảnh báo sai lệch (Deviation Flagged)</option>
                   <option value="DRAFT_FRAMEWORK">Bản thảo khung (Draft)</option>
                   <option value="TERMINATED">Đã chấm dứt (Terminated)</option>
-                  <option value="DEVIATION_FLAGGED">Cảnh báo sai lệch</option>
-                  <option value="SUPERSEDED">Đã thay thế</option>
-                  <option value="COMPLETED">Đã hoàn tất</option>
+                  <option value="SUPERSEDED">Đã thay thế (Superseded)</option>
+                  <option value="COMPLETED">Đã hoàn tất (Completed)</option>
+                  <option value="CANCELLED">Đã hủy (Cancelled)</option>
                 </select>
               </div>
 
@@ -2592,6 +2745,19 @@ const ContractFrameworkPage = () => {
                                   <span>Xem</span>
                                 </button>
 
+                                {c.status === 'DEVIATION_FLAGGED' && (
+                                  <button
+                                    type="button"
+                                    className="wms-btn wms-btn-primary wms-btn-sm"
+                                    onClick={() => handleEditExistingContract(c)}
+                                    title={`Tạo Version mới (v${(c.versionNumber || 1) + 1})`}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                  >
+                                    <GitBranch size={13} />
+                                    <span>Tạo v{(c.versionNumber || 1) + 1}</span>
+                                  </button>
+                                )}
+
                                 {c.status !== 'TERMINATED' && c.status !== 'SUPERSEDED' ? (
                                   <button
                                     type="button"
@@ -2646,7 +2812,7 @@ const ContractFrameworkPage = () => {
                                       >
                                         <Eye size={14} /> Xem Văn bản Hợp đồng
                                       </button>
-                                      {c.status === 'ACTIVE' ? (
+                                      {c.status === 'ACTIVE' || c.status === 'DEVIATION_FLAGGED' ? (
                                         <button
                                           type="button"
                                           className="wms-dropdown-item"
@@ -3631,7 +3797,7 @@ const ContractFrameworkPage = () => {
                     </div>
 
                     {/* KHỐI NHẬP SỐ LƯỢNG: PHÂN BIỆT VẢI CUỘN (CHI TIẾT TỪNG CUỘN) VÀ PHỤ LIỆU */}
-                    {line.category === 'FABRIC_ROLL' || line.materialType === 'FABRIC' || ['METER', 'MET', 'M'].includes(line.unitSnapshot) ? (
+                    {isRollFabricLine(line) ? (
                       <div className="wms-field wms-field-span-full" style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '14px', marginTop: '6px' }}>
                         {/* Roll Setup Header */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
@@ -3641,7 +3807,7 @@ const ContractFrameworkPage = () => {
                               Chi tiết Cuộn vải Nhập về (Số cuộn & Chi tiết từng cuộn) <span className="wms-required">*</span>
                             </div>
                             <div style={{ fontSize: '11.5px', color: '#64748B', marginTop: '2px' }}>
-                              Điền chi tiết số cuộn vải và số lượng của mỗi cuộn ({line.unitSnapshot || 'mét'}). Tổng số lượng ký hợp đồng sẽ được tự động tính và đồng bộ.
+                              Điền chi tiết số cuộn vải và quy cách/số lượng mỗi cuộn ({line.unitSnapshot || 'mét'}). Tổng số lượng ký hợp đồng sẽ được tự động tính và đồng bộ.
                             </div>
                           </div>
 
@@ -3667,7 +3833,12 @@ const ContractFrameworkPage = () => {
                               <tr style={{ background: '#F1F5F9', borderBottom: '1px solid #E2E8F0', color: '#475569', textAlign: 'left' }}>
                                 <th style={{ padding: '6px 10px', width: '50px', textAlign: 'center' }}>STT</th>
                                 <th style={{ padding: '6px 10px', width: '150px' }}>Số lượng <span className="wms-required">*</span></th>
-                                <th style={{ padding: '6px 10px', width: '190px' }}>Chiều dài ({line.unitSnapshot || 'mét'}) <span className="wms-required">*</span></th>
+                                <th style={{ padding: '6px 10px', width: '190px' }}>
+                                  {['KG', 'KILOGRAM'].includes(String(line.unitSnapshot || '').toUpperCase())
+                                    ? 'Khối lượng / cuộn (KG)'
+                                    : `Quy cách / Chiều dài (${line.unitSnapshot || 'mét'})`}{' '}
+                                  <span className="wms-required">*</span>
+                                </th>
                                 <th style={{ padding: '6px 10px' }}>Ghi chú cuộn vải</th>
                                 <th style={{ padding: '6px 10px', width: '60px', textAlign: 'center' }}>Xóa</th>
                               </tr>
