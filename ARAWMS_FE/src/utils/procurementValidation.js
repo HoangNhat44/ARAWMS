@@ -136,9 +136,15 @@ export const validateContractForm = (contractForm) => {
       }
       const isFabric = item.category === 'FABRIC_ROLL' || item.materialType === 'FABRIC' || ['METER', 'MET', 'M'].includes(item.unitSnapshot);
       if (isFabric && Array.isArray(item.rollDetails) && item.rollDetails.length > 0) {
-        const hasInvalidRoll = item.rollDetails.some((r) => !Number(r.lengthMeters) || Number(r.lengthMeters) <= 0);
+        const hasInvalidRoll = item.rollDetails.some(
+          (r) =>
+            !Number(r.lengthMeters) ||
+            Number(r.lengthMeters) <= 0 ||
+            !Number(r.rollQty ?? 1) ||
+            Number(r.rollQty ?? 1) < 1
+        );
         if (hasInvalidRoll) {
-          lineErr.rollDetails = 'Mỗi cuộn vải phải có chiều dài mét lớn hơn 0.';
+          lineErr.rollDetails = 'Số lượng cuộn phải ≥ 1 và chiều dài mỗi cuộn phải lớn hơn 0.';
         }
       }
       const price = Number(item.unitPrice);
@@ -271,6 +277,7 @@ export const validateContractForm = (contractForm) => {
   if (Array.isArray(contractForm.inboundBatches) && contractForm.inboundBatches.length > 0) {
     const inboundBatchErrors = {};
     let prevDeliveryDate = null;
+    const itemQtyByLineIdx = {};
     const itemQtySumMap = {};
 
     contractForm.inboundBatches.forEach((b, bIdx) => {
@@ -301,6 +308,7 @@ export const validateContractForm = (contractForm) => {
           if (Number.isNaN(q) || q < 0) {
             lineItemErrors[itIdx] = 'Số lượng không được âm.';
           } else {
+            itemQtyByLineIdx[itIdx] = (itemQtyByLineIdx[itIdx] || 0) + q;
             itemQtySumMap[rawId] = (itemQtySumMap[rawId] || 0) + q;
           }
         });
@@ -319,15 +327,18 @@ export const validateContractForm = (contractForm) => {
       errors.inboundBatchErrors = inboundBatchErrors;
     }
 
-    // Đối soát tổng số lượng phân bổ qua các đợt so với số lượng ký hợp đồng
+    // Đối soát tổng số lượng phân bổ qua các đợt so với số lượng ký hợp đồng (theo đúng từng dòng cIdx)
     if (Array.isArray(contractForm.contractedMaterials)) {
       const allocationMismatchMessages = [];
       contractForm.contractedMaterials.forEach((cm, cIdx) => {
         const rawId = String(cm.rawMaterialId);
         const contracted = Number(cm.contractedQty || 0);
-        const scheduled = itemQtySumMap[rawId] || 0;
+        const scheduled =
+          itemQtyByLineIdx[cIdx] !== undefined
+            ? itemQtyByLineIdx[cIdx]
+            : itemQtySumMap[rawId] || 0;
         if (Math.abs(contracted - scheduled) > 0.001) {
-          const matLabel = cm.materialNameSnapshot || `Mặt hàng ${cIdx + 1}`;
+          const matLabel = `${cm.materialNameSnapshot || `Mặt hàng #${cIdx + 1}`} (${cm.unitSnapshot || 'ĐVT'})`;
           allocationMismatchMessages.push(
             `"${matLabel}": đã phân bổ ${scheduled} / ${contracted} (chênh lệch ${contracted - scheduled}).`
           );
@@ -414,12 +425,23 @@ export const validateInboundPlanForm = (planForm) => {
         bErr.expectedItems = `Đợt ${batchNo} phải có ít nhất 1 mặt hàng.`;
       } else {
         const bItemErrors = {};
+        const isMultiBatch = planForm.batches.length > 1;
+        let batchTotalQty = 0;
+
         b.expectedItems.forEach((item, itemIdx) => {
           const q = Number(item.plannedQty);
-          if (!Number.isFinite(q) || q <= 0) {
-            bItemErrors[itemIdx] = 'Số lượng đợt này phải > 0.';
+          if (!Number.isFinite(q) || q < 0 || (!isMultiBatch && q <= 0)) {
+            bItemErrors[itemIdx] = isMultiBatch
+              ? 'Số lượng đợt này không được nhỏ hơn 0.'
+              : 'Số lượng đợt này phải > 0.';
+          } else {
+            batchTotalQty += q;
           }
         });
+
+        if (isMultiBatch && batchTotalQty <= 0) {
+          bErr.expectedItems = `Đợt ${batchNo} phải có ít nhất 1 mặt hàng có số lượng giao > 0.`;
+        }
         if (Object.keys(bItemErrors).length > 0) {
           bErr.itemErrors = bItemErrors;
         }
