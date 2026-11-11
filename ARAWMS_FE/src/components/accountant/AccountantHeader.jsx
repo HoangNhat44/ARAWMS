@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Bell, LogOut, ChevronRight, CheckCheck, AlertTriangle, Info, Clock, X, ArrowRight } from 'lucide-react';
+import { Search, Bell, LogOut, ChevronRight, CheckCheck, AlertTriangle, Info, Clock, X, ArrowRight, Menu } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { FLATTENED_ACCOUNTANT_NAV } from './accountantNavConfig';
 import { notificationService } from '../../services/notificationService';
 import { getSocket } from '../../services/socketService';
 
-const AccountantHeader = () => {
+const AccountantHeader = ({ onToggleMobileSidebar }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -195,8 +195,17 @@ const AccountantHeader = () => {
   return (
     <>
       <header className="ara-acc-header">
-        {/* Left: Dynamic Breadcrumb & Title */}
+        {/* Left: Mobile Hamburger, Dynamic Breadcrumb & Title */}
         <div className="ara-acc-header-left">
+          <button
+            type="button"
+            className="ara-acc-mobile-menu-btn"
+            onClick={onToggleMobileSidebar}
+            aria-label="Mở thanh điều hướng"
+            title="Menu chức năng kế toán"
+          >
+            <Menu size={20} />
+          </button>
           <nav className="ara-acc-breadcrumb" aria-label="Breadcrumb">
             <span>AraStore WMS</span>
             <ChevronRight size={13} aria-hidden="true" />

@@ -361,60 +361,6 @@ const InboundPlanningPage = () => {
   // Lightbox Preview for Fullsize Image
   const [lightboxImage, setLightboxImage] = useState(null);
 
-  // Modal Garment Technician Verification (Đối soát giao nhận KCS)
-  const [selectedPlanForVerify, setSelectedPlanForVerify] = useState(null);
-  const [verifyForm, setVerifyForm] = useState({
-    complianceStatus: 'MATCHED',
-    deviationSummary: '',
-  });
-
-  const handleOpenVerifyModal = (plan) => {
-    setSelectedPlanForVerify(plan);
-    setVerifyForm({
-      complianceStatus: plan.deliveryComplianceStatus === 'MISMATCHED' ? 'MISMATCHED' : 'MATCHED',
-      deviationSummary: plan.technicianVerification?.deviationSummary || '',
-    });
-  };
-
-  const handleConfirmVerify = async (e) => {
-    e.preventDefault();
-    if (!selectedPlanForVerify) return;
-    const isMatched = verifyForm.complianceStatus === 'MATCHED';
-    if (!isMatched && !verifyForm.deviationSummary.trim()) {
-      setFeedback({
-        type: 'error',
-        text: 'Vui lòng nhập ghi nhận nội dung sai lệch khi đánh giá Sai kế hoạch.',
-      });
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      const res = await accountantProcurementApi.verifyInboundPlanDelivery(
-        selectedPlanForVerify._id || selectedPlanForVerify.id,
-        {
-          isMatchedWithPlan: isMatched,
-          complianceStatus: verifyForm.complianceStatus,
-          deviationSummary: verifyForm.deviationSummary.trim(),
-        }
-      );
-      setFeedback({
-        type: isMatched ? 'success' : 'warning',
-        text: res.message,
-      });
-      setSelectedPlanForVerify(null);
-      await loadData();
-    } catch (err) {
-      console.error('Lỗi đối soát giao nhận:', err);
-      setFeedback({
-        type: 'error',
-        text: err.response?.data?.message || 'Có lỗi xảy ra khi ghi nhận kiểm tra giao nhận.',
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const loadData = async () => {
     try {
       setLoading(true);
@@ -1525,11 +1471,11 @@ const InboundPlanningPage = () => {
               <div className="wms-table-scroll no-horizontal-scroll">
                 <table className="wms-table wms-table-responsive-fit" style={{ margin: 0, fontSize: '12.5px' }}>
                   <colgroup>
+                    <col style={{ width: '21%' }} />
                     <col style={{ width: '22%' }} />
                     <col style={{ width: '24%' }} />
-                    <col style={{ width: '26%' }} />
-                    <col style={{ width: '13%' }} />
                     <col style={{ width: '15%' }} />
+                    <col style={{ width: '18%' }} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -1696,20 +1642,6 @@ const InboundPlanningPage = () => {
                               <button
                                 type="button"
                                 className="wms-btn wms-btn-default wms-btn-xs"
-                                onClick={() => handleOpenVerifyModal(plan)}
-                                disabled={group.isTerminated}
-                                title={
-                                  group.isTerminated
-                                    ? 'Hợp đồng đã chấm dứt, không thể đối soát KCS'
-                                    : 'Kỹ thuật viên KCS đối soát giao nhận so với kế hoạch'
-                                }
-                              >
-                                <ShieldCheck size={12} />
-                                <span>KCS</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="wms-btn wms-btn-default wms-btn-xs"
                                 onClick={() => handleOpenDetailModal(plan)}
                                 title="Xem chi tiết kế hoạch tiếp nhận và ảnh hợp đồng vật lý"
                               >
@@ -1749,12 +1681,12 @@ const InboundPlanningPage = () => {
           <div className="wms-table-scroll no-horizontal-scroll">
             <table className="wms-table wms-table-responsive-fit">
               <colgroup>
-                <col style={{ width: '18%' }} />
-                <col style={{ width: '22%' }} />
-                <col style={{ width: '18%' }} />
-                <col style={{ width: '22%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '10%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '15%' }} />
               </colgroup>
               <thead>
                 <tr>
@@ -1932,20 +1864,6 @@ const InboundPlanningPage = () => {
                           style={{ justifyContent: 'center', gap: '6px' }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <button
-                            type="button"
-                            className="wms-btn wms-btn-default wms-btn-xs"
-                            onClick={() => handleOpenVerifyModal(plan)}
-                            disabled={isContractTerminated}
-                            title={
-                              isContractTerminated
-                                ? 'Hợp đồng đã chấm dứt, không thể đối soát KCS'
-                                : 'Kỹ thuật viên KCS đối soát giao nhận so với kế hoạch'
-                            }
-                          >
-                            <ShieldCheck size={12} />
-                            <span>KCS</span>
-                          </button>
                           <button
                             type="button"
                             className="wms-btn wms-btn-default wms-btn-xs"
@@ -2816,147 +2734,6 @@ const InboundPlanningPage = () => {
         </div>
       )}
 
-      {/* Modal: Garment Technician Verification (Đối soát Giao nhận KCS) */}
-      {selectedPlanForVerify && (
-        <div className="wms-modal-backdrop" role="dialog" aria-modal="true">
-          <div className="wms-modal-dialog" style={{ maxWidth: '560px' }}>
-            <div className="wms-modal-header">
-              <div>
-                <h2 className="wms-modal-title">
-                  Đối soát Giao nhận KCS: {selectedPlanForVerify.planCode}
-                </h2>
-                <div className="wms-helper-text" style={{ fontSize: '12px' }}>
-                  Hợp đồng: <strong>{selectedPlanForVerify.contractId?.contractCode || '—'}</strong> • NCC: {selectedPlanForVerify.supplierId?.supplierName || '—'}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="wms-btn wms-btn-default wms-btn-sm"
-                onClick={() => setSelectedPlanForVerify(null)}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <form onSubmit={handleConfirmVerify}>
-              <div className="wms-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div className="wms-helper-text">
-                  Kỹ thuật may đối chiếu nguyên vật liệu giao về kho so với kế hoạch đã lập. Nếu giao sai số lượng, thiếu hoặc sai quy cách, chọn <strong>"Sai kế hoạch"</strong> để chuyển sang phân hệ <em>Xử lý sai lệch hợp đồng</em>.
-                </div>
-
-                <div className="wms-form-group">
-                  <label className="wms-label">
-                    Kết quả đối chiếu giao nhận so với kế hoạch <span style={{ color: 'var(--wms-danger)' }}>*</span>
-                  </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '6px' }}>
-                    <label
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '12px',
-                        borderRadius: '6px',
-                        border: verifyForm.complianceStatus === 'MATCHED'
-                          ? '2px solid #16A34A'
-                          : '1px solid var(--wms-border)',
-                        background: verifyForm.complianceStatus === 'MATCHED' ? '#F0FDF4' : 'var(--wms-gray-50)',
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        color: verifyForm.complianceStatus === 'MATCHED' ? '#16A34A' : 'inherit',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="complianceStatus"
-                        value="MATCHED"
-                        checked={verifyForm.complianceStatus === 'MATCHED'}
-                        onChange={(e) => setVerifyForm((prev) => ({ ...prev, complianceStatus: e.target.value }))}
-                      />
-                      <CheckCircle2 size={16} />
-                      <span>Đúng kế hoạch</span>
-                    </label>
-
-                    <label
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '12px',
-                        borderRadius: '6px',
-                        border: verifyForm.complianceStatus === 'MISMATCHED'
-                          ? '2px solid #E11D48'
-                          : '1px solid var(--wms-border)',
-                        background: verifyForm.complianceStatus === 'MISMATCHED' ? '#FFF1F2' : 'var(--wms-gray-50)',
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        color: verifyForm.complianceStatus === 'MISMATCHED' ? '#E11D48' : 'inherit',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="complianceStatus"
-                        value="MISMATCHED"
-                        checked={verifyForm.complianceStatus === 'MISMATCHED'}
-                        onChange={(e) => setVerifyForm((prev) => ({ ...prev, complianceStatus: e.target.value }))}
-                      />
-                      <AlertTriangle size={16} />
-                      <span>Sai kế hoạch</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="wms-form-group">
-                  <label className="wms-label">
-                    {verifyForm.complianceStatus === 'MISMATCHED'
-                      ? 'Nội dung sai lệch phát hiện *'
-                      : 'Ghi chú kiểm tra đối soát (nếu có)'}
-                  </label>
-                  <textarea
-                    className="wms-textarea"
-                    rows={4}
-                    placeholder={
-                      verifyForm.complianceStatus === 'MISMATCHED'
-                        ? 'Ví dụ: Nhà cung ứng giao thiếu 150m vải kaki đợt 1, cuộn vải bị ố viền biên...'
-                        : 'Ghi chú thêm về tình trạng lô vải khi tiếp nhận...'
-                    }
-                    value={verifyForm.deviationSummary}
-                    onChange={(e) => setVerifyForm((prev) => ({ ...prev, deviationSummary: e.target.value }))}
-                    style={{
-                      borderColor:
-                        verifyForm.complianceStatus === 'MISMATCHED' && !verifyForm.deviationSummary.trim()
-                          ? '#E11D48'
-                          : undefined,
-                    }}
-                  />
-                  {verifyForm.complianceStatus === 'MISMATCHED' && (
-                    <div className="wms-helper-text" style={{ color: '#E11D48', marginTop: '4px' }}>
-                      * Khi chọn "Sai kế hoạch", kế hoạch này sẽ lập tức được gửi đến mục <strong>Xử lý sai lệch hợp đồng</strong> để Kế toán xử lý.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="wms-modal-footer">
-                <button
-                  type="button"
-                  className="wms-btn wms-btn-default"
-                  onClick={() => setSelectedPlanForVerify(null)}
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  className="wms-btn wms-btn-primary"
-                  disabled={submitting}
-                >
-                  {submitting ? 'Đang lưu đối soát...' : 'Xác nhận đối soát'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Modal 2: Plan Detail View (Tất cả dữ liệu & Ảnh hợp đồng vật lý) */}
       {selectedPlanForDetail && (
         <div className="wms-modal-backdrop" role="dialog" aria-modal="true">
@@ -3270,26 +3047,73 @@ const InboundPlanningPage = () => {
                               </tr>
                             </thead>
                             <tbody>
-                              {(b.expectedItems || []).map((it, itIdx) => (
-                                <tr key={itIdx}>
-                                  <td style={{ textAlign: 'center' }}>{itIdx + 1}</td>
-                                  <td>
-                                    <strong>
-                                      {it.rawMaterialId?.materialCode || it.materialCode || 'NVL'}
-                                    </strong>{' '}
-                                    — {it.rawMaterialId?.materialName || it.materialName || '—'}
-                                  </td>
-                                  <td>
-                                    {it.unitSnapshot ||
-                                      it.rawMaterialId?.unit ||
-                                      it.unit ||
-                                      'METER'}
-                                  </td>
-                                  <td className="wms-td-number" style={{ fontWeight: 700 }}>
-                                    {Number(it.plannedQty || 0).toLocaleString('vi-VN')}
-                                  </td>
-                                </tr>
-                              ))}
+                              {(b.expectedItems || []).map((it, itIdx) => {
+                                const rolls = (Array.isArray(it.rollDetails) && it.rollDetails.length > 0)
+                                  ? it.rollDetails
+                                  : (Array.isArray(it.selectedRolls) ? it.selectedRolls : []);
+                                return (
+                                  <tr key={itIdx}>
+                                    <td style={{ textAlign: 'center' }}>{itIdx + 1}</td>
+                                    <td>
+                                      <div>
+                                        <strong>
+                                          {it.rawMaterialId?.materialCode || it.materialCode || 'NVL'}
+                                        </strong>{' '}
+                                        — {it.rawMaterialId?.materialName || it.materialName || '—'}
+                                      </div>
+                                      {rolls.length > 0 && (
+                                        <div style={{
+                                          marginTop: '6px',
+                                          padding: '6px 8px',
+                                          background: '#f8fafc',
+                                          border: '1px solid #e2e8f0',
+                                          borderRadius: '4px',
+                                        }}>
+                                          <div style={{ fontSize: '11px', fontWeight: 600, color: '#0369a1', marginBottom: '4px' }}>
+                                            🧵 Quy cách: {rolls.length} cuộn vải giao trong đợt này
+                                          </div>
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                            {rolls.map((r, rIdx) => (
+                                              <span
+                                                key={rIdx}
+                                                style={{
+                                                  fontSize: '10.5px',
+                                                  background: '#e0f2fe',
+                                                  color: '#0369a1',
+                                                  padding: '2px 6px',
+                                                  borderRadius: '3px',
+                                                  border: '1px solid #bae6fd',
+                                                  display: 'inline-flex',
+                                                  alignItems: 'center',
+                                                  gap: '3px',
+                                                }}
+                                              >
+                                                <strong>{r.rollCode || `C-${String(rIdx + 1).padStart(2, '0')}`}:</strong>
+                                                <span>{Number(r.lengthMeters || 0).toLocaleString('vi-VN')}m</span>
+                                                {r.note && <span style={{ opacity: 0.8, fontStyle: 'italic' }}>({r.note})</span>}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td>
+                                      {it.unitSnapshot ||
+                                        it.rawMaterialId?.unit ||
+                                        it.unit ||
+                                        'METER'}
+                                    </td>
+                                    <td className="wms-td-number" style={{ fontWeight: 700 }}>
+                                      {Number(it.plannedQty || 0).toLocaleString('vi-VN')}
+                                      {rolls.length > 0 && (
+                                        <div style={{ fontSize: '11px', color: '#0369a1', fontWeight: 600, marginTop: '2px' }}>
+                                          ({rolls.length} cuộn)
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -3334,15 +3158,73 @@ const InboundPlanningPage = () => {
                         const isInspected = passed > 0 || short > 0;
                         const isFullPass = isInspected && passed >= planned && short === 0;
 
+                        // Tổng hợp toàn bộ các cuộn của mặt hàng này qua tất cả các đợt hoặc từ item
+                        const itemRolls = (Array.isArray(item.rollDetails) && item.rollDetails.length > 0)
+                          ? item.rollDetails
+                          : (Array.isArray(item.selectedRolls) ? item.selectedRolls : []);
+                        
+                        let allPlanRolls = [...itemRolls];
+                        if (allPlanRolls.length === 0 && Array.isArray(selectedPlanForDetail.batches)) {
+                          selectedPlanForDetail.batches.forEach((b) => {
+                            const bIt = (b.expectedItems || []).find(
+                              (bi) => String(bi.rawMaterialId?._id || bi.rawMaterialId) === String(item.rawMaterialId?._id || item.rawMaterialId)
+                            );
+                            const bRolls = bIt?.rollDetails || bIt?.selectedRolls || [];
+                            allPlanRolls.push(...bRolls);
+                          });
+                        }
+
                         return (
                           <tr key={iIdx}>
                             <td style={{ textAlign: 'center' }}>{iIdx + 1}</td>
                             <td>
-                              <strong>{matCode}</strong> — {matName}
+                              <div>
+                                <strong>{matCode}</strong> — {matName}
+                              </div>
+                              {allPlanRolls.length > 0 && (
+                                <div style={{
+                                  marginTop: '6px',
+                                  padding: '6px 8px',
+                                  background: '#f8fafc',
+                                  border: '1px solid #e2e8f0',
+                                  borderRadius: '4px',
+                                }}>
+                                  <div style={{ fontSize: '11px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                                    🧵 Toàn bộ {allPlanRolls.length} cuộn vải của kế hoạch:
+                                  </div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                    {allPlanRolls.map((r, rIdx) => (
+                                      <span
+                                        key={rIdx}
+                                        style={{
+                                          fontSize: '10.5px',
+                                          background: '#f1f5f9',
+                                          color: '#334155',
+                                          padding: '2px 6px',
+                                          borderRadius: '3px',
+                                          border: '1px solid #cbd5e1',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '3px',
+                                        }}
+                                      >
+                                        <strong>{r.rollCode || `C-${String(rIdx + 1).padStart(2, '0')}`}:</strong>
+                                        <span>{Number(r.lengthMeters || 0).toLocaleString('vi-VN')}m</span>
+                                        {r.note && <span style={{ opacity: 0.8, fontStyle: 'italic' }}>({r.note})</span>}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </td>
                             <td>{unit}</td>
                             <td className="wms-td-number" style={{ fontWeight: 700 }}>
                               {planned.toLocaleString('vi-VN')}
+                              {allPlanRolls.length > 0 && (
+                                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
+                                  ({allPlanRolls.length} cuộn)
+                                </div>
+                              )}
                             </td>
                             <td className="wms-td-number" style={{ color: 'var(--wms-success)', fontWeight: 700 }}>
                               {passed.toLocaleString('vi-VN')}

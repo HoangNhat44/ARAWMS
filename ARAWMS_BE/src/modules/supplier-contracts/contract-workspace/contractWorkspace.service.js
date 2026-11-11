@@ -511,12 +511,19 @@ export async function normalizeContractMaterialsAndTotals(payload) {
     ? payload.commercialTerms.paymentSchedule
     : [];
   const paymentSchedule = rawSchedule.map((inst, idx) => {
-    const pct = Number(inst.paymentPercent || 0);
+    let pct = Number(inst.paymentPercent || 0);
+    let amt = Number(inst.paymentAmount || 0);
+    if (amt > 0 && totalContractAmount > 0 && (pct <= 0 || !Number.isFinite(pct))) {
+      pct = Number(((amt / totalContractAmount) * 100).toFixed(2));
+    }
+    if (pct > 0 && totalContractAmount > 0 && amt <= 0) {
+      amt = Math.round((totalContractAmount * pct) / 100);
+    }
     return {
       installmentNumber: idx + 1,
       dueDate: inst.dueDate ? new Date(inst.dueDate) : new Date(),
       paymentPercent: pct,
-      paymentAmount: Math.round((totalContractAmount * pct) / 100),
+      paymentAmount: amt,
       note: inst.note || `Thanh toán lần ${idx + 1}`,
     };
   });
@@ -734,13 +741,16 @@ export const draftContractFramework = async (payload, currentUserId) => {
             (cm) => cm.materialCodeSnapshot && cm.materialCodeSnapshot === (item.materialCodeSnapshot || item.materialCode)
           ) ||
           normalizedMaterials[itemIdx];
-        const selectedRolls = Array.isArray(item.selectedRolls) ? item.selectedRolls : [];
+        const rolls = (Array.isArray(item.rollDetails) && item.rollDetails.length > 0)
+          ? item.rollDetails
+          : (Array.isArray(item.selectedRolls) ? item.selectedRolls : []);
         return {
           rawMaterialId: cMat?.rawMaterialId || item.rawMaterialId,
           plannedQty: Number(item.plannedQty || 0),
           unitSnapshot: item.unitSnapshot || item.unit || cMat?.unitSnapshot || 'METER',
-          rollCount: selectedRolls.length || Number(item.rollCount || 0),
-          selectedRolls,
+          rollCount: rolls.length || Number(item.rollCount || 0),
+          rollDetails: rolls,
+          selectedRolls: rolls,
           actualVerifiedPassedQty: 0,
           actualDefectiveOrShortQty: 0,
         };
@@ -758,7 +768,8 @@ export const draftContractFramework = async (payload, currentUserId) => {
           plannedQty: it.plannedQty,
           unitSnapshot: it.unitSnapshot,
           rollCount: it.rollCount || 0,
-          selectedRolls: it.selectedRolls || [],
+          rollDetails: it.rollDetails || it.selectedRolls || [],
+          selectedRolls: it.selectedRolls || it.rollDetails || [],
           actualVerifiedPassedQty: 0,
           actualDefectiveOrShortQty: 0,
         });
@@ -766,8 +777,10 @@ export const draftContractFramework = async (payload, currentUserId) => {
         const cur = aggregatedItemsMap.get(idStr);
         cur.plannedQty += it.plannedQty;
         cur.rollCount = (cur.rollCount || 0) + (it.rollCount || 0);
-        if (Array.isArray(it.selectedRolls) && it.selectedRolls.length > 0) {
-          cur.selectedRolls = [...(cur.selectedRolls || []), ...it.selectedRolls];
+        const newRolls = it.rollDetails || it.selectedRolls || [];
+        if (Array.isArray(newRolls) && newRolls.length > 0) {
+          cur.rollDetails = [...(cur.rollDetails || []), ...newRolls];
+          cur.selectedRolls = [...(cur.selectedRolls || []), ...newRolls];
         }
       }
     });
@@ -1261,7 +1274,15 @@ export async function contractDetail(id) {
   const materialMap = new Map(materials.map(m => [String(m._id), m]));
   const name = (id) => users.find(u => String(u._id) === String(id))?.fullName || null;
   const item = (line) => { const material = materialMap.get(String(line.rawMaterialId)); return { materialId: String(line.rawMaterialId || ''), code: line.materialCodeSnapshot || material?.materialCode || null, name: line.materialNameSnapshot || material?.materialName || null, unit: line.unitSnapshot || material?.unit || null }; };
-  const planItems = (lines) => (lines || []).map(line => ({ ...item(line), plannedQty: line.plannedQty, verifiedQty: line.actualVerifiedPassedQty, defectiveOrShortQty: line.actualDefectiveOrShortQty }));
+  const planItems = (lines) => (lines || []).map(line => ({
+    ...item(line),
+    plannedQty: line.plannedQty,
+    rollCount: line.rollCount || (line.rollDetails?.length || line.selectedRolls?.length || 0),
+    rollDetails: line.rollDetails || line.selectedRolls || [],
+    selectedRolls: line.selectedRolls || line.rollDetails || [],
+    verifiedQty: line.actualVerifiedPassedQty,
+    defectiveOrShortQty: line.actualDefectiveOrShortQty,
+  }));
   const supplier = suppliers[0];
   return {
     id: String(contract._id), code: contract.contractCode, title: contract.contractTitle, type: contract.contractType, status: contract.status,

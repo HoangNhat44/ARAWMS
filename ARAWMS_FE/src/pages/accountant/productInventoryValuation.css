@@ -9,6 +9,10 @@
   flex-direction: column;
   gap: var(--wms-space-5, 20px);
   padding-bottom: var(--wms-space-8, 32px);
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Header & Actions */
@@ -350,12 +354,18 @@
 }
 
 .ara-piv-table-responsive {
-  width: 100%;
-  overflow-x: auto;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+  display: block;
 }
 
 .ara-piv-table {
   width: 100%;
+  min-width: 820px;
   border-collapse: collapse;
   text-align: left;
   font-size: 13px;
@@ -601,5 +611,43 @@
   justify-content: flex-end;
   border-top: 1px solid #e2e8f0;
   background: #f8fafc;
+}
+
+/* Responsive Media Queries for Product Valuation */
+@media (max-width: 1024px) {
+  .ara-piv-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .ara-piv-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ara-piv-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .ara-piv-actions .ara-piv-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .ara-piv-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ara-piv-modal-dialog {
+    width: 98vw;
+    max-width: 98vw;
+    margin: 8px auto;
+  }
+
+  .ara-piv-modal-grid {
+    grid-template-columns: 1fr;
+  }
 }
 

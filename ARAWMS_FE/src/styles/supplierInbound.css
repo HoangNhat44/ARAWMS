@@ -1,4 +1,4 @@
-﻿/*
+/*
  * File: supplierInbound.css
  * Description: ARA ATELIER Design System - Supplier Inbound Page Styles
  * Design Palette: Editorial Luxury & Refined Beige + Enterprise WMS High-Contrast
@@ -394,7 +394,8 @@ body {
 }
 
 .wms-table-responsive-fit {
-  table-layout: fixed;
+  table-layout: auto;
+  width: 100%;
 }
 
 .wms-table thead th {

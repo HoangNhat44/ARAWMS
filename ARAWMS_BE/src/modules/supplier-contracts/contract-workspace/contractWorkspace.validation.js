@@ -323,11 +323,15 @@ export const validateDraftContract = (req, res, next) => {
 
     schedule.forEach((inst, idx) => {
       const stepNo = idx + 1;
-      const pct = Number(inst.paymentPercent);
+      let pct = Number(inst.paymentPercent);
+      const amt = Number(inst.paymentAmount);
+      if ((!Number.isFinite(pct) || pct <= 0) && Number.isFinite(amt) && amt > 0) {
+        pct = 1;
+      }
       if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
-        errors.push(`Lần thanh toán ${stepNo}: Tỷ lệ phần trăm thanh toán phải lớn hơn 0% và tối đa 100%.`);
+        errors.push(`Lần thanh toán ${stepNo}: Số tiền hoặc tỷ lệ phần trăm thanh toán phải lớn hơn 0 và không vượt quá 100% hợp đồng.`);
       } else {
-        sumInstallmentPct += pct;
+        sumInstallmentPct += Number(inst.paymentPercent || pct);
       }
 
       if (!inst.dueDate || !isValidDate(inst.dueDate)) {

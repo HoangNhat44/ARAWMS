@@ -220,16 +220,17 @@ export const validateContractForm = (contractForm) => {
         const rowErr = {};
         const stepNo = idx + 1;
         const pct = Number(inst.paymentPercent);
+        const amt = Number(inst.paymentAmount);
 
-        if (inst.paymentPercent === '' || inst.paymentPercent === null || Number.isNaN(pct)) {
-          rowErr.paymentPercent = `Nhập % thanh toán lần ${stepNo}.`;
-        } else if (pct <= 0) {
-          rowErr.paymentPercent =
+        if ((inst.paymentAmount === '' || inst.paymentAmount === null || Number.isNaN(amt)) && (inst.paymentPercent === '' || inst.paymentPercent === null || Number.isNaN(pct))) {
+          rowErr.paymentAmount = `Nhập số tiền thanh toán lần ${stepNo}.`;
+        } else if (amt <= 0 && pct <= 0) {
+          rowErr.paymentAmount =
             idx === schedule.length - 1
-              ? 'Tỷ lệ lần cuối phải > 0% (Tổng cọc & các lần trước đã chạm/vượt 100%).'
-              : `% thanh toán lần ${stepNo} phải > 0%.`;
+              ? 'Số tiền lần cuối phải > 0 đ (Tổng cọc & các lần trước đã chạm/vượt 100% hợp đồng).'
+              : `Số tiền thanh toán lần ${stepNo} phải > 0 đ.`;
         } else if (pct > 100) {
-          rowErr.paymentPercent = `% thanh toán lần ${stepNo} không vượt quá 100%.`;
+          rowErr.paymentAmount = `Số tiền thanh toán lần ${stepNo} không được vượt quá 100% giá trị hợp đồng.`;
         } else {
           sumInstallmentPct += pct;
         }

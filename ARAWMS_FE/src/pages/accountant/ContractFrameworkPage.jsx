@@ -160,7 +160,8 @@ const buildPaymentSchedule = (
   currentSchedule = [],
   effectiveFromStr = '',
   effectiveToStr = '',
-  preserveExistingPercents = false
+  preserveExistingPercents = false,
+  totalContractAmount = 0
 ) => {
   const dep = Math.max(0, Math.min(100, Number(depositPercent) || 0));
   if (dep >= 100 || Number(count) <= 0) {
@@ -168,6 +169,9 @@ const buildPaymentSchedule = (
   }
   const n = Math.max(1, Math.min(12, Math.floor(Number(count) || 1)));
   const remainingPct = Number((100 - dep).toFixed(2));
+  const grandTotal = Number(totalContractAmount) || 0;
+  const depositAmt = Math.round((grandTotal * dep) / 100);
+  const remainingAmt = Math.max(0, grandTotal - depositAmt);
 
   const startMs = effectiveFromStr ? new Date(effectiveFromStr).getTime() : Date.now();
   const rawEndMs = effectiveToStr
@@ -208,6 +212,7 @@ const buildPaymentSchedule = (
   }
 
   let prevDateIso = effectiveFromStr || new Date(startMs).toISOString().slice(0, 10);
+  let sumEarlierAmts = 0;
 
   return Array.from({ length: n }, (_, idx) => {
     const existing = currentSchedule[idx];
@@ -222,10 +227,25 @@ const buildPaymentSchedule = (
     }
     prevDateIso = dueIso;
 
+    const isLast = idx === n - 1;
+    const pct = percents[idx];
+    let amt = 0;
+    if (isLast) {
+      amt = Math.max(0, remainingAmt - sumEarlierAmts);
+    } else {
+      amt = existing?.paymentAmount !== undefined && Number(existing.paymentAmount) > 0
+        ? Number(existing.paymentAmount)
+        : grandTotal > 0
+        ? Math.round((grandTotal * pct) / 100)
+        : 0;
+      sumEarlierAmts += amt;
+    }
+
     return {
       installmentNumber: idx + 1,
       dueDate: dueIso,
-      paymentPercent: percents[idx],
+      paymentPercent: pct,
+      paymentAmount: amt,
       note:
         existing?.note ||
         (idx === n - 1
@@ -385,14 +405,10 @@ const createEmptyMaterialLine = (rawMat = null) => {
   const defaultRolls = isFabric
     ? [
         { rollIndex: 1, rollCode: 'C-01', lengthMeters: 100, note: '' },
-        { rollIndex: 2, rollCode: 'C-02', lengthMeters: 100, note: '' },
-        { rollIndex: 3, rollCode: 'C-03', lengthMeters: 100, note: '' },
-        { rollIndex: 4, rollCode: 'C-04', lengthMeters: 100, note: '' },
-        { rollIndex: 5, rollCode: 'C-05', lengthMeters: 100, note: '' },
       ]
     : [];
   const defaultRollCount = defaultRolls.length;
-  const defaultContractedQty = isFabric ? 500 : 100;
+  const defaultContractedQty = isFabric ? 100 : 100;
 
   return {
     rawMaterialId: rawMat?._id || rawMat?.id || '',
@@ -646,6 +662,60 @@ const ContractFrameworkPage = () => {
     return { subtotal, vatTotal, grandTotal, depositAmt, remainingAmt };
   }, [contractForm.contractedMaterials, contractForm.commercialTerms]);
 
+  // Đồng bộ số tiền thanh toán khi tổng giá trị hợp đồng hoặc tiền cọc thay đổi
+  useEffect(() => {
+    const grandTotal = liveTotals.grandTotal;
+    const depPct = Number(contractForm.commercialTerms?.depositPercent || 0);
+    const depAmt = Math.round((grandTotal * depPct) / 100);
+    const remainingAfterDep = Math.max(0, grandTotal - depAmt);
+    const schedule = contractForm.commercialTerms?.paymentSchedule;
+
+    if (!Array.isArray(schedule) || schedule.length === 0 || grandTotal <= 0) return;
+
+    let hasChanged = false;
+    const n = schedule.length;
+    let sumEarlierAmt = 0;
+
+    const nextSchedule = schedule.map((inst, idx) => {
+      const isLast = idx === n - 1;
+      let amt = Number(inst.paymentAmount || 0);
+      let pct = Number(inst.paymentPercent || 0);
+
+      if (isLast) {
+        const autoAmt = Math.max(0, remainingAfterDep - sumEarlierAmt);
+        const autoPct = grandTotal > 0 ? Number(((autoAmt / grandTotal) * 100).toFixed(2)) : 0;
+        if (amt !== autoAmt || Math.abs(pct - autoPct) > 0.05) {
+          hasChanged = true;
+          return { ...inst, paymentAmount: autoAmt, paymentPercent: autoPct };
+        }
+        return inst;
+      } else {
+        if (amt === 0 && pct > 0) {
+          amt = Math.round((grandTotal * pct) / 100);
+          hasChanged = true;
+        } else if (amt > 0) {
+          const newPct = Number(((amt / grandTotal) * 100).toFixed(2));
+          if (Math.abs(pct - newPct) > 0.05) {
+            pct = newPct;
+            hasChanged = true;
+          }
+        }
+        sumEarlierAmt += amt;
+        return { ...inst, paymentAmount: amt, paymentPercent: pct };
+      }
+    });
+
+    if (hasChanged) {
+      setContractForm((prev) => ({
+        ...prev,
+        commercialTerms: {
+          ...prev.commercialTerms,
+          paymentSchedule: nextSchedule,
+        },
+      }));
+    }
+  }, [liveTotals.grandTotal, contractForm.commercialTerms?.depositPercent]);
+
   const contractFamilies = useMemo(() => {
     const familiesMap = new Map();
 
@@ -894,6 +964,8 @@ const ContractFrameworkPage = () => {
         const nextLines = { ...next.paymentScheduleLines };
         const nextRow = { ...nextLines[index] };
         delete nextRow[field];
+        if (field === 'paymentAmount') delete nextRow.paymentPercent;
+        if (field === 'paymentPercent') delete nextRow.paymentAmount;
         if (Object.keys(nextRow).length === 0) {
           delete nextLines[index];
         } else {
@@ -901,12 +973,13 @@ const ContractFrameworkPage = () => {
         }
         next.paymentScheduleLines = nextLines;
       }
-      // Also clear last row percentage error when earlier row percentage changes
-      if (field === 'paymentPercent' && next.paymentScheduleLines) {
+      // Also clear last row errors when earlier row changes
+      if ((field === 'paymentAmount' || field === 'paymentPercent') && next.paymentScheduleLines) {
         const nextLines = { ...next.paymentScheduleLines };
         const lastIdx = (contractForm.commercialTerms.paymentSchedule?.length || 1) - 1;
-        if (nextLines[lastIdx]?.paymentPercent) {
+        if (nextLines[lastIdx]) {
           const nextLastRow = { ...nextLines[lastIdx] };
+          delete nextLastRow.paymentAmount;
           delete nextLastRow.paymentPercent;
           if (Object.keys(nextLastRow).length === 0) {
             delete nextLines[lastIdx];
@@ -925,21 +998,73 @@ const ContractFrameworkPage = () => {
         : [];
       if (!currentList[index]) return prev;
 
-      const updatedRow = { ...currentList[index], [field]: value };
-      currentList[index] = updatedRow;
+      const grandTotal = liveTotals.grandTotal || 0;
+      const depPct = Number(prev.commercialTerms.depositPercent || 0);
+      const depAmt = Math.round((grandTotal * depPct) / 100);
+      const remainingAfterDep = Math.max(0, grandTotal - depAmt);
 
-      // Auto-fill the last installment's percentage so Deposit + Sum(Installments) === 100%
-      if (field === 'paymentPercent' && currentList.length > 0 && index < currentList.length - 1) {
-        const dep = Number(prev.commercialTerms.depositPercent || 0);
-        const sumBeforeLast = currentList
-          .slice(0, currentList.length - 1)
-          .reduce((acc, row) => acc + (Number(row.paymentPercent) || 0), 0);
-        const remainingForLast = Number((100 - dep - sumBeforeLast).toFixed(2));
-        const lastIdx = currentList.length - 1;
-        currentList[lastIdx] = {
-          ...currentList[lastIdx],
-          paymentPercent: remainingForLast,
+      if (field === 'paymentAmount') {
+        const rawAmt = value === '' ? '' : Math.max(0, Number(value));
+        const numAmt = Number(rawAmt || 0);
+        const calculatedPct = grandTotal > 0 ? Number(((numAmt / grandTotal) * 100).toFixed(2)) : 0;
+
+        currentList[index] = {
+          ...currentList[index],
+          paymentAmount: rawAmt,
+          paymentPercent: calculatedPct,
         };
+
+        // AUTO-FILL LẦN CUỐI CÙNG: Tự động điền số tiền và % còn thiếu
+        if (currentList.length > 0 && index < currentList.length - 1) {
+          const sumBeforeLastAmt = currentList
+            .slice(0, currentList.length - 1)
+            .reduce((acc, row) => acc + (Number(row.paymentAmount) || 0), 0);
+          const remainingForLastAmt = Math.max(0, remainingAfterDep - sumBeforeLastAmt);
+
+          const sumBeforeLastPct = currentList
+            .slice(0, currentList.length - 1)
+            .reduce((acc, row) => acc + (Number(row.paymentPercent) || 0), 0);
+          const remainingForLastPct = Number((100 - depPct - sumBeforeLastPct).toFixed(2));
+
+          const lastIdx = currentList.length - 1;
+          currentList[lastIdx] = {
+            ...currentList[lastIdx],
+            paymentAmount: remainingForLastAmt,
+            paymentPercent: remainingForLastPct,
+          };
+        }
+      } else if (field === 'paymentPercent') {
+        const rawPct = value === '' ? '' : Math.max(0, Number(value));
+        const numPct = Number(rawPct || 0);
+        const calculatedAmt = grandTotal > 0 ? Math.round((grandTotal * numPct) / 100) : 0;
+
+        currentList[index] = {
+          ...currentList[index],
+          paymentPercent: rawPct,
+          paymentAmount: calculatedAmt,
+        };
+
+        // Auto-fill the last installment
+        if (currentList.length > 0 && index < currentList.length - 1) {
+          const sumBeforeLastPct = currentList
+            .slice(0, currentList.length - 1)
+            .reduce((acc, row) => acc + (Number(row.paymentPercent) || 0), 0);
+          const remainingForLastPct = Number((100 - depPct - sumBeforeLastPct).toFixed(2));
+
+          const sumBeforeLastAmt = currentList
+            .slice(0, currentList.length - 1)
+            .reduce((acc, row) => acc + (Number(row.paymentAmount) || 0), 0);
+          const remainingForLastAmt = Math.max(0, remainingAfterDep - sumBeforeLastAmt);
+
+          const lastIdx = currentList.length - 1;
+          currentList[lastIdx] = {
+            ...currentList[lastIdx],
+            paymentPercent: remainingForLastPct,
+            paymentAmount: remainingForLastAmt,
+          };
+        }
+      } else {
+        currentList[index] = { ...currentList[index], [field]: value };
       }
 
       return {
@@ -1019,18 +1144,14 @@ const ContractFrameworkPage = () => {
                 ? 'Phụ liệu tiêu chuẩn xuất khẩu'
                 : '100% Combed Cotton Compact';
 
-            // Nếu là vải cuộn và chưa có danh sách cuộn thì khởi tạo 5 cuộn chuẩn
+            // Nếu là vải cuộn và chưa có danh sách cuộn thì khởi tạo 1 cuộn mặc định
             const isFabricType = foundMat.category === 'FABRIC_ROLL' || foundMat.materialType === 'FABRIC' || ['METER', 'MET', 'M'].includes(foundMat.unit);
             if (isFabricType && (!currentLine.rollDetails || currentLine.rollDetails.length === 0)) {
-              currentLine.rollCount = 5;
+              currentLine.rollCount = 1;
               currentLine.rollDetails = [
                 { rollIndex: 1, rollCode: 'C-01', lengthMeters: 100, note: '' },
-                { rollIndex: 2, rollCode: 'C-02', lengthMeters: 100, note: '' },
-                { rollIndex: 3, rollCode: 'C-03', lengthMeters: 100, note: '' },
-                { rollIndex: 4, rollCode: 'C-04', lengthMeters: 100, note: '' },
-                { rollIndex: 5, rollCode: 'C-05', lengthMeters: 100, note: '' },
               ];
-              currentLine.contractedQty = 500;
+              currentLine.contractedQty = 100;
             }
           }
         }
@@ -1054,46 +1175,6 @@ const ContractFrameworkPage = () => {
           prev.inboundBatches
         );
       }
-
-      return {
-        ...prev,
-        contractedMaterials: updated,
-        inboundBatches: nextBatches,
-      };
-    });
-  };
-
-  // Tạo danh sách cuộn vải nhanh theo số lượng cuộn và số mét chuẩn mỗi cuộn
-  const handleQuickSetupRolls = (matIndex, countInput, metersInput) => {
-    const count = Math.max(1, Math.min(200, Number(countInput) || 1));
-    const meters = Math.max(1, Number(metersInput) || 100);
-
-    setContractForm((prev) => {
-      const updated = [...prev.contractedMaterials];
-      const line = { ...updated[matIndex] };
-
-      const newRolls = [];
-      for (let i = 1; i <= count; i++) {
-        newRolls.push({
-          rollIndex: i,
-          rollCode: `C-${String(i).padStart(2, '0')}`,
-          lengthMeters: meters,
-          note: '',
-        });
-      }
-
-      line.rollCount = count;
-      line.rollDetails = newRolls;
-      line.contractedQty = count * meters;
-      updated[matIndex] = line;
-
-      const nextBatches = buildBatches(
-        prev.inboundBatchesCount || (prev.inboundBatches?.length || 2),
-        updated,
-        prev.effectiveFrom,
-        prev.effectiveTo,
-        prev.inboundBatches
-      );
 
       return {
         ...prev,
@@ -1746,13 +1827,43 @@ const ContractFrameworkPage = () => {
 
   const handleSaveContract = async (e) => {
     e.preventDefault();
+    console.log('[ContractFrameworkPage] handleSaveContract called', { contractForm });
     const { isValid, errors } = validateContractForm(contractForm);
+    console.log('[ContractFrameworkPage] Validation result:', { isValid, errors });
     if (!isValid) {
+      console.warn('[ContractFrameworkPage] Validation errors:', errors);
       setContractErrors(errors);
+      const errorList = [];
+      Object.entries(errors).forEach(([k, v]) => {
+        if (typeof v === 'string') errorList.push(v);
+        else if (k === 'materialLines') {
+          Object.values(v).forEach((lineErrs) => {
+            Object.values(lineErrs).forEach((msg) => errorList.push(msg));
+          });
+        } else if (k === 'paymentScheduleLines') {
+          Object.values(v).forEach((lineErrs) => {
+            Object.values(lineErrs).forEach((msg) => errorList.push(msg));
+          });
+        } else if (k === 'inboundBatchErrors') {
+          Object.values(v).forEach((bErrs) => {
+            if (bErrs.scheduledDeliveryDate) errorList.push(bErrs.scheduledDeliveryDate);
+            if (bErrs.itemErrors) Object.values(bErrs.itemErrors).forEach((msg) => errorList.push(msg));
+          });
+        }
+      });
+
       setFeedback({
         type: 'error',
-        text: 'Vui lòng kiểm tra và sửa các thông tin Hợp đồng chưa hợp lệ theo cảnh báo đỏ bên dưới.',
+        text: `Vui lòng hoàn tất các thông tin bắt buộc còn thiếu (${errorList.length} mục) trước khi lưu:`,
+        errorList,
       });
+
+      setTimeout(() => {
+        const firstErrorEl = document.querySelector('.has-error, .wms-field-error-text');
+        if (firstErrorEl) {
+          firstErrorEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
       return;
     }
 
@@ -1853,8 +1964,17 @@ const ContractFrameworkPage = () => {
       </section>
 
       {feedback && (
-        <div className={`wms-feedback-banner ${feedback.type}`} role="alert">
-          <span>{feedback.text}</span>
+        <div className={`wms-feedback-banner ${feedback.type}`} role="alert" style={{ alignItems: 'flex-start' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600 }}>{feedback.text}</div>
+            {Array.isArray(feedback.errorList) && feedback.errorList.length > 0 && (
+              <ul style={{ margin: '6px 0 0 0', paddingLeft: '20px', fontSize: '12.5px', lineHeight: '1.6' }}>
+                {feedback.errorList.map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+              </ul>
+            )}
+          </div>
           <button
             type="button"
             className="wms-btn wms-btn-default wms-btn-sm"
@@ -1989,12 +2109,12 @@ const ContractFrameworkPage = () => {
               <table className="wms-table wms-table-responsive-fit">
                 <colgroup>
                   <col style={{ width: '12%' }} />
-                  <col style={{ width: '22%' }} />
-                  <col style={{ width: '21%' }} />
+                  <col style={{ width: '20%' }} />
+                  <col style={{ width: '18%' }} />
                   <col style={{ width: '11%' }} />
                   <col style={{ width: '12%' }} />
-                  <col style={{ width: '14%' }} />
-                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '16%' }} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -2340,7 +2460,8 @@ const ContractFrameworkPage = () => {
                                       Lịch sử tất cả các phiên bản của Hợp đồng <strong>{family.baseCode}</strong> ({family.totalVersions} phiên bản):
                                     </span>
                                   </div>
-                                  <table className="wms-nested-table">
+                                  <div className="wms-table-scroll">
+                                    <table className="wms-nested-table">
                                     <thead>
                                       <tr>
                                         <th style={{ width: '85px' }}>Phiên bản</th>
@@ -2437,7 +2558,8 @@ const ContractFrameworkPage = () => {
                                     </tbody>
                                   </table>
                                 </div>
-                              </td>
+                              </div>
+                            </td>
                             </tr>
                           )}
                         </React.Fragment>
@@ -2453,7 +2575,7 @@ const ContractFrameworkPage = () => {
 
       {/* TAB 2: FULL REAL-WORLD GARMENT PROCUREMENT CONTRACT FORM */}
       {activeTab === 'DRAFT_FORM' && (
-        <form onSubmit={handleSaveContract}>
+        <form noValidate onSubmit={handleSaveContract}>
           {isAmendingActive && (
             <div className="wms-amendment-banner">
               <div className="wms-amendment-banner-icon">
@@ -3220,10 +3342,10 @@ const ContractFrameworkPage = () => {
                           <div>
                             <div style={{ fontWeight: 700, fontSize: '13px', color: '#1E293B', display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <Package size={16} color="var(--wms-primary)" />
-                              Chi tiết Cuộn vải Nhập về (Số cuộn & Chi tiết mét từng cuộn) <span className="wms-required">*</span>
+                              Chi tiết Cuộn vải Nhập về (Số cuộn & Chi tiết từng cuộn) <span className="wms-required">*</span>
                             </div>
                             <div style={{ fontSize: '11.5px', color: '#64748B', marginTop: '2px' }}>
-                              Điền chi tiết số cuộn vải và số mét của mỗi cuộn. Tổng số mét ký hợp đồng sẽ được tự động tính và đồng bộ.
+                              Điền chi tiết số cuộn vải và số lượng của mỗi cuộn ({line.unitSnapshot || 'mét'}). Tổng số lượng ký hợp đồng sẽ được tự động tính và đồng bộ.
                             </div>
                           </div>
 
@@ -3242,58 +3364,14 @@ const ContractFrameworkPage = () => {
                           </div>
                         </div>
 
-                        {/* Quick generator tool */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#FFFFFF', border: '1px solid #E2E8F0', padding: '8px 12px', borderRadius: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
-                            ⚡ Tạo nhanh danh sách cuộn:
-                          </span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '12px', color: '#64748B' }}>Nhập</span>
-                            <input
-                              type="number"
-                              min="1"
-                              max="200"
-                              placeholder="Số cuộn"
-                              defaultValue={line.rollDetails?.length || 5}
-                              id={`quick-roll-count-${index}`}
-                              style={{ width: '70px', padding: '3px 6px', fontSize: '12px', borderRadius: '4px', border: '1px solid #CBD5E1' }}
-                            />
-                            <span style={{ fontSize: '12px', color: '#64748B' }}>cuộn, mỗi cuộn</span>
-                            <input
-                              type="number"
-                              min="1"
-                              placeholder="Số mét"
-                              defaultValue={line.rollDetails?.[0]?.lengthMeters || 100}
-                              id={`quick-roll-meters-${index}`}
-                              style={{ width: '80px', padding: '3px 6px', fontSize: '12px', borderRadius: '4px', border: '1px solid #CBD5E1' }}
-                            />
-                            <span style={{ fontSize: '12px', color: '#64748B' }}>mét</span>
-                            <button
-                              type="button"
-                              className="wms-btn wms-btn-primary wms-btn-sm"
-                              style={{ fontSize: '11.5px', padding: '3px 10px', marginLeft: '4px' }}
-                              onClick={() => {
-                                const cVal = document.getElementById(`quick-roll-count-${index}`)?.value;
-                                const mVal = document.getElementById(`quick-roll-meters-${index}`)?.value;
-                                handleQuickSetupRolls(index, cVal, mVal);
-                              }}
-                            >
-                              Áp dụng
-                            </button>
-                          </div>
-                          <span style={{ fontSize: '11px', color: '#94A3B8', marginLeft: 'auto' }}>
-                            * Có thể chỉnh sửa riêng từng cuộn sau khi tạo nhanh
-                          </span>
-                        </div>
-
                         {/* Rolls detail table */}
-                        <div style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid #E2E8F0', borderRadius: '6px', background: '#FFFFFF' }}>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                        <div style={{ maxHeight: '240px', overflow: 'auto', WebkitOverflowScrolling: 'touch', border: '1px solid #E2E8F0', borderRadius: '6px', background: '#FFFFFF' }}>
+                          <table style={{ width: '100%', minWidth: '500px', borderCollapse: 'collapse', fontSize: '12px' }}>
                             <thead>
                               <tr style={{ background: '#F1F5F9', borderBottom: '1px solid #E2E8F0', color: '#475569', textAlign: 'left' }}>
                                 <th style={{ padding: '6px 10px', width: '50px', textAlign: 'center' }}>STT</th>
                                 <th style={{ padding: '6px 10px', width: '140px' }}>Mã định danh cuộn</th>
-                                <th style={{ padding: '6px 10px', width: '170px' }}>Chiều dài (mét) <span className="wms-required">*</span></th>
+                                <th style={{ padding: '6px 10px', width: '170px' }}>Chiều dài ({line.unitSnapshot || 'mét'}) <span className="wms-required">*</span></th>
                                 <th style={{ padding: '6px 10px' }}>Ghi chú cuộn vải</th>
                                 <th style={{ padding: '6px 10px', width: '60px', textAlign: 'center' }}>Xóa</th>
                               </tr>
@@ -3302,7 +3380,7 @@ const ContractFrameworkPage = () => {
                               {(!line.rollDetails || line.rollDetails.length === 0) ? (
                                 <tr>
                                   <td colSpan={5} style={{ textAlign: 'center', padding: '16px', color: '#94A3B8' }}>
-                                    Chưa có cuộn vải nào. Hãy nhấn "Áp dụng tạo nhanh" hoặc "Thêm 1 cuộn" ở trên.
+                                    Chưa có cuộn vải nào. Hãy nhấn "+ Thêm 1 cuộn" ở góc trên bên phải.
                                   </td>
                                 </tr>
                               ) : (
@@ -3324,12 +3402,12 @@ const ContractFrameworkPage = () => {
                                         <input
                                           type="number"
                                           min="0.1"
-                                          step="0.5"
+                                          step="any"
                                           value={roll.lengthMeters}
                                           onChange={(e) => handleRollDetailChange(index, rIdx, 'lengthMeters', e.target.value)}
                                           style={{ width: '90px', padding: '3px 6px', fontSize: '12px', fontWeight: 700, color: '#0369A1', borderRadius: '4px', border: '1px solid #CBD5E1' }}
                                         />
-                                        <span style={{ fontSize: '12px', color: '#64748B' }}>mét</span>
+                                        <span style={{ fontSize: '12px', color: '#64748B' }}>{line.unitSnapshot || 'mét'}</span>
                                       </div>
                                     </td>
                                     <td style={{ padding: '4px 10px' }}>
@@ -3364,7 +3442,7 @@ const ContractFrameworkPage = () => {
                             Đã phân rã chi tiết: <strong style={{ color: '#0369A1' }}>{line.rollDetails?.length || 0} cuộn</strong>
                           </span>
                           <span style={{ color: '#0F172A', background: '#FFFFFF', padding: '4px 12px', borderRadius: '4px', border: '1px solid #CBD5E1' }}>
-                            Tổng số mét vải ký hợp đồng: <strong style={{ color: '#0284C7', fontSize: '13px' }}>{(Number(line.contractedQty) || 0).toLocaleString('vi-VN')} {line.unitSnapshot}</strong>
+                            Tổng số lượng ký hợp đồng: <strong style={{ color: '#0284C7', fontSize: '13px' }}>{(Number(line.contractedQty) || 0).toLocaleString('vi-VN')} {line.unitSnapshot}</strong>
                           </span>
                         </div>
                       </div>
@@ -3669,7 +3747,8 @@ const ContractFrameworkPage = () => {
                     )}
 
                     {/* Bảng phân bổ nguyên vật liệu đợt này */}
-                    <table className="wms-table" style={{ fontSize: '12.5px', marginTop: '6px' }}>
+                    <div className="wms-table-scroll">
+                      <table className="wms-table" style={{ fontSize: '12.5px', marginTop: '6px' }}>
                       <thead>
                         <tr style={{ background: '#F8FAFC' }}>
                           <th style={{ width: '40px', textAlign: 'center' }}>#</th>
@@ -3819,7 +3898,8 @@ const ContractFrameworkPage = () => {
                       </tbody>
                     </table>
                   </div>
-                );
+                </div>
+              );
               })}
             </div>
 
@@ -3843,7 +3923,8 @@ const ContractFrameworkPage = () => {
                 </span>
               </div>
 
-              <table className="wms-table" style={{ fontSize: '12px', margin: 0 }}>
+              <div className="wms-table-scroll">
+                <table className="wms-table" style={{ fontSize: '12px', margin: 0 }}>
                 <thead>
                   <tr style={{ background: '#F8FAFC' }}>
                     <th>Mã NVL</th>
@@ -3886,7 +3967,8 @@ const ContractFrameworkPage = () => {
                 </tbody>
               </table>
             </div>
-          </section>
+          </div>
+        </section>
 
           {/* PHẦN V: ĐIỀU KHOẢN THANH TOÁN & GIAO NHẬN */}
           <section className="wms-form-section">
@@ -4135,8 +4217,7 @@ const ContractFrameworkPage = () => {
                             Hiệu lực hợp đồng:{' '}
                             <strong>{formatDate(contractForm.effectiveFrom)}</strong>{' '}
                             → <strong>{formatDate(contractForm.effectiveTo)}</strong>{' '}
-                            (Các ngày thanh toán không được vượt quá ngày hết hạn hợp
-                            đồng; lần cuối tự động điền % còn lại để đủ 100%).
+                            (Nhập số tiền cho từng đợt thanh toán, hệ thống sẽ tự tính % tương ứng; lần cuối tự động điền số tiền còn thiếu để đủ 100%).
                           </div>
                         </div>
 
@@ -4175,17 +4256,17 @@ const ContractFrameworkPage = () => {
                         <table className="wms-table">
                           <thead>
                             <tr>
-                              <th style={{ width: '130px' }}>Lần thanh toán</th>
-                              <th style={{ width: '210px' }}>
+                              <th style={{ width: '120px' }}>Lần thanh toán</th>
+                              <th style={{ width: '190px' }}>
                                 Ngày thanh toán cụ thể{' '}
                                 <span className="wms-required">*</span>
                               </th>
-                              <th style={{ width: '185px' }}>
-                                Tỷ lệ thanh toán (%){' '}
+                              <th style={{ width: '220px' }}>
+                                Số tiền thanh toán (VNĐ){' '}
                                 <span className="wms-required">*</span>
                               </th>
-                              <th style={{ width: '175px', textAlign: 'right' }}>
-                                Số tiền tương ứng (VNĐ)
+                              <th style={{ width: '140px', textAlign: 'center' }}>
+                                Tỷ lệ tương ứng (%)
                               </th>
                               <th>Nội dung / Điều kiện nghiệm thu thanh toán</th>
                             </tr>
@@ -4196,9 +4277,6 @@ const ContractFrameworkPage = () => {
                               const rowErrors =
                                 contractErrors.paymentScheduleLines?.[idx] || {};
                               const instPct = Number(inst.paymentPercent || 0);
-                              const instAmount = Math.round(
-                                (liveTotals.grandTotal * instPct) / 100
-                              );
                               const prevDueIso =
                                 idx > 0 && scheduleList[idx - 1]?.dueDate
                                   ? scheduleList[idx - 1].dueDate
@@ -4250,93 +4328,100 @@ const ContractFrameworkPage = () => {
                                   </td>
 
                                   <td>
-                                    <div
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                      }}
-                                    >
+                                    <div style={{ position: 'relative' }}>
                                       <input
                                         type="number"
+                                        min="0"
                                         step="any"
-                                        min={isLast ? undefined : '0.01'}
-                                        max={
-                                          isLast
-                                            ? undefined
-                                            : Math.max(
-                                                0.01,
-                                                Number((100 - depPct - 0.01).toFixed(2))
-                                              )
-                                        }
                                         readOnly={isLast}
                                         className={`wms-input ${
-                                          rowErrors.paymentPercent
-                                            ? 'input-error'
-                                            : ''
+                                          rowErrors.paymentAmount || rowErrors.paymentPercent ? 'input-error' : ''
                                         }`}
-                                        style={
-                                          isLast
+                                        style={{
+                                          textAlign: 'right',
+                                          fontWeight: 700,
+                                          paddingRight: '28px',
+                                          fontSize: '13px',
+                                          ...(isLast
                                             ? {
-                                                background:
-                                                  instPct <= 0
-                                                    ? '#fef2f2'
-                                                    : '#f0fdf4',
-                                                fontWeight: 700,
-                                                color:
-                                                  instPct <= 0
-                                                    ? '#dc2626'
-                                                    : '#15803d',
+                                                background: inst.paymentAmount <= 0 ? '#fef2f2' : '#f0fdf4',
+                                                color: inst.paymentAmount <= 0 ? '#dc2626' : '#15803d',
                                                 cursor: 'not-allowed',
+                                                border: inst.paymentAmount <= 0 ? '1px solid #f87171' : '1px solid #86efac',
                                               }
-                                            : undefined
-                                        }
-                                        value={inst.paymentPercent}
+                                            : {
+                                                color: '#0f172a',
+                                              }),
+                                        }}
+                                        placeholder={isLast ? 'Tự động tính...' : 'Nhập số tiền...'}
+                                        value={inst.paymentAmount !== undefined && inst.paymentAmount !== '' ? inst.paymentAmount : ''}
                                         onChange={(e) => {
                                           if (isLast) return;
                                           handleInstallmentChange(
                                             idx,
-                                            'paymentPercent',
-                                            e.target.value === ''
-                                              ? ''
-                                              : Number(e.target.value)
+                                            'paymentAmount',
+                                            e.target.value === '' ? '' : Math.max(0, Number(e.target.value))
                                           );
                                         }}
                                         title={
                                           isLast
-                                            ? 'Lần thanh toán cuối tự động điền số % còn lại để tổng Cọc + Các lần thanh toán = 100%'
-                                            : `Nhập % thanh toán lần ${idx + 1}`
+                                            ? 'Lần thanh toán cuối tự động điền số tiền còn thiếu để hoàn tất 100% hợp đồng'
+                                            : `Nhập số tiền thanh toán cho lần ${idx + 1}`
                                         }
                                       />
                                       <span
                                         style={{
+                                          position: 'absolute',
+                                          right: '10px',
+                                          top: '50%',
+                                          transform: 'translateY(-50%)',
                                           fontWeight: 700,
-                                          color: '#475569',
+                                          color: isLast ? (inst.paymentAmount <= 0 ? '#dc2626' : '#15803d') : '#64748b',
+                                          fontSize: '12px',
+                                          pointerEvents: 'none',
                                         }}
                                       >
-                                        %
+                                        ₫
                                       </span>
                                     </div>
-                                    {rowErrors.paymentPercent && (
-                                      <div
-                                        className="wms-field-error-text"
-                                        style={{ marginTop: '4px' }}
-                                      >
+                                    <div
+                                      style={{
+                                        fontSize: '11px',
+                                        textAlign: 'right',
+                                        marginTop: '2px',
+                                        fontWeight: 600,
+                                        color: isLast ? (inst.paymentAmount <= 0 ? '#dc2626' : '#16a34a') : '#0369a1',
+                                      }}
+                                    >
+                                      {isLast
+                                        ? `⚡ ${formatVnd(inst.paymentAmount || 0)} (Tự động điền số tiền còn thiếu)`
+                                        : (inst.paymentAmount > 0 ? formatVnd(inst.paymentAmount) : '')}
+                                    </div>
+                                    {(rowErrors.paymentAmount || rowErrors.paymentPercent) && (
+                                      <div className="wms-field-error-text" style={{ marginTop: '4px' }}>
                                         <AlertCircle size={12} />{' '}
-                                        {rowErrors.paymentPercent}
+                                        {rowErrors.paymentAmount || rowErrors.paymentPercent}
                                       </div>
                                     )}
                                   </td>
 
-                                  <td
-                                    style={{
-                                      textAlign: 'right',
-                                      fontWeight: 700,
-                                      color: instPct <= 0 ? '#dc2626' : '#0f172a',
-                                      fontSize: '13.5px',
-                                    }}
-                                  >
-                                    {formatVnd(instAmount)}
+                                  <td style={{ textAlign: 'center' }}>
+                                    <div
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        background: instPct > 0 ? '#eff6ff' : '#fef2f2',
+                                        color: instPct > 0 ? '#1d4ed8' : '#dc2626',
+                                        border: instPct > 0 ? '1px solid #bfdbfe' : '1px solid #fecaca',
+                                        padding: '4px 10px',
+                                        borderRadius: '6px',
+                                        fontWeight: 700,
+                                        fontSize: '13px',
+                                      }}
+                                    >
+                                      <span>{instPct.toFixed(2)}%</span>
+                                    </div>
                                   </td>
 
                                   <td>
@@ -4561,6 +4646,30 @@ const ContractFrameworkPage = () => {
                 />
               </div>
             </div>
+
+            {feedback?.type === 'error' && Array.isArray(feedback.errorList) && feedback.errorList.length > 0 && (
+              <div
+                className="wms-feedback-banner error"
+                style={{
+                  margin: '16px 0',
+                  textAlign: 'left',
+                  display: 'block',
+                  border: '1px solid #FECACA',
+                  background: '#FEF2F2',
+                  borderRadius: '8px',
+                  padding: '12px 16px',
+                }}
+              >
+                <div style={{ fontWeight: 700, color: '#B91C1C', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: '13px' }}>
+                  <AlertCircle size={16} /> Chưa thể lưu Hợp đồng! Vui lòng hoàn thành các mục bắt buộc sau ({feedback.errorList.length} lỗi):
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '20px', color: '#991B1B', fontSize: '12.5px', lineHeight: '1.6' }}>
+                  {feedback.errorList.map((err, i) => (
+                    <li key={i}>{err}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="wms-modal-footer">
               <button
@@ -4958,7 +5067,8 @@ const ContractFrameworkPage = () => {
                           </div>
 
                           {/* Bảng chi tiết các đợt giao hàng */}
-                          <table className="wms-legal-table" style={{ background: '#FFFFFF', margin: 0 }}>
+                          <div className="wms-table-scroll">
+                            <table className="wms-legal-table" style={{ background: '#FFFFFF', margin: 0 }}>
                             <thead>
                               <tr style={{ background: '#E0F2FE' }}>
                                 <th style={{ width: '85px', textAlign: 'center' }}>Đợt số</th>
@@ -5006,7 +5116,8 @@ const ContractFrameworkPage = () => {
                                 );
                               })}
                             </tbody>
-                          </table>
+                            </table>
+                          </div>
                         </div>
                       ) : (
                         /* Trường hợp hợp đồng nháp chưa lưu có previewContract.inboundBatches */
@@ -5015,7 +5126,8 @@ const ContractFrameworkPage = () => {
                             <div style={{ fontWeight: 700, marginBottom: '6px' }}>
                               &nbsp;&nbsp;&nbsp;&nbsp;• Lịch trình các đợt tiếp nhận nguyên phụ liệu ({previewContract.inboundBatches.length} đợt – Tổng phân bổ = 100%):
                             </div>
-                            <table className="wms-legal-table">
+                            <div className="wms-table-scroll">
+                              <table className="wms-legal-table">
                               <thead>
                                 <tr>
                                   <th style={{ width: '85px', textAlign: 'center' }}>Đợt</th>
@@ -5053,7 +5165,8 @@ const ContractFrameworkPage = () => {
                               </tbody>
                             </table>
                           </div>
-                        ) : (
+                        </div>
+                      ) : (
                           <div style={{ margin: '8px 0', fontStyle: 'italic', color: '#64748B' }}>
                             (Kế hoạch tiếp nhận chi tiết được xác lập theo từng đợt cắt may thực tế theo tiến độ hợp đồng).
                           </div>
@@ -5156,7 +5269,8 @@ const ContractFrameworkPage = () => {
                             <div style={{ fontWeight: 700, marginBottom: '6px' }}>
                               &nbsp;&nbsp;&nbsp;&nbsp;• Lộ trình các lần thanh toán phần giá trị còn lại ({previewContract.commercialTerms.paymentSchedule.length} lần – Tổng Cọc & Thanh toán = 100%):
                             </div>
-                            <table className="wms-legal-table">
+                            <div className="wms-table-scroll">
+                              <table className="wms-legal-table">
                               <thead>
                                 <tr>
                                   <th style={{ width: '90px' }}>Đợt</th>
@@ -5195,7 +5309,8 @@ const ContractFrameworkPage = () => {
                               </tbody>
                             </table>
                           </div>
-                        )}
+                        </div>
+                      )}
                       <br />
                       2. Bên B thanh toán giá trị hợp đồng cho bên A bằng hình thức{' '}
                       <strong>
@@ -5615,28 +5730,30 @@ const ContractFrameworkPage = () => {
                   <p style={{ margin: '4px 0 8px 0' }}>
                     Bên A đồng ý bán và bên B đồng ý mua số hàng hóa cụ thể như sau:
                   </p>
-                  <table className="wms-blank-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: '45px' }}>STT</th>
-                        <th>TÊN HÀNG HÓA</th>
-                        <th style={{ width: '90px' }}>Đ.vị tính</th>
-                        <th>Quy cách – Chủng loại</th>
-                        <th>Xuất xứ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[1, 2, 3, 4, 5].map((rowNum) => (
-                        <tr key={rowNum} className="wms-blank-table-empty-row">
-                          <td style={{ textAlign: 'center' }}>{rowNum}</td>
-                          <td></td>
-                          <td></td>
-                          <td></td>
-                          <td></td>
+                  <div className="wms-table-scroll">
+                    <table className="wms-blank-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '45px' }}>STT</th>
+                          <th>TÊN HÀNG HÓA</th>
+                          <th style={{ width: '90px' }}>Đ.vị tính</th>
+                          <th>Quy cách – Chủng loại</th>
+                          <th>Xuất xứ</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {[1, 2, 3, 4, 5].map((rowNum) => (
+                          <tr key={rowNum} className="wms-blank-table-empty-row">
+                            <td style={{ textAlign: 'center' }}>{rowNum}</td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                   <div style={{ lineHeight: '1.8', marginTop: '6px' }}>
                     - Đơn giá: theo bảng báo giá của bên B có sự xác nhận của Bên A.
                     <br />

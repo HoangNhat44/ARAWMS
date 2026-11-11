@@ -10,7 +10,34 @@ import { ResourceState, Table, Status, labels, quantity, datetime } from './Owne
 // Không cộng số lượng các đơn vị khác nhau; mỗi nguyên liệu được thể hiện trên một dòng riêng.
 function PlanItems({ items }) {
   return <Table headings={['Mã / tên nguyên liệu', 'Đơn vị', 'Số lượng dự kiến', 'Kiểm đạt', 'Lỗi / thiếu']} empty={!items.length}>
-    {items.map((item, index) => <tr key={`${item.materialId}-${index}`}><td><strong>{item.code || 'Chưa có mã'}</strong><small>{item.name}</small></td><td>{labels[item.unit] || item.unit || '—'}</td><td>{quantity(item.plannedQty)}</td><td>{quantity(item.verifiedQty)}</td><td>{quantity(item.defectiveOrShortQty)}</td></tr>)}
+    {items.map((item, index) => {
+      const rolls = item.rollDetails || item.selectedRolls || [];
+      return (
+        <tr key={`${item.materialId}-${index}`}>
+          <td>
+            <strong>{item.code || 'Chưa có mã'}</strong>
+            <small>{item.name}</small>
+            {rolls.length > 0 && (
+              <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                <span style={{ fontSize: '11px', color: '#0369a1', fontWeight: 600 }}>{rolls.length} cuộn:</span>
+                {rolls.map((r, rIdx) => (
+                  <span key={rIdx} style={{ fontSize: '10px', background: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: '3px' }}>
+                    {r.rollCode || `C-${rIdx + 1}`}: {r.lengthMeters}m {r.note ? `(${r.note})` : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+          </td>
+          <td>{labels[item.unit] || item.unit || '—'}</td>
+          <td>
+            {quantity(item.plannedQty)}
+            {rolls.length > 0 && <small style={{ display: 'block', color: '#0369a1' }}>({rolls.length} cuộn)</small>}
+          </td>
+          <td>{quantity(item.verifiedQty)}</td>
+          <td>{quantity(item.defectiveOrShortQty)}</td>
+        </tr>
+      );
+    })}
   </Table>;
 }
 
