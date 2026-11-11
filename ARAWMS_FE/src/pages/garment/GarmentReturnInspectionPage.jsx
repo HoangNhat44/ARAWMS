@@ -48,7 +48,6 @@ import {
   Calendar,
   Truck,
   Box,
-  Sparkles,
 } from 'lucide-react';
 import garmentTechnicalService from '../../services/garmentTechnicalService';
 
@@ -100,10 +99,6 @@ export default function GarmentReturnInspectionPage() {
   const [scanCode, setScanCode] = useState('');
   const [searchingOrder, setSearchingOrder] = useState(false);
   const [scannedOrderData, setScannedOrderData] = useState(null); // { order, rma, existingInspections }
-
-  // State: Đơn hàng gợi ý kiểm tra nhanh
-  const [recentOrders, setRecentOrders] = useState([]);
-  const [loadingRecentOrders, setLoadingRecentOrders] = useState(false);
 
   // State: Form kiểm tra KCS
   const [inspectionItems, setInspectionItems] = useState([]);
@@ -169,24 +164,8 @@ export default function GarmentReturnInspectionPage() {
     }
   };
 
-  // 2. Tải danh sách đơn hàng gần đây để gợi ý chọn nhanh
-  const fetchRecentOrders = async () => {
-    setLoadingRecentOrders(true);
-    try {
-      const res = await garmentTechnicalService.returnInspection.getRecentOrders();
-      if (res?.data) {
-        setRecentOrders(res.data || []);
-      }
-    } catch (err) {
-      console.error('Lỗi tải danh sách đơn gợi ý:', err);
-    } finally {
-      setLoadingRecentOrders(false);
-    }
-  };
-
   useEffect(() => {
     fetchInspections();
-    fetchRecentOrders();
     // Auto focus vào ô quét khi vào trang
     setTimeout(() => {
       scanInputRef.current?.focus();
@@ -529,9 +508,8 @@ export default function GarmentReturnInspectionPage() {
       setRejectReason('');
       setVideoUrl('');
 
-      // Refresh kết quả bảng dưới & danh sách gợi ý
+      // Refresh kết quả bảng dưới
       fetchInspections();
-      fetchRecentOrders();
       scanInputRef.current?.focus();
     } catch (err) {
       playBeep(false);
@@ -699,7 +677,6 @@ export default function GarmentReturnInspectionPage() {
         <button
           onClick={() => {
             fetchInspections();
-            fetchRecentOrders();
           }}
           style={{
             display: 'inline-flex',
@@ -1218,60 +1195,6 @@ export default function GarmentReturnInspectionPage() {
             </button>
           )}
         </form>
-
-        {/* GỢI Ý CHỌN NHANH ĐƠN HÀNG GẦN ĐÂY ĐỂ KIỂM THỬ HOẶC KHI MÃ VẠCH MỜ */}
-        {!scannedOrderData && recentOrders.length > 0 && (
-          <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #F3F4F6' }}>
-            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#4B5563', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Sparkles size={14} color="var(--ara-gold)" /> Đơn hàng gần đây trong hệ thống (Bấm để chọn & kiểm tra ngay):
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {recentOrders.map((ord) => {
-                const isReturn = ord.status === 'RETURN_REQUESTED' || ord.status === 'EXCHANGE_REQUESTED';
-                return (
-                  <button
-                    key={ord._id}
-                    type="button"
-                    onClick={() => {
-                      setScanCode(ord.orderCode);
-                      handleLookupOrder(null, ord.orderCode);
-                    }}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.45rem',
-                      padding: '0.4rem 0.75rem',
-                      borderRadius: '8px',
-                      border: isReturn ? '1px solid #FCD34D' : '1px solid #E5E7EB',
-                      background: isReturn ? '#FEF3C7' : '#F9FAFB',
-                      color: isReturn ? '#92400E' : '#374151',
-                      fontSize: '0.82rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-1px)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'none')}
-                  >
-                    <span style={{ fontWeight: 800, fontFamily: 'monospace' }}>{ord.orderCode}</span>
-                    <span style={{ color: '#6B7280', fontSize: '0.78rem' }}>({ord.customerId?.fullName || 'Khách lẻ'})</span>
-                    <span
-                      style={{
-                        fontSize: '0.7rem',
-                        padding: '0.1rem 0.35rem',
-                        borderRadius: '4px',
-                        background: '#FFFFFF',
-                        border: '1px solid rgba(0,0,0,0.1)',
-                      }}
-                    >
-                      {ord.status}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {/* SECTION 2: GHI LẠI QUÁ TRÌNH KIỂM TRA (HIỂN THỊ KHI ĐÃ QUÉT ĐƯỢC ĐƠN) */}
         {scannedOrderData && (
