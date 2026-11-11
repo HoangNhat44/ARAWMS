@@ -418,7 +418,8 @@ export async function getStaffUsers(user) {
   requireRule(permitted(user), 'Không có quyền truy cập', 'FORBIDDEN', 403);
   const users = await User.find({
     status: 'ACTIVE',
-    roleCode: { $in: ['WAREHOUSE_STAFF', 'WAREHOUSE_MANAGER', 'OWNER', 'ADMIN'] },
+    // Only warehouse staff pick goods; listing owners/managers made them the default assignee.
+    roleCode: 'WAREHOUSE_STAFF',
   })
     .select('_id fullName employeeCode email roleCode')
     .sort({ fullName: 1 })
@@ -813,7 +814,8 @@ export async function approveAndAssignRequest(ticketId, input, user) {
 
   requireRule(mongoose.isValidObjectId(input.assignedStaffId), 'Vui lòng chọn nhân viên kho thực hiện', 'STAFF_REQUIRED');
   const staff = await User.findById(input.assignedStaffId).lean();
-  requireRule(staff && staff.status === 'ACTIVE', 'Nhân viên kho không hợp lệ hoặc đã bị khóa', 'INVALID_STAFF');
+  requireRule(staff && staff.status === 'ACTIVE' && staff.roleCode === 'WAREHOUSE_STAFF',
+    'Chỉ được giao cho nhân viên kho đang hoạt động', 'INVALID_STAFF');
 
   requireRule(Array.isArray(input.lines) && input.lines.length > 0, 'Dữ liệu duyệt không hợp lệ', 'INVALID_LINES');
 

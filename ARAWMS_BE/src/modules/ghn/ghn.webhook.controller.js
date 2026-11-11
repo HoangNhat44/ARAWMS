@@ -60,6 +60,13 @@ export const applyGhnStatusToSalesOrder = async ({
     order.sourceDetails?.externalTrackingCode ||
     '';
 
+  // Repeated GHN polls/webhooks with the same status must not rewrite the order: every save bumps
+  // updatedAt, which the packing station treats as "order changed" and blocks scanning (ORDER_CHANGED).
+  const nothingChanged = previousGhnStatus === mapped.ghnStatus &&
+    previousOrderStatus === mapped.orderStatus &&
+    (order.warehouseFulfillment?.waybillCode || '') === effectiveWaybill;
+  if (nothingChanged) return { order, chatMessage: null, statusChanged: false, skipped: true };
+
   // [GBR-08] Nếu GHN báo hủy (cancel) khi đơn đang giữ chỗ -> giải phóng tồn kho giữ chỗ (-reservedQty)
   if (
     normalizedGhnStatus === 'cancel' &&
