@@ -189,7 +189,7 @@ export default function InboundProgressPage() {
   }, [ownerId]);
 
   return (
-    <main className="finished-goods-page">
+    <main className="finished-goods-page" style={{ padding: '1.5rem', maxWidth: '1440px', margin: '0 auto' }}>
       {/* Breadcrumb */}
       <nav className="product-breadcrumb" aria-label="Đường dẫn">
         <Link to="/">Trang chủ</Link>
@@ -200,12 +200,28 @@ export default function InboundProgressPage() {
       </nav>
 
       {/* Page Header */}
-      <div className="product-page-head finished-goods-hero">
+      <div className="product-page-head finished-goods-hero" style={{ marginBottom: '1.5rem' }}>
         <div className="finished-goods-intro">
-          <p className="product-eyebrow">VẬN HÀNH KHO / THEO DÕI NHẬP & CẤT HÀNG</p>
-          <h1>Tiến độ nhập kho</h1>
-          <p>
-            Theo dõi tiến trình kiểm nhận từ xưởng, tiến độ cất hàng (Putaway) vào từng ô kệ,
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              color: 'var(--ara-gold)',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              marginBottom: '0.25rem',
+            }}
+          >
+            <TrendingUp size={15} /> VẬN HÀNH KHO / THEO DÕI NHẬP & CẤT HÀNG
+          </div>
+          <h1 style={{ margin: '0 0 0.5rem 0', fontSize: '1.75rem', fontWeight: 800 }}>
+            Tiến độ nhập kho
+          </h1>
+          <p style={{ margin: 0, color: '#6B7280', fontSize: '0.92rem' }}>
+            Theo dõi tiến trình kiểm nhận từ xưởng may và nhà cung cấp, tiến độ cất hàng (Putaway) vào từng ô kệ,
             in tem mã vạch thành phẩm và phân bổ vị trí lưu trữ.
           </p>
         </div>
@@ -220,10 +236,157 @@ export default function InboundProgressPage() {
               loadRecentStockDocuments();
               loadPendingReceipts();
             }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <RefreshCw size={17} className={progressLoading ? 'animate-spin' : ''} />
+            <RefreshCw size={16} className={progressLoading ? 'animate-spin' : ''} />
             Làm mới tiến độ
           </button>
+        </div>
+      </div>
+
+      {/* KPI Cards Grid */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '1rem',
+          marginBottom: '1.5rem',
+        }}
+      >
+        <div
+          style={{
+            background: '#FFFFFF',
+            borderRadius: '10px',
+            padding: '1rem 1.25rem',
+            border: '1px solid var(--ara-border)',
+            boxShadow: 'var(--ara-shadow-sm)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+          }}
+        >
+          <div
+            style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '8px',
+              background: '#F3F4F6',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#374151',
+            }}
+          >
+            <Layers size={20} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.78rem', color: '#6B7280', fontWeight: 600 }}>TỔNG LỆNH & PHIẾU NHẬP</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827' }}>
+              {inboundProgress.length + technicalRequests.length + materialRequests.length}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: '#FFFFFF',
+            borderRadius: '10px',
+            padding: '1rem 1.25rem',
+            border: '1px solid #FDE68A',
+            boxShadow: 'var(--ara-shadow-sm)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+          }}
+        >
+          <div
+            style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '8px',
+              background: '#FEF3C7',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#D97706',
+            }}
+          >
+            <AlertTriangle size={20} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.78rem', color: '#B45309', fontWeight: 600 }}>CHỜ XẾP KỆ / CÒN TỒN</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#92400E' }}>
+              {inboundProgress.filter((p) => (p.lines || []).some((l) => l.remaining > 0)).length}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: '#FFFFFF',
+            borderRadius: '10px',
+            padding: '1rem 1.25rem',
+            border: '1px solid #A7F3D0',
+            boxShadow: 'var(--ara-shadow-sm)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+          }}
+        >
+          <div
+            style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '8px',
+              background: '#ECFDF5',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#059669',
+            }}
+          >
+            <CheckCircle2 size={20} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.78rem', color: '#059669', fontWeight: 600 }}>ĐÃ XẾP ĐỦ 100%</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#065F46' }}>
+              {inboundProgress.filter((p) => (p.lines || []).length > 0 && (p.lines || []).every((l) => l.remaining === 0)).length}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: '#FFFFFF',
+            borderRadius: '10px',
+            padding: '1rem 1.25rem',
+            border: '1px solid #E5E7EB',
+            boxShadow: 'var(--ara-shadow-sm)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+          }}
+        >
+          <div
+            style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '8px',
+              background: '#F9FAFB',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--ara-gold)',
+            }}
+          >
+            <Printer size={20} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.78rem', color: '#6B7280', fontWeight: 600 }}>PHIẾU NHẬP GẦN ĐÂY</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827' }}>
+              {recentDocuments.filter((d) => d.direction === 'IN').length}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -283,11 +446,35 @@ export default function InboundProgressPage() {
       />
 
       {/* 2. Phiếu nhập thành phẩm gần đây */}
-      <div className="fg-records" style={{ marginTop: '1.5rem' }}>
-        <div className="fg-records-head">
+      <div
+        style={{
+          background: '#FFFFFF',
+          borderRadius: '12px',
+          border: '1px solid var(--ara-border, #C8B9A6)',
+          boxShadow: 'var(--ara-shadow-sm)',
+          overflow: 'hidden',
+          marginBottom: '1.5rem',
+        }}
+      >
+        <div
+          style={{
+            padding: '1.25rem 1.5rem',
+            borderBottom: '1px solid var(--ara-border, #C8B9A6)',
+            background: '#FAFAFA',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            flexWrap: 'wrap',
+          }}
+        >
           <div>
-            <h2>Phiếu nhập thành phẩm gần đây</h2>
-            <p>Phiếu nhập mới nhất, kèm in tem mã vạch và chi tiết phân bổ kệ.</p>
+            <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#111827' }}>
+              Phiếu nhập thành phẩm gần đây
+            </h2>
+            <p style={{ margin: '0.2rem 0 0 0', color: '#6B7280', fontSize: '0.85rem' }}>
+              Phiếu nhập mới nhất, kèm in tem mã vạch và chi tiết phân bổ kệ.
+            </p>
           </div>
           <button
             className="btn-ara-secondary"
@@ -297,172 +484,222 @@ export default function InboundProgressPage() {
               loadPendingReceipts();
               loadInboundProgress();
             }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
           >
-            <RefreshCw size={17} /> Làm mới
+            <RefreshCw size={15} /> Làm mới
           </button>
         </div>
 
         {!recentDocuments.some((item) => item.direction === 'IN') && (
-          <p className="fg-empty">Chưa có phiếu nhập gần đây.</p>
+          <p style={{ padding: '2rem', textAlign: 'center', color: '#6B7280', margin: 0 }}>
+            Chưa có phiếu nhập gần đây.
+          </p>
         )}
 
         {recentDocuments.some((item) => item.direction === 'IN') && (
-          <section
-            className="fg-record-table"
-            style={{ ...panel, marginTop: '0' }}
-            aria-label="Danh sách phiếu nhập thành phẩm gần đây"
-          >
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: 'left' }}>Số chứng từ</th>
-                    <th>Loại</th>
-                    <th>Số dòng</th>
-                    <th>Đạt / xuất</th>
-                    <th>Trả sửa</th>
-                    <th>Ngày tạo</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentDocuments
-                    .filter((item) => item.direction === 'IN')
-                    .map((document) => (
-                      <tr key={document.id}>
-                        <td style={{ padding: '.6rem', borderBottom: '1px solid var(--ara-border)' }}>
-                          {document.documentCode}
-                        </td>
-                        <td style={{ textAlign: 'center' }}>{document.direction === 'IN' ? 'Nhập' : 'Xuất'}</td>
-                        <td style={{ textAlign: 'center' }}>{document.lineCount}</td>
-                        <td style={{ textAlign: 'center' }}>{document.totalQuantity}</td>
-                        <td style={{ textAlign: 'center' }}>
-                          {document.direction === 'IN'
-                            ? (document.items || []).reduce((sum, item) => sum + (item.repairQty || 0), 0)
-                            : '—'}
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          {new Date(document.createdAt).toLocaleString('vi-VN')}
-                        </td>
-                        <td>
-                          {document.direction === 'IN' && document.totalQuantity > 0 && (
-                            <div style={{ display: 'grid', gap: '.35rem' }}>
-                              <small>
-                                Ảnh mã: {document.barcodeImagesReady || 0}/{document.totalQuantity}
-                              </small>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
+              <thead>
+                <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                  <th style={{ textAlign: 'left', padding: '0.75rem 1rem', fontSize: '0.8rem', color: '#6B7280', fontWeight: 600 }}>Số chứng từ</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: '#6B7280', fontWeight: 600, textAlign: 'center' }}>Loại</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: '#6B7280', fontWeight: 600, textAlign: 'center' }}>Số dòng</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: '#6B7280', fontWeight: 600, textAlign: 'center' }}>Đạt / xuất</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: '#6B7280', fontWeight: 600, textAlign: 'center' }}>Trả sửa</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: '#6B7280', fontWeight: 600, textAlign: 'center' }}>Ngày tạo</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: '#6B7280', fontWeight: 600, textAlign: 'center' }}>Hành động</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentDocuments
+                  .filter((item) => item.direction === 'IN')
+                  .map((document) => (
+                    <tr key={document.id} style={{ borderBottom: '1px solid #E5E7EB', transition: 'background 0.15s ease' }}>
+                      <td style={{ padding: '0.85rem 1rem', fontSize: '0.88rem', fontWeight: 700, color: '#111827' }}>
+                        {document.documentCode}
+                      </td>
+                      <td style={{ textAlign: 'center', padding: '0.85rem 1rem', fontSize: '0.85rem' }}>
+                        <span style={{ padding: '0.15rem 0.5rem', borderRadius: '4px', background: '#ECFDF5', color: '#065F46', fontSize: '0.78rem', fontWeight: 600 }}>
+                          {document.direction === 'IN' ? 'Nhập' : 'Xuất'}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center', padding: '0.85rem 1rem', fontSize: '0.85rem', color: '#374151' }}>
+                        {document.lineCount}
+                      </td>
+                      <td style={{ textAlign: 'center', padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>
+                        {document.totalQuantity}
+                      </td>
+                      <td style={{ textAlign: 'center', padding: '0.85rem 1rem', fontSize: '0.85rem', color: '#6B7280' }}>
+                        {document.direction === 'IN'
+                          ? (document.items || []).reduce((sum, item) => sum + (item.repairQty || 0), 0)
+                          : '—'}
+                      </td>
+                      <td style={{ textAlign: 'center', padding: '0.85rem 1rem', fontSize: '0.82rem', color: '#6B7280' }}>
+                        {new Date(document.createdAt).toLocaleString('vi-VN')}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                        {document.direction === 'IN' && document.totalQuantity > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <button
+                              className="btn-ara-secondary"
+                              type="button"
+                              onClick={() => printDocumentBarcodes(document)}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', padding: '0.3rem 0.65rem' }}
+                            >
+                              <Printer size={13} /> In tem barcode
+                            </button>
+                            {(document.barcodeImagesReady || 0) < document.totalQuantity && (
                               <button
                                 className="btn-ara-secondary"
                                 type="button"
-                                onClick={() => printDocumentBarcodes(document)}
+                                onClick={() => retryDocumentBarcodeImages(document)}
+                                style={{ fontSize: '0.78rem', padding: '0.3rem 0.65rem' }}
                               >
-                                In tem barcode
+                                Tạo ảnh ({document.barcodeImagesReady || 0}/{document.totalQuantity})
                               </button>
-                              {(document.barcodeImagesReady || 0) < document.totalQuantity && (
-                                <button
-                                  className="btn-ara-secondary"
-                                  type="button"
-                                  onClick={() => retryDocumentBarcodeImages(document)}
-                                >
-                                  Tạo ảnh còn thiếu
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
         )}
+      </div>
 
-        {/* 3. Tiến độ cất hàng theo phiếu nhập */}
-        {recentDocuments.some((item) => item.direction === 'IN') && (
-          <section style={{ ...panel, marginTop: '1.25rem' }}>
-            <h2>Tiến độ cất hàng theo phiếu nhập</h2>
-            {recentDocuments
-              .filter((item) => item.direction === 'IN')
-              .map((item) => (
-                <div className="receiving-progress-row" key={item.id}>
-                  <strong>{item.documentCode}</strong>
-                  <span>
-                    Chưa phân bổ {item.unallocated ?? item.totalQuantity} · Chờ xếp {item.pending || 0} · Đã xếp{' '}
-                    {item.placed || 0}
-                  </span>
-                  <button
-                    className="btn-ara-secondary"
-                    type="button"
-                    disabled={detailLoading}
-                    onClick={() => showReceiptDetail(item.id)}
-                  >
-                    Chi tiết
-                  </button>
-                </div>
-              ))}
-
-            {detailLoading && <p role="status">Đang tải chi tiết phiếu...</p>}
-            {receiptDetail && (
-              <div className="receiving-progress-detail">
-                <h3>{receiptDetail.document.documentCode}</h3>
-                {receiptDetail.progress.map((row) => (
-                  <div key={row.skuId}>
-                    <strong>
-                      {products.flatMap((product) => product.skus).find((sku) => sku.id === row.skuId)?.skuCode ||
-                        row.skuId}
-                    </strong>
-                    <span>
-                      {' '}
-                      Chưa phân bổ {row.unallocated} · Chờ xếp {row.pending} · Đã xếp {row.placed}
-                    </span>
-                    {row.rows.map((place, index) => (
-                      <p key={`${place.allocationCode}-${index}`}>
-                        {place.location?.rackCode} → Tầng {place.location?.floorNo} → Ô {place.location?.binNo} (
-                        {place.location?.locationCode}): chờ {place.pending}, đã xếp {place.placed}
-                      </p>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* 4. Hàng chờ phân bổ vị trí */}
-        {pendingReceipts.length > 0 && (
-          <section style={{ ...panel, marginTop: '1.25rem' }}>
-            <h2>Hàng chờ phân bổ vị trí</h2>
-            {pendingReceipts.map((item) => (
-              <div className="receiving-progress-row" key={item.id}>
-                <strong>{item.documentCode}</strong>
-                <span>{item.unallocated} chiếc đạt chưa có ô đích</span>
+      {/* 3. Tiến độ cất hàng theo phiếu nhập */}
+      {recentDocuments.some((item) => item.direction === 'IN') && (
+        <div
+          style={{
+            background: '#FFFFFF',
+            borderRadius: '12px',
+            border: '1px solid var(--ara-border, #C8B9A6)',
+            boxShadow: 'var(--ara-shadow-sm)',
+            overflow: 'hidden',
+            marginBottom: '1.5rem',
+            padding: '1.25rem 1.5rem',
+          }}
+        >
+          <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.15rem', fontWeight: 700, color: '#111827' }}>
+            Tiến độ cất hàng theo phiếu nhập
+          </h2>
+          {recentDocuments
+            .filter((item) => item.direction === 'IN')
+            .map((item) => (
+              <div
+                className="receiving-progress-row"
+                key={item.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.75rem 0',
+                  borderBottom: '1px solid #E5E7EB',
+                }}
+              >
+                <strong style={{ color: '#111827' }}>{item.documentCode}</strong>
+                <span style={{ color: '#6B7280', fontSize: '0.88rem' }}>
+                  Chưa phân bổ {item.unallocated ?? item.totalQuantity} · Chờ xếp {item.pending || 0} · Đã xếp{' '}
+                  {item.placed || 0}
+                </span>
                 <button
                   className="btn-ara-secondary"
                   type="button"
-                  onClick={() => setLaterReceipt(item)}
+                  disabled={detailLoading}
+                  onClick={() => showReceiptDetail(item.id)}
+                  style={{ fontSize: '0.82rem', padding: '0.35rem 0.75rem' }}
                 >
-                  Phân bổ vị trí
+                  Chi tiết
                 </button>
               </div>
             ))}
-          </section>
-        )}
 
-        {laterReceipt && (
-          <PendingReceiptAllocation
-            key={laterReceipt.id}
-            receipt={laterReceipt}
-            products={products}
-            onClose={() => setLaterReceipt(null)}
-            onDone={async () => {
-              await loadRecentStockDocuments();
-              await loadPendingReceipts();
-              await showReceiptDetail(laterReceipt.id);
-              setLaterReceipt(null);
-            }}
-          />
-        )}
-      </div>
+          {detailLoading && <p role="status" style={{ color: '#6B7280', margin: '0.5rem 0 0 0' }}>Đang tải chi tiết phiếu...</p>}
+          {receiptDetail && (
+            <div className="receiving-progress-detail" style={{ marginTop: '1rem', padding: '1rem', background: '#F9FAFB', borderRadius: '8px' }}>
+              <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', fontWeight: 700 }}>{receiptDetail.document.documentCode}</h3>
+              {receiptDetail.progress.map((row) => (
+                <div key={row.skuId} style={{ marginBottom: '0.5rem' }}>
+                  <strong>
+                    {products.flatMap((product) => product.skus).find((sku) => sku.id === row.skuId)?.skuCode ||
+                      row.skuId}
+                  </strong>
+                  <span style={{ fontSize: '0.85rem', color: '#6B7280' }}>
+                    {' '}
+                    Chưa phân bổ {row.unallocated} · Chờ xếp {row.pending} · Đã xếp {row.placed}
+                  </span>
+                  {row.rows.map((place, index) => (
+                    <p key={`${place.allocationCode}-${index}`} style={{ margin: '0.2rem 0', fontSize: '0.8rem', color: '#374151' }}>
+                      {place.location?.rackCode} → Tầng {place.location?.floorNo} → Ô {place.location?.binNo} (
+                      {place.location?.locationCode}): chờ {place.pending}, đã xếp {place.placed}
+                    </p>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 4. Hàng chờ phân bổ vị trí */}
+      {pendingReceipts.length > 0 && (
+        <div
+          style={{
+            background: '#FFFFFF',
+            borderRadius: '12px',
+            border: '1px solid var(--ara-border, #C8B9A6)',
+            boxShadow: 'var(--ara-shadow-sm)',
+            overflow: 'hidden',
+            marginBottom: '1.5rem',
+            padding: '1.25rem 1.5rem',
+          }}
+        >
+          <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.15rem', fontWeight: 700, color: '#111827' }}>
+            Hàng chờ phân bổ vị trí
+          </h2>
+          {pendingReceipts.map((item) => (
+            <div
+              className="receiving-progress-row"
+              key={item.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.75rem 0',
+                borderBottom: '1px solid #E5E7EB',
+              }}
+            >
+              <strong style={{ color: '#111827' }}>{item.documentCode}</strong>
+              <span style={{ color: '#B45309', fontSize: '0.88rem' }}>{item.unallocated} chiếc đạt chưa có ô đích</span>
+              <button
+                className="btn-ara-secondary"
+                type="button"
+                onClick={() => setLaterReceipt(item)}
+                style={{ fontSize: '0.82rem', padding: '0.35rem 0.75rem' }}
+              >
+                Phân bổ vị trí
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {laterReceipt && (
+        <PendingReceiptAllocation
+          key={laterReceipt.id}
+          receipt={laterReceipt}
+          products={products}
+          onClose={() => setLaterReceipt(null)}
+          onDone={async () => {
+            await loadRecentStockDocuments();
+            await loadPendingReceipts();
+            await showReceiptDetail(laterReceipt.id);
+            setLaterReceipt(null);
+          }}
+        />
+      )}
 
       {/* Dialog chi tiết lệnh yêu cầu nhập kho */}
       {inboundDetail && (

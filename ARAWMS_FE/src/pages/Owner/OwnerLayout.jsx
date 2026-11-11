@@ -6,11 +6,12 @@
  */
 import { Suspense, useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Alert, Avatar, Button, Drawer, Dropdown, Grid, Layout, Menu, Result, Tooltip } from 'antd';
+import { Alert, Avatar, Button, Dropdown, Grid, Result, Tooltip } from 'antd';
 import { BarChart3, ClipboardCheck, FileText, History, Layers, LogOut, Menu as MenuIcon, Package, Settings, Users, User as UserIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { ResourceState } from './OwnerUI';
 import OwnerHeaderTools from './OwnerHeaderTools';
+import OwnerSidebar from './OwnerSidebar';
 import '../../styles/owner.css';
 
 // Một đường dẫn cho một màn hình; chức năng chi tiết giữ cùng mục điều hướng với danh sách cha.
@@ -46,27 +47,68 @@ function OwnerWorkspace({ user }) {
     setBusy(true); setError('');
     try { await logout(); navigate('/login', { replace: true }); } catch (err) { setError(err.message); } finally { setBusy(false); }
   };
-  const menu = <Menu theme="dark" mode="inline" selectedKeys={selected ? [selected] : []} inlineCollapsed={desktop && collapsed}
-    items={groups.map((group) => ({ type: 'group', label: group.title, key: group.title, children: group.items.map(([key, label, Icon]) => ({ key, icon: <Icon size={18} aria-hidden="true" />, label })) }))}
-    onClick={({ key }) => { navigate(`/owner/${key}`); setDrawer(false); }} />;
-  const brand = <Link className="owner-brand" to="/owner/dashboard" aria-label="AraStore — Tổng quan"><img src="/logo.png" alt="" /><span><strong>AraStore</strong></span></Link>;
   const account = { items: [{ key: 'profile', label: 'Tài khoản & bảo mật', icon: <UserIcon size={16} />, onClick: () => navigate('/owner/account') },
     { type: 'divider' }, { key: 'logout', danger: true, disabled: busy, label: busy ? 'Đang đăng xuất…' : 'Đăng xuất', icon: <LogOut size={16} />, onClick: signOut }] };
-  return <Layout className="owner-shell">
-    {desktop && <Layout.Sider className="owner-sider" width={248} collapsedWidth={80} collapsed={collapsed} theme="dark" trigger={null}>
-      {brand}<nav aria-label="Điều hướng quản lý">{menu}</nav></Layout.Sider>}
-    <Drawer open={!desktop && drawer} onClose={() => setDrawer(false)} title={brand} placement="left" width={288} className="owner-nav-drawer" styles={{ body: { padding: 0 } }}>
-      <nav aria-label="Điều hướng quản lý trên thiết bị di động">{menu}</nav></Drawer>
-    <Layout className={`owner-workspace ${desktop ? collapsed ? 'owner-workspace-collapsed' : 'owner-workspace-expanded' : ''}`}>
-      <Layout.Header className="owner-header"><div className="owner-header-context"><Tooltip title={desktop ? collapsed ? 'Mở rộng điều hướng' : 'Thu gọn điều hướng' : 'Mở điều hướng'}>
-        <Button type="text" className="owner-icon-button" aria-label={desktop ? collapsed ? 'Mở rộng điều hướng' : 'Thu gọn điều hướng' : 'Mở điều hướng'} aria-expanded={desktop ? !collapsed : drawer}
-          onClick={() => desktop ? setCollapsed(!collapsed) : setDrawer(true)} icon={desktop ? collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} /> : <MenuIcon size={20} />} /></Tooltip>
-        <span className="owner-header-brand">AraStore</span></div>
-        <div className="owner-header-actions"><OwnerHeaderTools groups={groups} />
-          <Dropdown menu={account} trigger={['click']}><Button type="text" className="owner-profile-button" aria-label="Mở menu tài khoản"><Avatar size={32}>{user.fullName?.trim()?.[0] || 'O'}</Avatar><span><strong>{user.fullName}</strong><small>Chủ cửa hàng</small></span></Button></Dropdown>
-        </div></Layout.Header>
-      <div className="owner-main">
-        {error && <Alert type="error" showIcon title={error} role="alert" />}<Suspense fallback={<ResourceState resource={{ loading: true }} />}><Outlet /></Suspense></div>
-    </Layout>
-  </Layout>;
+  return (
+    <div className="owner-shell">
+      {/* Backdrop overlay khi mở mobile sidebar */}
+      {drawer && (
+        <div
+          className="owner-sidebar-backdrop"
+          onClick={() => setDrawer(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Unified Owner Sidebar synced 100% with Accountant Sidebar */}
+      <OwnerSidebar
+        groups={groups}
+        selected={selected}
+        collapsed={collapsed}
+        onToggleCollapse={() => setCollapsed(!collapsed)}
+        mobileOpen={drawer}
+        onCloseMobile={() => setDrawer(false)}
+      />
+
+      <div className={`owner-workspace ${collapsed ? 'owner-workspace-collapsed' : 'owner-workspace-expanded'}`}>
+        <header className="owner-header">
+          <div className="owner-header-context">
+            <Tooltip rootClassName="owner-tooltip" title={desktop ? (collapsed ? 'Mở rộng điều hướng' : 'Thu gọn điều hướng') : 'Mở điều hướng'}>
+              <Button
+                type="text"
+                className="owner-icon-button"
+                aria-label={desktop ? (collapsed ? 'Mở rộng điều hướng' : 'Thu gọn điều hướng') : 'Mở điều hướng'}
+                aria-expanded={desktop ? !collapsed : drawer}
+                onClick={() => (desktop ? setCollapsed(!collapsed) : setDrawer(true))}
+                icon={desktop ? (collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />) : <MenuIcon size={18} />}
+              />
+            </Tooltip>
+            <div className="owner-header-titles">
+              <span className="owner-header-brand">AraStore WMS</span>
+              <span className="owner-header-sep">/</span>
+              <span className="owner-header-page-title" title={title}>{title}</span>
+            </div>
+          </div>
+          <div className="owner-header-actions">
+            <OwnerHeaderTools groups={groups} />
+            <Dropdown menu={account} trigger={['click']} overlayClassName="owner-profile-dropdown" rootClassName="owner-profile-dropdown-root">
+              <Button type="text" className="owner-profile-button" aria-label="Mở menu tài khoản">
+                <Avatar size={28} className="owner-avatar">{user.fullName?.trim()?.[0] || 'O'}</Avatar>
+                <span className="owner-profile-info">
+                  <strong>{user.fullName}</strong>
+                  <small>Chủ cửa hàng</small>
+                </span>
+              </Button>
+            </Dropdown>
+          </div>
+        </header>
+        <div className="owner-main">
+          {error && <Alert type="error" showIcon title={error} role="alert" />}
+          <Suspense fallback={<ResourceState resource={{ loading: true }} />}>
+            <Outlet />
+          </Suspense>
+        </div>
+      </div>
+    </div>
+  );
 }

@@ -30,7 +30,7 @@ export default function OwnerHeaderTools({ groups }) {
     setSearchOpen(false);
     navigate(path);
   };
-  const searchField = <AutoComplete className="owner-header-search" value={search} options={options}
+  const searchField = <AutoComplete className="owner-header-search" popupClassName="owner-search-popup" value={search} options={options}
     onChange={setSearch} onSelect={selectPage} notFoundContent="Không tìm thấy chức năng phù hợp"
     defaultActiveFirstOption aria-label="Tìm chức năng">
     <Input allowClear prefix={<Search size={18} aria-hidden="true" />} placeholder="Tìm chức năng…" maxLength={100} aria-label="Tìm chức năng" />
@@ -56,11 +56,11 @@ export default function OwnerHeaderTools({ groups }) {
 
   return <>
     <div className="owner-header-search-desktop">{searchField}</div>
-    <div className="owner-header-search-mobile"><Popover trigger="click" placement="bottomRight" open={searchOpen}
+    <div className="owner-header-search-mobile"><Popover trigger="click" placement="bottomRight" open={searchOpen} overlayClassName="owner-search-popover"
       onOpenChange={(open) => { setSearchOpen(open); if (open) setNotificationsOpen(false); }} content={searchField}>
       <Button type="text" className="owner-icon-button" aria-label="Mở tìm kiếm" aria-expanded={searchOpen} icon={<Search size={20} />} />
     </Popover></div>
-    <Popover trigger="click" placement="bottomRight" open={notificationsOpen} content={notifications}
+    <Popover trigger="click" placement="bottomRight" open={notificationsOpen} content={notifications} overlayClassName="owner-notifications-popover"
       onOpenChange={(open) => { setNotificationsOpen(open); if (open) { setSearchOpen(false); reports.reload(); } }}>
       <Button type="text" className={`owner-icon-button${notificationsOpen ? ' owner-notifications-active' : ''}`}
         aria-label={`Thông báo${total == null ? '' : `: ${total} báo cáo chưa xem`}`} aria-expanded={notificationsOpen}>

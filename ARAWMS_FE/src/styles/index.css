@@ -6,54 +6,96 @@
  */
 /* ========================================================
    ARA ATELIER & WAREHOUSE MANAGEMENT SYSTEM (ARAWMS)
-   THEME DESIGN SYSTEM - EDITORIAL LUXURY & REFINED BEIGE
+   UNIFIED ENTERPRISE DESIGN SYSTEM - ACCOUNTANT BENCHMARK
+   Colors: Deep Noir (#141210), Bronze Gold (#8A6A46), Warm Stone (#E8DFD3)
    ======================================================== */
 
 :root {
-  /* Core Brand Colors */
-  --ara-bg: #F4EFEB;
-  --ara-bg-surface: #FAF7F2;
+  /* Core Brand Colors (Synchronized 100% with Accountant Standard) */
+  --ara-bg: #E8DFD3;
+  --ara-bg-surface: #FFFFFF;
   --ara-bg-card: #FFFFFF;
-  --ara-bg-muted: #EBE4DA;
-  --ara-bg-soft: #F0EAE1;
+  --ara-bg-muted: #DDD2C4;
+  --ara-bg-soft: #F3EDE4;
 
   /* Typography Colors */
-  --ara-noir: #1C1A17;
-  --ara-noir-soft: #2D2926;
-  --ara-text: #34302C;
-  --ara-text-muted: #7E766D;
-  --ara-text-light: #A49C92;
+  --ara-noir: #141210;
+  --ara-noir-soft: #24201C;
+  --ara-text: #26221E;
+  --ara-text-muted: #574F46;
+  --ara-text-light: #786E63;
 
-  /* Brand Accents (Champagne Gold & Warm Taupe) */
-  --ara-gold: #9F8365;
-  --ara-gold-light: #C6B39C;
-  --ara-gold-hover: #846B50;
-  --ara-gold-subtle: rgba(159, 131, 101, 0.12);
+  /* Brand Accents (Rich Bronze Gold) */
+  --ara-gold: #8A6A46;
+  --ara-gold-light: #D4B48C;
+  --ara-gold-hover: #6E5233;
+  --ara-gold-subtle: #EFE6DA;
 
   /* Borders & Shadows */
-  --ara-border: #E3D9CD;
-  --ara-border-subtle: rgba(28, 26, 23, 0.08);
-  --ara-border-focus: #9F8365;
-  --ara-shadow-sm: 0 2px 8px rgba(28, 26, 23, 0.04);
-  --ara-shadow-md: 0 10px 30px -5px rgba(28, 26, 23, 0.08);
-  --ara-shadow-lg: 0 25px 50px -12px rgba(28, 26, 23, 0.12);
+  --ara-border: #C8B9A6;
+  --ara-border-subtle: #C8B9A6;
+  --ara-border-focus: #8A6A46;
+  --ara-shadow-sm: 0 2px 8px rgba(20, 18, 16, 0.06);
+  --ara-shadow-md: 0 10px 30px -5px rgba(20, 18, 16, 0.1);
+  --ara-shadow-lg: 0 25px 50px -12px rgba(20, 18, 16, 0.15);
 
   /* Status Colors */
-  --ara-error: #B93838;
-  --ara-error-bg: #FDF2F2;
-  --ara-success: #2E7D59;
-  --ara-success-bg: #F1F8F5;
+  --ara-error: #A62626;
+  --ara-error-bg: #FCE4E4;
+  --ara-success: #1E6B47;
+  --ara-success-bg: #E3F5EC;
+  --ara-warning: #B45309;
+  --ara-warning-bg: #FEF0C7;
 
-  /* Typography */
-  --font-serif: 'Cormorant Garamond', Georgia, serif;
-  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* WMS Standard Tokens (Synchronized with Accountant Benchmark) */
+  --wms-primary: #141210;
+  --wms-primary-hover: #24201C;
+  --wms-accent: #8A6A46;
+  --wms-accent-light: #D4B48C;
+  --wms-accent-hover: #6E5233;
+  --wms-primary-subtle: #EFE6DA;
+  --wms-secondary: #574F46;
+
+  --wms-bg-app: #E8DFD3;
+  --wms-bg-surface: #FFFFFF;
+  --wms-bg-subtle: #F3EDE4;
+  --wms-bg-muted: #DDD2C4;
+  --wms-border: #C8B9A6;
+  --wms-border-strong: #AE9C86;
+
+  --wms-text-primary: #141210;
+  --wms-text-body: #26221E;
+  --wms-text-secondary: #574F46;
+  --wms-text-light: #786E63;
+  --wms-text-inverse: #FAF7F2;
+
+  --wms-success: #1E6B47;
+  --wms-success-bg: #E3F5EC;
+  --wms-success-border: #86CFA8;
+
+  --wms-warning: #B45309;
+  --wms-warning-text: #9A5B06;
+  --wms-warning-bg: #FEF0C7;
+  --wms-warning-border: #F5B95F;
+
+  --wms-danger: #A62626;
+  --wms-danger-bg: #FCE4E4;
+  --wms-danger-border: #EDA1A1;
+
+  --wms-info: #6E5233;
+  --wms-info-bg: #EFE6DA;
+  --wms-info-border: #C8B9A6;
+
+  /* Typography - Enforce Inter across the application */
+  --font-serif: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   /* Dimensions & Radius */
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 18px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
   --radius-full: 9999px;
-  --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .order-print-labels { display: none; }

@@ -92,7 +92,7 @@ body {
 }
 
 .wms-container {
-  max-width: 1600px;
+  max-width: 1440px;
   margin: 0 auto;
   display: grid;
   gap: 24px;

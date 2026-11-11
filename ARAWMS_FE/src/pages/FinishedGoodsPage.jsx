@@ -283,7 +283,7 @@ export default function FinishedGoodsPage({ isStaffMode = false }) {
   };
 
   return (
-    <main className="finished-goods-page">
+    <main className="finished-goods-page" style={{ padding: '1.5rem', maxWidth: '1440px', margin: '0 auto' }}>
       {/* Breadcrumb */}
       <nav className="product-breadcrumb" aria-label="Đường dẫn">
         <Link to="/">Trang chủ</Link>

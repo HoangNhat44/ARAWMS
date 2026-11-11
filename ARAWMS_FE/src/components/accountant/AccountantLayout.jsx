@@ -43,6 +43,8 @@ const AccountantLayout = () => {
       <div className="ara-acc-main-wrapper">
         <AccountantHeader
           onToggleMobileSidebar={() => setMobileSidebarOpen((prev) => !prev)}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
         />
         <main className="ara-acc-content">
           <Outlet />

@@ -45,6 +45,7 @@ import GarmentCuttingAndRemnantPage from '../pages/garment/GarmentCuttingAndRemn
 import GarmentLayout from '../components/garment/GarmentLayout';
 import WarehouseManagerLayout from '../components/warehouse/WarehouseManagerLayout';
 import WarehouseStaffLayout from '../components/warehouse/WarehouseStaffLayout';
+import SellerLayout from '../components/seller/SellerLayout';
 import AccountantRoutes from './AccountantRoutes';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -129,7 +130,7 @@ export default function AppRouter() {
         <Route path="/account" element={<ProtectedRoute><AccountEntry /></ProtectedRoute>} />
 
         {/* Phân hệ Seller Workspace (Bán hàng & CSKH đa kênh, Quản lý đơn hàng, TMĐT, RMA) */}
-        <Route element={<ProtectedRoute role="SELLER" />}>
+        <Route element={<ProtectedRoute role="SELLER"><SellerLayout /></ProtectedRoute>}>
           <Route path="/seller/chat" element={<SellerChatPage />} />
           <Route path="/seller/orders" element={<SellerOrdersPage />} />
         </Route>

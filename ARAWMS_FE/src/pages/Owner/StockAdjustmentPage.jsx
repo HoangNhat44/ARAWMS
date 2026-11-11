@@ -53,7 +53,8 @@ function ApprovalForm({ data, setBusy, onDone }) {
       <p>Sau khi duyệt, quản lý kho thực hiện điều chỉnh. Phiên chỉ hoàn tất khi các điều chỉnh đã được xử lý.</p><WmsButton className="btn-ara-primary" disabled={saving || !ownerRequired || !counted}>{saving ? 'Đang duyệt…' : 'Xác nhận duyệt báo cáo'}</WmsButton></form>
       : ['FROZEN_COUNTING', 'CANCELLED'].includes(stocktake.status) ? <p>{stocktake.status === 'FROZEN_COUNTING' ? 'Phiên đang kiểm đếm. Báo cáo được cập nhật theo kết quả đã ghi nhận; chỉ có thể duyệt sau khi hoàn tất kiểm đếm và gửi duyệt.' : 'Phiên kiểm kê đã hủy.'}</p> : <p>Người duyệt: {stocktake.approvalInfo?.approvedByUserId || '—'} · {datetime(stocktake.approvalInfo?.approvedAt)}<br />Lý do: {stocktake.approvalInfo?.adjustmentReason || '—'}<br />Kế hoạch tồn lâu: {stocktake.approvalInfo?.agingStockActionPlan || 'Không có'}</p>}
       <AntModal open={confirming} title={`Duyệt phiên ${stocktake.sessionCode}?`} okText="Xác nhận duyệt" cancelText="Quay lại" confirmLoading={saving} onOk={approve}
-        onCancel={() => { if (!saving) setConfirming(false); }} closable={!saving} maskClosable={!saving} keyboard={!saving}>
+        onCancel={() => { if (!saving) setConfirming(false); }} closable={!saving} maskClosable={!saving} keyboard={!saving}
+        className="owner-modal" rootClassName="owner-modal-root">
         <p>Quyết định sẽ được ghi nhận với tài khoản Owner hiện tại. Sau khi duyệt, phiên chờ quản lý kho thực hiện điều chỉnh; tồn kho chưa thay đổi tại bước này.</p><Notice error={error} />
       </AntModal></div>;
 }

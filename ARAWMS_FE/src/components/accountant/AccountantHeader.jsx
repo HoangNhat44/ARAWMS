@@ -1,24 +1,70 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Bell, LogOut, ChevronRight, CheckCheck, AlertTriangle, Info, Clock, X, ArrowRight, Menu } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { AutoComplete, Badge, Button, Empty, Input, Popover, Skeleton, Dropdown, Avatar, Tooltip } from 'antd';
+import {
+  Search,
+  Bell,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+  Menu,
+  AlertTriangle,
+  Info,
+  Clock,
+  X,
+  ArrowRight,
+  FileText,
+  User,
+  CheckCheck,
+} from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import { FLATTENED_ACCOUNTANT_NAV } from './accountantNavConfig';
+import { ACCOUNTANT_NAV_GROUPS, FLATTENED_ACCOUNTANT_NAV } from './accountantNavConfig';
 import { notificationService } from '../../services/notificationService';
 import { getSocket } from '../../services/socketService';
+import './accountantLayout.css';
+import '../../styles/wmsLayout.css';
 
-const AccountantHeader = ({ onToggleMobileSidebar }) => {
+const normalize = (value) =>
+  (value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .trim();
+
+const AccountantHeader = ({
+  onToggleMobileSidebar,
+  collapsed = false,
+  onToggleCollapse = () => {},
+}) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
+  // Search state
+  const [search, setSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+
   // Notification state
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [isOpenNotif, setIsOpenNotif] = useState(false);
   const [isLoadingNotifs, setIsLoadingNotifs] = useState(false);
   const [notifError, setNotifError] = useState(null);
-  const [toastNotif, setToastNotif] = useState(null); // Realtime floating banner
-  const notifRef = useRef(null);
+  const [toastNotif, setToastNotif] = useState(null);
+
+  // Check desktop vs mobile breakpoint
+  const [isDesktop, setIsDesktop] = useState(
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Tự động xác định mục đang mở trên Sidebar theo URL hiện tại
   const currentNavItem =
@@ -27,7 +73,7 @@ const AccountantHeader = ({ onToggleMobileSidebar }) => {
     ) || FLATTENED_ACCOUNTANT_NAV[0];
 
   const displayName = user?.fullName || user?.username || 'Kế toán kho';
-  const displayRole = user?.roleCode || user?.roles?.[0] || 'ACCOUNTANT';
+  const displayRole = user?.roleCode || user?.roles?.[0] || 'Kế toán kho';
   const initials = displayName
     .split(' ')
     .slice(-2)
@@ -39,13 +85,52 @@ const AccountantHeader = ({ onToggleMobileSidebar }) => {
     navigate('/login');
   };
 
+  // Close popovers on navigation
+  useEffect(() => {
+    setNotificationsOpen(false);
+    setSearchOpen(false);
+    setSearch('');
+  }, [location.pathname, location.search]);
+
+  // Options cho ô tìm kiếm chức năng kế toán
+  const searchOptions = useMemo(() => {
+    const term = normalize(search);
+    return (ACCOUNTANT_NAV_GROUPS || []).flatMap((group) =>
+      (group.items || [])
+        .filter((item) => {
+          if (!term) return true;
+          const searchHaystack = normalize(
+            `${item.label} ${group.groupTitle} ${item.path} ${item.description || ''} ${item.ucCode || ''}`
+          );
+          return searchHaystack.includes(term);
+        })
+        .map((item) => ({
+          value: item.path,
+          labelStr: `${item.label} ${group.groupTitle}`,
+          label: (
+            <div style={{ display: 'flex', flexDirection: 'column', padding: '2px 0' }}>
+              <strong style={{ fontSize: 13, color: 'var(--wms-text-primary)' }}>{item.label}</strong>
+              <small style={{ color: 'var(--wms-secondary)', fontSize: 11 }}>
+                {group.groupTitle} {item.ucCode ? `• ${item.ucCode}` : ''}
+              </small>
+            </div>
+          ),
+        }))
+    );
+  }, [search]);
+
+  const selectPage = (path) => {
+    setSearch('');
+    setSearchOpen(false);
+    if (path) navigate(path);
+  };
+
   // 1. Fetch notifications từ backend
   const fetchNotifications = async () => {
     try {
       setIsLoadingNotifs(true);
       setNotifError(null);
       const res = await notificationService.getNotifications({ role: 'ACCOUNTANT', limit: 40 });
-      // Hỗ trợ cả hai cấu trúc response: res.data là mảng hoặc res.data là object { items, unreadCount }
       const notifList = Array.isArray(res?.items)
         ? res.items
         : Array.isArray(res?.data)
@@ -73,11 +158,10 @@ const AccountantHeader = ({ onToggleMobileSidebar }) => {
     }
   };
 
-  // 2. Realtime WebSocket listener & Reconnect
+  // 2. Realtime WebSocket listener & Polling dự phòng
   useEffect(() => {
     fetchNotifications();
 
-    // Polling dự phòng mỗi 25s đảm bảo tính đồng bộ kể cả khi chập chờn mạng
     const interval = setInterval(() => {
       fetchNotifications();
     }, 25000);
@@ -102,8 +186,6 @@ const AccountantHeader = ({ onToggleMobileSidebar }) => {
           return [newNotif, ...list];
         });
         setUnreadCount((prev) => prev + 1);
-
-        // Bật Toast nổi realtime trên màn hình trong 8s
         setToastNotif(newNotif);
       };
 
@@ -131,17 +213,6 @@ const AccountantHeader = ({ onToggleMobileSidebar }) => {
     }
   }, [toastNotif]);
 
-  // Click outside to close notification dropdown
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (notifRef.current && !notifRef.current.contains(e.target)) {
-        setIsOpenNotif(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   // Handle click on a single notification
   const handleItemClick = async (item) => {
     try {
@@ -158,7 +229,7 @@ const AccountantHeader = ({ onToggleMobileSidebar }) => {
       console.error('Lỗi đánh dấu đã đọc:', err);
     }
 
-    setIsOpenNotif(false);
+    setNotificationsOpen(false);
     if (item.targetUrl) {
       navigate(item.targetUrl);
     }
@@ -192,191 +263,255 @@ const AccountantHeader = ({ onToggleMobileSidebar }) => {
     return `${diffDays} ngày trước`;
   };
 
+  // Ô tìm kiếm AutoComplete
+  const searchField = (
+    <AutoComplete
+      className="wms-header-search owner-header-search"
+      value={search}
+      options={searchOptions}
+      onChange={setSearch}
+      onSelect={selectPage}
+      notFoundContent="Không tìm thấy chức năng phù hợp"
+      defaultActiveFirstOption
+      aria-label="Tìm chức năng kế toán"
+    >
+      <Input
+        allowClear
+        prefix={<Search size={16} aria-hidden="true" />}
+        placeholder="Tìm chức năng kế toán..."
+        maxLength={100}
+        aria-label="Tìm chức năng kế toán"
+      />
+    </AutoComplete>
+  );
+
+  // Nội dung Popover thông báo
+  const notificationContent = (
+    <section className="owner-notifications" aria-label="Danh sách thông báo kế toán">
+      <div className="owner-notifications-heading">
+        <h2>Thông báo</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{unreadCount > 0 ? `${unreadCount} chưa xem` : 'Không có mới'}</span>
+          {unreadCount > 0 && (
+            <Button
+              type="link"
+              size="small"
+              onClick={handleMarkAllRead}
+              style={{ padding: 0, height: 'auto', fontSize: 12 }}
+            >
+              <CheckCheck size={13} style={{ display: 'inline', marginRight: 2 }} />
+              Đã đọc tất cả
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="owner-notifications-list" aria-busy={isLoadingNotifs}>
+        {isLoadingNotifs ? (
+          <div style={{ padding: 12 }}>
+            <Skeleton active paragraph={{ rows: 3 }} />
+          </div>
+        ) : notifError ? (
+          <div style={{ padding: 16, textAlign: 'center' }}>
+            <AlertTriangle size={24} style={{ margin: '0 auto 8px', color: '#f59e0b', display: 'block' }} />
+            <p style={{ margin: 0, fontSize: 13 }}>{notifError}</p>
+            <Button size="small" onClick={fetchNotifications} style={{ marginTop: 8 }}>
+              Thử lại
+            </Button>
+          </div>
+        ) : !notifications.length ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="Bạn không có thông báo nào"
+            style={{ margin: '20px 0' }}
+          />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {notifications.map((item) => {
+              const isDeviation = item.type === 'CONTRACT_DEVIATION';
+              return (
+                <div
+                  key={item._id}
+                  className={`owner-notification-item ${!item.isRead ? 'is-unread' : ''}`}
+                  onClick={() => handleItemClick(item)}
+                >
+                  <span className={`owner-notification-icon ${isDeviation ? 'deviation' : ''}`}>
+                    {isDeviation ? <AlertTriangle size={18} /> : <Info size={18} />}
+                  </span>
+                  <span className="owner-notification-copy">
+                    <strong>{item.title}</strong>
+                    <span>{item.message}</span>
+                    <time dateTime={item.createdAt}>
+                      <Clock size={11} style={{ display: 'inline', marginRight: 4 }} />
+                      {formatTimeAgo(item.createdAt)}
+                    </time>
+                  </span>
+                  {!item.isRead && <span className="owner-notification-dot" aria-label="Chưa xem" />}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <button
+        type="button"
+        className="owner-notifications-footer"
+        onClick={() => {
+          setNotificationsOpen(false);
+          navigate('/accountant/contract-deviations');
+        }}
+      >
+        Xem toàn bộ danh sách sai lệch hợp đồng →
+      </button>
+    </section>
+  );
+
+  // Menu Dropdown Profile Kế toán
+  const accountMenu = {
+    items: [
+      {
+        key: 'header-user-info',
+        label: (
+          <div style={{ padding: '4px 0' }}>
+            <div style={{ fontWeight: 600, color: 'var(--wms-text-primary)' }}>{displayName}</div>
+            <div style={{ fontSize: 12, color: 'var(--wms-secondary)' }}>{displayRole}</div>
+          </div>
+        ),
+        disabled: true,
+      },
+      { type: 'divider' },
+      {
+        key: 'account-profile',
+        icon: <User size={15} />,
+        label: 'Xem hồ sơ cá nhân',
+        onClick: () => navigate('/accountant'),
+      },
+      {
+        key: 'account-logout',
+        danger: true,
+        icon: <LogOut size={15} />,
+        label: 'Đăng xuất',
+        onClick: handleLogout,
+      },
+    ],
+  };
+
+  const title = currentNavItem?.label || 'Bảng điều khiển Kế toán';
+
   return (
     <>
-      <header className="ara-acc-header">
-        {/* Left: Mobile Hamburger, Dynamic Breadcrumb & Title */}
-        <div className="ara-acc-header-left">
-          <button
-            type="button"
-            className="ara-acc-mobile-menu-btn"
-            onClick={onToggleMobileSidebar}
-            aria-label="Mở thanh điều hướng"
-            title="Menu chức năng kế toán"
+      <header className="wms-header owner-header ara-acc-header">
+        {/* Phía trái: Menu toggle & Phân cấp thương hiệu/tiêu đề */}
+        <div className="wms-header-context owner-header-context">
+          <Tooltip
+            title={
+              isDesktop
+                ? collapsed
+                  ? 'Mở rộng điều hướng'
+                  : 'Thu gọn điều hướng'
+                : 'Mở điều hướng'
+            }
           >
-            <Menu size={20} />
-          </button>
-          <nav className="ara-acc-breadcrumb" aria-label="Breadcrumb">
-            <span>AraStore WMS</span>
-            <ChevronRight size={13} aria-hidden="true" />
-            <span>{currentNavItem?.groupTitle || 'Tổng quan'}</span>
-          </nav>
-
-          <div className="ara-acc-header-title-row">
-            <h1 className="ara-acc-header-title">
-              {currentNavItem?.label || 'Bảng điều khiển Kế toán'}
-            </h1>
+            <Button
+              type="text"
+              className="wms-icon-button owner-icon-button"
+              aria-label={
+                isDesktop
+                  ? collapsed
+                    ? 'Mở rộng điều hướng'
+                    : 'Thu gọn điều hướng'
+                  : 'Mở điều hướng'
+              }
+              aria-expanded={isDesktop ? !collapsed : false}
+              onClick={() => (isDesktop ? onToggleCollapse() : onToggleMobileSidebar())}
+              icon={
+                isDesktop ? (
+                  collapsed ? (
+                    <ChevronRight size={18} />
+                  ) : (
+                    <ChevronLeft size={18} />
+                  )
+                ) : (
+                  <Menu size={18} />
+                )
+              }
+            />
+          </Tooltip>
+          <div className="wms-header-titles owner-header-titles">
+            <span className="wms-header-brand owner-header-brand">AraStore WMS</span>
+            <span className="wms-header-sep owner-header-sep">/</span>
+            <span className="wms-header-page-title owner-header-page-title" title={title}>
+              {title}
+            </span>
           </div>
         </div>
 
-        {/* Right: Quick Search, Alerts, User Badge */}
-        <div className="ara-acc-header-right">
-          <div className="ara-acc-search-box">
-            <Search size={15} className="ara-acc-search-icon" aria-hidden="true" />
-            <input
-              type="search"
-              className="ara-acc-search-input"
-              aria-label="Tìm kiếm nhanh chứng từ, mã hợp đồng, vận đơn"
-              placeholder="Tìm mã HĐ, phiếu chi, vận đơn..."
-            />
-          </div>
+        {/* Phía phải: Tìm kiếm, Thông báo & Tài khoản Profile */}
+        <div className="wms-header-actions owner-header-actions">
+          {/* Tìm kiếm trên Desktop */}
+          <div className="wms-header-search-desktop owner-header-search-desktop">{searchField}</div>
 
-          {/* Realtime Notification Bell & Dropdown */}
-          <div className="ara-acc-notif-wrapper" ref={notifRef}>
-            <button
-              type="button"
-              className={`ara-acc-icon-btn ${isOpenNotif ? 'ara-acc-icon-btn-active' : ''}`}
-              aria-label="Thông báo & Cảnh báo kế toán"
-              title="Thông báo sai lệch & cảnh báo"
-              onClick={() => {
-                const nextOpen = !isOpenNotif;
-                setIsOpenNotif(nextOpen);
-                if (nextOpen) {
-                  fetchNotifications();
-                }
+          {/* Trigger tìm kiếm trên Mobile */}
+          <div className="wms-header-search-mobile owner-header-search-mobile">
+            <Popover
+              trigger="click"
+              placement="bottomRight"
+              open={searchOpen}
+              onOpenChange={(open) => {
+                setSearchOpen(open);
+                if (open) setNotificationsOpen(false);
               }}
+              content={searchField}
             >
-              <Bell size={18} aria-hidden="true" />
-              {unreadCount > 0 && (
-                <span className="ara-acc-notif-badge">
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </span>
-              )}
-            </button>
-
-            {isOpenNotif && (
-              <div className="ara-acc-notif-dropdown">
-                <div className="ara-acc-notif-header">
-                  <div className="ara-acc-notif-title-row">
-                    <span className="ara-acc-notif-title">Thông báo hệ thống</span>
-                    {unreadCount > 0 && (
-                      <span className="ara-acc-notif-count-tag">{unreadCount} mới</span>
-                    )}
-                  </div>
-                  {unreadCount > 0 && (
-                    <button
-                      type="button"
-                      className="ara-acc-notif-mark-all-btn"
-                      onClick={handleMarkAllRead}
-                      title="Đánh dấu tất cả đã đọc"
-                    >
-                      <CheckCheck size={14} style={{ display: 'inline', marginRight: 4 }} />
-                      Đã đọc tất cả
-                    </button>
-                  )}
-                </div>
-
-                <div className="ara-acc-notif-list">
-                  {isLoadingNotifs ? (
-                    <div className="ara-acc-notif-empty">Đang tải thông báo...</div>
-                  ) : notifError ? (
-                    <div className="ara-acc-notif-empty">
-                      <AlertTriangle size={24} style={{ margin: '0 auto 8px', color: '#f59e0b', display: 'block' }} />
-                      <span>{notifError}</span>
-                      <button
-                        type="button"
-                        onClick={fetchNotifications}
-                        style={{ marginTop: 8, padding: '4px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer', border: '1px solid #cbd5e1', background: '#fff' }}
-                      >
-                        Thử lại
-                      </button>
-                    </div>
-                  ) : notifications.length === 0 ? (
-                    <div className="ara-acc-notif-empty">
-                      <CheckCheck
-                        size={28}
-                        style={{ margin: '0 auto 8px', color: '#10b981', display: 'block' }}
-                      />
-                      <span>Không có thông báo mới nào</span>
-                    </div>
-                  ) : (
-                    notifications.map((item) => {
-                      const isDeviation = item.type === 'CONTRACT_DEVIATION';
-                      return (
-                        <div
-                          key={item._id}
-                          className={`ara-acc-notif-item ${!item.isRead ? 'is-unread' : ''} ${
-                            isDeviation ? 'is-deviation' : ''
-                          }`}
-                          onClick={() => handleItemClick(item)}
-                        >
-                          <div
-                            className={`ara-acc-notif-icon-box ${
-                              isDeviation ? 'deviation' : 'info'
-                            }`}
-                          >
-                            {isDeviation ? <AlertTriangle size={17} /> : <Info size={17} />}
-                          </div>
-
-                          <div className="ara-acc-notif-body">
-                            <div className="ara-acc-notif-item-title">{item.title}</div>
-                            <div className="ara-acc-notif-item-msg">{item.message}</div>
-                            <div className="ara-acc-notif-item-meta">
-                              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <Clock size={11} />
-                                {formatTimeAgo(item.createdAt)}
-                              </span>
-                              {item.targetUrl && (
-                                <span className="ara-acc-notif-action-link">
-                                  Xử lý ngay <ChevronRight size={12} />
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-
-                <div className="ara-acc-notif-footer">
-                  <button
-                    type="button"
-                    className="ara-acc-notif-footer-link"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-                    onClick={() => {
-                      setIsOpenNotif(false);
-                      navigate('/accountant/contract-deviations');
-                    }}
-                  >
-                    Xem toàn bộ danh sách sai lệch hợp đồng →
-                  </button>
-                </div>
-              </div>
-            )}
+              <Button
+                type="text"
+                className="wms-icon-button owner-icon-button"
+                aria-label="Mở tìm kiếm"
+                aria-expanded={searchOpen}
+                icon={<Search size={18} />}
+              />
+            </Popover>
           </div>
 
-          <div className="ara-acc-user-badge">
-            <div className="ara-acc-user-avatar" aria-hidden="true">
-              {initials || 'KT'}
-            </div>
-            <div className="ara-acc-user-info">
-              <span className="ara-acc-user-name">{displayName}</span>
-              <span className="ara-acc-user-role">{displayRole}</span>
-            </div>
-          </div>
-
-          {user && (
-            <button
-              type="button"
-              className="ara-acc-icon-btn"
-              aria-label="Đăng xuất khỏi hệ thống"
-              title="Đăng xuất"
-              onClick={handleLogout}
+          {/* Realtime Notification Popover */}
+          <Popover
+            trigger="click"
+            placement="bottomRight"
+            open={notificationsOpen}
+            content={notificationContent}
+            onOpenChange={(open) => {
+              setNotificationsOpen(open);
+              if (open) {
+                setSearchOpen(false);
+                fetchNotifications();
+              }
+            }}
+          >
+            <Button
+              type="text"
+              className={`wms-icon-button owner-icon-button${notificationsOpen ? ' owner-notifications-active' : ''}`}
+              aria-label={`Thông báo${unreadCount > 0 ? `: ${unreadCount} chưa xem` : ''}`}
+              aria-expanded={notificationsOpen}
             >
-              <LogOut size={16} aria-hidden="true" />
-            </button>
-          )}
+              <Badge count={unreadCount} size="small" overflowCount={99}>
+                <Bell size={18} />
+              </Badge>
+            </Button>
+          </Popover>
+
+          {/* Profile Dropdown */}
+          <Dropdown menu={accountMenu} trigger={['click']} placement="bottomRight">
+            <Button type="text" className="wms-profile-button owner-profile-button" aria-label="Mở menu tài khoản">
+              <Avatar size={28} className="wms-avatar owner-avatar">
+                {initials || 'KT'}
+              </Avatar>
+              <span className="wms-profile-info owner-profile-info">
+                <strong>{displayName}</strong>
+                <small>Kế toán kho</small>
+              </span>
+            </Button>
+          </Dropdown>
         </div>
       </header>
 
