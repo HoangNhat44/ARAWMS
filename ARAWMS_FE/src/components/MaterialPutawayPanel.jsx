@@ -18,6 +18,8 @@ export default function MaterialPutawayPanel() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [pendingRetry, setPendingRetry] = useState(null);
+  const [printDialog, setPrintDialog] = useState(null);
+  const [printingReceiptId, setPrintingReceiptId] = useState('');
   const [cameraOn, setCameraOn] = useState(false);
   const videoRef = useRef(null);
   const controlsRef = useRef(null);
@@ -140,26 +142,53 @@ export default function MaterialPutawayPanel() {
       setCameraOn(true);
     } catch (err) { setError(`Không mở được camera: ${err.message}`); }
   };
-  const printReceipt = async (receiptId) => {
-    setBusy(true); setError('');
+  /** Opens the receipt's pending rolls/lots for review; printing happens from the dialog. */
+  const printReceipt = async (receipt) => {
+    setPrintingReceiptId(receipt.id); setError('');
     try {
-      const tab = window.open('', '_blank');
-      if (!tab) throw new Error('Trình duyệt đang chặn cửa sổ in tem.');
-      try {
-        const response = await api.materialReceiptLabels(receiptId);
-        const pending = new Set(tasks.filter((item) => item.receiptId === receiptId)
-          .map((item) => item.objectBarcode));
-        const labels = (response.data.labels || []).filter((item) => pending.has(item.barcode));
-        if (!labels.length) throw new Error('Phiếu không còn tem nguyên phụ liệu chờ xếp.');
-        const { printMaterialLabels } = await import('../utils/materialLabelPrint');
-        printMaterialLabels(labels, tab);
-      } catch (err) { tab.close(); throw err; }
+      const response = await api.materialReceiptLabels(receipt.id);
+      const pendingTasks = tasks.filter((item) => item.receiptId === receipt.id);
+      const pending = new Set(pendingTasks.map((item) => item.objectBarcode));
+      const labels = (response.data.labels || []).filter((item) => pending.has(item.barcode))
+        .map((label) => {
+          const related = pendingTasks.filter((item) => item.objectBarcode === label.barcode);
+          return { ...label,
+            pendingQuantity: related.reduce((total, item) => total + item.remainingQuantity, 0),
+            pendingUnit: related[0]?.unit || label.unit, kind: related[0]?.kind,
+            targetLocations: [...new Set(related.map((item) => item.locationCode).filter(Boolean))] };
+        });
+      if (!labels.length) throw new Error('Phiếu không còn tem nguyên phụ liệu chờ xếp.');
+      setPrintDialog({ receipt, labels, selected: labels.map((item) => item.barcode), copies: 1 });
     } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
+    finally { setPrintingReceiptId(''); }
+  };
+  const printSelected = async () => {
+    const copies = Number(printDialog?.copies);
+    if (!printDialog?.selected.length || !Number.isSafeInteger(copies) || copies < 1 || copies > 10) return;
+    const tab = window.open('', '_blank');
+    if (!tab) { setError('Trình duyệt đang chặn cửa sổ in tem.'); return; }
+    try {
+      const { printMaterialLabels } = await import('../utils/materialLabelPrint');
+      const chosen = printDialog.labels.filter((item) => printDialog.selected.includes(item.barcode));
+      printMaterialLabels(chosen.flatMap((item) => Array.from({ length: copies }, () => item)), tab);
+      setNotice(`Đã mở ${chosen.length * copies} tem của phiếu ${printDialog.receipt.code}.`);
+      setPrintDialog(null);
+    } catch (err) { tab.close(); setError(err.message); }
+  };
+  const formatDate = (value) => {
+    const date = new Date(value);
+    return value && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('vi-VN') : '—';
   };
 
   const receipts = [...new Map(tasks.map((item) => [item.receiptId,
-    { id: item.receiptId, code: item.receiptCode }])).values()];
+    { id: item.receiptId, code: item.receiptCode }])).values()].map((receipt) => {
+    const lines = tasks.filter((item) => item.receiptId === receipt.id);
+    return { ...receipt, objectCount: new Set(lines.map((item) => item.objectBarcode)).size,
+      materials: [...new Set(lines.map((item) => item.materialName || item.materialCode).filter(Boolean))],
+      remaining: [...lines.reduce((sum, item) => sum.set(item.unit,
+        Math.round(((sum.get(item.unit) || 0) + item.remainingQuantity) * 1000) / 1000), new Map())]
+        .map(([unit, total]) => `${total} ${unit}`).join(' · ') };
+  });
   const visible = tasks.filter((item) => [item.receiptCode, item.materialCode,
     item.materialName, item.objectBarcode, item.locationCode].join(' ').toLocaleLowerCase()
     .includes(query.trim().toLocaleLowerCase()));
@@ -178,12 +207,14 @@ export default function MaterialPutawayPanel() {
       <span className="putaway-count">{receipts.length} phiếu</span></div>
       <p>Mỗi cây vải hoặc lô dùng barcode đã lưu trên phiếu nhập.</p></div>
       <div className="putaway-table-scroll"><table className="putaway-table"><thead><tr>
-        <th>Phiếu nhập</th><th>Cây/lô chờ xếp</th><th>Thao tác</th>
+        <th>Phiếu nhập</th><th>Nguyên phụ liệu</th><th>Hàng chờ xếp</th><th>Thao tác</th>
       </tr></thead><tbody>{receipts.map((receipt) => <tr key={receipt.id}>
         <td><strong>{receipt.code}</strong></td>
-        <td>{new Set(tasks.filter((item) => item.receiptId === receipt.id).map((item) => item.objectBarcode)).size}</td>
-        <td><button className="putaway-button putaway-button-primary" type="button" disabled={busy}
-          onClick={() => printReceipt(receipt.id)}>Xem và in tem</button></td>
+        <td>{receipt.materials.join(', ') || '—'}</td>
+        <td><span className="putaway-quantity">{receipt.remaining}</span><small>{receipt.objectCount} cây/lô</small></td>
+        <td><button className="putaway-button putaway-button-primary" type="button"
+          disabled={busy || Boolean(printingReceiptId)} onClick={() => printReceipt(receipt)}>
+          {printingReceiptId === receipt.id ? 'Đang lấy tem…' : 'Xem và in tem'}</button></td>
       </tr>)}</tbody></table></div>
       {!receipts.length && <p className="putaway-empty">{loading ? 'Đang tải phiếu…' : 'Không có phiếu chờ xếp.'}</p>}
     </section>
@@ -206,6 +237,36 @@ export default function MaterialPutawayPanel() {
       </tr>)}</tbody></table></div>
       {!visible.length && <p className="putaway-empty">{loading ? 'Đang tải công việc…' : 'Không có công việc phù hợp.'}</p>}
     </section>
+    {printDialog && <div className="putaway-overlay" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) setPrintDialog(null);
+    }}><section className="putaway-modal putaway-print-modal" role="dialog" aria-modal="true" aria-labelledby="material-print-title">
+      <header className="putaway-modal-head"><div><span className="putaway-eyebrow">PHIẾU {printDialog.receipt.code}</span>
+        <h2 id="material-print-title">Chi tiết tem nguyên phụ liệu</h2>
+        <p>Kiểm tra từng cây vải / lô trước khi in tem.</p></div>
+        <button type="button" className="putaway-close" aria-label="Đóng" onClick={() => setPrintDialog(null)}>×</button></header>
+      <div className="putaway-modal-body"><p className="putaway-soft-note">In lại dùng đúng barcode đã lưu trên phiếu nhập, không tạo cây vải hoặc lô mới và không thay đổi tồn kho.</p>
+        <label className="putaway-check"><input type="checkbox"
+          checked={printDialog.labels.every((item) => printDialog.selected.includes(item.barcode))}
+          onChange={(event) => setPrintDialog((current) => ({ ...current,
+            selected: event.target.checked ? current.labels.map((item) => item.barcode) : [] }))} />
+          Chọn tất cả {printDialog.labels.length} barcode</label>
+        <div className="putaway-label-list">{printDialog.labels.map((item) => <label className="putaway-label-row" key={item.barcode}>
+          <input type="checkbox" checked={printDialog.selected.includes(item.barcode)} onChange={(event) =>
+            setPrintDialog((current) => ({ ...current, selected: event.target.checked
+              ? [...current.selected, item.barcode] : current.selected.filter((code) => code !== item.barcode) }))} />
+          <span><strong>{item.materialCode} · {item.materialName}</strong>
+            <small>{item.kind === 'ROLL' ? 'Cây vải' : 'Lô'} {item.lotOrRollCode} · Nhà cung cấp: {item.supplierName || 'Chưa xác định'}</small>
+            <small>Màu: {item.color || '—'} · Khổ: {item.widthCm ? `${item.widthCm} cm` : '—'} · Ngày nhập: {formatDate(item.receivedAt)}</small>
+            <small>Chờ xếp: <b>{item.pendingQuantity} {item.pendingUnit}</b> · Kệ đích: <b>{item.targetLocations.join(', ') || 'Chọn khi xếp'}</b> · {item.quality === 'REJECTED' ? 'Hàng không đạt' : 'Hàng đạt'}</small>
+            <code>{item.barcode}</code></span>{item.imageUrl && <img src={item.imageUrl} alt="" />}</label>)}</div>
+        <label className="putaway-copies">Số bản mỗi barcode<input type="number" min="1" max="10" step="1"
+          value={printDialog.copies} onChange={(event) => setPrintDialog((current) => ({ ...current, copies: event.target.value }))} /></label>
+      </div><div className="putaway-modal-foot"><span>{printDialog.selected.length} barcode · {Number(printDialog.copies) * printDialog.selected.length || 0} tem</span>
+        <div><button type="button" className="putaway-button" onClick={() => setPrintDialog(null)}>Hủy</button>{' '}
+          <button type="button" className="putaway-button putaway-button-primary" onClick={printSelected}
+            disabled={!printDialog.selected.length || !Number.isSafeInteger(Number(printDialog.copies)) ||
+              Number(printDialog.copies) < 1 || Number(printDialog.copies) > 10}>In tem đã chọn</button></div></div>
+    </section></div>}
     {selected && <div className="putaway-overlay" role="presentation"><section className="putaway-modal" role="dialog"
       aria-modal="true" aria-label="Quét xếp nguyên phụ liệu">
       <header className="putaway-modal-head"><div><h2>{selected.materialCode} · {selected.materialName}</h2>

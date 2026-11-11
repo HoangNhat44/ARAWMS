@@ -52,6 +52,10 @@ const quantity = (value, unit, field) => {
 
 /** Restricts assigned warehouse staff to their configured locations when assignments exist. */
 const accessible = (location, user) => !user.warehouseIds?.length || user.warehouseIds.some((item) => id(item) === id(location._id));
+/** Putaway uses the whole raw-material warehouse: managers and staff may shelve on any raw shelf. */
+const warehouseRoles = ['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'];
+const putawayAccessible = (location, user) => warehouseRoles.includes(user.roleCode) ||
+  user.roles?.some((role) => warehouseRoles.includes(role)) || accessible(location, user);
 
 /** Returns real suppliers and usable receiving/quarantine locations for the form. */
 export async function getReceiptOptions(user) {
@@ -144,7 +148,7 @@ export async function getMaterialReceipt(receiptId, user) {
     ticketType: { $in: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER', 'INBOUND_FROM_REMNANT'] },
     isDeleted: { $ne: true } }).lean();
   requireValue(receipt, 'Không tìm thấy phiếu nhập', 'RECEIPT_NOT_FOUND', 404);
-  if (user) requireValue(accessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền xem phiếu này', 'RECEIPT_FORBIDDEN', 403);
+  if (user) requireValue(putawayAccessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền xem phiếu này', 'RECEIPT_FORBIDDEN', 403);
   let plan = null;
   if (receipt.inboundPlanId && !receipt.deliveryBatchId) {
     try { plan = await getInboundPlanDetails(receipt.inboundPlanId, true); }
@@ -392,7 +396,7 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
         ticketType: { $in: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER', 'INBOUND_FROM_REMNANT'] },
         status: 'COMPLETED' }).session(session);
       requireValue(receipt, 'Phiếu chưa được xác nhận', 'RECEIPT_NOT_CONFIRMED', 409);
-      requireValue(accessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền cất phiếu này', 'RECEIPT_FORBIDDEN', 403);
+      requireValue(putawayAccessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền cất phiếu này', 'RECEIPT_FORBIDDEN', 403);
       const previous = receipt.putawayEvents.find((event) => event.key === key);
       if (previous) {
         requireValue(previous.barcode === barcode && (previous.locationBarcode === locationBarcode ||
@@ -413,7 +417,7 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
         isFrozenForStocktake: false,
         isDeleted: { $ne: true },
       }).session(session);
-      requireValue(location?.warehouseType === 'RAW_MATERIAL' && accessible(location, user), 'Barcode vị trí không hợp lệ', 'INVALID_LOCATION');
+      requireValue(location?.warehouseType === 'RAW_MATERIAL' && putawayAccessible(location, user), 'Barcode vị trí không hợp lệ', 'INVALID_LOCATION');
       let amount;
       let materialId;
       let plannedDestination = false;
