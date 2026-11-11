@@ -462,7 +462,7 @@ function validateConfirmation(receipt, materials, locations, user) {
       (line.inspectionConclusion || line.qualityInspectionRef),
     'Cần người kiểm tra, thời gian và kết luận hoặc tham chiếu KCS', 'INSPECTION_REQUIRED');
     const objects = material.materialType === 'FABRIC' ? line.rolls : line.lots;
-    fail(material.materialType === 'FABRIC' ? !line.lots.length && material.unit === 'METER' : !line.rolls.length,
+    fail(material.materialType === 'FABRIC' ? !line.lots.length : !line.rolls.length,
       'Loại cây/lô hoặc đơn vị tồn không được hỗ trợ', 'OBJECT_TYPE_INVALID');
     for (const quality of ['ACCEPTED', 'REJECTED']) {
       const total = objects.filter((item) => item.quality === quality)

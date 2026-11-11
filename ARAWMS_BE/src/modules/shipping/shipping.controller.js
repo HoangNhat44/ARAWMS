@@ -1,4 +1,5 @@
 import { sendError, sendSuccess } from '../../common/utils/responseHandler.js';
+import { listHandedOverOrders, listReadyForHandover, scanOrderHandover } from './shipping.service.js';
 import { acceptGhnWebhook, confirmCarrierHandover, createCarrierShipment, createHandoverDraft, getGhnProvinces, getGhnWards, getPrintToken, listHandovers, listShipments, listShippingOrders, removeParcelFromHandover, scanParcelIntoHandover, ShippingError } from './shipping.service.js';
 
 const handle = (res, error, next) => error instanceof ShippingError
@@ -24,6 +25,11 @@ const messageFor = (code) => ({
   PARCEL_WRONG_WAREHOUSE: 'Kiện thuộc kho khác với biên bản.',
   PARCEL_NOT_WAITING_FOR_PICKUP: 'Vận đơn không còn ở trạng thái chờ GHN lấy.',
   HANDOVER_PEOPLE_REQUIRED: 'Cần nhập tên người giao và người nhận phía GHN.',
+  ORDER_CODE_REQUIRED: 'Hãy quét QR đơn hàng hoặc nhập mã đơn.',
+  INVALID_ORDER_QR: 'QR không đúng định dạng QR đơn hàng.',
+  ORDER_NOT_FOUND: 'Không tìm thấy đơn hàng tương ứng với mã đã quét.',
+  ORDER_ALREADY_HANDED_OVER: 'Đơn này đã được bàn giao cho bên vận chuyển trước đó.',
+  ORDER_NOT_PACKED: 'Đơn chưa đóng hàng thành công nên chưa thể bàn giao.',
   NO_PARCELS_FOR_WAREHOUSE: 'Kho này chưa có kiện GHN nào đủ điều kiện chờ bàn giao.',
 }[code] || code);
 
@@ -76,5 +82,18 @@ export async function deleteHandoverParcel(req, res, next) {
 }
 export async function postConfirmHandover(req, res, next) {
   try { return sendSuccess(res, 'Đã xác nhận bàn giao thực tế', { handover: await confirmCarrierHandover(req.params.id, req.body.confirmed) }); }
+  catch (error) { return handle(res, error, next); }
+}
+
+export async function getHandoverReadyOrders(req, res, next) {
+  try { return sendSuccess(res, 'Đơn có thể bàn giao', { orders: await listReadyForHandover() }); }
+  catch (error) { return handle(res, error, next); }
+}
+export async function getHandedOverOrders(req, res, next) {
+  try { return sendSuccess(res, 'Đơn đã bàn giao', { orders: await listHandedOverOrders() }); }
+  catch (error) { return handle(res, error, next); }
+}
+export async function postScanOrderHandover(req, res, next) {
+  try { return sendSuccess(res, 'Đã bàn giao đơn cho bên vận chuyển', { order: await scanOrderHandover(req.body?.code, req.user) }); }
   catch (error) { return handle(res, error, next); }
 }

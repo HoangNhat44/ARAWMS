@@ -125,6 +125,10 @@ export default function OrderQrPage() {
   const [search, setSearch] = useState('');
   const [packingFilter, setPackingFilter] = useState('all');
   const [qrCards, setQrCards] = useState({});
+  // QR of the order open in the detail dialog; single-order actions show it there instead of the bottom gallery.
+  const [detailQr, setDetailQr] = useState(null);
+  const [detailMessage, setDetailMessage] = useState('');
+  const [detailActionError, setDetailActionError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -197,6 +201,7 @@ export default function OrderQrPage() {
     const requestNumber = ++detailRequestRef.current;
     triggerRef.current = event?.currentTarget || document.activeElement;
     setDetailOpen(true); setDetailLoading(true); setDetailError(''); setActiveOrder(null);
+    setDetailQr(null); setDetailMessage(''); setDetailActionError('');
     try {
       const response = await orderQrService.lookupOrderByCode(id);
       if (requestNumber === detailRequestRef.current) setActiveOrder(response.data.order);
@@ -213,23 +218,36 @@ export default function OrderQrPage() {
   /** Queues the selected order details for printing without issuing a QR. */
   const queueOrderForPrinting = () => {
     if (!activeOrder) return;
-    const card = { id: activeOrder.id, orderCode: activeOrder.orderCode, order: activeOrder, image: null };
-    setQrCards((current) => ({ ...current, [card.id]: current[card.id] || card }));
-    setMessage(`Đã thêm ${activeOrder.orderCode} vào danh sách in.`);
+    // Carry the QR shown in the dialog so the printed label includes it.
+    const card = detailQr && detailQr.id === activeOrder.id
+      ? detailQr
+      : { id: activeOrder.id, orderCode: activeOrder.orderCode, order: activeOrder, image: null };
+    setQrCards((current) => ({ ...current, [card.id]: card.image ? card : current[card.id] || card }));
+    setDetailMessage(`Đã thêm ${activeOrder.orderCode} vào danh sách in ở cuối trang.`);
+  };
+
+  /** Shows a single-order QR inside the open detail dialog. */
+  const showQrInDetail = (order, qrValue, qrImageUrl, text) => {
+    const card = createQrPrintCard(order, qrValue, qrImageUrl);
+    setDetailQr(card);
+    // Keep an already-queued print card in sync with the new QR (e.g. after replacing it).
+    setQrCards((current) => (current[card.id] ? { ...current, [card.id]: card } : current));
+    setDetailMessage(text);
+  };
+
+  const runDetailAction = async (action) => {
+    setBusy(true); setDetailActionError(''); setDetailMessage('');
+    try { await action(); await refreshOrders(); }
+    catch (err) { setDetailActionError(err.code === 'INSUFFICIENT_BATCH_STOCK' ? unplacedStockMessage : err.message); }
+    finally { setBusy(false); }
   };
 
   /** Issues or retrieves the selected order's current QR value. */
-  const issueQrForActiveOrder = async () => {
-    setBusy(true); setError(''); setMessage('');
-    try {
-      const response = await orderQrService.getOrderQr(activeOrder.id);
-      const card = createQrPrintCard(response.data.order, response.data.qrValue, response.data.qrImageUrl);
-      setQrCards((current) => ({ ...current, [card.id]: card }));
-      setMessage(`Đã tạo / lấy QR cho ${activeOrder.orderCode}.`);
-      await refreshOrders();
-    } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
-  };
+  const issueQrForActiveOrder = () => runDetailAction(async () => {
+    const response = await orderQrService.getOrderQr(activeOrder.id);
+    showQrInDetail(response.data.order, response.data.qrValue, response.data.qrImageUrl,
+      `Đã tạo / lấy QR cho ${activeOrder.orderCode}.`);
+  });
 
   /** Issues QR values in batches of 100 and preserves per-order failures. */
   const issueQrForSelectedOrders = async () => {
@@ -256,33 +274,23 @@ export default function OrderQrPage() {
   };
 
   /** Confirms the active order after stock reservation, then prepares its QR card. */
-  const confirmActiveOrder = async () => {
-    setBusy(true); setError(''); setMessage('');
-    try {
-      const response = await orderQrService.confirmOrder(activeOrder.id);
-      setActiveOrder(response.data.order);
-      if (response.data.qrValue) {
-        const card = createQrPrintCard(response.data.order, response.data.qrValue, response.data.qrImageUrl);
-        setQrCards((current) => ({ ...current, [card.id]: card }));
-      }
-      setMessage(`Đã chốt đơn ${activeOrder.orderCode} và cấp QR.`);
-      await refreshOrders();
-    } catch (err) { setError(err.code === 'INSUFFICIENT_BATCH_STOCK' ? unplacedStockMessage : err.message); }
-    finally { setBusy(false); }
-  };
+  const confirmActiveOrder = () => runDetailAction(async () => {
+    const response = await orderQrService.confirmOrder(activeOrder.id);
+    setActiveOrder(response.data.order);
+    if (response.data.qrValue) {
+      showQrInDetail(response.data.order, response.data.qrValue, response.data.qrImageUrl,
+        `Đã chốt đơn ${activeOrder.orderCode} và cấp QR.`);
+    } else setDetailMessage(`Đã chốt đơn ${activeOrder.orderCode}.`);
+  });
 
   /** Revokes the active order's printed QR and prepares its replacement. */
-  const replaceActiveOrderQr = async () => {
+  const replaceActiveOrderQr = () => {
     if (!window.confirm('QR cũ sẽ ngừng hoạt động. Cấp QR mới cho đơn này?')) return;
-    setBusy(true); setError(''); setMessage('');
-    try {
+    runDetailAction(async () => {
       const response = await orderQrService.replaceOrderQr(activeOrder.id);
-      const card = createQrPrintCard(response.data.order, response.data.qrValue, response.data.qrImageUrl);
-      setQrCards((current) => ({ ...current, [card.id]: card }));
-      setMessage(`Đã thay QR của ${activeOrder.orderCode}.`);
-      await refreshOrders();
-    } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
+      showQrInDetail(response.data.order, response.data.qrValue, response.data.qrImageUrl,
+        `Đã thu hồi QR cũ và cấp QR mới cho ${activeOrder.orderCode}.`);
+    });
   };
 
   return (
@@ -351,6 +359,23 @@ export default function OrderQrPage() {
             {detailLoading && <p className="order-detail-state">Đang tải chi tiết đơn hàng…</p>}
             {!detailLoading && detailError && <p className="order-detail-error" role="alert">{detailError}</p>}
             {!detailLoading && activeOrder && <>
+              {detailActionError && <div role="alert" className="order-detail-error" style={{ overflowWrap: 'anywhere' }}>
+                {detailActionError}{detailActionError === unplacedStockMessage && <> <Link to="/warehouse/putaway">Mở danh sách hàng chờ xếp →</Link></>}
+              </div>}
+              {detailMessage && <p role="status" style={{ margin: '0 0 .75rem', color: 'var(--ara-success, #18794e)', fontWeight: 600 }}>{detailMessage}</p>}
+              {detailQr?.id === activeOrder.id && <section className="order-detail-qr" style={{
+                display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap',
+                border: '1px solid var(--ara-border)', borderRadius: 8, padding: '1rem', marginBottom: '1rem',
+              }}>
+                {detailQr.image
+                  ? <img src={detailQr.image} alt={`QR đơn ${activeOrder.orderCode}`} width="200" height="200" style={{ background: '#fff' }} />
+                  : <p>Chưa có ảnh QR.</p>}
+                <div style={{ display: 'grid', gap: '.4rem' }}>
+                  <h3 style={{ margin: 0 }}>QR đơn {activeOrder.orderCode}</h3>
+                  <small style={{ color: 'var(--ara-text-secondary, #66717c)' }}>Quét QR này ở màn Đóng hàng. Chỉ nhân viên đã đăng nhập mới xem được đơn.</small>
+                  {detailQr.image && <a href={detailQr.image} target="_blank" rel="noreferrer">Mở ảnh QR</a>}
+                </div>
+              </section>}
               <section className="order-detail-recipient"><h3>Thông tin người nhận</h3><dl><div><dt>Người nhận</dt><dd>{activeOrder.recipient?.name || activeOrder.recipientName || '—'}</dd></div><div><dt>Điện thoại</dt><dd>{activeOrder.recipient?.phone || '—'}</dd></div><div><dt>Địa chỉ</dt><dd>{activeOrder.recipient?.address || '—'}</dd></div></dl>{activeOrder.note && <p className="order-detail-note"><strong>Ghi chú:</strong> {activeOrder.note}</p>}{activeOrder.packagingVideoUrl && <p className="order-detail-note"><strong>Video đóng hàng:</strong> <a href={activeOrder.packagingVideoUrl} target="_blank" rel="noreferrer">Mở video</a></p>}</section>
               <section className="order-detail-products"><h3>Sản phẩm ({activeOrder.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)} chiếc)</h3><div className="order-detail-table-wrap"><table><thead><tr><th>Sản phẩm</th><th>Màu</th><th>Size</th><th>SKU</th><th>Số lượng</th></tr></thead><tbody>{activeOrder.items.map((item, index) => <tr key={`${item.skuId || item.skuCode}-${index}`}><td>{item.name || '—'}</td><td>{item.color || '—'}</td><td>{item.size || '—'}</td><td>{item.skuCode || item.skuId || '—'}</td><td>{item.quantity}</td></tr>)}</tbody></table></div></section>
               <p className="order-detail-hint">Barcode từng món được nhân viên kho gắn sau khi quét QR đơn.</p>

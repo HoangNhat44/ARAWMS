@@ -84,7 +84,9 @@ const salesOrderSchema = new Schema(
       carrierId: { type: Schema.Types.ObjectId, ref: 'ShippingCarrier', index: true },
       waybillCode: { type: String, index: true },
       handoverReportCode: { type: String, index: true },
-      handedOverAt: Date,
+      handedOverAt: { type: Date, index: true },
+      handedOverByStaffId: { type: Schema.Types.ObjectId, ref: 'User' },
+      handedOverByName: String,
     },
     codReconciliationStatus: {
       type: String,

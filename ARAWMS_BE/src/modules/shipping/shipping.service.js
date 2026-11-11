@@ -8,6 +8,7 @@ import PackingVideo from '../../models/PackingVideo.js';
 import ProductUnit from '../../models/ProductUnit.js';
 import SalesOrder from '../../models/SalesOrder.model.js';
 import WarehouseLocation from '../../models/WarehouseLocation.model.js';
+import OrderQrToken from '../../models/OrderQrToken.js';
 
 export class ShippingError extends Error {
   constructor(code, status = 400) { super(code); this.code = code; this.status = status; }
@@ -365,4 +366,71 @@ export async function acceptGhnWebhook(payload, secretHeader) {
     await shipment.save();
   }
   return { accepted: true };
+}
+
+/* ---------- Bàn giao đơn cho đơn vị vận chuyển bằng QR đơn hàng ---------- */
+const handoverOrderView = (order) => ({
+  id: order._id, orderCode: order.orderCode, status: order.status,
+  recipient: order.shippingRecipient || {},
+  items: (order.items || []).map(({ skuCode, orderedQty }) => ({ skuCode, quantity: orderedQty })),
+  totalQty: (order.items || []).reduce((sum, item) => sum + (item.orderedQty || 0), 0),
+  codAmount: order.financialSummary?.expectedCodAmount ?? 0,
+  packedAt: order.warehouseFulfillment?.packedAt || null,
+  handedOverAt: order.warehouseFulfillment?.handedOverAt || null,
+  handedOverByName: order.warehouseFulfillment?.handedOverByName || '',
+  waybillCode: order.warehouseFulfillment?.waybillCode || '',
+});
+const handoverOrderFields = 'orderCode status shippingRecipient items financialSummary warehouseFulfillment';
+
+/** Đơn đã đóng hàng thành công (PACKED) và chưa bàn giao. */
+export async function listReadyForHandover() {
+  const orders = await SalesOrder.find({ status: 'PACKED', isDeleted: { $ne: true } })
+    .select(handoverOrderFields).sort({ 'warehouseFulfillment.packedAt': -1 }).lean();
+  return orders.map(handoverOrderView);
+}
+
+/** Đơn đã bàn giao cho bên vận chuyển, mới nhất trước. */
+export async function listHandedOverOrders() {
+  const orders = await SalesOrder.find({ status: 'HANDED_OVER_CARRIER', isDeleted: { $ne: true } })
+    .select(handoverOrderFields).sort({ 'warehouseFulfillment.handedOverAt': -1 }).limit(500).lean();
+  return orders.map(handoverOrderView);
+}
+
+/** Tìm đơn từ giá trị quét: QR đơn (PACK:v1:<token>) hoặc mã đơn nhập tay. */
+async function findOrderByScan(value) {
+  if (value.startsWith('PACK:v1:')) {
+    const token = value.slice('PACK:v1:'.length);
+    if (!/^[a-f0-9]{64}$/.test(token)) throw new ShippingError('INVALID_ORDER_QR');
+    let order = await SalesOrder.findOne({ 'qr.token': token, 'qr.revokedAt': null, isDeleted: { $ne: true } });
+    if (!order) {
+      const legacy = await OrderQrToken.findOne({ token, revokedAt: null }).select('orderId').lean();
+      if (legacy) order = await SalesOrder.findOne({ _id: legacy.orderId, isDeleted: { $ne: true } });
+    }
+    return order;
+  }
+  return SalesOrder.findOne({ orderCode: value.toUpperCase(), isDeleted: { $ne: true } });
+}
+
+/** Quét QR đơn → chuyển PACKED sang HANDED_OVER_CARRIER và ghi thời gian bàn giao. */
+export async function scanOrderHandover(rawCode, user) {
+  const value = String(rawCode || '').trim();
+  if (!value) throw new ShippingError('ORDER_CODE_REQUIRED');
+  const order = await findOrderByScan(value);
+  if (!order) throw new ShippingError('ORDER_NOT_FOUND', 404);
+  if (order.status === 'HANDED_OVER_CARRIER') throw new ShippingError('ORDER_ALREADY_HANDED_OVER', 409);
+  if (order.status !== 'PACKED') throw new ShippingError('ORDER_NOT_PACKED', 409);
+  const at = new Date();
+  const byName = String(user?.fullName || user?.name || user?.username || user?.email || '').slice(0, 120);
+  const updated = await SalesOrder.findOneAndUpdate(
+    { _id: order._id, status: 'PACKED' },
+    {
+      $set: { status: 'HANDED_OVER_CARRIER', 'warehouseFulfillment.handedOverAt': at,
+        'warehouseFulfillment.handedOverByName': byName,
+        ...(user?._id ? { 'warehouseFulfillment.handedOverByStaffId': user._id } : {}) },
+      $push: { statusHistory: { from: 'PACKED', to: 'HANDED_OVER_CARRIER', by: user?._id, at } },
+    },
+    { new: true },
+  ).select(handoverOrderFields).lean();
+  if (!updated) throw new ShippingError('ORDER_ALREADY_HANDED_OVER', 409);
+  return handoverOrderView(updated);
 }

@@ -29,7 +29,9 @@ export function isValidMaterialUnit(value) {
 
 export function isValidMaterialUnitForType(value, materialType) {
   const normalized = normalizeMaterialUnit(value);
-  return isValidMaterialUnit(normalized) && (materialType !== 'FABRIC' || normalized === 'METER');
+  // Fabric may be stocked in any unit (e.g. KG for knits); storage only requires the
+  // location's capacity unit to match the material unit.
+  return isValidMaterialUnit(normalized) && Boolean(materialType);
 }
 
 export function isFractionalMaterialUnit(value) {
