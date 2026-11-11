@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ClipboardCheck, Shirt, ShieldCheck, CheckCircle2, ScanLine, ArrowUpRight, Scissors, Package } from 'lucide-react';
+import { ClipboardCheck, Shirt, ShieldCheck, CheckCircle2, ScanLine, ArrowUpRight, Scissors, Package, RotateCcw } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 export default function GarmentLayout({ children }) {
@@ -30,6 +30,12 @@ export default function GarmentLayout({ children }) {
       label: 'KCS & Nhập thành phẩm',
       subLabel: 'Kiểm định may & nhập thành phẩm',
       icon: Shirt,
+    },
+    {
+      to: '/garment/return-inspection',
+      label: 'Kiểm tra hàng hoàn/trả',
+      subLabel: 'Quét đơn, kiểm định KCS & nhập kho hoàn',
+      icon: RotateCcw,
     },
     {
       to: '/garment/stocktake-execution',

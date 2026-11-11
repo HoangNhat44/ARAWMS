@@ -67,6 +67,15 @@ export const garmentTechnicalService = {
     deleteMaterial: (id) => api.delete(`/garment-technical/raw-materials/${id}`),
     toggleStatus: (id) => api.patch(`/garment-technical/raw-materials/${id}/toggle-status`),
   },
+
+  // 6. Return / Exchange Goods Quality Inspection (Kiểm tra hàng hoàn/trả)
+  returnInspection: {
+    getRecentOrders: () => api.get('/garment-technical/return-inspection/recent-orders'),
+    lookupOrder: (code) => api.get(`/garment-technical/return-inspection/lookup/${encodeURIComponent(code)}`),
+    submitInspection: (payload) => api.post('/garment-technical/return-inspection/submit', payload),
+    getInspections: (params = {}) => api.get('/garment-technical/return-inspection', { params }),
+    requestInboundTicket: (payload) => api.post('/garment-technical/return-inspection/inbound-ticket', payload),
+  },
 };
 
 export default garmentTechnicalService;

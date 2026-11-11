@@ -34,6 +34,7 @@ import StocktakePage from '../pages/StocktakePage';
 import ShippingPage from '../pages/ShippingPage';
 import MaterialInboundVerificationPage from '../pages/garment/MaterialInboundVerificationPage';
 import GarmentRawMaterialsPage from '../pages/garment/GarmentRawMaterialsPage';
+import GarmentReturnInspectionPage from '../pages/garment/GarmentReturnInspectionPage';
 import FinishedGoodsInspectionPage from '../pages/garment/FinishedGoodsInspectionPage';
 import GarmentStocktakeExecutionPage from '../pages/garment/GarmentStocktakeExecutionPage';
 import GarmentMaterialOutboundPage from '../pages/garment/GarmentMaterialOutboundPage';
@@ -159,6 +160,7 @@ export default function AppRouter() {
           <Route path="/garment/raw-materials" element={<GarmentRawMaterialsPage />} />
           <Route path="/garment/material-inbound-verification" element={<MaterialInboundVerificationPage />} />
           <Route path="/garment/finished-goods-inspection" element={<FinishedGoodsInspectionPage />} />
+          <Route path="/garment/return-inspection" element={<GarmentReturnInspectionPage />} />
           <Route path="/garment/stocktake-execution" element={<GarmentStocktakeExecutionPage />} />
           <Route path="/garment/material-outbound-request" element={<GarmentMaterialOutboundPage />} />
           <Route path="/garment/remnant-recovery" element={<GarmentCuttingAndRemnantPage />} />

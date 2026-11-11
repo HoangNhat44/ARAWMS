@@ -21,6 +21,7 @@ import garmentFinishedInspectionRoutes from '../modules/garment-technical/finish
 import garmentStocktakeExecutionRoutes from '../modules/garment-technical/stocktake-execution/stocktakeExecution.routes.js';
 import garmentRemnantRecoveryRoutes from '../modules/garment-technical/remnant-recovery/remnantRecovery.routes.js';
 import garmentRawMaterialsRoutes from '../modules/garment-technical/raw-materials/rawMaterials.routes.js';
+import garmentReturnInspectionRoutes from '../modules/garment-technical/return-inspection/returnInspection.routes.js';
 
 // Import carrier, contract, accountant financial & seller routes
 import apiRoutes from './api.js';
@@ -50,6 +51,7 @@ router.use('/garment-technical/finished-inspection', garmentFinishedInspectionRo
 router.use('/garment-technical/stocktake-execution', garmentStocktakeExecutionRoutes);
 router.use('/garment-technical/remnant-recovery', garmentRemnantRecoveryRoutes);
 router.use('/garment-technical/raw-materials', garmentRawMaterialsRoutes);
+router.use('/garment-technical/return-inspection', garmentReturnInspectionRoutes);
 router.use('/raw-materials', garmentRawMaterialsRoutes);
 
 // Carrier, Contract Procurement, Financial Intelligence & Seller routes (from api.js)
