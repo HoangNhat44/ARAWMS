@@ -20,6 +20,7 @@ const expectedItemSchema = new Schema(
       {
         rollIndex: { type: Number },
         rollCode: { type: String },
+        rollQty: { type: Number, default: 1, min: 0 },
         lengthMeters: { type: Number, min: 0 },
         weightKg: { type: Number, min: 0 },
         note: { type: String, default: '' },
@@ -29,6 +30,7 @@ const expectedItemSchema = new Schema(
       {
         rollIndex: { type: Number },
         rollCode: { type: String },
+        rollQty: { type: Number, default: 1, min: 0 },
         lengthMeters: { type: Number, min: 0 },
         weightKg: { type: Number, min: 0 },
         note: { type: String, default: '' },

@@ -169,9 +169,9 @@ export const validateDraftContract = (req, res, next) => {
   // 3. Loại hợp đồng
   if (
     contractType &&
-    !['FRAMEWORK_AGREEMENT', 'BATCH_LUMP_SUM', 'FIXED_UNIT_PRICE'].includes(contractType)
+    !['SALES_CONTRACT', 'FRAMEWORK_AGREEMENT', 'BATCH_LUMP_SUM', 'FIXED_UNIT_PRICE'].includes(contractType)
   ) {
-    errors.push('Loại hình hợp đồng không hợp lệ (FRAMEWORK_AGREEMENT, BATCH_LUMP_SUM, FIXED_UNIT_PRICE).');
+    errors.push('Loại hình hợp đồng không hợp lệ.');
   }
 
   // 4. Nhà cung ứng (Bên B)

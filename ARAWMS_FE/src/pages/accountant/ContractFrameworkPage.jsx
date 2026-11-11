@@ -31,6 +31,7 @@ import {
   PackageCheck,
   Package,
   AlertTriangle,
+  Search,
 } from 'lucide-react';
 import accountantProcurementApi from '../../services/accountantProcurementApi.js';
 import { validateContractForm } from '../../utils/procurementValidation.js';
@@ -71,9 +72,10 @@ const CONTRACT_STATUS_BADGE = {
 };
 
 const CONTRACT_TYPE_LABELS = {
-  FRAMEWORK_AGREEMENT: 'Hợp đồng nguyên tắc / Khung giao nhiều đợt',
-  BATCH_LUMP_SUM: 'Hợp đồng trọn gói theo lô sản xuất',
-  FIXED_UNIT_PRICE: 'Hợp đồng theo đơn giá cố định',
+  SALES_CONTRACT: 'Hợp đồng mua bán',
+  FRAMEWORK_AGREEMENT: 'Hợp đồng mua bán',
+  BATCH_LUMP_SUM: 'Hợp đồng mua bán',
+  FIXED_UNIT_PRICE: 'Hợp đồng mua bán',
 };
 
 const DELIVERY_TERM_LABELS = {
@@ -257,7 +259,7 @@ const buildPaymentSchedule = (
 
 /**
  * Khởi tạo danh sách các đợt tiếp nhận nguyên vật liệu (Multi-batch Inbound Deliveries)
- * Mặc định 2 đợt giao tự chia đều 50% - 50%, bảo toàn 100% số lượng cam kết trên Hợp đồng
+ * Chia theo số đợt tùy chọn của người dùng, bảo toàn 100% số lượng cam kết trên Hợp đồng
  */
 export const buildBatches = (
   count,
@@ -266,13 +268,19 @@ export const buildBatches = (
   effectiveTo = null,
   existingBatches = []
 ) => {
-  const n = Math.max(1, Math.min(12, Number(count) || 2));
+  const n = Math.max(1, Math.min(24, Math.floor(Number(count) || 1)));
   const startMs = effectiveFrom ? new Date(effectiveFrom).getTime() : Date.now() + 3 * 86400000;
   const endMs = effectiveTo ? new Date(effectiveTo).getTime() : startMs + 180 * 86400000;
+  const isSameBatchCount = Array.isArray(existingBatches) && existingBatches.length === n;
 
-  return Array.from({ length: n }, (_, bIdx) => {
+  const totalContractQtyAll = (materials || []).reduce(
+    (sum, m) => sum + (Number(m.contractedQty) || 0),
+    0
+  );
+
+  const built = Array.from({ length: n }, (_, bIdx) => {
     const batchNo = bIdx + 1;
-    const existing = existingBatches[bIdx];
+    const existing = isSameBatchCount ? existingBatches[bIdx] : null;
 
     let dateIso = existing?.scheduledDeliveryDate
       ? String(existing.scheduledDeliveryDate).slice(0, 10)
@@ -282,45 +290,103 @@ export const buildBatches = (
       dateIso = new Date(stepMs).toISOString().slice(0, 10);
     }
 
-    const defaultPct = Number((100 / n).toFixed(1));
-
     const expectedItems = (materials || []).map((m, mIdx) => {
       const contractedQty = Number(m.contractedQty || 0);
-      const allRolls = Array.isArray(m.rollDetails) && m.rollDetails.length > 0 ? m.rollDetails : [];
+      const isRollLine =
+        m.category === 'FABRIC_ROLL' ||
+        m.materialType === 'FABRIC' ||
+        ['METER', 'MET', 'M', 'ROLL', 'YARD'].includes(m.unitSnapshot || m.unit);
+      const allRolls =
+        isRollLine && Array.isArray(m.rollDetails) && m.rollDetails.length > 0
+          ? m.rollDetails
+          : [];
       const existingItem = existing?.expectedItems?.[mIdx];
-      let selectedRolls = Array.isArray(existingItem?.selectedRolls) ? [...existingItem.selectedRolls] : [];
-      let plannedQty = existingItem ? Number(existingItem.plannedQty) : 0;
 
-      if (allRolls.length > 0) {
-        if (selectedRolls.length === 0) {
-          if (n === 1) {
-            selectedRolls = [...allRolls];
-          } else if (n === 2) {
-            const half = Math.ceil(allRolls.length / 2);
-            selectedRolls = bIdx === 0 ? allRolls.slice(0, half) : allRolls.slice(half);
-          } else if (bIdx === n - 1) {
-            const perBatch = Math.max(1, Math.floor(allRolls.length / n));
-            selectedRolls = allRolls.slice(perBatch * (n - 1));
-          } else {
-            const perBatch = Math.max(1, Math.floor(allRolls.length / n));
-            selectedRolls = allRolls.slice(perBatch * bIdx, perBatch * (bIdx + 1));
-          }
-        }
-        plannedQty = selectedRolls.reduce((sum, r) => sum + (Number(r.lengthMeters) || 0), 0);
-      } else if (!plannedQty || Number.isNaN(plannedQty)) {
-        if (n === 2) {
-          if (bIdx === 0) {
-            plannedQty = Math.ceil(contractedQty / 2);
-          } else {
-            plannedQty = Math.max(0, contractedQty - Math.ceil(contractedQty / 2));
-          }
-        } else if (bIdx === n - 1) {
-          const allocatedBefore = Math.floor(contractedQty / n) * (n - 1);
-          plannedQty = Math.max(0, contractedQty - allocatedBefore);
+      const totalContractRollCount = allRolls.reduce(
+        (sum, r) => sum + Math.max(1, Math.floor(Number(r.rollQty ?? 1) || 1)),
+        0
+      );
+      const sumExistingForMaterial = isSameBatchCount
+        ? existingBatches.reduce(
+            (sum, eb) => sum + (Number(eb?.expectedItems?.[mIdx]?.plannedQty) || 0),
+            0
+          )
+        : -1;
+      const sumExistingRollsForMaterial =
+        isSameBatchCount && allRolls.length > 0
+          ? existingBatches.reduce(
+              (sum, eb) =>
+                sum +
+                (eb?.expectedItems?.[mIdx]?.selectedRolls || []).reduce(
+                  (s, sr) => s + (Number(sr.rollQty ?? 1) || 0),
+                  0
+                ),
+              0
+            )
+          : totalContractRollCount;
+      const everyBatchRollSumMatchesQty =
+        isSameBatchCount && allRolls.length > 0
+          ? existingBatches.every((eb) => {
+              const bItem = eb?.expectedItems?.[mIdx];
+              const rollsSum = (bItem?.selectedRolls || []).reduce(
+                (s, r) => s + (Number(r.rollQty ?? 1) || 0) * (Number(r.lengthMeters) || 0),
+                0
+              );
+              return Math.abs(rollsSum - Number(bItem?.plannedQty || 0)) < 0.001;
+            })
+          : true;
+      const canPreserveExisting =
+        isSameBatchCount &&
+        existingItem &&
+        Math.abs(sumExistingForMaterial - contractedQty) < 0.001 &&
+        sumExistingRollsForMaterial === totalContractRollCount &&
+        everyBatchRollSumMatchesQty;
+
+      let selectedRolls =
+        canPreserveExisting && Array.isArray(existingItem?.selectedRolls)
+          ? [...existingItem.selectedRolls]
+          : [];
+      let plannedQty = canPreserveExisting ? Number(existingItem.plannedQty) : 0;
+
+      if (!canPreserveExisting) {
+        if (allRolls.length > 0 && totalContractRollCount > 0) {
+          const startUnit = Math.floor((bIdx * totalContractRollCount) / n);
+          const endUnit =
+            bIdx === n - 1
+              ? totalContractRollCount
+              : Math.floor(((bIdx + 1) * totalContractRollCount) / n);
+          let cursor = 0;
+          selectedRolls = [];
+          allRolls.forEach((r) => {
+            const rQty = Math.max(1, Math.floor(Number(r.rollQty ?? 1) || 1));
+            const overlapStart = Math.max(startUnit, cursor);
+            const overlapEnd = Math.min(endUnit, cursor + rQty);
+            const allocatedRollQty = Math.max(0, overlapEnd - overlapStart);
+            if (allocatedRollQty > 0) {
+              selectedRolls.push({
+                ...r,
+                rollQty: allocatedRollQty,
+              });
+            }
+            cursor += rQty;
+          });
+          plannedQty = selectedRolls.reduce(
+            (sum, r) => sum + (Number(r.rollQty ?? 1) || 0) * (Number(r.lengthMeters) || 0),
+            0
+          );
         } else {
-          plannedQty = Math.max(0, Math.floor(contractedQty / n));
+          const startQty = Math.floor((bIdx * contractedQty) / n);
+          const endQty =
+            bIdx === n - 1 ? contractedQty : Math.floor(((bIdx + 1) * contractedQty) / n);
+          plannedQty = Math.max(0, endQty - startQty);
+          selectedRolls = [];
         }
       }
+
+      const batchRollCount = selectedRolls.reduce(
+        (sum, r) => sum + (Number(r.rollQty ?? 1) || 0),
+        0
+      );
 
       return {
         rawMaterialId: m.rawMaterialId?._id || m.rawMaterialId?.id || m.rawMaterialId,
@@ -330,31 +396,45 @@ export const buildBatches = (
         contractedQty,
         plannedQty,
         allRolls,
-        rollCount: selectedRolls.length || m.rollCount || 0,
+        rollCount: batchRollCount || (n === 1 ? m.rollCount || 0 : 0),
         selectedRolls,
       };
     });
+
+    const batchQtySum = expectedItems.reduce((sum, it) => sum + (Number(it.plannedQty) || 0), 0);
+    const computedPct =
+      totalContractQtyAll > 0
+        ? Number(((batchQtySum / totalContractQtyAll) * 100).toFixed(1))
+        : Number((100 / n).toFixed(1));
 
     return {
       batchNumber: batchNo,
       totalBatches: n,
       batchTitle:
-        existing?.batchTitle ||
-        (n === 1
+        n === 1
           ? 'Tiếp nhận toàn bộ nguyên liệu (100% hợp đồng)'
           : batchNo === 1
           ? `Đợt 1/${n}: Giao nguyên liệu đợt đầu`
           : batchNo === n
           ? `Đợt ${n}/${n}: Giao toàn bộ nguyên liệu còn lại`
-          : `Đợt ${batchNo}/${n}: Giao nguyên liệu theo tiến độ`),
-      batchPercentage:
-        existing?.batchPercentage ||
-        (n === 2 ? (bIdx === 0 ? 50 : 50) : defaultPct),
+          : `Đợt ${batchNo}/${n}: Giao nguyên liệu theo tiến độ`,
+      batchPercentage: computedPct,
       scheduledDeliveryDate: dateIso,
       notes: existing?.notes || '',
       expectedItems,
     };
   });
+
+  if (n > 1) {
+    const sumBeforeLastPct = built
+      .slice(0, n - 1)
+      .reduce((sum, b) => sum + (Number(b.batchPercentage) || 0), 0);
+    built[n - 1].batchPercentage = Number(Math.max(0, 100 - sumBeforeLastPct).toFixed(1));
+  } else if (n === 1) {
+    built[0].batchPercentage = 100;
+  }
+
+  return built;
 };
 
 export const generateMaterialCodeFromName = (name) => {
@@ -404,13 +484,14 @@ const createEmptyMaterialLine = (rawMat = null) => {
     ['METER', 'MET', 'M'].includes(rawMat?.unit);
   const defaultRolls = isFabric
     ? [
-        { rollIndex: 1, rollCode: 'C-01', lengthMeters: 100, note: '' },
+        { rollIndex: 1, rollCode: 'C-01', rollQty: 1, lengthMeters: 100, note: '' },
       ]
     : [];
   const defaultRollCount = defaultRolls.length;
   const defaultContractedQty = isFabric ? 100 : 100;
 
   return {
+    _uiKey: `mat-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     rawMaterialId: rawMat?._id || rawMat?.id || '',
     materialCodeSnapshot: rawMat?.materialCode || '',
     materialNameSnapshot: rawMat?.materialName || '',
@@ -1125,6 +1206,13 @@ const ContractFrameworkPage = () => {
           currentLine.materialType = 'FABRIC';
           currentLine.unitSnapshot = 'METER';
           currentLine.isCustomUnit = false;
+          if (!currentLine.rollDetails || currentLine.rollDetails.length === 0) {
+            currentLine.rollCount = 1;
+            currentLine.rollDetails = [
+              { rollIndex: 1, rollCode: 'C-01', rollQty: 1, lengthMeters: 100, note: '' },
+            ];
+            currentLine.contractedQty = 100;
+          }
         } else {
           currentLine.isNewMaterial = false;
           const foundMat = materialsCatalog.find((m) => (m._id || m.id) === value);
@@ -1144,14 +1232,22 @@ const ContractFrameworkPage = () => {
                 ? 'Phụ liệu tiêu chuẩn xuất khẩu'
                 : '100% Combed Cotton Compact';
 
-            // Nếu là vải cuộn và chưa có danh sách cuộn thì khởi tạo 1 cuộn mặc định
-            const isFabricType = foundMat.category === 'FABRIC_ROLL' || foundMat.materialType === 'FABRIC' || ['METER', 'MET', 'M'].includes(foundMat.unit);
-            if (isFabricType && (!currentLine.rollDetails || currentLine.rollDetails.length === 0)) {
-              currentLine.rollCount = 1;
-              currentLine.rollDetails = [
-                { rollIndex: 1, rollCode: 'C-01', lengthMeters: 100, note: '' },
-              ];
-              currentLine.contractedQty = 100;
+            // Nếu là vải cuộn và chưa có danh sách cuộn thì khởi tạo 1 cuộn mặc định; nếu là phụ liệu thì xóa cuộn cũ
+            const isFabricType =
+              foundMat.category === 'FABRIC_ROLL' ||
+              foundMat.materialType === 'FABRIC' ||
+              ['METER', 'MET', 'M', 'ROLL', 'YARD'].includes(foundMat.unit);
+            if (isFabricType) {
+              if (!currentLine.rollDetails || currentLine.rollDetails.length === 0) {
+                currentLine.rollCount = 1;
+                currentLine.rollDetails = [
+                  { rollIndex: 1, rollCode: 'C-01', rollQty: 1, lengthMeters: 100, note: '' },
+                ];
+                currentLine.contractedQty = 100;
+              }
+            } else {
+              currentLine.rollCount = 0;
+              currentLine.rollDetails = [];
             }
           }
         }
@@ -1184,7 +1280,7 @@ const ContractFrameworkPage = () => {
     });
   };
 
-  // Thêm 1 cuộn vải mới vào danh sách của dòng nguyên phụ liệu
+  // Thêm 1 dòng cuộn vải mới vào danh sách của dòng nguyên phụ liệu
   const handleAddRoll = (matIndex) => {
     setContractForm((prev) => {
       const updated = [...prev.contractedMaterials];
@@ -1196,13 +1292,17 @@ const ContractFrameworkPage = () => {
       currentRolls.push({
         rollIndex: nextIdx,
         rollCode: `C-${String(nextIdx).padStart(2, '0')}`,
+        rollQty: 1,
         lengthMeters: lastMeter,
         note: '',
       });
 
-      line.rollCount = currentRolls.length;
+      line.rollCount = currentRolls.reduce((sum, r) => sum + (Number(r.rollQty ?? 1) || 0), 0);
       line.rollDetails = currentRolls;
-      line.contractedQty = currentRolls.reduce((sum, r) => sum + (Number(r.lengthMeters) || 0), 0);
+      line.contractedQty = currentRolls.reduce(
+        (sum, r) => sum + (Number(r.rollQty ?? 1) || 0) * (Number(r.lengthMeters) || 0),
+        0
+      );
       updated[matIndex] = line;
 
       const nextBatches = buildBatches(
@@ -1221,7 +1321,7 @@ const ContractFrameworkPage = () => {
     });
   };
 
-  // Xóa 1 cuộn vải khỏi danh sách
+  // Xóa 1 dòng cuộn vải khỏi danh sách
   const handleRemoveRoll = (matIndex, rollIndexToRemove) => {
     setContractForm((prev) => {
       const updated = [...prev.contractedMaterials];
@@ -1234,9 +1334,12 @@ const ContractFrameworkPage = () => {
         rollCode: r.rollCode && r.rollCode.startsWith('C-') ? `C-${String(idx + 1).padStart(2, '0')}` : (r.rollCode || `C-${String(idx + 1).padStart(2, '0')}`),
       }));
 
-      line.rollCount = reindexedRolls.length;
+      line.rollCount = reindexedRolls.reduce((sum, r) => sum + (Number(r.rollQty ?? 1) || 0), 0);
       line.rollDetails = reindexedRolls;
-      line.contractedQty = reindexedRolls.reduce((sum, r) => sum + (Number(r.lengthMeters) || 0), 0);
+      line.contractedQty = reindexedRolls.reduce(
+        (sum, r) => sum + (Number(r.rollQty ?? 1) || 0) * (Number(r.lengthMeters) || 0),
+        0
+      );
       updated[matIndex] = line;
 
       const nextBatches = buildBatches(
@@ -1255,7 +1358,7 @@ const ContractFrameworkPage = () => {
     });
   };
 
-  // Cập nhật thuộc tính của 1 cuộn vải (chiều dài mét, mã cuộn, ghi chú)
+  // Cập nhật thuộc tính của 1 dòng cuộn vải (số lượng cuộn, chiều dài mét, ghi chú)
   const handleRollDetailChange = (matIndex, rollIdx, rollField, val) => {
     setContractForm((prev) => {
       const updated = [...prev.contractedMaterials];
@@ -1264,26 +1367,36 @@ const ContractFrameworkPage = () => {
 
       if (!currentRolls[rollIdx]) return prev;
 
+      let parsedVal = val;
+      if (rollField === 'lengthMeters') {
+        parsedVal = val === '' ? '' : Math.max(0, Number(val));
+      } else if (rollField === 'rollQty') {
+        parsedVal = val === '' ? '' : Math.max(1, Math.floor(Number(val) || 1));
+      }
+
       currentRolls[rollIdx] = {
         ...currentRolls[rollIdx],
-        [rollField]: rollField === 'lengthMeters' ? (val === '' ? '' : Math.max(0, Number(val))) : val,
+        [rollField]: parsedVal,
       };
 
       line.rollDetails = currentRolls;
-      if (rollField === 'lengthMeters') {
-        const sumMeters = currentRolls.reduce((sum, r) => sum + (Number(r.lengthMeters) || 0), 0);
-        line.contractedQty = sumMeters;
+      if (rollField === 'lengthMeters' || rollField === 'rollQty') {
+        line.rollCount = currentRolls.reduce((sum, r) => sum + (Number(r.rollQty ?? 1) || 0), 0);
+        line.contractedQty = currentRolls.reduce(
+          (sum, r) => sum + (Number(r.rollQty ?? 1) || 0) * (Number(r.lengthMeters) || 0),
+          0
+        );
       }
       updated[matIndex] = line;
 
       let nextBatches = prev.inboundBatches;
-      if (rollField === 'lengthMeters') {
+      if (rollField === 'lengthMeters' || rollField === 'rollQty') {
         nextBatches = buildBatches(
           prev.inboundBatchesCount || (prev.inboundBatches?.length || 2),
           updated,
           prev.effectiveFrom,
           prev.effectiveTo,
-          prev.inboundBatches
+          []
         );
       }
 
@@ -1296,25 +1409,37 @@ const ContractFrameworkPage = () => {
   };
 
   const handleAddMaterialLine = () => {
-    if (contractErrors.contractedMaterials) {
-      setContractErrors((prev) => {
-        const next = { ...prev };
-        delete next.contractedMaterials;
-        return next;
-      });
-    }
+    setContractErrors((prev) => {
+      const next = { ...prev };
+      delete next.contractedMaterials;
+      if (next.materialLines) {
+        const shiftedLines = {};
+        Object.keys(next.materialLines).forEach((k) => {
+          shiftedLines[Number(k) + 1] = next.materialLines[k];
+        });
+        next.materialLines = shiftedLines;
+      }
+      return next;
+    });
+
     const defaultMat = availableMaterialsForSupplier[0] || null;
     setContractForm((prev) => {
+      // Ưu tiên đưa dòng nguyên phụ liệu mới thêm lên trên đầu danh sách
       const nextMaterials = [
-        ...prev.contractedMaterials,
         createEmptyMaterialLine(defaultMat),
+        ...prev.contractedMaterials,
       ];
+      // Dịch chuyển expectedItems tương ứng trong các đợt giao để giữ nguyên phân bổ của các dòng cũ
+      const shiftedBatches = (prev.inboundBatches || []).map((b) => ({
+        ...b,
+        expectedItems: [null, ...(b.expectedItems || [])],
+      }));
       const nextBatches = buildBatches(
         prev.inboundBatchesCount || (prev.inboundBatches?.length || 2),
         nextMaterials,
         prev.effectiveFrom,
         prev.effectiveTo,
-        prev.inboundBatches
+        shiftedBatches
       );
       return {
         ...prev,
@@ -1326,14 +1451,32 @@ const ContractFrameworkPage = () => {
 
   const handleRemoveMaterialLine = (index) => {
     if (contractForm.contractedMaterials.length <= 1) return;
+    setContractErrors((prev) => {
+      const next = { ...prev };
+      if (next.materialLines) {
+        const reindexed = {};
+        Object.keys(next.materialLines).forEach((k) => {
+          const numK = Number(k);
+          if (numK < index) reindexed[numK] = next.materialLines[k];
+          else if (numK > index) reindexed[numK - 1] = next.materialLines[k];
+        });
+        next.materialLines = reindexed;
+      }
+      return next;
+    });
+
     setContractForm((prev) => {
       const nextMaterials = prev.contractedMaterials.filter((_, i) => i !== index);
+      const filteredBatches = (prev.inboundBatches || []).map((b) => ({
+        ...b,
+        expectedItems: (b.expectedItems || []).filter((_, i) => i !== index),
+      }));
       const nextBatches = buildBatches(
-        prev.inboundBatchesCount || 2,
+        prev.inboundBatchesCount || (prev.inboundBatches?.length || 2),
         nextMaterials,
         prev.effectiveFrom,
         prev.effectiveTo,
-        prev.inboundBatches
+        filteredBatches
       );
       return {
         ...prev,
@@ -1345,7 +1488,14 @@ const ContractFrameworkPage = () => {
 
   // UC: Kế hoạch Lịch trình Tiếp nhận Nguyên vật liệu (Inbound Delivery Schedule Handlers)
   const handleInboundBatchesCountChange = (newCount) => {
-    const c = Math.max(1, Math.min(12, Number(newCount) || 1));
+    if (newCount === '') {
+      setContractForm((prev) => ({
+        ...prev,
+        inboundBatchesCount: '',
+      }));
+      return;
+    }
+    const c = Math.max(1, Math.min(24, Math.floor(Number(newCount) || 1)));
     setContractErrors((prev) => {
       const next = { ...prev };
       delete next.inboundBatches;
@@ -1358,13 +1508,39 @@ const ContractFrameworkPage = () => {
         prev.contractedMaterials,
         prev.effectiveFrom,
         prev.effectiveTo,
-        prev.inboundBatches
+        []
       );
       return {
         ...prev,
         inboundBatchesCount: c,
         inboundBatches: updatedBatches,
       };
+    });
+  };
+
+  const handleRemoveInboundBatch = (bIdxToRemove) => {
+    setContractForm((prev) => {
+      const currentLen = (prev.inboundBatches || []).length;
+      if (currentLen <= 1) return prev;
+      const nextCount = currentLen - 1;
+      const updatedBatches = buildBatches(
+        nextCount,
+        prev.contractedMaterials,
+        prev.effectiveFrom,
+        prev.effectiveTo,
+        []
+      );
+      return {
+        ...prev,
+        inboundBatchesCount: nextCount,
+        inboundBatches: updatedBatches,
+      };
+    });
+    setContractErrors((prev) => {
+      const next = { ...prev };
+      delete next.inboundBatches;
+      delete next.inboundBatchErrors;
+      return next;
     });
   };
 
@@ -1402,22 +1578,46 @@ const ContractFrameworkPage = () => {
 
       next[bIdx].expectedItems[itemIdx].plannedQty = rawVal;
 
-      // NẾU CÓ 2 ĐỢT NHẬP: Tự động chia lại đợt còn lại sao cho Tổng 2 đợt = đúng số lượng tổng ban đầu của hợp đồng
-      if (next.length === 2 && rawVal !== '') {
-        const otherIdx = bIdx === 0 ? 1 : 0;
+      // Tự động điền số lượng còn thiếu cho đợt cuối cùng (áp dụng cho mọi số đợt >= 2)
+      if (next.length >= 2 && rawVal !== '') {
+        const lastIdx = next.length - 1;
         const contractedQty = Number(next[bIdx].expectedItems[itemIdx].contractedQty || 0);
-        const autoBalQty = Math.max(0, contractedQty - Number(rawVal));
-        if (next[otherIdx]?.expectedItems[itemIdx]) {
-          next[otherIdx].expectedItems[itemIdx].plannedQty = autoBalQty;
+        if (bIdx < lastIdx) {
+          const sumBeforeLast = next
+            .slice(0, lastIdx)
+            .reduce((sum, b) => sum + (Number(b.expectedItems[itemIdx]?.plannedQty) || 0), 0);
+          const remainingForLast = Math.max(0, contractedQty - sumBeforeLast);
+          if (next[lastIdx]?.expectedItems[itemIdx]) {
+            next[lastIdx].expectedItems[itemIdx].plannedQty = remainingForLast;
+          }
+        } else if (next.length === 2 && bIdx === 1) {
+          const autoBalQty = Math.max(0, contractedQty - Number(rawVal));
+          if (next[0]?.expectedItems[itemIdx]) {
+            next[0].expectedItems[itemIdx].plannedQty = autoBalQty;
+          }
         }
+      }
 
-        // Cập nhật lại % tỷ lệ của 2 đợt tương ứng
-        if (contractedQty > 0) {
-          const pctCurrent = Number(((Number(rawVal) / contractedQty) * 100).toFixed(1));
-          const pctOther = Number(Math.max(0, 100 - pctCurrent).toFixed(1));
-          next[bIdx].batchPercentage = pctCurrent;
-          next[otherIdx].batchPercentage = pctOther;
-        }
+      // Cập nhật lại % tỷ lệ của tất cả các đợt tương ứng
+      const totalContractQty = next[0].expectedItems.reduce(
+        (sum, it) => sum + (Number(it.contractedQty) || 0),
+        0
+      );
+      if (totalContractQty > 0) {
+        let sumPctBeforeLast = 0;
+        next.forEach((b, idx) => {
+          if (idx < next.length - 1) {
+            const bQty = b.expectedItems.reduce(
+              (sum, it) => sum + (Number(it.plannedQty) || 0),
+              0
+            );
+            const pct = Number(((bQty / totalContractQty) * 100).toFixed(1));
+            b.batchPercentage = pct;
+            sumPctBeforeLast += pct;
+          } else {
+            b.batchPercentage = Number(Math.max(0, 100 - sumPctBeforeLast).toFixed(1));
+          }
+        });
       }
 
       return {
@@ -1432,8 +1632,9 @@ const ContractFrameworkPage = () => {
       if (nextErrors.inboundBatchErrors?.[bIdx]?.itemErrors?.[itemIdx]) {
         const nextBatchErrors = { ...nextErrors.inboundBatchErrors };
         delete nextBatchErrors[bIdx].itemErrors[itemIdx];
-        if (contractForm.inboundBatches?.length === 2 && nextBatchErrors[bIdx === 0 ? 1 : 0]?.itemErrors?.[itemIdx]) {
-          delete nextBatchErrors[bIdx === 0 ? 1 : 0].itemErrors[itemIdx];
+        const lastIdx = (contractForm.inboundBatches?.length || 1) - 1;
+        if (nextBatchErrors[lastIdx]?.itemErrors?.[itemIdx]) {
+          delete nextBatchErrors[lastIdx].itemErrors[itemIdx];
         }
         nextErrors.inboundBatchErrors = nextBatchErrors;
       }
@@ -1441,14 +1642,14 @@ const ContractFrameworkPage = () => {
     });
   };
 
-  // Chọn/bỏ chọn cuộn vải cho từng đợt nhập trong Hợp đồng, đợt cuối cùng tự động nhận tất cả các cuộn còn thiếu
-  const handleToggleContractBatchRoll = (bIdx, itemIdx, targetRoll) => {
+  // Chọn/bỏ chọn cuộn vải hoặc cập nhật số lượng cuộn giao cho từng đợt nhập trong Hợp đồng
+  const handleContractBatchRollQtyChange = (bIdx, itemIdx, targetRoll, newRollQty) => {
     setContractForm((prev) => {
       const next = (prev.inboundBatches || []).map((b) => ({
         ...b,
         expectedItems: (b.expectedItems || []).map((it) => ({
           ...it,
-          selectedRolls: Array.isArray(it.selectedRolls) ? [...it.selectedRolls] : [],
+          selectedRolls: Array.isArray(it.selectedRolls) ? it.selectedRolls.map((sr) => ({ ...sr })) : [],
         })),
       }));
 
@@ -1457,40 +1658,70 @@ const ContractFrameworkPage = () => {
       const targetItem = next[bIdx].expectedItems[itemIdx];
       const allRolls = targetItem.allRolls || prev.contractedMaterials?.[itemIdx]?.rollDetails || [];
       const rollKey = targetRoll.rollCode || `R-${targetRoll.rollIndex}`;
-      const isSelected = targetItem.selectedRolls.some(
-        (r) => (r.rollCode || `R-${r.rollIndex}`) === rollKey
-      );
+      const masterRoll = allRolls.find((r) => (r.rollCode || `R-${r.rollIndex}`) === rollKey) || targetRoll;
+      const totalRollQty = Math.max(1, Math.floor(Number(masterRoll.rollQty ?? 1) || 1));
+      const desiredQty =
+        newRollQty === ''
+          ? 0
+          : Math.max(0, Math.min(totalRollQty, Math.floor(Number(newRollQty) || 0)));
 
-      if (isSelected) {
-        targetItem.selectedRolls = targetItem.selectedRolls.filter(
-          (r) => (r.rollCode || `R-${r.rollIndex}`) !== rollKey
-        );
-      } else {
-        // Gỡ khỏi các đợt khác nếu đang có
-        next.forEach((b, otherBIdx) => {
-          if (otherBIdx !== bIdx && b.expectedItems[itemIdx]) {
-            b.expectedItems[itemIdx].selectedRolls = (b.expectedItems[itemIdx].selectedRolls || []).filter(
-              (r) => (r.rollCode || `R-${r.rollIndex}`) !== rollKey
-            );
-          }
+      // Cập nhật số lượng cuộn trong đợt hiện tại bIdx
+      targetItem.selectedRolls = targetItem.selectedRolls.filter(
+        (r) => (r.rollCode || `R-${r.rollIndex}`) !== rollKey
+      );
+      if (desiredQty > 0) {
+        targetItem.selectedRolls.push({
+          ...masterRoll,
+          rollQty: desiredQty,
         });
-        targetItem.selectedRolls.push(targetRoll);
       }
 
-      // ĐỢT CUỐI CÙNG: Auto-fill toàn bộ các cuộn vải còn thiếu chưa được gán
+      // Đảm bảo tổng số cuộn của loại này ở các đợt trước đợt cuối không vượt quá totalRollQty
       const lastBIdx = next.length - 1;
-      if (lastBIdx >= 0 && allRolls.length > 0) {
-        const allocatedKeys = new Set();
+      if (lastBIdx > 0 && bIdx < lastBIdx) {
+        let remainingAllowedOther = Math.max(0, totalRollQty - desiredQty);
         for (let b = 0; b < lastBIdx; b++) {
-          (next[b].expectedItems[itemIdx]?.selectedRolls || []).forEach((r) => {
-            allocatedKeys.add(r.rollCode || `R-${r.rollIndex}`);
-          });
+          if (b === bIdx) continue;
+          const bRolls = next[b].expectedItems[itemIdx]?.selectedRolls || [];
+          const foundIdx = bRolls.findIndex((r) => (r.rollCode || `R-${r.rollIndex}`) === rollKey);
+          if (foundIdx >= 0) {
+            const curQ = Math.max(0, Math.floor(Number(bRolls[foundIdx].rollQty ?? 1) || 0));
+            const clampedQ = Math.min(curQ, remainingAllowedOther);
+            remainingAllowedOther = Math.max(0, remainingAllowedOther - clampedQ);
+            if (clampedQ <= 0) {
+              bRolls.splice(foundIdx, 1);
+            } else {
+              bRolls[foundIdx] = { ...bRolls[foundIdx], rollQty: clampedQ };
+            }
+          }
         }
-        const remainingRolls = allRolls.filter(
-          (r) => !allocatedKeys.has(r.rollCode || `R-${r.rollIndex}`)
-        );
+      }
+
+      // ĐỢT CUỐI CÙNG: Auto-fill toàn bộ số cuộn vải còn thiếu chưa được gán ở các đợt trước
+      if (lastBIdx >= 0 && allRolls.length > 0) {
+        const lastBatchRolls = [];
+        allRolls.forEach((r) => {
+          const rKey = r.rollCode || `R-${r.rollIndex}`;
+          const rTotalQty = Math.max(1, Math.floor(Number(r.rollQty ?? 1) || 1));
+          let allocatedBeforeLast = 0;
+          for (let b = 0; b < lastBIdx; b++) {
+            const match = (next[b].expectedItems[itemIdx]?.selectedRolls || []).find(
+              (sr) => (sr.rollCode || `R-${sr.rollIndex}`) === rKey
+            );
+            if (match) {
+              allocatedBeforeLast += Math.max(0, Math.floor(Number(match.rollQty ?? 1) || 0));
+            }
+          }
+          const remRollQty = lastBIdx === 0 ? rTotalQty : Math.max(0, rTotalQty - allocatedBeforeLast);
+          if (remRollQty > 0) {
+            lastBatchRolls.push({
+              ...r,
+              rollQty: remRollQty,
+            });
+          }
+        });
         if (next[lastBIdx].expectedItems[itemIdx]) {
-          next[lastBIdx].expectedItems[itemIdx].selectedRolls = remainingRolls;
+          next[lastBIdx].expectedItems[itemIdx].selectedRolls = lastBatchRolls;
         }
       }
 
@@ -1499,10 +1730,13 @@ const ContractFrameworkPage = () => {
         const it = b.expectedItems[itemIdx];
         if (it && allRolls.length > 0) {
           it.plannedQty = (it.selectedRolls || []).reduce(
-            (sum, r) => sum + (Number(r.lengthMeters) || 0),
+            (sum, r) => sum + (Number(r.rollQty ?? 1) || 0) * (Number(r.lengthMeters) || 0),
             0
           );
-          it.rollCount = (it.selectedRolls || []).length;
+          it.rollCount = (it.selectedRolls || []).reduce(
+            (sum, r) => sum + (Number(r.rollQty ?? 1) || 0),
+            0
+          );
         }
       });
 
@@ -1512,12 +1746,19 @@ const ContractFrameworkPage = () => {
         0
       );
       if (totalContractQty > 0) {
-        next.forEach((b) => {
-          const bQty = b.expectedItems.reduce(
-            (sum, it) => sum + (Number(it.plannedQty) || 0),
-            0
-          );
-          b.batchPercentage = Number(((bQty / totalContractQty) * 100).toFixed(1));
+        let sumPctBeforeLast = 0;
+        next.forEach((b, idx) => {
+          if (idx < next.length - 1) {
+            const bQty = b.expectedItems.reduce(
+              (sum, it) => sum + (Number(it.plannedQty) || 0),
+              0
+            );
+            const pct = Number(((bQty / totalContractQty) * 100).toFixed(1));
+            b.batchPercentage = pct;
+            sumPctBeforeLast += pct;
+          } else {
+            b.batchPercentage = Number(Math.max(0, 100 - sumPctBeforeLast).toFixed(1));
+          }
         });
       }
 
@@ -1532,6 +1773,22 @@ const ContractFrameworkPage = () => {
       delete nextErrors.inboundBatches;
       return nextErrors;
     });
+  };
+
+  const handleToggleContractBatchRoll = (bIdx, itemIdx, targetRoll) => {
+    const batch = contractForm.inboundBatches?.[bIdx];
+    const targetItem = batch?.expectedItems?.[itemIdx];
+    const allRolls = targetItem?.allRolls || contractForm.contractedMaterials?.[itemIdx]?.rollDetails || [];
+    const rollKey = targetRoll.rollCode || `R-${targetRoll.rollIndex}`;
+    const masterRoll = allRolls.find((r) => (r.rollCode || `R-${r.rollIndex}`) === rollKey) || targetRoll;
+    const totalRollQty = Math.max(1, Math.floor(Number(masterRoll.rollQty ?? 1) || 1));
+    const currentSelected = (targetItem?.selectedRolls || []).find(
+      (r) => (r.rollCode || `R-${r.rollIndex}`) === rollKey
+    );
+    const isCurrentlySelected = Boolean(currentSelected && Number(currentSelected.rollQty ?? 1) > 0);
+
+    // Nếu đang chọn thì bỏ chọn (0), nếu chưa chọn thì gán mặc định toàn bộ số cuộn của dòng này vào đợt bIdx
+    handleContractBatchRollQtyChange(bIdx, itemIdx, targetRoll, isCurrentlySelected ? 0 : totalRollQty);
   };
 
   const handleAutoBalanceInboundBatches = () => {
@@ -1561,7 +1818,7 @@ const ContractFrameworkPage = () => {
     });
   };
 
-  // Đối soát cân đối giữa Tổng cam kết trên Hợp đồng và Tổng các đợt đã phân bổ
+  // Đối soát cân đối giữa Tổng cam kết trên Hợp đồng và Tổng các đợt đã phân bổ (khớp chính xác theo từng dòng mIdx)
   const inboundAllocationBalance = useMemo(() => {
     if (!Array.isArray(contractForm.contractedMaterials) || contractForm.contractedMaterials.length === 0) {
       return [];
@@ -1572,15 +1829,18 @@ const ContractFrameworkPage = () => {
       const contractedQty = Number(mat.contractedQty || 0);
 
       const totalAllocated = (contractForm.inboundBatches || []).reduce((sum, b) => {
-        const item = (b.expectedItems || []).find(
-          (i) => String(i.rawMaterialId?._id || i.rawMaterialId?.id || i.rawMaterialId) === rawIdStr ||
-                 (i.materialCode && i.materialCode === (mat.materialCodeSnapshot || mat.rawMaterialId?.materialCode))
-        );
+        const item =
+          b.expectedItems?.[mIdx] ||
+          (b.expectedItems || []).find(
+            (i) =>
+              String(i.rawMaterialId?._id || i.rawMaterialId?.id || i.rawMaterialId) === rawIdStr &&
+              (i.unit || '') === (mat.unitSnapshot || mat.rawMaterialId?.unit || '')
+          );
         return sum + (Number(item?.plannedQty) || 0);
       }, 0);
 
-      const diff = contractedQty - totalAllocated;
-      const isBalanced = diff === 0;
+      const diff = Number((contractedQty - totalAllocated).toFixed(4));
+      const isBalanced = Math.abs(diff) < 0.001;
 
       return {
         rawMaterialId: rawIdStr,
@@ -1594,6 +1854,55 @@ const ContractFrameworkPage = () => {
       };
     });
   }, [contractForm.contractedMaterials, contractForm.inboundBatches]);
+
+  const [highlightedMismatchItem, setHighlightedMismatchItem] = useState(null);
+
+  // Cuộn đến đúng dòng nguyên phụ liệu đang bị lệch số lượng trong các đợt giao
+  const handleScrollToMismatchItem = (targetItemIdx) => {
+    const itemIdx =
+      targetItemIdx !== undefined
+        ? targetItemIdx
+        : inboundAllocationBalance.findIndex((b) => !b.isBalanced);
+    if (itemIdx < 0) return;
+
+    const batchesList = contractForm.inboundBatches || [];
+    const contractedQty = Number(contractForm.contractedMaterials?.[itemIdx]?.contractedQty || 0);
+
+    // Tìm đợt giao có sai lệch hoặc đợt đầu tiên cho phép người dùng chỉnh sửa
+    let targetBatchIdx = batchesList.findIndex((b, bIdx) => {
+      if (contractErrors.inboundBatchErrors?.[bIdx]?.itemErrors?.[itemIdx]) return true;
+      const q = Number(b.expectedItems?.[itemIdx]?.plannedQty || 0);
+      return q > contractedQty || q < 0;
+    });
+    if (targetBatchIdx < 0) {
+      targetBatchIdx = 0;
+    }
+
+    setHighlightedMismatchItem({ batchIdx: targetBatchIdx, itemIdx });
+
+    const rowEl =
+      document.getElementById(`contract-batch-row-${targetBatchIdx}-item-${itemIdx}`) ||
+      document.getElementById(`contract-batch-row-0-item-${itemIdx}`);
+    if (rowEl) {
+      rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    setTimeout(() => {
+      const inputEl =
+        document.getElementById(`contract-batch-input-${targetBatchIdx}-item-${itemIdx}`) ||
+        document.getElementById(`contract-batch-input-0-item-${itemIdx}`);
+      if (inputEl && !inputEl.readOnly) {
+        inputEl.focus();
+        if (typeof inputEl.select === 'function') inputEl.select();
+      }
+    }, 300);
+
+    setTimeout(() => {
+      setHighlightedMismatchItem((prev) =>
+        prev?.itemIdx === itemIdx ? null : prev
+      );
+    }, 3500);
+  };
 
   const startNewContractDraft = () => {
     setEditingContractId(null);
@@ -2189,7 +2498,7 @@ const ContractFrameworkPage = () => {
                                 )}
                               </div>
                               <div className="wms-helper-text" style={{ fontSize: '11px', marginTop: '3px' }}>
-                                {CONTRACT_TYPE_LABELS[c.contractType] || 'HĐ Khung'}
+                                {CONTRACT_TYPE_LABELS[c.contractType] || 'Hợp đồng mua bán'}
                               </div>
                               {c.latestInboundPlan && (
                                 <div style={{ marginTop: '4px' }}>
@@ -2412,20 +2721,6 @@ const ContractFrameworkPage = () => {
                                           <CheckCircle2 size={14} /> Kích hoạt Hợp đồng
                                         </button>
                                       )}
-                                      {c.status === 'ACTIVE' && (
-                                        <button
-                                          type="button"
-                                          className="wms-dropdown-item"
-                                          onClick={() => {
-                                            setActiveMenuId(null);
-                                            navigate(
-                                              `/accountant/inbound-plans?contractId=${contractId}`
-                                            );
-                                          }}
-                                        >
-                                          <CalendarClock size={14} /> Lập lịch tiếp nhận
-                                        </button>
-                                      )}
                                       {c.status !== 'TERMINATED' && c.status !== 'SUPERSEDED' && (
                                         <>
                                           <div className="wms-dropdown-divider" />
@@ -2540,16 +2835,6 @@ const ContractFrameworkPage = () => {
                                                     <span>Chấm dứt</span>
                                                   </button>
                                                 )}
-                                                {ver.status === 'ACTIVE' && (
-                                                  <button
-                                                    type="button"
-                                                    className="wms-btn wms-btn-primary wms-btn-sm"
-                                                    onClick={() => navigate(`/accountant/inbound-plans?contractId=${vId}`)}
-                                                    title="Lập kế hoạch tiếp nhận nguyên phụ liệu"
-                                                  >
-                                                    <CalendarClock size={12} />
-                                                  </button>
-                                                )}
                                               </div>
                                             </td>
                                           </tr>
@@ -2653,17 +2938,11 @@ const ContractFrameworkPage = () => {
                 <select
                   id="cf-type"
                   className="wms-select"
-                  value={contractForm.contractType}
+                  value="FRAMEWORK_AGREEMENT"
                   onChange={(e) => handleContractFieldChange('contractType', e.target.value)}
                 >
                   <option value="FRAMEWORK_AGREEMENT">
-                    Hợp đồng nguyên tắc / Khung (Giao nhiều đợt theo lịch)
-                  </option>
-                  <option value="BATCH_LUMP_SUM">
-                    Hợp đồng trọn gói theo lô sản xuất
-                  </option>
-                  <option value="FIXED_UNIT_PRICE">
-                    Hợp đồng theo đơn giá cố định
+                    Hợp đồng mua bán
                   </option>
                 </select>
               </div>
@@ -2970,13 +3249,30 @@ const ContractFrameworkPage = () => {
               const lineErrors = contractErrors.materialLines?.[index] || {};
 
               return (
-                <div key={index} className="wms-material-line-card">
+                <div key={line._uiKey || index} className="wms-material-line-card">
                   <div className="wms-material-line-header">
-                    <span className="wms-material-line-title">
-                      Hạng mục Nguyên phụ liệu #{index + 1}:{' '}
-                      {line.materialCodeSnapshot
-                        ? `[${line.materialCodeSnapshot}] ${line.materialNameSnapshot}`
-                        : 'Chọn nguyên vật liệu bên dưới'}
+                    <span className="wms-material-line-title" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span>
+                        Hạng mục Nguyên phụ liệu #{index + 1}:{' '}
+                        {line.materialCodeSnapshot
+                          ? `[${line.materialCodeSnapshot}] ${line.materialNameSnapshot}`
+                          : 'Chọn nguyên vật liệu bên dưới'}
+                      </span>
+                      {index === 0 && contractForm.contractedMaterials.length > 1 && (
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '999px',
+                            background: '#E0F2FE',
+                            color: '#0369A1',
+                            border: '1px solid #BAE6FD',
+                          }}
+                        >
+                          Mới nhất
+                        </span>
+                      )}
                     </span>
                     {contractForm.contractedMaterials.length > 1 && (
                       <button
@@ -3351,7 +3647,7 @@ const ContractFrameworkPage = () => {
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ fontSize: '12px', background: '#E0F2FE', color: '#0369A1', padding: '3px 10px', borderRadius: '6px', fontWeight: 700 }}>
-                              {line.rollDetails?.length || 0} cuộn · Tổng: {(Number(line.contractedQty) || 0).toLocaleString('vi-VN')} {line.unitSnapshot}
+                              {(line.rollDetails || []).reduce((sum, r) => sum + (Number(r.rollQty ?? 1) || 0), 0)} cuộn · Tổng: {(Number(line.contractedQty) || 0).toLocaleString('vi-VN')} {line.unitSnapshot}
                             </span>
                             <button
                               type="button"
@@ -3359,7 +3655,7 @@ const ContractFrameworkPage = () => {
                               style={{ fontSize: '11px', padding: '3px 8px' }}
                               onClick={() => handleAddRoll(index)}
                             >
-                              <Plus size={12} /> Thêm 1 cuộn
+                              <Plus size={12} /> Thêm 1 dòng cuộn
                             </button>
                           </div>
                         </div>
@@ -3370,8 +3666,8 @@ const ContractFrameworkPage = () => {
                             <thead>
                               <tr style={{ background: '#F1F5F9', borderBottom: '1px solid #E2E8F0', color: '#475569', textAlign: 'left' }}>
                                 <th style={{ padding: '6px 10px', width: '50px', textAlign: 'center' }}>STT</th>
-                                <th style={{ padding: '6px 10px', width: '140px' }}>Mã định danh cuộn</th>
-                                <th style={{ padding: '6px 10px', width: '170px' }}>Chiều dài ({line.unitSnapshot || 'mét'}) <span className="wms-required">*</span></th>
+                                <th style={{ padding: '6px 10px', width: '150px' }}>Số lượng <span className="wms-required">*</span></th>
+                                <th style={{ padding: '6px 10px', width: '190px' }}>Chiều dài ({line.unitSnapshot || 'mét'}) <span className="wms-required">*</span></th>
                                 <th style={{ padding: '6px 10px' }}>Ghi chú cuộn vải</th>
                                 <th style={{ padding: '6px 10px', width: '60px', textAlign: 'center' }}>Xóa</th>
                               </tr>
@@ -3380,57 +3676,71 @@ const ContractFrameworkPage = () => {
                               {(!line.rollDetails || line.rollDetails.length === 0) ? (
                                 <tr>
                                   <td colSpan={5} style={{ textAlign: 'center', padding: '16px', color: '#94A3B8' }}>
-                                    Chưa có cuộn vải nào. Hãy nhấn "+ Thêm 1 cuộn" ở góc trên bên phải.
+                                    Chưa có cuộn vải nào. Hãy nhấn "+ Thêm 1 dòng cuộn" ở góc trên bên phải.
                                   </td>
                                 </tr>
                               ) : (
-                                line.rollDetails.map((roll, rIdx) => (
-                                  <tr key={rIdx} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                                    <td style={{ textAlign: 'center', fontWeight: 600, color: '#64748B' }}>
-                                      #{rIdx + 1}
-                                    </td>
-                                    <td style={{ padding: '4px 10px' }}>
-                                      <input
-                                        type="text"
-                                        value={roll.rollCode || `C-${String(rIdx + 1).padStart(2, '0')}`}
-                                        onChange={(e) => handleRollDetailChange(index, rIdx, 'rollCode', e.target.value)}
-                                        style={{ width: '100%', padding: '3px 6px', fontSize: '12px', fontFamily: 'monospace', borderRadius: '4px', border: '1px solid #E2E8F0' }}
-                                      />
-                                    </td>
-                                    <td style={{ padding: '4px 10px' }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                line.rollDetails.map((roll, rIdx) => {
+                                  const rQty = roll.rollQty ?? 1;
+                                  const rLen = Number(roll.lengthMeters || 0);
+                                  return (
+                                    <tr key={rIdx} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                      <td style={{ textAlign: 'center', fontWeight: 600, color: '#64748B' }}>
+                                        #{rIdx + 1}
+                                      </td>
+                                      <td style={{ padding: '4px 10px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                          <input
+                                            type="number"
+                                            min="1"
+                                            step="1"
+                                            value={rQty}
+                                            onChange={(e) => handleRollDetailChange(index, rIdx, 'rollQty', e.target.value)}
+                                            style={{ width: '78px', padding: '3px 6px', fontSize: '12px', fontWeight: 700, color: '#0F172A', borderRadius: '4px', border: '1px solid #CBD5E1' }}
+                                          />
+                                          <span style={{ fontSize: '12px', color: '#64748B' }}>cuộn</span>
+                                        </div>
+                                      </td>
+                                      <td style={{ padding: '4px 10px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                          <input
+                                            type="number"
+                                            min="0.1"
+                                            step="any"
+                                            value={roll.lengthMeters}
+                                            onChange={(e) => handleRollDetailChange(index, rIdx, 'lengthMeters', e.target.value)}
+                                            style={{ width: '85px', padding: '3px 6px', fontSize: '12px', fontWeight: 700, color: '#0369A1', borderRadius: '4px', border: '1px solid #CBD5E1' }}
+                                          />
+                                          <span style={{ fontSize: '12px', color: '#64748B' }}>{line.unitSnapshot || 'mét'}</span>
+                                          {Number(rQty) > 1 && (
+                                            <span style={{ fontSize: '11px', color: '#0284C7', fontWeight: 600 }}>
+                                              (= {(Number(rQty) * rLen).toLocaleString('vi-VN')})
+                                            </span>
+                                          )}
+                                        </div>
+                                      </td>
+                                      <td style={{ padding: '4px 10px' }}>
                                         <input
-                                          type="number"
-                                          min="0.1"
-                                          step="any"
-                                          value={roll.lengthMeters}
-                                          onChange={(e) => handleRollDetailChange(index, rIdx, 'lengthMeters', e.target.value)}
-                                          style={{ width: '90px', padding: '3px 6px', fontSize: '12px', fontWeight: 700, color: '#0369A1', borderRadius: '4px', border: '1px solid #CBD5E1' }}
+                                          type="text"
+                                          placeholder="VD: Cuộn tiêu chuẩn, cuộn mẫu..."
+                                          value={roll.note || ''}
+                                          onChange={(e) => handleRollDetailChange(index, rIdx, 'note', e.target.value)}
+                                          style={{ width: '100%', padding: '3px 6px', fontSize: '12px', borderRadius: '4px', border: '1px solid #E2E8F0' }}
                                         />
-                                        <span style={{ fontSize: '12px', color: '#64748B' }}>{line.unitSnapshot || 'mét'}</span>
-                                      </div>
-                                    </td>
-                                    <td style={{ padding: '4px 10px' }}>
-                                      <input
-                                        type="text"
-                                        placeholder="VD: Cuộn tiêu chuẩn, cuộn mẫu..."
-                                        value={roll.note || ''}
-                                        onChange={(e) => handleRollDetailChange(index, rIdx, 'note', e.target.value)}
-                                        style={{ width: '100%', padding: '3px 6px', fontSize: '12px', borderRadius: '4px', border: '1px solid #E2E8F0' }}
-                                      />
-                                    </td>
-                                    <td style={{ textAlign: 'center', padding: '4px 10px' }}>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleRemoveRoll(index, rIdx)}
-                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444', padding: '2px' }}
-                                        title="Xóa cuộn này"
-                                      >
-                                        <Trash2 size={13} />
-                                      </button>
-                                    </td>
-                                  </tr>
-                                ))
+                                      </td>
+                                      <td style={{ textAlign: 'center', padding: '4px 10px' }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveRoll(index, rIdx)}
+                                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444', padding: '2px' }}
+                                          title="Xóa dòng cuộn này"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })
                               )}
                             </tbody>
                           </table>
@@ -3439,7 +3749,7 @@ const ContractFrameworkPage = () => {
                         {/* Summary footer */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', fontSize: '12px', fontWeight: 600, flexWrap: 'wrap', gap: '8px' }}>
                           <span style={{ color: '#475569' }}>
-                            Đã phân rã chi tiết: <strong style={{ color: '#0369A1' }}>{line.rollDetails?.length || 0} cuộn</strong>
+                            Đã phân rã chi tiết: <strong style={{ color: '#0369A1' }}>{(line.rollDetails || []).reduce((sum, r) => sum + (Number(r.rollQty ?? 1) || 0), 0)} cuộn</strong>
                           </span>
                           <span style={{ color: '#0F172A', background: '#FFFFFF', padding: '4px 12px', borderRadius: '4px', border: '1px solid #CBD5E1' }}>
                             Tổng số lượng ký hợp đồng: <strong style={{ color: '#0284C7', fontSize: '13px' }}>{(Number(line.contractedQty) || 0).toLocaleString('vi-VN')} {line.unitSnapshot}</strong>
@@ -3592,10 +3902,24 @@ const ContractFrameworkPage = () => {
                   Phần IV – Kế hoạch Lịch trình Tiếp nhận Nguyên vật liệu (Lập lịch & Phân bổ đợt giao)
                 </h2>
                 <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: '#64748B' }}>
-                  Hệ thống mặc định khởi tạo 2 đợt giao hàng tự chia đều (50% - 50%), đảm bảo tổng số lượng phân bổ luôn bằng 100% số lượng cam kết trên hợp đồng. Khi điều chỉnh một đợt, đợt còn lại sẽ tự động bù trừ tương ứng.
+                  Tùy chọn số đợt giao hàng theo nhu cầu thực tế (1 đợt, 2 đợt, 3 đợt, 4 đợt...). Khi điều chỉnh số lượng các đợt trước, đợt cuối cùng sẽ tự động điền phần số lượng còn thiếu để luôn khớp 100% hợp đồng.
                 </p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="wms-btn-action"
+                  style={{ background: '#0284C7', color: '#FFFFFF', border: '1px solid #0284C7', fontWeight: 600, fontSize: '12px' }}
+                  onClick={() =>
+                    handleInboundBatchesCountChange(
+                      (Number(contractForm.inboundBatchesCount) || (contractForm.inboundBatches || []).length || 1) + 1
+                    )
+                  }
+                  title="Thêm 1 đợt giao hàng mới"
+                >
+                  <Plus size={13} style={{ marginRight: 4 }} />
+                  Thêm 1 đợt giao
+                </button>
                 <button
                   type="button"
                   className="wms-btn-action"
@@ -3604,7 +3928,7 @@ const ContractFrameworkPage = () => {
                   title="Tự động chia đều lại số lượng cho tất cả các đợt"
                 >
                   <RefreshCw size={13} style={{ marginRight: 4 }} />
-                  Cân bằng lại các đợt
+                  Chia đều các đợt
                 </button>
               </div>
             </div>
@@ -3620,23 +3944,106 @@ const ContractFrameworkPage = () => {
             <div className="wms-form-grid-3" style={{ marginTop: '14px', background: '#FFFFFF', padding: '14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
               <div className="wms-field">
                 <label className="wms-label" style={{ fontWeight: 700, color: '#0F172A' }}>
-                  Số đợt tiếp nhận nguyên liệu (Batches)
+                  Số đợt tiếp nhận nguyên liệu (Tùy chọn số đợt giao)
                 </label>
-                <select
-                  className="wms-select"
-                  value={contractForm.inboundBatchesCount || 2}
-                  onChange={(e) => handleInboundBatchesCountChange(e.target.value)}
-                  style={{ fontWeight: 700, color: '#0284C7' }}
-                >
-                  <option value={1}>1 đợt – Tiếp nhận toàn bộ 100% hàng một lần</option>
-                  <option value={2}>2 đợt (Khuyên dùng) – Chia 2 đợt tự bù trừ (50% - 50%)</option>
-                  <option value={3}>3 đợt – Tiếp nhận theo 3 giai đoạn cắt may</option>
-                  <option value={4}>4 đợt – Tiếp nhận theo 4 đợt sản xuất</option>
-                  <option value={5}>5 đợt – Tiếp nhận theo tiến độ 5 đợt</option>
-                  <option value={6}>6 đợt – Tiếp nhận chia nhỏ 6 đợt</option>
-                </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #0284C7', borderRadius: '6px', overflow: 'hidden', background: '#FFFFFF' }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleInboundBatchesCountChange(
+                          Math.max(1, (Number(contractForm.inboundBatchesCount) || (contractForm.inboundBatches || []).length || 1) - 1)
+                        )
+                      }
+                      disabled={(Number(contractForm.inboundBatchesCount) || 1) <= 1}
+                      style={{
+                        border: 'none',
+                        background: '#F0F9FF',
+                        color: '#0369A1',
+                        fontWeight: 700,
+                        fontSize: '15px',
+                        width: '34px',
+                        height: '36px',
+                        cursor: (Number(contractForm.inboundBatchesCount) || 1) <= 1 ? 'not-allowed' : 'pointer',
+                      }}
+                      title="Giảm 1 đợt giao"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      max={24}
+                      value={contractForm.inboundBatchesCount ?? (contractForm.inboundBatches || []).length ?? 1}
+                      onChange={(e) => handleInboundBatchesCountChange(e.target.value)}
+                      onBlur={(e) => {
+                        if (!e.target.value || Number(e.target.value) < 1) {
+                          handleInboundBatchesCountChange(1);
+                        }
+                      }}
+                      style={{
+                        width: '56px',
+                        height: '36px',
+                        border: 'none',
+                        borderLeft: '1px solid #BAE6FD',
+                        borderRight: '1px solid #BAE6FD',
+                        textAlign: 'center',
+                        fontWeight: 700,
+                        fontSize: '14px',
+                        color: '#0284C7',
+                        outline: 'none',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleInboundBatchesCountChange(
+                          Math.min(24, (Number(contractForm.inboundBatchesCount) || (contractForm.inboundBatches || []).length || 1) + 1)
+                        )
+                      }
+                      style={{
+                        border: 'none',
+                        background: '#F0F9FF',
+                        color: '#0369A1',
+                        fontWeight: 700,
+                        fontSize: '15px',
+                        width: '34px',
+                        height: '36px',
+                        cursor: 'pointer',
+                      }}
+                      title="Tăng 1 đợt giao"
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                    {[1, 2, 3, 4, 5].map((presetNum) => {
+                      const isCurr = Number(contractForm.inboundBatchesCount || (contractForm.inboundBatches || []).length) === presetNum;
+                      return (
+                        <button
+                          key={presetNum}
+                          type="button"
+                          onClick={() => handleInboundBatchesCountChange(presetNum)}
+                          style={{
+                            padding: '5px 9px',
+                            fontSize: '11.5px',
+                            fontWeight: isCurr ? 700 : 500,
+                            borderRadius: '5px',
+                            border: isCurr ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                            background: isCurr ? '#0284C7' : '#F8FAFC',
+                            color: isCurr ? '#FFFFFF' : '#334155',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {presetNum} đợt
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 <span className="wms-helper-text">
-                  Kế hoạch này sẽ được tự động kích hoạt và đồng bộ xuyên suốt với phân hệ Kế hoạch Lịch trình Nhập.
+                  Nhập trực tiếp số đợt bất kỳ (1–24 đợt) hoặc chọn nhanh. Hệ thống sẽ tự động chia lịch giao tương ứng.
                 </span>
               </div>
 
@@ -3669,6 +4076,8 @@ const ContractFrameworkPage = () => {
             <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {(contractForm.inboundBatches || []).map((batch, bIdx) => {
                 const bErrors = contractErrors.inboundBatchErrors?.[bIdx] || {};
+                const totalBatchesLen = (contractForm.inboundBatches || []).length;
+                const isLastBatchMulti = totalBatchesLen > 1 && bIdx === totalBatchesLen - 1;
                 return (
                   <div
                     key={bIdx}
@@ -3688,6 +4097,8 @@ const ContractFrameworkPage = () => {
                         borderBottom: '1px solid #F1F5F9',
                         paddingBottom: '10px',
                         marginBottom: '12px',
+                        flexWrap: 'wrap',
+                        gap: '8px',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -3701,7 +4112,7 @@ const ContractFrameworkPage = () => {
                             borderRadius: '12px',
                           }}
                         >
-                          Đợt {batch.batchNumber || bIdx + 1}/{(contractForm.inboundBatches || []).length}
+                          Đợt {batch.batchNumber || bIdx + 1}/{totalBatchesLen}
                         </span>
                         <input
                           type="text"
@@ -3711,7 +4122,7 @@ const ContractFrameworkPage = () => {
                           onChange={(e) => handleInboundBatchFieldChange(bIdx, 'batchTitle', e.target.value)}
                         />
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{ fontSize: '12px', color: '#64748B' }}>Tỷ lệ:</span>
                           <span style={{ fontWeight: 700, color: '#0284C7', fontSize: '13px' }}>
@@ -3737,6 +4148,28 @@ const ContractFrameworkPage = () => {
                             onChange={(e) => handleInboundBatchFieldChange(bIdx, 'scheduledDeliveryDate', e.target.value)}
                           />
                         </div>
+                        {totalBatchesLen > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveInboundBatch(bIdx)}
+                            title="Xóa đợt giao hàng này"
+                            style={{
+                              border: '1px solid #FCA5A5',
+                              background: '#FEF2F2',
+                              color: '#DC2626',
+                              borderRadius: '6px',
+                              padding: '4px 8px',
+                              fontSize: '11.5px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Trash2 size={12} /> Xóa đợt
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -3756,72 +4189,189 @@ const ContractFrameworkPage = () => {
                           <th>Tên nguyên phụ liệu</th>
                           <th style={{ width: '80px', textAlign: 'center' }}>ĐVT</th>
                           <th style={{ width: '130px', textAlign: 'right' }}>SL Ký HĐ</th>
-                          <th style={{ width: '180px', textAlign: 'right', background: '#E0F2FE', color: '#0369A1' }}>
+                          <th style={{ width: '190px', textAlign: 'right', background: '#E0F2FE', color: '#0369A1' }}>
                             Số lượng phân bổ đợt này
                           </th>
                         </tr>
                       </thead>
                       <tbody>
                         {(batch.expectedItems || []).map((it, itIdx) => {
-                          const cMat = (contractForm.contractedMaterials || []).find(
-                            (cm) => String(cm.rawMaterialId?._id || cm.rawMaterialId) === String(it.rawMaterialId)
-                          ) || contractForm.contractedMaterials[itIdx];
+                          const cMat =
+                            contractForm.contractedMaterials?.[itIdx] ||
+                            (contractForm.contractedMaterials || []).find(
+                              (cm) => String(cm.rawMaterialId?._id || cm.rawMaterialId) === String(it.rawMaterialId)
+                            );
                           const cQty = Number(cMat?.contractedQty || it.contractedQty || 0);
                           const itErr = bErrors.itemErrors?.[itIdx];
 
                           const allRolls = it.allRolls || cMat?.rollDetails || [];
+                          const isHighlightedMismatch =
+                            highlightedMismatchItem?.itemIdx === itIdx;
                           return (
-                            <tr key={itIdx}>
+                            <tr
+                              key={itIdx}
+                              id={`contract-batch-row-${bIdx}-item-${itIdx}`}
+                              style={
+                                isHighlightedMismatch
+                                  ? {
+                                      background: '#FEF2F2',
+                                      outline: '2px solid #EF4444',
+                                      transition: 'all 0.25s ease',
+                                    }
+                                  : undefined
+                              }
+                            >
                               <td style={{ textAlign: 'center', color: '#94A3B8' }}>{itIdx + 1}</td>
                               <td style={{ fontWeight: 600 }}>
                                 {it.materialCode || cMat?.materialCodeSnapshot || 'NVL'}
                               </td>
                               <td>
                                 <div>{it.materialName || cMat?.materialNameSnapshot || '—'}</div>
-                                {allRolls.length > 0 && (
-                                  <div style={{
-                                    marginTop: '6px',
-                                    padding: '6px 8px',
-                                    background: '#F8FAFC',
-                                    border: '1px solid #E2E8F0',
-                                    borderRadius: '6px',
-                                  }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                {allRolls.length > 0 && totalBatchesLen > 1 && (
+                                  <div
+                                    onClick={() => {
+                                      if (!isLastBatchMulti && allRolls.length === 1) {
+                                        handleToggleContractBatchRoll(bIdx, itIdx, allRolls[0]);
+                                      }
+                                    }}
+                                    style={{
+                                      marginTop: '6px',
+                                      padding: '6px 8px',
+                                      background: '#F8FAFC',
+                                      border: '1px solid #E2E8F0',
+                                      borderRadius: '6px',
+                                      cursor: !isLastBatchMulti && allRolls.length === 1 ? 'pointer' : 'default',
+                                      userSelect: 'none',
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', flexWrap: 'wrap', gap: '4px' }}>
                                       <span style={{ fontSize: '11px', fontWeight: 600, color: '#1E293B' }}>
                                         🧵 Chọn cuộn vải giao Đợt {bIdx + 1}:
                                         <span style={{ marginLeft: '4px', color: '#0284C7' }}>
-                                          ({it.selectedRolls?.length || 0}/{allRolls.length} cuộn)
+                                          ({(it.selectedRolls || []).reduce((s, r) => s + (Number(r.rollQty ?? 1) || 0), 0)}/{allRolls.reduce((s, r) => s + Math.max(1, Number(r.rollQty ?? 1) || 1), 0)} cuộn)
                                         </span>
                                       </span>
-                                      {bIdx === (contractForm.inboundBatches || []).length - 1 && (contractForm.inboundBatches || []).length > 1 && (
+                                      {isLastBatchMulti && (
                                         <span style={{ fontSize: '10px', background: '#E0F2FE', color: '#0369A1', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
-                                          ⚡ Tự động gom {it.selectedRolls?.length || 0} cuộn còn thiếu
+                                          ⚡ Tự động gom {(it.selectedRolls || []).reduce((s, r) => s + (Number(r.rollQty ?? 1) || 0), 0)} cuộn còn thiếu
                                         </span>
                                       )}
                                     </div>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                                       {allRolls.map((roll, rIdx) => {
                                         const rollKey = roll.rollCode || `R-${roll.rollIndex || rIdx + 1}`;
-                                        const isSelectedInThisBatch = (it.selectedRolls || []).some(
+                                        const totalRollQty = Math.max(1, Math.floor(Number(roll.rollQty ?? 1) || 1));
+                                        const selectedEntry = (it.selectedRolls || []).find(
                                           (r) => (r.rollCode || `R-${r.rollIndex || rIdx + 1}`) === rollKey
                                         );
+                                        const selectedRollQty = selectedEntry ? Math.max(0, Math.floor(Number(selectedEntry.rollQty ?? 1) || 0)) : 0;
+                                        const isSelectedInThisBatch = selectedRollQty > 0;
                                         const otherBatchIndex = (contractForm.inboundBatches || []).findIndex(
                                           (otherB, obIdx) =>
                                             obIdx !== bIdx &&
                                             (otherB.expectedItems[itIdx]?.selectedRolls || []).some(
-                                              (r) => (r.rollCode || `R-${r.rollIndex || rIdx + 1}`) === rollKey
+                                              (r) =>
+                                                (r.rollCode || `R-${r.rollIndex || rIdx + 1}`) === rollKey &&
+                                                Number(r.rollQty ?? 1) > 0
                                             )
                                         );
-                                        const isLastBatch = bIdx === (contractForm.inboundBatches || []).length - 1 && (contractForm.inboundBatches || []).length > 1;
+                                        const rollLen = Number(roll.lengthMeters || 0);
+
+                                        if (totalRollQty > 1) {
+                                          return (
+                                            <div
+                                              key={rollKey}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (!isLastBatchMulti) {
+                                                  handleToggleContractBatchRoll(bIdx, itIdx, roll);
+                                                }
+                                              }}
+                                              title={
+                                                isLastBatchMulti
+                                                  ? 'Đợt cuối tự động nhận số cuộn còn thiếu'
+                                                  : 'Bấm vào khối này để chọn / bỏ chọn dòng cuộn'
+                                              }
+                                              style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '5px',
+                                                padding: '3px 8px',
+                                                borderRadius: '6px',
+                                                fontSize: '11px',
+                                                cursor: isLastBatchMulti ? 'default' : 'pointer',
+                                                userSelect: 'none',
+                                                border: isSelectedInThisBatch ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                                                background: isSelectedInThisBatch ? '#E0F2FE' : '#FFFFFF',
+                                                color: isSelectedInThisBatch ? '#0369A1' : '#475569',
+                                              }}
+                                            >
+                                              <span
+                                                style={{
+                                                  fontWeight: 700,
+                                                  fontSize: '11px',
+                                                  display: 'inline-flex',
+                                                  alignItems: 'center',
+                                                  gap: '3px',
+                                                }}
+                                              >
+                                                <span>{isSelectedInThisBatch ? '☑' : '☐'}</span>
+                                                <span>#{rIdx + 1} ({rollLen.toLocaleString('vi-VN')}m/cuộn):</span>
+                                              </span>
+
+                                              {isLastBatchMulti ? (
+                                                <span style={{ fontWeight: 700 }}>
+                                                  {selectedRollQty}/{totalRollQty} cuộn ({(selectedRollQty * rollLen).toLocaleString('vi-VN')}m)
+                                                </span>
+                                              ) : (
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                                  <span>SL giao:</span>
+                                                  <input
+                                                    type="number"
+                                                    min={0}
+                                                    max={totalRollQty}
+                                                    step={1}
+                                                    value={selectedRollQty}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    onChange={(e) =>
+                                                      handleContractBatchRollQtyChange(bIdx, itIdx, roll, e.target.value)
+                                                    }
+                                                    style={{
+                                                      width: '46px',
+                                                      padding: '1px 4px',
+                                                      fontSize: '11px',
+                                                      fontWeight: 700,
+                                                      textAlign: 'center',
+                                                      color: '#0369A1',
+                                                      background: '#FFFFFF',
+                                                      border: '1px solid #7DD3FC',
+                                                      borderRadius: '4px',
+                                                    }}
+                                                  />
+                                                  <span>/{totalRollQty} cuộn</span>
+                                                  <strong style={{ marginLeft: '2px' }}>
+                                                    ({(selectedRollQty * rollLen).toLocaleString('vi-VN')}m)
+                                                  </strong>
+                                                </span>
+                                              )}
+                                              {roll.note && (
+                                                <span style={{ opacity: 0.8, fontStyle: 'italic' }}>({roll.note})</span>
+                                              )}
+                                            </div>
+                                          );
+                                        }
 
                                         return (
                                           <button
                                             key={rollKey}
                                             type="button"
-                                            disabled={isLastBatch}
-                                            onClick={() => handleToggleContractBatchRoll(bIdx, itIdx, roll)}
+                                            disabled={isLastBatchMulti}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleToggleContractBatchRoll(bIdx, itIdx, roll);
+                                            }}
                                             title={
-                                              isLastBatch
+                                              isLastBatchMulti
                                                 ? 'Đợt cuối cùng tự động nhận tất cả các cuộn vải còn lại'
                                                 : isSelectedInThisBatch
                                                 ? 'Bấm để bỏ cuộn này khỏi đợt'
@@ -3836,7 +4386,7 @@ const ContractFrameworkPage = () => {
                                               padding: '2px 6px',
                                               borderRadius: '4px',
                                               fontSize: '10.5px',
-                                              cursor: isLastBatch ? 'default' : 'pointer',
+                                              cursor: isLastBatchMulti ? 'default' : 'pointer',
                                               border: isSelectedInThisBatch ? '1px solid #0284C7' : '1px solid #CBD5E1',
                                               background: isSelectedInThisBatch ? '#E0F2FE' : '#FFFFFF',
                                               color: isSelectedInThisBatch ? '#0369A1' : '#475569',
@@ -3844,8 +4394,8 @@ const ContractFrameworkPage = () => {
                                             }}
                                           >
                                             <span>{isSelectedInThisBatch ? '☑' : '☐'}</span>
-                                            <strong>{roll.rollCode || `C-${String(rIdx + 1).padStart(2, '0')}`}:</strong>
-                                            <span>{Number(roll.lengthMeters || 0).toLocaleString('vi-VN')}m</span>
+                                            <strong>#{rIdx + 1}:</strong>
+                                            <span>{rollLen.toLocaleString('vi-VN')}m</span>
                                             {roll.note && <span style={{ opacity: 0.8, fontStyle: 'italic' }}>({roll.note})</span>}
                                             {!isSelectedInThisBatch && otherBatchIndex >= 0 && (
                                               <span style={{ fontSize: '9px', color: '#94A3B8' }}>(Đợt {otherBatchIndex + 1})</span>
@@ -3865,6 +4415,7 @@ const ContractFrameworkPage = () => {
                               </td>
                               <td style={{ textAlign: 'right', background: '#F0F9FF' }}>
                                 <input
+                                  id={`contract-batch-input-${bIdx}-item-${itIdx}`}
                                   type="number"
                                   className="wms-input"
                                   style={{
@@ -3872,18 +4423,19 @@ const ContractFrameworkPage = () => {
                                     fontWeight: 700,
                                     color: '#0284C7',
                                     padding: '4px 8px',
-                                    width: '120px',
-                                    borderColor: itErr ? '#EF4444' : '#BAE6FD',
-                                    background: allRolls.length > 0 ? '#F1F5F9' : '#FFFFFF',
+                                    width: '125px',
+                                    borderColor: itErr || isHighlightedMismatch ? '#EF4444' : '#BAE6FD',
+                                    background: isLastBatchMulti ? '#F1F5F9' : '#FFFFFF',
                                   }}
                                   min={0}
-                                  readOnly={allRolls.length > 0}
+                                  max={cQty}
+                                  readOnly={isLastBatchMulti}
                                   value={it.plannedQty !== undefined ? it.plannedQty : ''}
                                   onChange={(e) => handleInboundBatchItemQtyChange(bIdx, itIdx, e.target.value)}
                                 />
-                                {allRolls.length > 0 && (
-                                  <div style={{ fontSize: '9.5px', color: '#0284C7', marginTop: '2px' }}>
-                                    ⚡ {it.selectedRolls?.length || 0} cuộn đã chọn
+                                {isLastBatchMulti && (
+                                  <div style={{ fontSize: '10px', color: '#0369A1', marginTop: '2px', fontWeight: 600 }}>
+                                    Tự động điền phần còn thiếu
                                   </div>
                                 )}
                                 {itErr && (
@@ -3905,7 +4457,7 @@ const ContractFrameworkPage = () => {
 
             {/* Bảng đối soát cân đối tổng thể giữa Hợp đồng & Các đợt giao */}
             <div style={{ marginTop: '16px', background: '#FFFFFF', padding: '14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                 <span style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <PackageCheck size={16} color="#059669" />
                   Đối soát cân đối giữa Hợp đồng & Các đợt giao (Bảo toàn 100% số lượng cam kết)
@@ -3916,8 +4468,31 @@ const ContractFrameworkPage = () => {
                       <CheckCircle2 size={13} /> Đã cân bằng khớp 100% tất cả các mặt hàng
                     </span>
                   ) : (
-                    <span style={{ color: '#DC2626', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      <AlertTriangle size={13} /> Có mặt hàng chưa cân bằng số lượng
+                    <span style={{ color: '#DC2626', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <AlertTriangle size={13} /> Có mặt hàng chưa cân bằng số lượng
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleScrollToMismatchItem()}
+                        style={{
+                          background: '#DC2626',
+                          color: '#FFFFFF',
+                          border: 'none',
+                          borderRadius: '6px',
+                          padding: '3px 10px',
+                          fontSize: '11.5px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          boxShadow: '0 1px 2px rgba(220,38,38,0.2)',
+                        }}
+                        title="Cuộn đến dòng nhập số lượng bị lệch để kiểm tra"
+                      >
+                        <Search size={12} /> Kiểm tra
+                      </button>
                     </span>
                   )}
                 </span>
@@ -3933,7 +4508,7 @@ const ContractFrameworkPage = () => {
                     <th style={{ width: '130px', textAlign: 'right' }}>SL Ký HĐ</th>
                     <th style={{ width: '140px', textAlign: 'right' }}>Tổng các đợt đã chia</th>
                     <th style={{ width: '120px', textAlign: 'right' }}>Chênh lệch</th>
-                    <th style={{ width: '130px', textAlign: 'center' }}>Trạng thái</th>
+                    <th style={{ width: '190px', textAlign: 'center' }}>Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3957,9 +4532,31 @@ const ContractFrameworkPage = () => {
                             ✓ Khớp 100%
                           </span>
                         ) : (
-                          <span style={{ background: '#FEE2E2', color: '#B91C1C', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 700 }}>
-                            ⚠️ Lệch số lượng
-                          </span>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                            <span style={{ background: '#FEE2E2', color: '#B91C1C', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 700 }}>
+                              ⚠️ Lệch số lượng
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleScrollToMismatchItem(idx)}
+                              style={{
+                                background: '#FFFFFF',
+                                color: '#B91C1C',
+                                border: '1px solid #FCA5A5',
+                                borderRadius: '6px',
+                                padding: '2px 8px',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                              }}
+                              title="Nhấn để cuộn đến ô nhập số lượng của mặt hàng này"
+                            >
+                              <Search size={11} /> Kiểm tra
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>

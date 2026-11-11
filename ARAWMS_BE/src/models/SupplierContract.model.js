@@ -31,6 +31,7 @@ const contractedMaterialSchema = new Schema(
       {
         rollIndex: { type: Number, required: true },
         rollCode: { type: String, default: '' },
+        rollQty: { type: Number, default: 1, min: 1 },
         lengthMeters: { type: Number, required: true, min: 0 },
         weightKg: { type: Number, default: 0 },
         note: { type: String, default: '' },
@@ -56,7 +57,7 @@ const supplierContractSchema = new Schema(
     },
     contractType: {
       type: String,
-      enum: ['FRAMEWORK_AGREEMENT', 'BATCH_LUMP_SUM', 'FIXED_UNIT_PRICE'],
+      enum: ['SALES_CONTRACT', 'FRAMEWORK_AGREEMENT', 'BATCH_LUMP_SUM', 'FIXED_UNIT_PRICE'],
       default: 'FRAMEWORK_AGREEMENT',
     },
     signingDate: { type: Date, default: Date.now },

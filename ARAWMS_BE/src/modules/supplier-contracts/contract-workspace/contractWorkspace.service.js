@@ -455,6 +455,7 @@ export async function normalizeContractMaterialsAndTotals(payload) {
     const rollDetails = rawRolls.map((r, rIdx) => ({
       rollIndex: Number(r.rollIndex || rIdx + 1),
       rollCode: r.rollCode || `C-${String(rIdx + 1).padStart(2, '0')}`,
+      rollQty: Math.max(1, Math.floor(Number(r.rollQty ?? 1) || 1)),
       lengthMeters: Number(r.lengthMeters || 0),
       weightKg: Number(r.weightKg || 0),
       note: r.note || '',
@@ -462,12 +463,18 @@ export async function normalizeContractMaterialsAndTotals(payload) {
 
     let qty = Number(item.contractedQty) || 0;
     if (rollDetails.length > 0) {
-      const sumRollMeters = rollDetails.reduce((sum, r) => sum + (Number(r.lengthMeters) || 0), 0);
+      const sumRollMeters = rollDetails.reduce(
+        (sum, r) => sum + (Number(r.rollQty ?? 1) || 1) * (Number(r.lengthMeters) || 0),
+        0
+      );
       if (sumRollMeters > 0) {
         qty = sumRollMeters;
       }
     }
-    const rollCount = Number(item.rollCount || rollDetails.length || 0);
+    const rollCount =
+      rollDetails.length > 0
+        ? rollDetails.reduce((sum, r) => sum + (Number(r.rollQty ?? 1) || 1), 0)
+        : Number(item.rollCount || 0);
 
     const price = Number(item.unitPrice) || 0;
     const itemVatPct = Number(item.vatRatePct ?? defaultVatRate);
@@ -734,21 +741,30 @@ export const draftContractFramework = async (payload, currentUserId) => {
       notes: b.notes || '',
       expectedItems: (b.expectedItems || []).map((item, itemIdx) => {
         const cMat =
+          normalizedMaterials[itemIdx] ||
           normalizedMaterials.find(
             (cm) => String(cm.rawMaterialId?._id || cm.rawMaterialId) === String(item.rawMaterialId)
           ) ||
           normalizedMaterials.find(
             (cm) => cm.materialCodeSnapshot && cm.materialCodeSnapshot === (item.materialCodeSnapshot || item.materialCode)
-          ) ||
-          normalizedMaterials[itemIdx];
-        const rolls = (Array.isArray(item.rollDetails) && item.rollDetails.length > 0)
+          );
+        const rawRolls = (Array.isArray(item.rollDetails) && item.rollDetails.length > 0)
           ? item.rollDetails
           : (Array.isArray(item.selectedRolls) ? item.selectedRolls : []);
+        const rolls = rawRolls.map((r, rIdx) => ({
+          rollIndex: Number(r.rollIndex || rIdx + 1),
+          rollCode: r.rollCode || `C-${String(rIdx + 1).padStart(2, '0')}`,
+          rollQty: Math.max(1, Math.floor(Number(r.rollQty ?? 1) || 1)),
+          lengthMeters: Number(r.lengthMeters || 0),
+          weightKg: Number(r.weightKg || 0),
+          note: r.note || '',
+        }));
+        const sumBatchRolls = rolls.reduce((sum, r) => sum + (Number(r.rollQty ?? 1) || 1), 0);
         return {
           rawMaterialId: cMat?.rawMaterialId || item.rawMaterialId,
           plannedQty: Number(item.plannedQty || 0),
           unitSnapshot: item.unitSnapshot || item.unit || cMat?.unitSnapshot || 'METER',
-          rollCount: rolls.length || Number(item.rollCount || 0),
+          rollCount: sumBatchRolls || Number(item.rollCount || 0),
           rollDetails: rolls,
           selectedRolls: rolls,
           actualVerifiedPassedQty: 0,
@@ -1008,13 +1024,13 @@ export const amendContractVersion = async (contractId, payload, currentUserId) =
       notes: b.notes || '',
       expectedItems: (b.expectedItems || []).map((it, itIdx) => {
         const cMat =
+          normalizedMaterials[itIdx] ||
           normalizedMaterials.find(
             (cm) => String(cm.rawMaterialId?._id || cm.rawMaterialId) === String(it.rawMaterialId)
           ) ||
           normalizedMaterials.find(
             (cm) => cm.materialCodeSnapshot && cm.materialCodeSnapshot === (it.materialCodeSnapshot || it.materialCode)
-          ) ||
-          normalizedMaterials[itIdx];
+          );
         return {
           rawMaterialId: cMat?.rawMaterialId || it.rawMaterialId,
           plannedQty: Number(it.plannedQty || 0),
