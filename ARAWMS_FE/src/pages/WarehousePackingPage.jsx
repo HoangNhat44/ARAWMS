@@ -51,7 +51,9 @@ const reasons = {
   ORDER_CHANGED: 'Nội dung đơn đã thay đổi. Cần đối soát lại trước khi quét tiếp.',
   ORDER_NOT_PACKABLE: 'Đơn chưa được phân bổ đủ lô và vị trí kho để đóng hàng.',
   SCAN_INCOMPLETE: 'Chưa quét đủ hàng của đơn. Hãy kiểm tra lại phiên đóng hàng.',
-  UNIT_NOT_RESERVED: 'Tem hàng không thuộc lô đã giữ cho đơn này.',
+  UNIT_NOT_RESERVED: 'Tem hàng chưa gắn với lô hàng trong kho.',
+  UNIT_NOT_ON_SHELF: 'Sản phẩm này chưa được xếp lên kệ (còn ở khu chờ xếp).',
+  UNIT_RESERVED_OTHER_ORDER: 'Hàng ở kệ này đã được giữ hết cho đơn khác. Hãy lấy cây cùng mẫu ở kệ khác.',
   BATCH_STOCK_CHANGED: 'Tồn hoặc số giữ chỗ của lô đã thay đổi. Hãy báo quản lý kho đối soát.',
   SKU_STOCK_CHANGED: 'Tồn hoặc số giữ chỗ của SKU đã thay đổi. Hãy báo quản lý kho đối soát.',
   LOCATION_STOCK_CHANGED: 'Số lượng tại vị trí kho chưa khớp với lô. Hãy báo quản lý kho đối soát.',
@@ -65,8 +67,9 @@ const reasons = {
 
 /** Groups scan rejections so staff see at a glance whether the code is unusable or the wrong item. */
 const usedOrInvalid = new Set(['BARCODE_NOT_FOUND', 'UNIT_UNAVAILABLE', 'BARCODE_ALREADY_SCANNED',
-  'BARCODE_ALREADY_ASSIGNED', 'BARCODE_ASSIGNED_OTHER_ORDER', 'BARCODE_REMOVED', 'INVALID_BARCODE']);
-const wrongItem = new Set(['ITEM_NOT_IN_ORDER', 'UNIT_NOT_RESERVED', 'QTY_EXCEEDED']);
+  'BARCODE_ALREADY_ASSIGNED', 'BARCODE_ASSIGNED_OTHER_ORDER', 'BARCODE_REMOVED', 'INVALID_BARCODE',
+  'UNIT_NOT_RESERVED', 'UNIT_NOT_ON_SHELF', 'UNIT_RESERVED_OTHER_ORDER']);
+const wrongItem = new Set(['ITEM_NOT_IN_ORDER', 'QTY_EXCEEDED']);
 const scanRejectMessage = (reason, barcode) => {
   const detail = reasons[reason] || reason;
   if (wrongItem.has(reason)) return `Barcode sai mẫu (${barcode}): ${detail} Không nhận barcode này.`;

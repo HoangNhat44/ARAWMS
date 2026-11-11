@@ -78,19 +78,32 @@ export const evaluatePackingBarcodeScan = (packing, unit, barcode) => {
   // A different color or size has a different SKU, even when it belongs to the same product.
   const orderLines = packing.items.filter((item) => String(item.skuId) === String(unit.skuId));
   if (!orderLines.length) return { reason: 'ITEM_NOT_IN_ORDER' };
-  const matching = orderLines.filter((item) =>
-    item.pickAllocations?.some((pick) => String(pick.batchId) === String(unit.batchId) &&
-      String(pick.locationId) === String(unit.warehouseId)));
-  if (!matching.length) return { reason: 'UNIT_NOT_RESERVED' };
-  const line = matching.find((item) => {
-    if (packing.scannedUnits.filter((scan) => scan.lineKey === item.lineKey).length >= item.quantity) return false;
-    const pick = item.pickAllocations.find((entry) => String(entry.batchId) === String(unit.batchId));
-    const batchScans = packing.scannedUnits.filter((scan) =>
-      scan.lineKey === item.lineKey && String(scan.batchId) === String(unit.batchId)).length;
-    return pick && batchScans < pick.allocatedQty;
-  });
+  // Any shelved unit of the ordered SKU is accepted, whichever batch/shelf it comes from; stock is
+  // deducted from the scanned unit's own batch and shelf when packing completes (consumePackedStock).
+  if (!unit.batchId) return { reason: 'UNIT_NOT_RESERVED' };
+  const line = orderLines.find((item) =>
+    packing.scannedUnits.filter((scan) => scan.lineKey === item.lineKey).length < item.quantity);
   if (!line) return { reason: 'QTY_EXCEEDED' };
-  return { lineKey: line.lineKey, ...(unit.batchId ? { batchId: unit.batchId } : {}) };
+  return { lineKey: line.lineKey, batchId: unit.batchId };
+};
+
+/** A unit outside the order's own FIFO picks may only use stock nobody else has reserved. */
+export const checkScannedUnitStock = async (packing, unit, lineKey, dbSession) => {
+  const item = packing.items.find((entry) => entry.lineKey === lineKey);
+  const ownPick = (item?.pickAllocations || []).filter((pick) => String(pick.batchId) === String(unit.batchId) &&
+    String(pick.locationId) === String(unit.warehouseId)).reduce((sum, pick) => sum + pick.allocatedQty, 0);
+  const alreadyFromBatch = packing.scannedUnits.filter((scan) => String(scan.batchId) === String(unit.batchId)).length;
+  const extraNeeded = alreadyFromBatch + 1 - ownPick;
+  // Units from the order's own reserved batch were validated when the session opened.
+  if (extraNeeded <= 0) return null;
+  const location = await WarehouseLocation.findOne({ _id: unit.warehouseId, warehouseType: 'FINISHED_GOODS',
+    status: { $in: ['ACTIVE', 'FULL'] }, isFrozenForStocktake: false, isSystemUnplaced: { $ne: true },
+    isDeleted: { $ne: true } }).select('_id').session(dbSession).lean();
+  if (!location) return 'UNIT_NOT_ON_SHELF';
+  const batch = await FinishedGoodsBatch.findOne({ _id: unit.batchId, isDefectQuarantine: false,
+    isDeleted: { $ne: true } }).select('currentOnHandQty reservedPickQty').session(dbSession).lean();
+  if (!batch) return 'UNIT_NOT_RESERVED';
+  return (batch.currentOnHandQty || 0) - (batch.reservedPickQty || 0) >= extraNeeded ? null : 'UNIT_RESERVED_OTHER_ORDER';
 };
 
 /** Opens or resumes a packing session for a reserved real order.
@@ -154,7 +167,16 @@ export const openPackingSession = async (order, operatorId, stationId) => {
   }
   if (!packing.video?.publicId && (!packing.orderVersion || !order.updatedAt ||
       packing.orderVersion.getTime() !== order.updatedAt.getTime())) {
-    throw new PackingError('ORDER_CHANGED');
+    // Nothing scanned yet: re-snapshot the current order instead of leaving the session stuck.
+    // Once units are scanned a changed order still needs reconciliation, so it stays blocked.
+    if (packing.scannedUnits?.length || packing.state !== 'SCANNING') throw new PackingError('ORDER_CHANGED');
+    const refreshed = await PackingSession.findOneAndUpdate(
+      { _id: packing._id, version: packing.version, 'scannedUnits.0': { $exists: false } },
+      { $set: { orderVersion: order.updatedAt, items: snapshotItems(order) }, $inc: { version: 1 } },
+      { new: true }
+    );
+    if (!refreshed) throw new PackingError('ORDER_CHANGED');
+    packing = refreshed;
   }
   if (packing.stationId !== stationId) {
     if (packing.leaseUntil > now) throw new PackingError('ORDER_LOCKED');
@@ -314,6 +336,7 @@ export const scanProductBarcodeForPacking = async ({ sessionId, stationId, lease
       const unit = await findProductUnit(barcode, dbSession);
       const decision = evaluatePackingBarcodeScan(packing, unit, barcode);
       let reason = decision.reason;
+      if (!reason) reason = await checkScannedUnitStock(packing, unit, decision.lineKey, dbSession) || undefined;
       if (!reason) {
         const allocation = await ProductUnitAllocation.findOne({ barcode }).session(dbSession);
         const claim = unit?.packingClaim || allocation;
@@ -338,7 +361,8 @@ export const scanProductBarcodeForPacking = async ({ sessionId, stationId, lease
         sessionId: packing._id, clientEventId, barcode, result: reason ? 'REJECTED' : 'ACCEPTED',
         reason, lineKey: decision.lineKey, phase: 'PRE_RECORD', videoOffsetMs: null,
       }], { session: dbSession });
-      response = { result: reason ? 'REJECTED' : 'ACCEPTED', reason, duplicate: false, session: toPackingSessionView(packing) };
+      response = { result: reason ? 'REJECTED' : 'ACCEPTED', reason, duplicate: false,
+        session: toPackingSessionView(packing) };
     });
     return response;
   } catch (error) {

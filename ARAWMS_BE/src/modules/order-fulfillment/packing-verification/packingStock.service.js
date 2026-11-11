@@ -28,23 +28,19 @@ export const consumePackedStock = async (packing, order, dbSession) => {
   if (units.length !== barcodes.length) throw new PackingError('UNIT_UNAVAILABLE');
   const byBarcode = new Map(units.map((unit) => [unit.barcode, unit]));
   const groups = new Map();
-  const lineBatchCounts = new Map();
-  // Match each scanned unit to the exact batch and location reserved for its order line.
+  const releases = new Map();
+  // Each scanned unit only has to be the line's SKU; stock leaves the unit's own batch and shelf.
   for (const item of packing.items) {
     const orderItem = order.items[Number(item.lineKey)];
     if (!orderItem || String(orderItem.skuId) !== String(item.skuId)) throw new PackingError('ORDER_CHANGED');
     const scans = packing.scannedUnits.filter((scan) => scan.lineKey === item.lineKey);
     if (scans.length !== item.quantity) throw new PackingError('SCAN_INCOMPLETE');
+    for (const pick of orderItem.fifoPickList || []) {
+      releases.set(String(pick.batchId), (releases.get(String(pick.batchId)) || 0) + (pick.allocatedQty || 0));
+    }
     for (const scan of scans) {
       const unit = byBarcode.get(scan.barcode);
-      const pick = orderItem.fifoPickList.find((entry) =>
-        String(entry.batchId) === String(unit?.batchId) &&
-        String(entry.locationId) === String(unit?.warehouseId));
-      if (!unit || String(unit.skuId) !== String(item.skuId) || !pick) throw new PackingError('UNIT_NOT_RESERVED');
-      const lineBatchKey = `${item.lineKey}:${unit.batchId}`;
-      const lineBatchCount = (lineBatchCounts.get(lineBatchKey) || 0) + 1;
-      if (lineBatchCount > pick.allocatedQty) throw new PackingError('QTY_EXCEEDED');
-      lineBatchCounts.set(lineBatchKey, lineBatchCount);
+      if (!unit || !unit.batchId || String(unit.skuId) !== String(item.skuId)) throw new PackingError('UNIT_NOT_RESERVED');
       const key = `${unit.skuId}:${unit.batchId}`;
       const group = groups.get(key) || { skuId: unit.skuId, batchId: unit.batchId,
         locationId: unit.warehouseId, quantity: 0 };
@@ -52,13 +48,19 @@ export const consumePackedStock = async (packing, order, dbSession) => {
       groups.set(key, group);
     }
   }
-  // Update batch, SKU, location, and inventory ledger within the caller's transaction.
+  // Release the FIFO holds this order placed at confirmation (batch-level picking reservations).
+  for (const [batchId, quantity] of releases) {
+    const released = await FinishedGoodsBatch.updateOne({ _id: batchId, reservedPickQty: { $gte: quantity } },
+      { $inc: { reservedPickQty: -quantity } }, { session: dbSession });
+    if (released.matchedCount !== 1) throw new PackingError('BATCH_STOCK_CHANGED');
+  }
+  // Deduct from the batches actually scanned, never below what other orders still hold there.
   for (const group of groups.values()) {
     const batch = await FinishedGoodsBatch.findOneAndUpdate({
       _id: group.batchId, skuId: group.skuId, locationId: group.locationId,
       isDefectQuarantine: false,
-      currentOnHandQty: { $gte: group.quantity }, reservedPickQty: { $gte: group.quantity },
-    }, { $inc: { currentOnHandQty: -group.quantity, reservedPickQty: -group.quantity } },
+      $expr: { $gte: [{ $subtract: ['$currentOnHandQty', { $ifNull: ['$reservedPickQty', 0] }] }, group.quantity] },
+    }, { $inc: { currentOnHandQty: -group.quantity } },
     { new: true, session: dbSession });
     if (!batch) throw new PackingError('BATCH_STOCK_CHANGED');
     const sku = await Sku.findOneAndUpdate({
