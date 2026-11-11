@@ -233,7 +233,7 @@ const QuickOrderModal = ({
       const orderPayload = {
         customerId,
         conversationId: orderChannel === 'ONLINE' ? conversationId : undefined,
-        orderType: orderChannel === 'POS' ? 'POS_DIRECT' : 'ONLINE',
+        orderType: orderChannel === 'POS' ? 'POS_DIRECT' : 'DIRECT_SALES',
         channel: orderChannel === 'POS' ? 'POS' : 'FACEBOOK_MESSENGER',
         shippingRecipient: {
           name: recipient.name || (orderChannel === 'POS' ? 'Khách tại quầy AraStore' : 'Khách vãng lai'),

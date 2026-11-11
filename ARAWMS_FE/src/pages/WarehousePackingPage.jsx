@@ -36,14 +36,14 @@ const incompleteScanMessage = (session) => {
 const reasons = {
   CLOUDINARY_AUTH_FAILED: 'Cloudinary từ chối API Key hoặc API Secret. Hãy kiểm tra lại bộ khóa của đúng Cloud name trong backend.',
   BARCODE_NOT_FOUND: 'Barcode chưa có trong danh mục vật phẩm.',
-  UNIT_UNAVAILABLE: 'Vật phẩm không sẵn sàng hoặc không dùng mã Code 128.',
+  UNIT_UNAVAILABLE: 'Vật phẩm đã được đóng/xuất hoặc không còn trong kho.',
   BARCODE_ALREADY_SCANNED: 'Vật phẩm này đã được quét trong đơn.',
   BARCODE_ALREADY_ASSIGNED: 'Vật phẩm đã được gắn với đơn này.',
   BARCODE_NOT_SCANNED: 'Barcode này không còn trong danh sách đã quét của đơn.',
   BARCODE_REMOVED: 'Barcode này đã được gỡ khỏi lần đóng hàng.',
   BARCODE_ALLOCATION_MISSING: 'Không tìm thấy liên kết của barcode với đơn. Hãy tải lại phiên trước khi sửa.',
-  BARCODE_ASSIGNED_OTHER_ORDER: 'Vật phẩm đã gắn với đơn khác.',
-  ITEM_NOT_IN_ORDER: 'Mẫu/SKU trên tem không nằm trong đơn hàng này.',
+  BARCODE_ASSIGNED_OTHER_ORDER: 'Vật phẩm này đã được quét cho đơn khác.',
+  ITEM_NOT_IN_ORDER: 'Mẫu/màu/size trên tem không có trong đơn hàng này.',
   QTY_EXCEEDED: 'Đơn đã đủ số lượng của biến thể này.',
   ORDER_LOCKED: 'Đơn đang được xử lý ở bàn kho khác.',
   STATION_BUSY: 'Bàn này đang giữ một đơn khác. Hãy kết thúc đơn hiện tại trước.',
@@ -61,6 +61,17 @@ const reasons = {
   LOCAL_STORAGE_FULL: 'Thiết bị không đủ dung lượng để lưu video an toàn. Hãy báo quản lý trước khi quay tiếp.',
   OPFS_UNAVAILABLE: 'Trình duyệt này không hỗ trợ lưu video tạm bằng OPFS.',
   AUTH_REQUIRED: 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại rồi thử upload video.',
+};
+
+/** Groups scan rejections so staff see at a glance whether the code is unusable or the wrong item. */
+const usedOrInvalid = new Set(['BARCODE_NOT_FOUND', 'UNIT_UNAVAILABLE', 'BARCODE_ALREADY_SCANNED',
+  'BARCODE_ALREADY_ASSIGNED', 'BARCODE_ASSIGNED_OTHER_ORDER', 'BARCODE_REMOVED', 'INVALID_BARCODE']);
+const wrongItem = new Set(['ITEM_NOT_IN_ORDER', 'UNIT_NOT_RESERVED', 'QTY_EXCEEDED']);
+const scanRejectMessage = (reason, barcode) => {
+  const detail = reasons[reason] || reason;
+  if (wrongItem.has(reason)) return `Barcode sai mẫu (${barcode}): ${detail} Không nhận barcode này.`;
+  if (usedOrInvalid.has(reason)) return `Barcode không hợp lệ (${barcode}): ${detail} Không nhận barcode này.`;
+  return `Không nhận barcode ${barcode}: ${detail}`;
 };
 
 /** Displays recording upload progress, local storage use, and actionable errors. */
@@ -85,7 +96,10 @@ function VideoUploadStatusPanel({ queue }) {
       {job.status === 'UPLOADING' && <progress value={job.progress || 0} max="100" style={{ display: 'block', width: '100%' }} />}
       <div>Quay lúc {formatDate(job.createdAt)}{job.nextRetryAt ? ` · hệ thống sẽ thử lại ${formatDate(job.nextRetryAt)}` : ''}</div>
       {job.lastError && <div role="alert" style={{ color: 'var(--ara-error)' }}>{reasons[job.lastError] || job.lastError}</div>}
-      {job.autoRetry === false && <div role="alert" style={{ color: 'var(--ara-error)' }}>Video vẫn ở thiết bị. Hãy báo quản lý để kiểm tra.</div>}
+      {job.autoRetry === false && <div role="alert" style={{ color: 'var(--ara-error)' }}>Video vẫn ở thiết bị. Hãy báo quản lý để kiểm tra.
+        {/* After the manager reconciles stock, the same recording can be submitted again without re-filming. */}
+        <button type="button" className="btn-ara-secondary" style={{ marginLeft: '.5rem' }}
+          onClick={() => packingVideoUploadManager.retry(job.recordingId)}>Thử lưu lại</button></div>}
     </div>)}
   </section>;
 }
@@ -335,9 +349,14 @@ export default function WarehousePackingPage() {
       if (response.data.result === 'ACCEPTED') {
         showScanNotice(`✓ Đã quét barcode ${barcode}`);
       } else {
-        setMessage(reasons[response.data.reason] || response.data.reason);
+        // Rejected scans are errors (red), never a green status message.
+        setError(scanRejectMessage(response.data.reason, barcode));
       }
-    } catch (err) { setError(reasons[err.code] || err.message); }
+    } catch (err) {
+      setError(err.code === 'INVALID_BARCODE'
+        ? `Barcode không hợp lệ (${barcode}): sai định dạng, chỉ gồm chữ, số, "-" hoặc "_". Không nhận barcode này.`
+        : reasons[err.code] || err.message);
+    }
     finally { busyRef.current = false; setBusy(false); }
   };
 

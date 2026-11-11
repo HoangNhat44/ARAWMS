@@ -217,7 +217,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
       const payload = {
         customerId: customer?._id,
         conversationId: channel === 'ONLINE' ? conversationId : undefined,
-        orderType: channel === 'POS' ? 'POS_DIRECT' : 'ONLINE',
+        orderType: channel === 'POS' ? 'POS_DIRECT' : 'DIRECT_SALES',
         channel: channel === 'POS' ? 'POS' : 'FACEBOOK_MESSENGER',
         shippingRecipient: {
           name: recipient.name || (channel === 'POS' ? 'Khách tại quầy AraStore' : 'Khách vãng lai'),

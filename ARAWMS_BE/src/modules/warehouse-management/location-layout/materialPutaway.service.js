@@ -59,7 +59,8 @@ export async function listMaterialPutawayTasks(user) {
       objectBarcode: barcode, imageUrl: object.barcodeImageUrl || null,
       lotOrRollCode: object.supplierRollCode || object.supplierLotCode || barcode,
       materialCode: material?.materialCode || '', materialName: material?.materialName || '',
-      color: material?.color || '', unit: kind === 'ROLL' ? 'METER' : material?.unit || '',
+      color: material?.color || '', // Rolls are stocked in the material's own unit (e.g. KG), matching the shelf capacity check.
+      unit: material?.unit || (kind === 'ROLL' ? 'METER' : ''),
       locationId: id(location?._id), locationCode: location?.locationCode || '',
       locationBarcode: location?.barcode || '', rackName: location?.rackName || location?.rackCode || '',
       allocatedQuantity: quantity, placedQuantity,
@@ -145,14 +146,15 @@ export async function scanMaterialPutawayTask(user, input) {
   let targetObjectBarcode = objectBarcode;
   if (!scannedBarcode || scannedBarcode !== objectBarcode) {
     const [matchingRoll, matchingLot] = await Promise.all([
-      FabricRoll.findOne({
-        $or: [{ inboundTicketId: receiptId }, { pendingReturnReceiptId: receiptId }],
-        $or: [
+      // `$and` keeps both filters; duplicate `$or` keys would drop the receipt restriction.
+      FabricRoll.findOne({ $and: [
+        { $or: [{ inboundTicketId: receiptId }, { pendingReturnReceiptId: receiptId }] },
+        { $or: [
           { rollBarcode: scannedBarcode },
           { supplierRollCode: scannedBarcode },
           { supplierLotCode: scannedBarcode },
-        ],
-      }).select('rollBarcode').lean(),
+        ] },
+      ] }).select('rollBarcode').lean(),
       MaterialStockLot.findOne({
         inboundTicketId: receiptId,
         $or: [
@@ -162,13 +164,13 @@ export async function scanMaterialPutawayTask(user, input) {
       }).select('lotBarcode').lean(),
     ]);
 
-    if (matchingRoll) {
-      targetObjectBarcode = matchingRoll.rollBarcode;
-    } else if (matchingLot) {
-      targetObjectBarcode = matchingLot.lotBarcode;
-    } else {
-      fail('Sai barcode nguyên phụ liệu của công việc đã chọn', 'WRONG_MATERIAL', 409);
-    }
+    // A supplier roll/lot code is accepted only when it identifies this task's own object;
+    // any other barcode (even from the same receipt or shelf) is rejected, never substituted.
+    const resolved = matchingRoll?.rollBarcode || matchingLot?.lotBarcode || '';
+    if (resolved !== objectBarcode)
+      fail(`Barcode ${scannedBarcode || '(trống)'} không phải nguyên phụ liệu của công việc này, không thuộc kệ đang xếp. Hãy quét đúng ${objectBarcode}.`,
+        'WRONG_MATERIAL', 409);
+    targetObjectBarcode = resolved;
   }
 
   const location = await WarehouseLocation.findById(input.locationId).select('barcode locationCode zoneCode').lean();

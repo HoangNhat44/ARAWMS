@@ -24,6 +24,7 @@ import { publishRealtime } from '../../../common/services/realtime.js';
 import { getDeliveryBatchContext, commitDeliveryReceipt } from './deliveryPlan.service.js';
 import { validateInboundRequestReceipt, applyInboundRequestReceipt } from './technicianInboundRequest.service.js';
 import { isFractionalMaterialUnit, isValidMaterialUnitForType, normalizeMaterialUnit } from '../../../common/constants/materialUnits.js';
+import { canAccessLocation, locationScopeFilter } from '../../../common/services/warehouseAccess.js';
 
 const id = (value) => String(value || '');
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
@@ -32,7 +33,7 @@ const editable = ['DRAFT', 'WAITING_QC', 'READY_TO_CONFIRM'];
 const fail = (condition, message, code, status = 400) => {
   if (!condition) throw new ReceiptError(message, code, status);
 };
-const accessible = (location, user) => !user.warehouseIds?.length || user.warehouseIds.some((item) => id(item) === id(location._id));
+const accessible = (location, user) => canAccessLocation(location, user);
 const stockQuantity = (value, unit, field) => {
   const numeric = Number(value);
   const multiplier = isFractionalMaterialUnit(unit) ? 1000 : 1;
@@ -94,7 +95,7 @@ export async function listSupplierReceipts(query, user) {
   fail(Number.isSafeInteger(page) && page > 0 && Number.isSafeInteger((page - 1) * 100),
     'Trang danh sách phiếu nhập không hợp lệ', 'INVALID_PAGE');
   const filter = { ticketType: 'INBOUND_FROM_SUPPLIER', isDeleted: { $ne: true },
-    ...(user.warehouseIds?.length ? { receivingLocationId: { $in: user.warehouseIds } } : {}) };
+    ...locationScopeFilter('receivingLocationId', user) };
   if (query.source) {
     fail(['PLAN', 'DIRECT'].includes(query.source), 'Nguồn nhập không hợp lệ', 'INVALID_SOURCE');
     filter.inboundPlanId = query.source === 'PLAN' ? { $exists: true, $ne: null } : { $exists: false };

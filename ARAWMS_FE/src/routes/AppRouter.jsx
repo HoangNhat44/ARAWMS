@@ -157,7 +157,8 @@ export default function AppRouter() {
           <Route path="/warehouse/putaway" element={<WarehousePutawayPage />} />
           <Route path="/warehouse/staff/outbound" element={<MaterialOutboundPage isStaffMode />} />
           <Route path="/warehouse/staff/finished-goods" element={<FinishedGoodsPage isStaffMode />} />
-          <Route path="/warehouse/staff/inbound-progress" element={<InboundProgressPage />} />
+          {/* Trang tiến độ nhập kho đã bỏ khỏi nhân viên kho; link cũ chuyển về trang xếp hàng. */}
+          <Route path="/warehouse/staff/inbound-progress" element={<Navigate to="/warehouse/putaway" replace />} />
           <Route path="/packing/qr" element={<WarehousePackingPage />} />
           <Route path="/orders/qr" element={<OrderQrPage />} />
           <Route path="/warehouse/shipping" element={<ShippingPage />} />

@@ -20,11 +20,11 @@ import {
 } from './shipping.controller.js';
 
 const router = express.Router();
-// Gắn người thao tác nếu có token; không bắt buộc để giữ tương thích các màn hình cũ.
-const optionalAuth = (req, res, next) => (/^Bearer\s+\S+$/i.test(req.headers.authorization || '') ? authenticate(req, res, next) : next());
-router.get('/handover/ready', optionalAuth, getHandoverReadyOrders);
-router.get('/handover/handed-over', optionalAuth, getHandedOverOrders);
-router.post('/handover/scan', optionalAuth, postScanOrderHandover);
+// Quét bàn giao đổi trạng thái đơn nên bắt buộc đăng nhập đúng vai trò kho; chỉ ShippingPage gọi và luôn gửi token.
+const warehouseAuth = [authenticate, authorizeRole('OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF')];
+router.get('/handover/ready', ...warehouseAuth, getHandoverReadyOrders);
+router.get('/handover/handed-over', ...warehouseAuth, getHandedOverOrders);
+router.post('/handover/scan', ...warehouseAuth, postScanOrderHandover);
 router.post('/webhooks/ghn', postGhnWebhook);
 router.use(authenticate, authorizeRole('OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'));
 router.get('/orders', getShippingOrders);

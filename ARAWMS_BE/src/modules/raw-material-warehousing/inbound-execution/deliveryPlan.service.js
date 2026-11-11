@@ -11,6 +11,7 @@ import RawMaterial from '../../../models/RawMaterial.model.js';
 import Supplier from '../../../models/Supplier.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import User from '../../../models/User.model.js';
+import { canAccessLocation } from '../../../common/services/warehouseAccess.js';
 
 const id = (value) => String(value || '');
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
@@ -18,7 +19,7 @@ const fail = (condition, message, code, status = 400) => {
   if (!condition) throw Object.assign(new Error(message), { code, status });
 };
 const managers = (user) => user?.roles?.some((role) => ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER'].includes(role));
-const accessible = (location, user) => !user.warehouseIds?.length || user.warehouseIds.some((value) => id(value) === id(location._id));
+const accessible = (location, user) => canAccessLocation(location, user);
 const day = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
 const dayNumber = (value) => Date.parse(`${day(value)}T00:00:00.000Z`) / 86400000;
 const today = () => new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);

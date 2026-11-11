@@ -91,6 +91,32 @@ export const applyGhnStatusToSalesOrder = async ({
     order.canceledAt = new Date();
   }
 
+  // [GBR-07] GHN may move a PENDING order straight to "chờ lấy hàng". That is a confirmation, so it must
+  // reserve SKU stock exactly like "Chốt đơn"; otherwise packing later fails with SKU_STOCK_CHANGED.
+  if (previousOrderStatus === 'PENDING' && ['CONFIRMED_RESERVED', 'PICKING'].includes(mapped.orderStatus)) {
+    for (const item of order.items || []) {
+      const quantity = item.orderedQty ?? item.quantity ?? 0;
+      if (!quantity) continue;
+      const sku = await Sku.findByIdAndUpdate(item.skuId, { $inc: { reservedQty: quantity } }, { new: true });
+      const txCode = await CounterSequence.getNextSequence('INVENTORY_TX', 'TX', 6);
+      await InventoryTransaction.create({
+        transactionCode: txCode,
+        warehouseType: 'FINISHED_GOODS',
+        itemType: 'FINISHED_SKU',
+        skuId: item.skuId,
+        transactionType: 'ORDER_RESERVE',
+        referenceModel: 'SalesOrder',
+        referenceId: order._id,
+        quantityChange: quantity,
+        onHandBefore: sku ? sku.onHandQty : 0,
+        onHandAfter: sku ? sku.onHandQty : 0,
+        unitCostSnapshot: sku ? sku.unitCogs : 0,
+        performedByUserId: order.sellerId,
+      });
+    }
+    order.confirmedAt = order.confirmedAt || new Date();
+  }
+
   if (!order.warehouseFulfillment) order.warehouseFulfillment = {};
 
   // Khi GHN đã lấy hàng / đang giao -> cập nhật handedOverAt

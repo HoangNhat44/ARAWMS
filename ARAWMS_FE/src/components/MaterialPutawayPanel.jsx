@@ -111,8 +111,9 @@ export default function MaterialPutawayPanel() {
         setPendingRetry(request);
         setError('Chưa rõ kết quả. Thử lại cùng mã thao tác để tránh cộng tồn hai lần.');
       } else {
-        setError(err.code === 'WRONG_MATERIAL'
-          ? `Sai nguyên phụ liệu. Cần quét ${selected.objectBarcode}.` : err.message);
+        // Wrong barcode is rejected; clear the input so the staff can rescan the right roll/lot.
+        if (err.code === 'WRONG_MATERIAL') setCode('');
+        setError(err.message || `Nguyên phụ liệu không thuộc kệ này. Cần quét ${selected.objectBarcode}.`);
       }
     } finally { lockedRef.current = false; setBusy(false); }
   };

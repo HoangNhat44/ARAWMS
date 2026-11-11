@@ -31,7 +31,6 @@ const PAGE_TITLES = {
   '/warehouse/technical-inbound': { section: 'Vận Hành Kho', title: 'Lệnh Nhập Thành Phẩm' },
   '/warehouse/technical-outbound': { section: 'Vận Hành Kho', title: 'Lệnh Xuất Thành Phẩm' },
   '/warehouse/inbound-progress': { section: 'Vận Hành Kho', title: 'Tiến Độ Nhập Kho' },
-  '/warehouse/staff/inbound-progress': { section: 'Vận Hành Kho', title: 'Tiến Độ Nhập Kho' },
   '/warehouse/layout': { section: 'Vận Hành Kho', title: 'Sơ Đồ Vị Trí Kho' },
   '/warehouse/raw-materials/inbound': { section: 'Vận Hành Kho', title: 'Nhập Nguyên Phụ Liệu' },
   '/account': { section: 'Hệ Thống', title: 'Hồ Sơ Tài Khoản' },
