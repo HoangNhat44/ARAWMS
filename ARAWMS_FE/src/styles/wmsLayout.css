@@ -850,7 +850,10 @@
   .owner-header-search-mobile {
     display: block !important;
   }
-  .wms-profile-info,
+  /* Tăng độ ưu tiên: accountantLayout.css (nạp toàn cục) ép display:flex !important,
+     làm tên tài khoản đẩy nút avatar ra ngoài màn hình trên mobile */
+  .wms-header .wms-profile-info,
+  .wms-profile-button .wms-profile-info,
   .owner-profile-info {
     display: none !important;
   }

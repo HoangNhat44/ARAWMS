@@ -214,8 +214,6 @@ export default function SupplierInboundPage() {
           </div>
         </section>
 
-        <RemnantReturnReview locations={options.locations} />
-
         {/* KPI STRIP */}
         <div className="wms-kpi-strip">
           <div className="wms-kpi-card">
@@ -570,6 +568,9 @@ export default function SupplierInboundPage() {
             </div>
           )}
         </div>
+
+        {/* REMNANT RETURN REQUESTS */}
+        <RemnantReturnReview locations={options.locations} />
 
       </div>
 
