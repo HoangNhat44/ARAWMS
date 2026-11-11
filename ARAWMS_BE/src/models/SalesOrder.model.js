@@ -177,7 +177,9 @@ const salesOrderSchema = new Schema(
       ghnUpdatedAt: { type: Date },
       ghnExpectedDeliveryTime: { type: Date },
       handoverReportCode: { type: String, index: true },
-      handedOverAt: Date,
+      handedOverAt: { type: Date, index: true },
+      handedOverByStaffId: { type: Schema.Types.ObjectId, ref: 'User' },
+      handedOverByName: String,
       deliveredAt: Date,
     },
     codReconciliationStatus: {

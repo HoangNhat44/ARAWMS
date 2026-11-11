@@ -604,8 +604,6 @@ function validateForConfirmation(receipt, plan, locations, user) {
     requireValue(line.pendingQty === 0, 'Còn hàng chờ kiểm tra chất lượng', 'QUALITY_PENDING');
     if (line.rejectedQty > 0) requireValue(line.defectReason, 'Cần ghi lý do hàng không đạt', 'DEFECT_REASON_REQUIRED');
     const material = planned.material;
-    if (material.materialType === 'FABRIC') requireValue(material.unit === 'METER',
-      'Cây vải hiện được quản lý theo mét; cần đổi đơn vị tồn của nguyên liệu', 'FABRIC_UNIT_UNSUPPORTED', 409);
     const objectsForLine = material.materialType === 'FABRIC' ? line.rolls : line.lots;
     requireValue(objectsForLine.length > 0 || line.actualQty === 0, 'Cần khai báo cây vải hoặc lô phụ liệu', 'OBJECTS_REQUIRED');
     requireValue(material.materialType === 'FABRIC' ? line.lots.length === 0 : line.rolls.length === 0,

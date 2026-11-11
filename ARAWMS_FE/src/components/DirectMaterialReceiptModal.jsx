@@ -464,8 +464,7 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
                 ['BUTTON', 'THREAD', 'ZIPPER', 'CARE_LABEL', 'PACKAGING_BAG', 'NEEDLE', 'CHALK', 'MARKER', 'ACCESSORY', 'OTHER'])
                 .map((value) => <option key={value}>{value}</option>)}</select></label>
             <label>Đơn vị<select style={field} value={newMaterial.unit} onChange={(event) => setNewMaterial({ ...newMaterial, unit: event.target.value })}>
-              {(newMaterial.materialType === 'FABRIC' ? MATERIAL_UNIT_OPTIONS.filter(({ value }) => value === 'METER') : MATERIAL_UNIT_OPTIONS)
-                .map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label>
+              {MATERIAL_UNIT_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label>
             <button type="button" className="btn-ara-primary" onClick={() => run(async () => {
               const material = (await api.createMaterial(newMaterial)).data.material;
               onMaterialCreated(material); addMaterial(material); setNewMaterialOpen(false);
@@ -486,7 +485,7 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
               {requestMode && <><div><span>Nhà cung cấp</span><strong>{line.supplierNameSnapshot || 'Chưa xác định'}</strong></div>
                 <div><span>Đơn giá</span><strong>{line.unitCost === '' || line.unitCost == null ? 'Chưa có dữ liệu' : Number(line.unitCost).toLocaleString('vi-VN')}</strong></div>
                 <div><span>Ngày kiểm tra</span><strong>{line.inspectedAt ? new Date(line.inspectedAt).toLocaleDateString('vi-VN') : '—'}</strong></div></>}
-              {requestMode ? <div><span>Số lượng đạt</span><strong>{qty(line.acceptedQty)} {unitName[material.unit]}</strong></div> : fabric ? <div><span>Thực nhận</span><strong>{qty(line.actualQty)} m</strong></div> :
+              {requestMode ? <div><span>Số lượng đạt</span><strong>{qty(line.acceptedQty)} {unitName[material.unit]}</strong></div> : fabric ? <div><span>Thực nhận</span><strong>{qty(line.actualQty)} {unitName[material.unit] || material.unit}</strong></div> :
                   <label>Thực nhận ({unitName[material.unit]})<input style={field} type="number" min="0" disabled={locked}
                     step={isFractionalMaterialUnit(material.unit) ? '.001' : '1'} value={line.actualQty}
                     onChange={(event) => changeLine(index, { actualQty: event.target.value })} /></label>}

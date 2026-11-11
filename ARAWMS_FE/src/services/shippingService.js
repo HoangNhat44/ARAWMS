@@ -1,6 +1,9 @@
 import api from './api';
 
 export const shippingService = {
+  getHandoverReady: () => api.get('/shipping/handover/ready'),
+  getHandedOver: () => api.get('/shipping/handover/handed-over'),
+  scanOrderHandover: (code) => api.post('/shipping/handover/scan', { code }),
   getOrders: () => api.get('/shipping/orders'),
   getShipments: () => api.get('/shipping/shipments'),
   getHandovers: () => api.get('/shipping/handovers'),
