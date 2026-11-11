@@ -190,8 +190,11 @@ export const createDirectOrder = async (orderData, user, req) => {
     customerId: customer._id,
     conversationId: conversationId || undefined,
     sellerId: user._id,
-    orderType: orderData.orderType || 'DIRECT_SALES',
-    channel: orderData.channel || 'FACEBOOK_MESSENGER',
+    // UI labels such as 'ONLINE' are not stored types; anything outside the schema enum is a direct sale.
+    orderType: ['DIRECT_SALES', 'EXCHANGE_ORDER', 'POS_SHIP'].includes(orderData.orderType)
+      ? orderData.orderType : 'DIRECT_SALES',
+    channel: SalesOrder.schema.path('channel').enumValues.includes(orderData.channel)
+      ? orderData.channel : 'FACEBOOK_MESSENGER',
     paymentMethod: orderData.paymentMethod || 'COD',
     paymentStatus: orderData.paymentStatus || 'PENDING',
     notes: orderData.notes || '',

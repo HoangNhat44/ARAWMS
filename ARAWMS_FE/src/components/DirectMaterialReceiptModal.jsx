@@ -346,8 +346,6 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
       throw new Error('Mỗi dòng cần có số lượng thực nhận lớn hơn 0.');
     for (const line of form.receiptLines) {
       const material = materials.get(id(line.rawMaterialId));
-      if (material?.materialType === 'FABRIC' && line.rolls?.some((roll) => !(Number(roll.widthCm) > 0)))
-        throw new Error(`Cần nhập khổ vải (cm) cho từng cây vải của ${material.materialName || 'vật tư'}.`);
       if (material?.materialType === 'FABRIC' && material.requiresWeightKg && line.rolls?.some((roll) => !(Number(roll.weightKg) > 0)))
         throw new Error(`Cần nhập cân nặng (kg) cho từng cây vải của ${material.materialName || 'vật tư'}.`);
       if (requestMode) {
@@ -500,9 +498,6 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
                   {requestMode && <small>Cây {roll.supplierRollCode || roll.lotCode || rollIndex + 1} · {roll.lengthMeters} m</small>}
                   <label>Cây {rollIndex + 1} · chiều dài (m)<input style={field} type="number" min="0" step=".001" disabled={locked || requestMode}
                     value={roll.lengthMeters ?? ''} onChange={(event) => changeRoll(index, rollIndex, { lengthMeters: event.target.value })} /></label>
-                  <label>Khổ vải (cm)<input style={field} type="number" min="0" step=".1" disabled={locked}
-                    value={Number(roll.widthCm) > 0 ? roll.widthCm : ''} placeholder="Bắt buộc"
-                    onChange={(event) => changeRoll(index, rollIndex, { widthCm: event.target.value })} /></label>
                   {!requestMode && <label>Kết quả<select style={field} value={roll.quality || ''} disabled={locked} onChange={(event) =>
                     changeRoll(index, rollIndex, { quality: event.target.value, locationId: '' })}>
                     <option value="">Chưa kiểm tra</option><option value="ACCEPTED">Đạt</option><option value="REJECTED">Không đạt</option></select></label>}

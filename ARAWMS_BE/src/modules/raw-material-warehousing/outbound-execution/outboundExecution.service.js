@@ -16,6 +16,7 @@ import InventoryTransaction from '../../../models/InventoryTransaction.model.js'
 import User from '../../../models/User.model.js';
 import WarehouseLayout from '../../../models/WarehouseLayout.model.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
+import { canAccessLocation, hasWholeWarehouseAccess } from '../../../common/services/warehouseAccess.js';
 
 const id = (value) => String(value || '');
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
@@ -23,7 +24,7 @@ const equal = (a, b) => Math.abs(Number(a) - Number(b)) < 0.0001;
 const error = (message, code, status = 400) => Object.assign(new Error(message), { code, status });
 const requireRule = (condition, message, code, status) => { if (!condition) throw error(message, code, status); };
 const permitted = (user) => user?.roles?.some((role) => ['OWNER', 'ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'].includes(role));
-const access = (location, user) => !user.warehouseIds?.length || user.warehouseIds.some((value) => id(value) === id(location._id));
+const access = (location, user) => canAccessLocation(location, user);
 const quantity = (value, unit) => {
   const n = Number(value);
   const scale = isFractionalMaterialUnit(unit) ? 1000 : 1;
@@ -145,7 +146,7 @@ export async function listOutbounds(query, user) {
   const currentIds = new Set(current.map((ticket) => id(ticket._id)));
   const tickets = [...current, ...legacy.filter((ticket) => !currentIds.has(id(ticket._id)))]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 200);
-  const allowed = user.warehouseIds?.length ? await WarehouseLocation.find({ _id: { $in: user.warehouseIds } }).select('zoneCode').lean() : null;
+  const allowed = hasWholeWarehouseAccess(user) ? null : await WarehouseLocation.find({ _id: { $in: user.warehouseIds } }).select('zoneCode').lean();
   const zones = allowed && new Set(allowed.map((location) => location.zoneCode));
   const search = String(query.search || '').trim().toLocaleLowerCase('vi');
   return tickets.filter((ticket) => (!zones || zones.has(ticket.warehouseCode)) && (!query.department || ticket.department === query.department) &&

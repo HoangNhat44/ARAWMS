@@ -20,6 +20,7 @@ import User from '../../../models/User.model.js';
 import { scheduleBarcodeImages } from '../../../common/services/barcodeImageStorage.js';
 import { claimRawMaterialBarcode, nextRawMaterialBarcode } from '../../../common/services/rawMaterialBarcode.js';
 import { isFractionalMaterialUnit, isValidMaterialUnit, normalizeMaterialUnit } from '../../../common/constants/materialUnits.js';
+import { canAccessLocation, locationScopeFilter } from '../../../common/services/warehouseAccess.js';
 
 const allowedPlanStatuses = ['SCHEDULED', 'IN_INSPECTION', 'VERIFIED_MATCHED', 'DEVIATION_REPORTED'];
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
@@ -51,7 +52,11 @@ const quantity = (value, unit, field) => {
 };
 
 /** Restricts assigned warehouse staff to their configured locations when assignments exist. */
-const accessible = (location, user) => !user.warehouseIds?.length || user.warehouseIds.some((item) => id(item) === id(location._id));
+const accessible = (location, user) => canAccessLocation(location, user);
+/** Putaway uses the whole raw-material warehouse: managers and staff may shelve on any raw shelf. */
+const warehouseRoles = ['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'];
+const putawayAccessible = (location, user) => warehouseRoles.includes(user.roleCode) ||
+  user.roles?.some((role) => warehouseRoles.includes(role)) || accessible(location, user);
 
 /** Returns real suppliers and usable receiving/quarantine locations for the form. */
 export async function getReceiptOptions(user) {
@@ -132,7 +137,7 @@ export async function getInboundPlanDetails(planId, includeDeleted = false) {
 /** Lists recent supplier receipt drafts and confirmed tickets without creating test data. */
 export async function listMaterialReceipts(user) {
   return MaterialTicket.find({ ticketType: 'INBOUND_FROM_PLAN', isDeleted: { $ne: true },
-    ...(user.warehouseIds?.length ? { receivingLocationId: { $in: user.warehouseIds } } : {}) })
+    ...locationScopeFilter('receivingLocationId', user) })
     .select('ticketCode inboundPlanId supplierId supplierDeliveryCode supplierReturns.status status receiptVersion receivedAt createdAt confirmedAt')
     .sort({ createdAt: -1 }).limit(50).lean();
 }
@@ -144,7 +149,7 @@ export async function getMaterialReceipt(receiptId, user) {
     ticketType: { $in: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER', 'INBOUND_FROM_REMNANT'] },
     isDeleted: { $ne: true } }).lean();
   requireValue(receipt, 'Không tìm thấy phiếu nhập', 'RECEIPT_NOT_FOUND', 404);
-  if (user) requireValue(accessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền xem phiếu này', 'RECEIPT_FORBIDDEN', 403);
+  if (user) requireValue(putawayAccessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền xem phiếu này', 'RECEIPT_FORBIDDEN', 403);
   let plan = null;
   if (receipt.inboundPlanId && !receipt.deliveryBatchId) {
     try { plan = await getInboundPlanDetails(receipt.inboundPlanId, true); }
@@ -392,7 +397,7 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
         ticketType: { $in: ['INBOUND_FROM_PLAN', 'INBOUND_FROM_SUPPLIER', 'INBOUND_FROM_REMNANT'] },
         status: 'COMPLETED' }).session(session);
       requireValue(receipt, 'Phiếu chưa được xác nhận', 'RECEIPT_NOT_CONFIRMED', 409);
-      requireValue(accessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền cất phiếu này', 'RECEIPT_FORBIDDEN', 403);
+      requireValue(putawayAccessible({ _id: receipt.receivingLocationId }, user), 'Bạn không có quyền cất phiếu này', 'RECEIPT_FORBIDDEN', 403);
       const previous = receipt.putawayEvents.find((event) => event.key === key);
       if (previous) {
         requireValue(previous.barcode === barcode && (previous.locationBarcode === locationBarcode ||
@@ -413,14 +418,15 @@ export async function confirmMaterialPutaway(receiptId, input, user) {
         isFrozenForStocktake: false,
         isDeleted: { $ne: true },
       }).session(session);
-      requireValue(location?.warehouseType === 'RAW_MATERIAL' && accessible(location, user), 'Barcode vị trí không hợp lệ', 'INVALID_LOCATION');
+      requireValue(location?.warehouseType === 'RAW_MATERIAL' && putawayAccessible(location, user), 'Barcode vị trí không hợp lệ', 'INVALID_LOCATION');
       let amount;
       let materialId;
       let plannedDestination = false;
-      const matchingRoll = await FabricRoll.findOne({
-        $or: [{ rollBarcode: barcode }, { supplierRollCode: barcode }, { supplierLotCode: barcode }],
-        $or: [{ inboundTicketId: receiptId }, { pendingReturnReceiptId: receiptId }]
-      }).session(session);
+      // Both conditions must apply; two `$or` keys in one object would silently drop the barcode filter.
+      const matchingRoll = await FabricRoll.findOne({ $and: [
+        { $or: [{ rollBarcode: barcode }, { supplierRollCode: barcode }, { supplierLotCode: barcode }] },
+        { $or: [{ inboundTicketId: receiptId }, { pendingReturnReceiptId: receiptId }] },
+      ] }).session(session);
       if (matchingRoll) {
         const roll = matchingRoll;
         const returningOriginal = id(roll.pendingReturnReceiptId) === id(receiptId);

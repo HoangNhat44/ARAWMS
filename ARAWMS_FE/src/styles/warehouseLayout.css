@@ -150,3 +150,7 @@
 .layout-panel-actions button.danger:hover{background:#fee2e2}
 .layout-confirm-modal .layout-modal-actions button.danger{background:#b91c1c;border-color:#b91c1c;color:#fff}
 .layout-confirm-modal .layout-modal-actions button.danger:hover{background:#991b1b;border-color:#991b1b}
+/* Rack barcode viewer: typed code beside its scannable Code 128 image. */
+.layout-unit-codes{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+.layout-unit-codes>span{display:grid;gap:2px;min-width:0}.layout-unit-codes code{font-size:14px;font-weight:700}
+.layout-unit-codes img{height:56px;width:auto;max-width:100%;background:#fff;border:1px solid #eee5d9;border-radius:4px}

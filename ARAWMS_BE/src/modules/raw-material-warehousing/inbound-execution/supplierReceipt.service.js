@@ -24,6 +24,7 @@ import { publishRealtime } from '../../../common/services/realtime.js';
 import { getDeliveryBatchContext, commitDeliveryReceipt } from './deliveryPlan.service.js';
 import { validateInboundRequestReceipt, applyInboundRequestReceipt } from './technicianInboundRequest.service.js';
 import { isFractionalMaterialUnit, isValidMaterialUnitForType, normalizeMaterialUnit } from '../../../common/constants/materialUnits.js';
+import { canAccessLocation, locationScopeFilter } from '../../../common/services/warehouseAccess.js';
 
 const id = (value) => String(value || '');
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
@@ -32,7 +33,7 @@ const editable = ['DRAFT', 'WAITING_QC', 'READY_TO_CONFIRM'];
 const fail = (condition, message, code, status = 400) => {
   if (!condition) throw new ReceiptError(message, code, status);
 };
-const accessible = (location, user) => !user.warehouseIds?.length || user.warehouseIds.some((item) => id(item) === id(location._id));
+const accessible = (location, user) => canAccessLocation(location, user);
 const stockQuantity = (value, unit, field) => {
   const numeric = Number(value);
   const multiplier = isFractionalMaterialUnit(unit) ? 1000 : 1;
@@ -94,7 +95,7 @@ export async function listSupplierReceipts(query, user) {
   fail(Number.isSafeInteger(page) && page > 0 && Number.isSafeInteger((page - 1) * 100),
     'Trang danh sách phiếu nhập không hợp lệ', 'INVALID_PAGE');
   const filter = { ticketType: 'INBOUND_FROM_SUPPLIER', isDeleted: { $ne: true },
-    ...(user.warehouseIds?.length ? { receivingLocationId: { $in: user.warehouseIds } } : {}) };
+    ...locationScopeFilter('receivingLocationId', user) };
   if (query.source) {
     fail(['PLAN', 'DIRECT'].includes(query.source), 'Nguồn nhập không hợp lệ', 'INVALID_SOURCE');
     filter.inboundPlanId = query.source === 'PLAN' ? { $exists: true, $ne: null } : { $exists: false };
@@ -475,10 +476,10 @@ function validateConfirmation(receipt, materials, locations, user) {
       fail(value > 0 && ['ACCEPTED', 'REJECTED'].includes(object.quality), 'Cây/lô cần số lượng và kết quả', 'INVALID_OBJECT');
       fail(object.quality !== 'REJECTED' || object.defectReason, 'Cây/lô không đạt cần lý do', 'DEFECT_REASON_REQUIRED');
       // Author: Duy Anh. Accessory receipts may record counted stock directly; packaging is optional unless one side is supplied.
-      fail(material.materialType === 'FABRIC' ? object.widthCm > 0 &&
-        (!material.requiresWeightKg || object.weightKg > 0) :
+      // Khổ vải không còn nhập khi nhận hàng (lấy theo khổ của nguyên phụ liệu khi tạo cây vải).
+      fail(material.materialType === 'FABRIC' ? (!material.requiresWeightKg || object.weightKg > 0) :
         !object.packageCount && !object.unitsPerPackage || object.packageCount > 0 && object.unitsPerPackage > 0,
-      'Thiếu khổ vải hoặc quy cách bao gói chưa đủ', 'OBJECT_DETAILS_REQUIRED');
+      'Thiếu cân nặng cây vải hoặc quy cách bao gói chưa đủ', 'OBJECT_DETAILS_REQUIRED');
       const destinations = material.materialType === 'FABRIC'
         ? [{ locationId: object.locationId, quantity: value }] : object.allocations;
       fail((destinations.length > 0 || object.quality === 'ACCEPTED') &&
@@ -601,7 +602,7 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
           const [createdRoll] = await FabricRoll.create([{ rollBarcode: barcode,
             rawMaterialId: material._id, supplierId, supplierNameSnapshot, inboundTicketId: receipt._id,
             clientLineId: roll.clientLineId, supplierRollCode: roll.supplierRollCode, supplierLotCode: roll.lotCode,
-            measuredWidthCm: roll.widthCm, defectReason: roll.defectReason,
+            measuredWidthCm: roll.widthCm > 0 ? roll.widthCm : material.widthCm || undefined, defectReason: roll.defectReason,
             initialLengthMeters: roll.lengthMeters, currentLengthMeters: roll.lengthMeters,
             initialWeightKg: roll.weightKg, currentWeightKg: roll.weightKg,
             unitCostPerMeter: unitCost, locationId: roll.locationId, fifoInboundTimestamp: receivedAt,

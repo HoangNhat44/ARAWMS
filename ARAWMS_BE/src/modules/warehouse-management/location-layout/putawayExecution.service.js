@@ -457,10 +457,22 @@ export async function binUnits(binId, pageInput) {
   const events = await PutawayScanEvent.find({ productUnitId: { $in: units.map((unit) => unit._id) } })
     .select('productUnitId actorId createdAt').populate('actorId', 'fullName employeeCode').lean();
   const eventByUnit = new Map(events.map((event) => [id(event.productUnitId), event]));
-  return { bin: bin.locationCode, page, limit, total, units: units.map((unit) => ({
-    barcode: unit.barcode, skuId: unit.skuId,
+  // Name each unit so managers can tell products apart in the barcode list.
+  const skus = await Sku.find({ _id: { $in: [...new Set(units.map((unit) => id(unit.skuId)))] } })
+    .select('skuCode productId color size').lean();
+  const products = await Product.find({ _id: { $in: skus.map((sku) => sku.productId) } })
+    .select('productName').lean();
+  const skuById = new Map(skus.map((sku) => [id(sku._id), sku]));
+  const productById = new Map(products.map((product) => [id(product._id), product]));
+  return { bin: bin.locationCode, page, limit, total, units: units.map((unit) => {
+    const sku = skuById.get(id(unit.skuId));
+    return {
+    barcode: unit.barcode, skuId: unit.skuId, skuCode: sku?.skuCode || '',
+    productName: productById.get(id(sku?.productId))?.productName || '',
+    color: sku?.color || '', size: sku?.size || '',
     placedBy: eventByUnit.get(id(unit._id))?.actorId?.fullName || null,
-    placedAt: eventByUnit.get(id(unit._id))?.createdAt || null })) };
+    placedAt: eventByUnit.get(id(unit._id))?.createdAt || null };
+  }) };
 }
 
 /** Lists unresolved shortages for a manager without loading task details on the staff screen. */

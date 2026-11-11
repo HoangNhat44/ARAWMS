@@ -7,6 +7,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { warehousePutawayService as api } from '../services/warehousePutawayService';
 import { MATERIAL_UNIT_OPTIONS } from '../utils/materialUnits';
+import { code128Svg } from '../utils/barcodePrint';
+
+/** Shows the scannable Code 128 image next to the typed code; invalid codes fall back to text only. */
+function UnitBarcode({ value }) {
+  let src = '';
+  try { src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(code128Svg(String(value || '').toUpperCase()))}`; }
+  catch { src = ''; }
+  return <div className="layout-unit-codes">
+    <span><small>Mã nhập tay</small><code>{value}</code></span>
+    {src ? <img src={src} alt={`Barcode ${value}`} /> : <small>Không tạo được ảnh barcode cho mã này</small>}
+  </div>;
+}
 
 const unitShort = new Map(MATERIAL_UNIT_OPTIONS.map((option) => [option.value, option.shortLabel]));
 const qty = (value, unit) => `${Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 3 })} ${
@@ -142,13 +154,16 @@ export default function WarehouseRackContents({ rackId, notify, requestConfirm }
         <button type="button" onClick={() => { setUnitPage(null); setSelectedBinId(''); }}>Đóng</button></div>
       {unitPage.warehouseType === 'RAW_MATERIAL'
         ? unitPage.units.map((unit, index) => <div key={`${unit.barcode}:${index}`} className="layout-unit-row">
-          <code>{unit.barcode}</code>
+          <UnitBarcode value={unit.barcode} />
           <span>{unit.kind === 'ROLL' ? 'Cuộn vải' : 'Lô'} · {unit.materialName || unit.materialCode} · {qty(unit.quantity, unit.unit)}
             {unit.pending ? ' (chờ xếp)' : ''}</span>
           <small>{unit.placedAt ? `Nhập ${new Date(unit.placedAt).toLocaleDateString('vi-VN')}` : ''}</small>
         </div>)
         : unitPage.units.map((unit) => <div key={unit.barcode} className="layout-unit-row">
-          <code>{unit.barcode}</code><span>{unit.placedBy || 'Chưa có lần quét xếp hàng'}</span>
+          <strong>{unit.productName || unit.skuCode || 'Sản phẩm không còn trong danh mục'}</strong>
+          <small>{[unit.skuCode, unit.color, unit.size].filter(Boolean).join(' · ')}</small>
+          <UnitBarcode value={unit.barcode} /><span>{unit.placedBy ?`Đang trên kệ · xếp bởi ${unit.placedBy}`
+            : 'Đang trên kệ · không có lịch sử quét xếp (người/thời gian xếp không được ghi nhận)'}</span>
           <small>{unit.placedAt ? new Date(unit.placedAt).toLocaleString('vi-VN') : ''}</small>
         </div>)}
       <div className="layout-contents-title"><span>Trang {unitPage.page} · {unitPage.total} {

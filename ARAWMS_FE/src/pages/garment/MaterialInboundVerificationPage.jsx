@@ -318,9 +318,11 @@ export default function MaterialInboundVerificationPage() {
 
     const verificationSource = targetBatch?.technicianVerification || plan.technicianVerification;
     setSupplierDeliveryCode(targetBatch?.deliveryNote || plan.deliveryNote || '');
-    setIsMatched(verificationSource?.isMatchedWithPlan ?? true);
+    const initialMatched = verificationSource?.isMatchedWithPlan ?? true;
+    setIsMatched(initialMatched);
     setDeviationSummary(verificationSource?.deviationSummary || '');
-    setCreateInboundRequest(true);
+    // Chỉ mặc định gửi yêu cầu nhập kho khi lô khớp kế hoạch; khi có sai lệch, KTV phải chủ động tick
+    setCreateInboundRequest(initialMatched);
 
     // Populate verification items for this batch or root plan
     const rawItems = targetBatch?.expectedItems && targetBatch.expectedItems.length > 0
@@ -410,11 +412,16 @@ export default function MaterialInboundVerificationPage() {
         defectLines.push(`${name}: Kế hoạch ${pl}, Thực đạt ${p}, Lỗi/thiếu ${d}${reason}`);
       }
     });
-    setIsMatched(!hasDeviation);
-
-    // Tự động điền tóm tắt sai lệch nếu có sai lệch và deviationSummary đang trống
-    if (hasDeviation && !deviationSummary.trim() && defectLines.length > 0) {
-      setDeviationSummary(`Biên bản sai lệch KCS: ${defectLines.join('; ')}`);
+    if (hasDeviation) {
+      setIsMatched(false);
+      setCreateInboundRequest(false);
+      // Tự động điền tóm tắt sai lệch nếu có sai lệch và deviationSummary đang trống
+      if (!deviationSummary.trim() && defectLines.length > 0) {
+        setDeviationSummary(`Biên bản sai lệch KCS: ${defectLines.join('; ')}`);
+      }
+    } else {
+      setIsMatched(true);
+      setCreateInboundRequest(true);
     }
 
     setVerificationItems(updated);
@@ -485,7 +492,7 @@ export default function MaterialInboundVerificationPage() {
         'success',
         isMatched
           ? `Đã nghiệm thu KCS thành công${batchTitleInfo} và gửi Phiếu yêu cầu nhập kho (${res?.data?.ticket?.ticketCode || 'PNNL'}) tới Quản lý kho!`
-          : `Đã ghi nhận sai lệch KCS cho kế hoạch ${selectedPlan.planCode}${batchTitleInfo} và gửi thông báo Realtime tới bộ phận Kế toán!`
+          : `Đã ghi nhận sai lệch KCS cho kế hoạch ${selectedPlan.planCode}${batchTitleInfo} và gửi thông báo Realtime tới bộ phận Kế toán!${res?.data?.ticket?.ticketCode ? ` Đã gửi phần đạt KCS tới Quản lý kho (${res.data.ticket.ticketCode}).` : ''}`
       );
 
       setSelectedPlan(null);
@@ -2430,7 +2437,10 @@ export default function MaterialInboundVerificationPage() {
                       type="radio"
                       name="matchingStatus"
                       checked={isMatched}
-                      onChange={() => setIsMatched(true)}
+                      onChange={() => {
+                        setIsMatched(true);
+                        setCreateInboundRequest(true);
+                      }}
                     />
                     <CheckCircle2 size={17} /> Khớp 100% với kế hoạch nhập
                   </label>
@@ -2440,7 +2450,10 @@ export default function MaterialInboundVerificationPage() {
                       type="radio"
                       name="matchingStatus"
                       checked={!isMatched}
-                      onChange={() => setIsMatched(false)}
+                      onChange={() => {
+                        setIsMatched(false);
+                        setCreateInboundRequest(false);
+                      }}
                     />
                     <AlertTriangle size={17} /> Có sai lệch (thiếu hàng, lỗi ngoại quan)
                   </label>

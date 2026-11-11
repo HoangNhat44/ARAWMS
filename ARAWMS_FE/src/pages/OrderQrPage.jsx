@@ -150,15 +150,15 @@ export default function OrderQrPage() {
 
   const filteredOrders = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
-    // Packable orders first, then other unpacked orders, then packed; server order (newest first) is kept within each group.
-    const rank = (order) => order.canPack ? 0 : packedStatuses.has(order.status) ? 2 : 1;
+    // Strictly newest to oldest by creation time; the "Sẵn sàng đóng" badge marks packable orders.
+    const time = (order) => new Date(order.createdAt || 0).getTime() || 0;
     return orders.filter((order) => {
       const isPacked = packedStatuses.has(order.status);
       if (packingFilter === 'packed' && !isPacked) return false;
       if (packingFilter === 'unpacked' && isPacked) return false;
       return !term || [order.orderCode, order.id, order.recipientName, order.status, statusLabel(order.status)]
         .some((value) => String(value || '').toLocaleLowerCase().includes(term));
-    }).sort((a, b) => rank(a) - rank(b));
+    }).sort((a, b) => time(b) - time(a));
   }, [orders, search, packingFilter]);
   const eligibleVisibleIds = filteredOrders.filter((order) => order.canIssueQr).map((order) => order.id);
   const allVisibleSelected = eligibleVisibleIds.length > 0 && eligibleVisibleIds.every((id) => selectedIds.includes(id));

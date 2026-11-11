@@ -85,7 +85,7 @@ export default function FinishedGoodsPage({ isStaffMode = false }) {
     } else if (tab === 'outbound') {
       navigate('/warehouse/technical-outbound', { replace: true });
     } else if (tab === 'progress') {
-      navigate(isStaff ? '/warehouse/staff/inbound-progress' : '/warehouse/inbound-progress', { replace: true });
+      navigate(isStaff ? '/warehouse/putaway' : '/warehouse/inbound-progress', { replace: true });
     }
   }, [searchParams, isStaff, navigate]);
 

@@ -13,7 +13,6 @@ import {
   Truck,
   Shirt,
   ArrowUpRight,
-  TrendingUp,
   PanelLeftClose,
   PanelLeftOpen,
   X,
@@ -53,13 +52,6 @@ export default function WarehouseStaffLayout({ children }) {
       subLabel: 'Tra cứu tồn kho theo SKU',
       icon: Shirt,
       match: (path) => path === '/warehouse/staff/finished-goods',
-    },
-    {
-      to: '/warehouse/staff/inbound-progress',
-      label: 'Tiến độ nhập kho',
-      subLabel: 'Theo dõi cất hàng & phân bổ kệ',
-      icon: TrendingUp,
-      match: (path) => path.startsWith('/warehouse/staff/inbound-progress'),
     },
     {
       to: '/packing/qr',
