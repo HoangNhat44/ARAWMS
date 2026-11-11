@@ -49,7 +49,13 @@ function PeriodFilter({ value, onChange, showComparison = true }) {
   const [comparing, setComparing] = useState(value.comparison === 'on');
   const [kind, setKind] = useState(value.compareMode === 'quarter' ? 'quarter' : 'custom'); const [mode, setMode] = useState(value.compareMode || 'previous-year'); const [error, setError] = useState('');
   const [quarters, setQuarters] = useState({ current: Math.floor((Number(value.from.slice(5, 7)) - 1) / 3) + 1, previous: Math.floor((Number(value.compareFrom.slice(5, 7)) - 1) / 3) + 1 });
-  const changeQuarters = (next) => { setQuarters(next); const year = Number(draft.from.slice(0, 4)); const current = quarterDates(year, next.current), previous = quarterDates(year, next.previous); setDraft({ ...current, compareFrom: previous.from, compareTo: previous.to }); };
+  const changeQuarters = (next) => {
+    setQuarters(next);
+    const year = Number(draft.from.slice(0, 4));
+    const current = quarterDates(year, next.current);
+    const previous = quarterDates(year, next.previous);
+    setDraft({ ...draft, ...current, compareFrom: previous.from, compareTo: previous.to });
+  };
   const apply = (e) => {
     e.preventDefault();
     // Chặn ngày không tồn tại, ngày kết thúc trước ngày bắt đầu hoặc kỳ dài quá 366 ngày.
@@ -70,15 +76,22 @@ function PeriodFilter({ value, onChange, showComparison = true }) {
     setError(comparisonError);
     if (!comparisonError) onChange({ ...dates, compareMode: selectedMode, comparison: comparing ? 'on' : 'off' });
   };
-  return <form className="owner-filters" onSubmit={apply}>
-    <WmsField>Xem theo<WmsSelect value={kind} onChange={(e) => { const k = e.target.value; setKind(k); if (k !== 'custom') setDraft({ ...draft, ...preset(k, draft.from) }); }}><option value="custom">Khoảng thời gian</option><option value="week">Tuần</option><option value="month">Tháng</option><option value="quarter">Quý</option><option value="year">Năm</option></WmsSelect></WmsField>
-    {[['from', 'Từ ngày'], ['to', 'Đến ngày']].map(([key, title]) => <WmsField key={key}>{title}<WmsInput type="date" required value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} /></WmsField>)}
-    {showComparison && <WmsButton type="button" aria-pressed={comparing} onClick={() => { setComparing(!comparing); if (comparing) onChange({ ...value, comparison: 'off' }); }}>{comparing ? 'Tắt so sánh' : 'So sánh'}</WmsButton>}
-    {showComparison && comparing && <WmsField>So sánh với<WmsSelect value={mode} onChange={(e) => { const next = e.target.value; setMode(next); if (next === 'quarter') { setKind('quarter'); changeQuarters({ current: 1, previous: 2 }); } }}><option value="previous-year">Cùng kỳ năm trước</option><option value="previous-period">Kỳ liền trước</option><option value="quarter">Quý khác trong năm</option><option value="custom">Khoảng ngày tự chọn</option></WmsSelect></WmsField>}
-    {showComparison && comparing && mode === 'quarter' && [['current', 'Quý cần xem'], ['previous', 'Quý đối chiếu']].map(([key, title]) => <WmsField key={key}>{title}<WmsSelect value={String(quarters[key])} onChange={(e) => changeQuarters({ ...quarters, [key]: Number(e.target.value) })}>{[1, 2, 3, 4].map((q) => <option key={q} value={String(q)}>Quý {q}</option>)}</WmsSelect></WmsField>)}
-    {showComparison && comparing && mode === 'custom' && [['compareFrom', 'So sánh từ ngày'], ['compareTo', 'So sánh đến ngày']].map(([key, title]) => <WmsField key={key}>{title}<WmsInput type="date" required value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} /></WmsField>)}
-    {showComparison && <><WmsField>Nguồn bán<WmsSelect value={draft.salesChannel} onChange={(e) => setDraft({ ...draft, salesChannel: e.target.value })}><option value="">Tất cả nguồn bán</option>{Object.entries(channelLabels).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</WmsSelect></WmsField><WmsField>Thanh toán<WmsSelect value={draft.paymentStatus} onChange={(e) => setDraft({ ...draft, paymentStatus: e.target.value })}><option value="">Tất cả tình trạng thanh toán</option><option value="PAID">Đã thanh toán</option><option value="UNPAID">Chưa thanh toán</option><option value="PARTIAL">Đã trả một phần</option><option value="UNKNOWN">Chưa rõ thanh toán</option></WmsSelect></WmsField></>}
-    <WmsButton type="submit" className="btn-ara-primary">Áp dụng</WmsButton><Notice error={error} />
+  return <form className="owner-filters owner-period-filter" onSubmit={apply}>
+    <div className="owner-period-fields">
+      <WmsField>Xem theo<WmsSelect value={kind} onChange={(e) => { const k = e.target.value; setKind(k); if (k !== 'custom') setDraft({ ...draft, ...preset(k, draft.from) }); }}><option value="custom">Khoảng thời gian</option><option value="week">Tuần</option><option value="month">Tháng</option><option value="quarter">Quý</option><option value="year">Năm</option></WmsSelect></WmsField>
+      {[['from', 'Từ ngày'], ['to', 'Đến ngày']].map(([key, title]) => <WmsField key={key}>{title}<WmsInput type="date" required value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} /></WmsField>)}
+      {showComparison && <><WmsField>Nguồn bán<WmsSelect value={draft.salesChannel} onChange={(e) => setDraft({ ...draft, salesChannel: e.target.value })}><option value="">Tất cả nguồn bán</option>{Object.entries(channelLabels).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</WmsSelect></WmsField><WmsField>Thanh toán<WmsSelect value={draft.paymentStatus} onChange={(e) => setDraft({ ...draft, paymentStatus: e.target.value })}><option value="">Tất cả trạng thái</option><option value="PAID">Đã thanh toán</option><option value="UNPAID">Chưa thanh toán</option><option value="PARTIAL">Đã trả một phần</option><option value="UNKNOWN">Chưa rõ thanh toán</option></WmsSelect></WmsField></>}
+    </div>
+    {showComparison && comparing && <div className="owner-period-fields owner-comparison-fields" id="owner-period-comparison">
+      <WmsField>So sánh với<WmsSelect value={mode} onChange={(e) => { const next = e.target.value; setMode(next); if (next === 'quarter') { setKind('quarter'); changeQuarters({ current: 1, previous: 2 }); } }}><option value="previous-year">Cùng kỳ năm trước</option><option value="previous-period">Kỳ liền trước</option><option value="quarter">Quý khác trong năm</option><option value="custom">Khoảng ngày tự chọn</option></WmsSelect></WmsField>
+      {mode === 'quarter' && [['current', 'Quý cần xem'], ['previous', 'Quý đối chiếu']].map(([key, title]) => <WmsField key={key}>{title}<WmsSelect value={String(quarters[key])} onChange={(e) => changeQuarters({ ...quarters, [key]: Number(e.target.value) })}>{[1, 2, 3, 4].map((q) => <option key={q} value={String(q)}>Quý {q}</option>)}</WmsSelect></WmsField>)}
+      {mode === 'custom' && [['compareFrom', 'So sánh từ ngày'], ['compareTo', 'So sánh đến ngày']].map(([key, title]) => <WmsField key={key}>{title}<WmsInput type="date" required value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} /></WmsField>)}
+    </div>}
+    <div className="owner-period-actions">
+      {showComparison && <WmsButton type="button" aria-expanded={comparing} aria-controls={comparing ? 'owner-period-comparison' : undefined} onClick={() => { setComparing(!comparing); if (comparing) onChange({ ...value, comparison: 'off' }); }}>{comparing ? 'Tắt so sánh' : 'So sánh'}</WmsButton>}
+      <WmsButton type="submit" className="btn-ara-primary">Áp dụng</WmsButton>
+    </div>
+    <Notice error={error} />
   </form>;
 }
 /**

@@ -34,7 +34,11 @@ export const wmsTheme = {
     Table: { headerBg: palette.header, headerColor: palette.secondary, borderColor: palette.border, rowHoverBg: palette.subtle, fontSize: 16, cellPaddingBlock: 12, cellPaddingInline: 16 },
     Button: { defaultBorderColor: palette.borderStrong, primaryShadow: 'none', defaultShadow: 'none', dangerShadow: 'none', fontWeight: 600 },
     Input: { activeBorderColor: palette.accent, hoverBorderColor: palette.accent },
-    Select: { activeBorderColor: palette.accent, hoverBorderColor: palette.accent },
+    Select: {
+      activeBorderColor: palette.accent, hoverBorderColor: palette.accent,
+      optionSelectedBg: palette.subtle, optionSelectedColor: palette.primary, optionActiveBg: palette.header,
+      controlItemBgActiveHover: palette.muted,
+    },
     Tabs: { inkBarColor: palette.accent, itemSelectedColor: palette.primary, itemColor: palette.secondary },
     Modal: { titleFontSize: 20 },
     Breadcrumb: { linkColor: palette.secondary, itemColor: palette.secondary, lastItemColor: palette.primary, separatorColor: palette.secondary },
