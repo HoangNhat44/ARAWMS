@@ -3,9 +3,10 @@
  * @title        : Garment Raw Materials & Categories Page
  * @author       : AraWMS Team
  * @createdDate  : 2026-11-09
- * @lastModified : 2026-11-09
+ * @lastModified : 2026-11-11
  * @description  : Giao diện Quản lý Kho & Danh Mục Phân Loại Nguyên Phụ Liệu:
  *                 - Tab 1: Kho & Danh sách NPL (Thêm, Sửa, Xóa NPL, cascade dọn dẹp cấu hình kho & lệnh xuất).
+ *                          (Kỹ thuật viên khai báo thông số kỹ thuật; định mức tồn, giá vốn & nhà cung cấp do Owner quản lý).
  *                 - Tab 2: Quản lý Danh mục (Thêm, Sửa, Xóa Danh mục; bắt buộc phải xóa hết NPL trong danh mục trước khi xóa).
  * @module       : Garment Technical / Raw Materials
  * @layer        : Front-end (Page)
@@ -96,7 +97,7 @@ export default function GarmentRawMaterialsPage() {
   });
   const [categoryFormError, setCategoryFormError] = useState('');
 
-  // State: Form (Materials)
+  // State: Form (Materials - Kỹ thuật viên quản lý thông số kỹ thuật; Giá vốn & Định mức do Owner quyết định)
   const initialFormState = {
     materialCode: '',
     materialName: '',
@@ -107,10 +108,6 @@ export default function GarmentRawMaterialsPage() {
     gsm: '',
     widthCm: '',
     requiresWeightKg: false,
-    unitCost: 0,
-    safetyStockThreshold: 50,
-    fifoAgingThresholdDays: 90,
-    supplierId: '',
     isActive: true,
   };
   const [form, setForm] = useState(initialFormState);
@@ -216,7 +213,7 @@ export default function GarmentRawMaterialsPage() {
     setShowCreateModal(true);
   };
 
-  // Mở modal chỉnh sửa NPL
+  // Mở modal chỉnh sửa NPL (chỉ sửa quy cách & thông số kỹ thuật)
   const handleOpenEdit = (material) => {
     setEditingMaterial(material);
     setForm({
@@ -229,10 +226,6 @@ export default function GarmentRawMaterialsPage() {
       gsm: material.gsm || '',
       widthCm: material.widthCm || '',
       requiresWeightKg: Boolean(material.requiresWeightKg),
-      unitCost: material.unitCost || 0,
-      safetyStockThreshold: material.safetyStockThreshold !== undefined ? material.safetyStockThreshold : 50,
-      fifoAgingThresholdDays: material.fifoAgingThresholdDays || 90,
-      supplierId: material.supplierId?._id || material.supplierId || '',
       isActive: material.isActive !== undefined ? material.isActive : true,
     });
     setFormError('');
@@ -257,16 +250,16 @@ export default function GarmentRawMaterialsPage() {
     setActionLoading(true);
     try {
       const payload = {
-        ...form,
         materialCode: form.materialCode.trim() || undefined,
         materialName: form.materialName.trim(),
+        materialType: form.materialType,
+        category: form.category,
+        unit: form.unit,
         color: form.color.trim(),
         gsm: form.gsm ? Number(form.gsm) : undefined,
         widthCm: form.widthCm ? Number(form.widthCm) : undefined,
-        unitCost: Number(form.unitCost) || 0,
-        safetyStockThreshold: Number(form.safetyStockThreshold) || 0,
-        fifoAgingThresholdDays: Number(form.fifoAgingThresholdDays) || 90,
-        supplierId: form.supplierId || undefined,
+        requiresWeightKg: Boolean(form.requiresWeightKg),
+        isActive: Boolean(form.isActive),
       };
 
       if (editingMaterial) {
@@ -1365,7 +1358,7 @@ export default function GarmentRawMaterialsPage() {
                   </div>
 
                   {form.materialType === 'FABRIC' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}>
                       <input
                         type="checkbox"
                         id="requiresWeightKgCheck"
@@ -1377,73 +1370,8 @@ export default function GarmentRawMaterialsPage() {
                       </label>
                     </div>
                   )}
-                </div>
 
-                <div style={{ borderTop: '1px solid var(--ara-border-subtle)', paddingTop: '1.25rem' }}>
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--ara-noir)', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <Layers size={16} color="var(--ara-gold)" /> 3. Định Mức Tồn Kho, Giá Vốn & Nhà Cung Cấp
-                  </h3>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                        Đơn giá vốn tham chiếu (VNĐ) <span style={{ color: '#DC2626' }}>*</span>
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={form.unitCost}
-                        onChange={(e) => setForm({ ...form, unitCost: e.target.value })}
-                        style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem', fontWeight: 700 }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                        Ngưỡng tồn an toàn (Safety Stock):
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={form.safetyStockThreshold}
-                        onChange={(e) => setForm({ ...form, safetyStockThreshold: e.target.value })}
-                        style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem' }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                        Ngưỡng cảnh báo tuổi thọ FIFO (ngày):
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={form.fifoAgingThresholdDays}
-                        onChange={(e) => setForm({ ...form, fifoAgingThresholdDays: e.target.value })}
-                        style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem' }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                        Nhà cung cấp chính:
-                      </label>
-                      <select
-                        value={form.supplierId}
-                        onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
-                        style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem' }}
-                      >
-                        <option value="">-- Chọn Nhà cung cấp --</option>
-                        {meta.suppliers.map((s) => (
-                          <option key={s._id} value={s._id}>
-                            {s.supplierName} ({s.supplierCode})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}>
                     <input
                       type="checkbox"
                       id="isActiveCheck"
@@ -1451,8 +1379,24 @@ export default function GarmentRawMaterialsPage() {
                       onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
                     />
                     <label htmlFor="isActiveCheck" style={{ fontSize: '0.88rem', fontWeight: 600, cursor: 'pointer' }}>
-                      Kích hoạt cho phép sử dụng trong kế hoạch nhập/xuất kho
+                      Kích hoạt cho phép sử dụng trong kế hoạch sản xuất & nhập/xuất kho
                     </label>
+                  </div>
+
+                  <div style={{
+                    marginTop: '1.25rem',
+                    padding: '0.75rem 0.9rem',
+                    background: '#F8FAFC',
+                    border: '1px solid #E2E8F0',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.82rem',
+                    color: '#64748B',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                  }}>
+                    <Info size={15} color="#94A3B8" />
+                    <span>Lưu ý: Định mức tồn kho, đơn giá vốn tham chiếu và nhà cung cấp do Chủ xưởng (Owner) trực tiếp cấu hình.</span>
                   </div>
                 </div>
               </div>

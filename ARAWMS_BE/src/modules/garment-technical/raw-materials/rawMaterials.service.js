@@ -3,10 +3,11 @@
  * @title        : Raw Materials & Categories Management Service
  * @author       : AraWMS Team
  * @createdDate  : 2026-11-09
- * @lastModified : 2026-11-09
+ * @lastModified : 2026-11-11
  * @description  : Cung cấp logic nghiệp vụ cho Quản lý Danh mục Kho Nguyên Phụ Liệu:
  *                 - CRUD Nguyên phụ liệu: Xóa triệt để, cascade dọn dẹp cấu hình kho & lệnh xuất.
  *                 - CRUD Danh mục phân loại: Trước khi xóa danh mục, bắt buộc phải xóa hết toàn bộ NPL trong danh mục.
+ *                 - Phân quyền nghiệp vụ: Định mức tồn kho, giá vốn và nhà cung cấp do Owner quản lý; Kỹ thuật viên không can thiệp.
  * @module       : Garment Technical / Raw Materials
  * @layer        : Service
  * ============================================================================
@@ -428,8 +429,11 @@ export const createRawMaterial = async (data = {}, user) => {
     }
   }
 
+  // Phân quyền nghiệp vụ: Định mức tồn kho, giá vốn và nhà cung cấp do Owner quyết định
+  const isTechnician = user?.roleCode === 'GARMENT_TECHNICIAN';
+
   let supplierId = null;
-  if (data.supplierId && mongoose.Types.ObjectId.isValid(data.supplierId)) {
+  if (!isTechnician && data.supplierId && mongoose.Types.ObjectId.isValid(data.supplierId)) {
     const supExists = await Supplier.findById(data.supplierId);
     if (supExists) supplierId = data.supplierId;
   }
@@ -444,10 +448,10 @@ export const createRawMaterial = async (data = {}, user) => {
     gsm: data.gsm ? Math.max(0, Number(data.gsm)) : undefined,
     widthCm: data.widthCm ? Math.max(0, Number(data.widthCm)) : undefined,
     requiresWeightKg: Boolean(data.requiresWeightKg),
-    unitCost: Math.max(0, Number(data.unitCost) || 0),
-    safetyStockThreshold: Math.max(0, Number(data.safetyStockThreshold) || 50),
-    fifoAgingThresholdDays: Math.max(1, Number(data.fifoAgingThresholdDays) || 90),
-    supplierId,
+    unitCost: isTechnician ? 0 : Math.max(0, Number(data.unitCost) || 0),
+    safetyStockThreshold: isTechnician ? 0 : Math.max(0, Number(data.safetyStockThreshold) || 0),
+    fifoAgingThresholdDays: isTechnician ? 90 : Math.max(1, Number(data.fifoAgingThresholdDays) || 90),
+    supplierId: isTechnician ? null : supplierId,
     isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
     onHandQty: 0,
     reservedQty: 0,
@@ -520,18 +524,22 @@ export const updateRawMaterial = async (id, data = {}, user) => {
   if (data.widthCm !== undefined) material.widthCm = data.widthCm ? Math.max(0, Number(data.widthCm)) : undefined;
   if (data.requiresWeightKg !== undefined) material.requiresWeightKg = Boolean(data.requiresWeightKg);
 
-  if (data.unitCost !== undefined) material.unitCost = Math.max(0, Number(data.unitCost) || 0);
-  if (data.safetyStockThreshold !== undefined)
-    material.safetyStockThreshold = Math.max(0, Number(data.safetyStockThreshold) || 0);
-  if (data.fifoAgingThresholdDays !== undefined)
-    material.fifoAgingThresholdDays = Math.max(1, Number(data.fifoAgingThresholdDays) || 90);
+  // Phân quyền nghiệp vụ: Định mức tồn kho, giá vốn và nhà cung cấp do Owner quản lý; Kỹ thuật viên không can thiệp
+  const isTechnician = user?.roleCode === 'GARMENT_TECHNICIAN';
+  if (!isTechnician) {
+    if (data.unitCost !== undefined) material.unitCost = Math.max(0, Number(data.unitCost) || 0);
+    if (data.safetyStockThreshold !== undefined)
+      material.safetyStockThreshold = Math.max(0, Number(data.safetyStockThreshold) || 0);
+    if (data.fifoAgingThresholdDays !== undefined)
+      material.fifoAgingThresholdDays = Math.max(1, Number(data.fifoAgingThresholdDays) || 90);
 
-  if (data.supplierId !== undefined) {
-    if (data.supplierId && mongoose.Types.ObjectId.isValid(data.supplierId)) {
-      const supExists = await Supplier.findById(data.supplierId);
-      if (supExists) material.supplierId = data.supplierId;
-    } else {
-      material.supplierId = null;
+    if (data.supplierId !== undefined) {
+      if (data.supplierId && mongoose.Types.ObjectId.isValid(data.supplierId)) {
+        const supExists = await Supplier.findById(data.supplierId);
+        if (supExists) material.supplierId = data.supplierId;
+      } else {
+        material.supplierId = null;
+      }
     }
   }
 
