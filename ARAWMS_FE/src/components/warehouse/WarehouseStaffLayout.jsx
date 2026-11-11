@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Shirt,
   ArrowUpRight,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -40,7 +41,14 @@ export default function WarehouseStaffLayout({ children }) {
       label: 'Kho thành phẩm',
       subLabel: 'Tra cứu tồn kho theo SKU',
       icon: Shirt,
-      match: (path) => path.startsWith('/warehouse/staff/finished-goods'),
+      match: (path) => path === '/warehouse/staff/finished-goods',
+    },
+    {
+      to: '/warehouse/staff/inbound-progress',
+      label: 'Tiến độ nhập kho',
+      subLabel: 'Theo dõi cất hàng & phân bổ kệ',
+      icon: TrendingUp,
+      match: (path) => path.startsWith('/warehouse/staff/inbound-progress'),
     },
     {
       to: '/packing/qr',

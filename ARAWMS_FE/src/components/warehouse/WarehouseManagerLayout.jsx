@@ -14,6 +14,9 @@ import {
   LayoutGrid,
   ClipboardCheck,
   CheckCircle2,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -39,9 +42,30 @@ export default function WarehouseManagerLayout({ children }) {
     {
       to: '/warehouse/finished-goods',
       label: 'Kho thành phẩm',
-      subLabel: 'Tồn kho & xuất thành phẩm',
+      subLabel: 'Tồn kho theo SKU & xuất kho',
       icon: Shirt,
-      match: (path) => path.startsWith('/warehouse/finished-goods'),
+      match: (path) => path === '/warehouse/finished-goods',
+    },
+    {
+      to: '/warehouse/technical-inbound',
+      label: 'Lệnh nhập từ kỹ thuật',
+      subLabel: 'Phiếu KCS & nhập kho hoàn',
+      icon: ArrowDownToLine,
+      match: (path) => path.startsWith('/warehouse/technical-inbound'),
+    },
+    {
+      to: '/warehouse/technical-outbound',
+      label: 'Lệnh xuất từ kỹ thuật',
+      subLabel: 'Cấp phát NPL & xuất thành phẩm',
+      icon: ArrowUpFromLine,
+      match: (path) => path.startsWith('/warehouse/technical-outbound'),
+    },
+    {
+      to: '/warehouse/inbound-progress',
+      label: 'Tiến độ nhập kho',
+      subLabel: 'Theo dõi cất hàng & phân bổ kệ',
+      icon: TrendingUp,
+      match: (path) => path.startsWith('/warehouse/inbound-progress'),
     },
     {
       to: '/warehouse/products/new',

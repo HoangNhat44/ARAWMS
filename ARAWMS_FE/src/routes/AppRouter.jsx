@@ -26,6 +26,9 @@ import OrderQrPage from '../pages/OrderQrPage';
 import WarehousePackingPage from '../pages/WarehousePackingPage';
 import ProductConfigurationPage from '../pages/ProductConfigurationPage';
 import FinishedGoodsPage from '../pages/FinishedGoodsPage';
+import TechnicalInboundPage from '../pages/TechnicalInboundPage';
+import TechnicalOutboundPage from '../pages/TechnicalOutboundPage';
+import InboundProgressPage from '../pages/InboundProgressPage';
 import SupplierInboundPage from '../pages/SupplierInboundPage';
 import MaterialOutboundPage from '../pages/MaterialOutboundPage';
 import WarehouseLayoutPage from '../pages/WarehouseLayoutPage';
@@ -139,6 +142,9 @@ export default function AppRouter() {
           <Route path="/warehouse/raw-materials/inbound" element={<SupplierInboundPage />} />
           <Route path="/warehouse/raw-materials/outbound" element={<MaterialOutboundPage />} />
           <Route path="/warehouse/finished-goods" element={<FinishedGoodsPage />} />
+          <Route path="/warehouse/technical-inbound" element={<TechnicalInboundPage />} />
+          <Route path="/warehouse/technical-outbound" element={<TechnicalOutboundPage />} />
+          <Route path="/warehouse/inbound-progress" element={<InboundProgressPage />} />
           <Route path="/warehouse/products/new" element={<ProductConfigurationPage />} />
           <Route path="/warehouse/products/:id/edit" element={<ProductConfigurationPage />} />
           <Route path="/warehouse/layout" element={<WarehouseLayoutPage />} />
@@ -150,6 +156,7 @@ export default function AppRouter() {
           <Route path="/warehouse/putaway" element={<WarehousePutawayPage />} />
           <Route path="/warehouse/staff/outbound" element={<MaterialOutboundPage isStaffMode />} />
           <Route path="/warehouse/staff/finished-goods" element={<FinishedGoodsPage isStaffMode />} />
+          <Route path="/warehouse/staff/inbound-progress" element={<InboundProgressPage />} />
           <Route path="/packing/qr" element={<WarehousePackingPage />} />
           <Route path="/orders/qr" element={<OrderQrPage />} />
           <Route path="/warehouse/shipping" element={<ShippingPage />} />
