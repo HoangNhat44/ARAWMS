@@ -4,7 +4,7 @@
  * Ngày thực hiện: 30-10-2026
  * Chức năng: Khung Owner responsive, điều hướng, breadcrumb và thao tác tài khoản.
  */
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Alert, Avatar, Button, Dropdown, Grid, Result, Tooltip } from 'antd';
 import { BarChart3, ClipboardCheck, FileText, History, Layers, LogOut, Menu as MenuIcon, Package, Settings, Users, User as UserIcon, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
@@ -24,7 +24,7 @@ const groups = [
   { title: 'Quản lý và nhân sự', items: [['manager-reports', 'Báo cáo quản lý', FileText], ['employees', 'Nhân viên', Users], ['activity', 'Nhật ký hoạt động', History]] },
 ];
 const pageTitles = Object.fromEntries(groups.flatMap((g) => g.items.map(([path, title]) => [`/owner/${path}`, title])));
-const detailTitle = (path) => path.startsWith('/owner/deviations') || path.startsWith('/owner/inbound-plans') || path.startsWith('/owner/plans/') || path.startsWith('/owner/plan-deviations/') ? 'Chi tiết sai lệch KCS' : path === '/owner/plan-deviations' ? 'Sai lệch kế hoạch' : /^\/owner\/contracts\/[^/]+\/plans\/[^/]+$/.test(path) ? 'Chi tiết kế hoạch nhập' : path.startsWith('/owner/contracts/') ? 'Chi tiết hợp đồng' : path.endsWith('/permissions') ? 'Phân quyền nhân viên' : path === '/owner/employees/new' ? 'Tạo nhân viên'
+const detailTitle = (path) => path.startsWith('/owner/deviations') || path.startsWith('/owner/inbound-plans') || path.startsWith('/owner/plans/') || path.startsWith('/owner/plan-deviations/') ? 'Chi tiết sai lệch KCS' : path === '/owner/plan-deviations' ? 'Sai lệch kế hoạch' : /^\/owner\/contracts\/[^/]+\/materials\/[^/]+$/.test(path) ? 'Quy cách nguyên liệu' : /^\/owner\/contracts\/[^/]+\/plans\/[^/]+$/.test(path) ? 'Chi tiết kế hoạch nhập' : path.startsWith('/owner/contracts/') ? 'Chi tiết hợp đồng' : path.endsWith('/permissions') ? 'Phân quyền nhân viên' : path === '/owner/employees/new' ? 'Tạo nhân viên'
   : path.startsWith('/owner/manager-reports/') ? 'Chi tiết báo cáo' : path.startsWith('/owner/production/') ? 'Chi tiết sản xuất'
     : path.startsWith('/owner/samples/') ? 'Chi tiết mẫu sản phẩm' : path.startsWith('/owner/stock-adjustments/') ? 'Duyệt báo cáo kiểm kê'
       : path.startsWith('/owner/settings/') ? 'Cấu hình vận hành' : path === '/owner/account' ? 'Tài khoản của tôi' : 'Khu vực chủ cửa hàng';
@@ -37,7 +37,9 @@ export default function OwnerLayout() {
 }
 function OwnerWorkspace({ user }) {
   const { logout } = useAuth(); const navigate = useNavigate(); const location = useLocation(); const screens = Grid.useBreakpoint();
-  const [collapsed, setCollapsed] = useState(false); const [drawer, setDrawer] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+  const [drawer, setDrawer] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+  const [collapsed, setCollapsed] = useState(false);
+  const menuButton = useRef(null);
   const desktop = screens.lg; const title = pageTitles[location.pathname] || detailTitle(location.pathname);
   const allItems = groups.flatMap((group) => group.items);
   const selected = location.pathname.startsWith('/owner/deviations')
@@ -48,6 +50,22 @@ function OwnerWorkspace({ user }) {
       allItems.find(([path]) => location.pathname.startsWith(`/owner/${path}/`))?.[0];
   // Đổi trang thì đóng menu di động và cập nhật tên tab để người dùng biết đang ở màn hình nào.
   useEffect(() => { setDrawer(false); document.title = `${title} | AraStore`; }, [location.pathname, title]);
+  useEffect(() => {
+    if (desktop) setDrawer(false);
+  }, [desktop]);
+  const closeDrawer = useCallback(() => {
+    if (!drawer) return;
+    setDrawer(false);
+    menuButton.current?.focus();
+  }, [drawer]);
+  useEffect(() => {
+    if (!drawer || desktop) return;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') closeDrawer();
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [drawer, desktop, closeDrawer]);
   const signOut = async () => {
     setBusy(true); setError('');
     try { await logout(); navigate('/login', { replace: true }); } catch (err) { setError(err.message); } finally { setBusy(false); }
@@ -55,39 +73,39 @@ function OwnerWorkspace({ user }) {
   const account = { items: [{ key: 'profile', label: 'Tài khoản & bảo mật', icon: <UserIcon size={16} />, onClick: () => navigate('/owner/account') },
     { type: 'divider' }, { key: 'logout', danger: true, disabled: busy, label: busy ? 'Đang đăng xuất…' : 'Đăng xuất', icon: <LogOut size={16} />, onClick: signOut }] };
   return (
-    <div className="owner-shell">
-      {/* Backdrop overlay khi mở mobile sidebar */}
-      {drawer && (
+    <div className={`owner-shell${desktop && collapsed ? ' owner-nav-collapsed' : ''}`}>
+      {drawer && !desktop && (
         <div
           className="owner-sidebar-backdrop"
-          onClick={() => setDrawer(false)}
+          onClick={closeDrawer}
           aria-hidden="true"
         />
       )}
 
-      {/* Unified Owner Sidebar synced 100% with Accountant Sidebar */}
       <OwnerSidebar
         groups={groups}
         selected={selected}
-        collapsed={collapsed}
-        onToggleCollapse={() => setCollapsed(!collapsed)}
-        mobileOpen={drawer}
-        onCloseMobile={() => setDrawer(false)}
+        collapsed={desktop && collapsed}
+        onToggleCollapse={() => setCollapsed(value => !value)}
+        mobileOpen={drawer && !desktop}
+        onCloseMobile={closeDrawer}
       />
 
-      <div className={`owner-workspace ${collapsed ? 'owner-workspace-collapsed' : 'owner-workspace-expanded'}`}>
+      <div className="owner-workspace">
         <header className="owner-header">
           <div className="owner-header-context">
-            <Tooltip rootClassName="owner-tooltip" title={desktop ? (collapsed ? 'Mở rộng điều hướng' : 'Thu gọn điều hướng') : 'Mở điều hướng'}>
+            {!desktop && <Tooltip rootClassName="owner-tooltip" title="Mở điều hướng">
               <Button
+                ref={menuButton}
                 type="text"
                 className="owner-icon-button"
-                aria-label={desktop ? (collapsed ? 'Mở rộng điều hướng' : 'Thu gọn điều hướng') : 'Mở điều hướng'}
-                aria-expanded={desktop ? !collapsed : drawer}
-                onClick={() => (desktop ? setCollapsed(!collapsed) : setDrawer(true))}
-                icon={desktop ? (collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />) : <MenuIcon size={18} />}
+                aria-label="Mở điều hướng"
+                aria-controls="owner-sidebar"
+                aria-expanded={drawer}
+                onClick={() => setDrawer(true)}
+                icon={<MenuIcon size={20} />}
               />
-            </Tooltip>
+            </Tooltip>}
             <div className="owner-header-titles">
               <span className="owner-header-brand">AraStore WMS</span>
               <span className="owner-header-sep">/</span>

@@ -23,7 +23,7 @@ export default function EmployeesPage() {
   const employees = useOwnerResource('employees', query); const catalog = useOwnerResource('employee-permissions');
   // Chỉ đóng form sau khi BE báo thành công; tải lại danh sách để thấy trạng thái thật.
   const done = (message) => { setModal(null); setSuccess(message); employees.reload(); };
-  return <><header className="owner-page-heading"><div><p className="owner-eyebrow">Quản lý người dùng</p><h1>Quản lý nhân viên</h1><p>Tạo tài khoản, khóa tạm thời hoặc ngừng hoạt động khi nhân viên không còn làm việc.</p></div>
+  return <><header className="owner-page-heading"><div><h1>Quản lý nhân viên</h1></div>
     <WmsLinkButton className="btn-ara-primary" disabled={!catalog.data || catalog.loading} to="/owner/employees/new" state={{ from: location.pathname + location.search }}>Tạo nhân viên</WmsLinkButton></header>
     <Notice success={success} error={catalog.error} />
     {/* Tìm kiếm và lọc chỉ cập nhật danh sách; không làm thay đổi thông tin nhân viên. */}
@@ -40,7 +40,6 @@ export default function EmployeesPage() {
           {employee.status === 'INACTIVE' && <WmsButton onClick={() => { setSuccess(''); setModal({ type: 'reactivate', employee }); }}>Cho hoạt động lại</WmsButton>}</div></td></tr>)}
     </Table><Pagination data={employees.data} onPage={(page) => setQuery({ ...query, page })} /></>}</ResourceState>
     {/* Mỗi thao tác có form xác nhận riêng; đang lưu thì không đóng hộp thoại hoặc gửi lần hai. */}
-    <p className="owner-method">Khóa: tạm chặn đăng nhập. Ngừng hoạt động: nhân viên đã nghỉ hoặc tạm ngừng làm việc. Cả hai đều kết thúc các phiên đăng nhập cũ; chủ cửa hàng có thể mở khóa hoặc cho hoạt động lại.</p>
     {modal && <Modal title={statusActions[modal.type].confirm} busy={busy} onClose={() => setModal(null)}>
       <EmployeeStatusAction employee={modal.employee} action={modal.type} onDone={done} setBusy={setBusy} /></Modal>}
   </>;

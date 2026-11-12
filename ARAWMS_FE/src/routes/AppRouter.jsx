@@ -54,6 +54,7 @@ import { getRoleHome } from './roleHome';
 const OwnerLayout = lazy(() => import('../pages/Owner/OwnerLayout'));
 const InboundPlanDetailPage = lazy(() => import('../pages/Owner/InboundPlanDetailPage'));
 const ContractDetailPage = lazy(() => import('../pages/Owner/ContractDetailPage'));
+const ContractMaterialPage = lazy(() => import('../pages/Owner/ContractDetailPage').then(({ ContractMaterialPage }) => ({ default: ContractMaterialPage })));
 const ProductCatalogPage = lazy(() => import('../pages/Owner/ProductCatalogPage'));
 const OperationsPage = lazy(() => import('../pages/Owner/OperationsPage'));
 const EmployeesPage = lazy(() => import('../pages/Owner/EmployeesPage'));
@@ -191,6 +192,8 @@ export default function AppRouter() {
           <Route path="inbound-plans/:planId" element={<OwnerDeviationDetailPage />} />
           <Route path="plans/:planId" element={<OwnerDeviationDetailPage />} />
           <Route path="contracts/:id/plans/:planId" element={<OwnerDeviationDetailPage />} />
+          <Route path="contracts/:id/plans/:planId" element={<InboundPlanDetailPage />} />
+          <Route path="contracts/:id/materials/:line" element={<ContractMaterialPage />} />
           <Route path="contracts/:id" element={<ContractDetailPage />} />
           <Route path="purchases" element={<OperationsPage key="purchases" mode="purchases" />} />
           <Route path="tasks" element={<Navigate to="/owner/dashboard" replace />} />

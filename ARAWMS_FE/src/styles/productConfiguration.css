@@ -659,9 +659,7 @@
 }
 
 /* Inputs */
-input,
-select,
-textarea {
+:where(.product-configuration-page) :is(input, select, textarea) {
   min-height: 46px;
   width: 100%;
   border: 1px solid var(--ara-line);
@@ -673,7 +671,7 @@ textarea {
   color: var(--ara-ink);
 }
 
-input[type='checkbox'] {
+:where(.product-configuration-page) input[type='checkbox'] {
   width: 20px;
   height: 20px;
   min-height: 20px;
@@ -683,14 +681,12 @@ input[type='checkbox'] {
   cursor: pointer;
 }
 
-input:focus,
-select:focus,
-textarea:focus {
+:where(.product-configuration-page) :is(input, select, textarea):focus {
   outline: 2px solid var(--ara-gold-active);
   outline-offset: 3px;
 }
 
-input[readonly] {
+:where(.product-configuration-page) input[readonly] {
   background: #f6f3f2;
 }
 
