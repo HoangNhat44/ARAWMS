@@ -112,6 +112,9 @@ body:has(.seller-workspace),
 /* Primary Action Button (#141210) */
 .btn-wms-primary,
 .btn-ara-header-primary {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   background-color: var(--wms-primary) !important;
   color: #FFFFFF !important;
   border: 1px solid var(--wms-primary) !important;
@@ -130,6 +133,9 @@ body:has(.seller-workspace),
 /* Brand Accent Action Button (#8A6A46) */
 .btn-wms-accent,
 .btn-ara-header-gold {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   background-color: var(--wms-accent) !important;
   color: #FFFFFF !important;
   border: 1px solid var(--wms-accent) !important;
@@ -148,6 +154,9 @@ body:has(.seller-workspace),
 /* Secondary / Default Button (#FFFFFF with #AE9C86 border) */
 .btn-wms-default,
 .btn-ara-header-ghost {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   background-color: #FFFFFF !important;
   color: var(--wms-text-primary) !important;
   border: 1px solid var(--wms-border-strong) !important;
@@ -162,6 +171,36 @@ body:has(.seller-workspace),
   background-color: var(--wms-bg-subtle) !important;
   border-color: var(--wms-accent) !important;
   color: var(--wms-text-primary) !important;
+}
+
+/* Segmented Control / ButtonGroup Radii and Alignment */
+.btn-group > .btn.btn-wms-primary,
+.btn-group > .btn.btn-wms-default,
+.btn-group > .btn-check + .btn.btn-wms-primary,
+.btn-group > .btn-check + .btn.btn-wms-default {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 36px !important;
+  height: auto !important;
+  padding: 6px 14px !important;
+  line-height: 1.25 !important;
+}
+
+.btn-group > .btn-check:first-child + .btn,
+.btn-group > .btn:first-child {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-top-left-radius: 6px !important;
+  border-bottom-left-radius: 6px !important;
+}
+
+.btn-group > .btn-check:last-of-type + .btn,
+.btn-group > .btn:last-child {
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-top-right-radius: 6px !important;
+  border-bottom-right-radius: 6px !important;
 }
 
 /* Danger Button (#A62626) */
@@ -843,4 +882,27 @@ body:has(.seller-workspace),
     padding: 5px 8px !important;
     font-size: 0.78rem !important;
   }
+}
+
+/* ── 13. Skeleton Shimmer System ───────────────────────────────────────── */
+@keyframes ara-shimmer {
+  0% {
+    background-position: -600px 0;
+  }
+  100% {
+    background-position: 600px 0;
+  }
+}
+
+.ara-skeleton {
+  display: block;
+  background: linear-gradient(
+    90deg,
+    #EBE4DA 25%,
+    #F4EFEB 50%,
+    #EBE4DA 75%
+  ) !important;
+  background-size: 600px 100% !important;
+  animation: ara-shimmer 1.6s ease-in-out infinite !important;
+  border-radius: 6px;
 }

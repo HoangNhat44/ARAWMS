@@ -587,8 +587,9 @@
   padding-bottom: 165px;
 }
 
-/* Buttons */
-.btn {
+/* Buttons scoped to product configuration workspace to avoid polluting global Bootstrap .btn */
+.product-workspace .btn,
+.ara-page .btn {
   min-height: 46px;
   padding: 10px 16px;
   border: 1px solid var(--ara-line);
@@ -608,26 +609,30 @@
   font-family: var(--ara-font);
 }
 
-.btn:hover:not(:disabled) {
+.product-workspace .btn:hover:not(:disabled),
+.ara-page .btn:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
-.btn.primary,
+.product-workspace .btn.primary,
+.ara-page .btn.primary,
 .btn-ara-gold {
   background: #b27718;
   border-color: #b27718;
   color: white;
 }
 
-.btn.soft,
+.product-workspace .btn.soft,
+.ara-page .btn.soft,
 .btn-ara-secondary {
   background: #f6f3f2;
   border-color: #f6f3f2;
   color: var(--ara-ink);
 }
 
-.btn.link {
+.product-workspace .btn.link,
+.ara-page .btn.link {
   border: 0;
   background: none;
   color: var(--ara-gold);
@@ -638,7 +643,8 @@
   min-height: auto;
 }
 
-.btn:disabled,
+.product-workspace .btn:disabled,
+.ara-page .btn:disabled,
 .btn-ara-gold:disabled,
 .btn-ara-secondary:disabled {
   opacity: 0.5;

@@ -356,25 +356,25 @@ const QuickOrderModal = ({
                   id="qom-mode-online"
                   type="radio"
                   variant={orderChannel === 'ONLINE' ? 'dark' : 'outline-secondary'}
-                  className={orderChannel === 'ONLINE' ? 'btn-wms-primary' : 'btn-wms-default'}
+                  className={`d-flex align-items-center justify-content-center py-1.5 px-3 ${orderChannel === 'ONLINE' ? 'btn-wms-primary' : 'btn-wms-default'}`}
                   name="qom-order-mode"
                   value="ONLINE"
                   checked={orderChannel === 'ONLINE'}
                   onChange={() => { setOrderChannel('ONLINE'); setShippingFee(30000); }}
                 >
-                  <Icon name="truck" className="me-1" /> Giao hàng tận nơi
+                  <Icon name="truck" className="me-2" /> Giao hàng tận nơi
                 </ToggleButton>
                 <ToggleButton
                   id="qom-mode-pos"
                   type="radio"
                   variant={orderChannel === 'POS' ? 'dark' : 'outline-secondary'}
-                  className={orderChannel === 'POS' ? 'btn-wms-primary' : 'btn-wms-default'}
+                  className={`d-flex align-items-center justify-content-center py-1.5 px-3 ${orderChannel === 'POS' ? 'btn-wms-primary' : 'btn-wms-default'}`}
                   name="qom-order-mode"
                   value="POS"
                   checked={orderChannel === 'POS'}
                   onChange={() => { setOrderChannel('POS'); setShippingFee(0); }}
                 >
-                  <Icon name="shop" className="me-1" /> Bán tại quầy
+                  <Icon name="shop" className="me-2" /> Bán tại quầy
                 </ToggleButton>
               </ButtonGroup>
             </div>

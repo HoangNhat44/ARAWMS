@@ -1,17 +1,18 @@
 import React from 'react';
-import { Placeholder, Card } from 'react-bootstrap';
+import { Card } from 'react-bootstrap';
 
 /**
  * Skeleton loading component - ARA Design System
- * Dùng để thay thế LoadingSpinner cho UX premium hơn
- * (Refactor: dùng <Placeholder> của React-Bootstrap thay cho animation CSS tự viết)
+ * Sử dụng hiệu ứng Shimmer mượt mà (wave animation) theo chuẩn UI/UX của ARA,
+ * thay thế hiệu ứng nhấp nháy thô ráp (glow) để trải nghiệm tải trang êm ái hơn.
  */
 
 // Base skeleton shimmer block
 export const SkeletonBlock = ({ width = '100%', height = '16px', borderRadius = '6px', style = {} }) => (
-  <Placeholder as="div" animation="glow">
-    <Placeholder className="d-block bg-secondary" style={{ width, height, borderRadius, ...style }} />
-  </Placeholder>
+  <div
+    className="ara-skeleton"
+    style={{ width, height, borderRadius, ...style }}
+  />
 );
 
 // Skeleton cho conversation item (sidebar trái)

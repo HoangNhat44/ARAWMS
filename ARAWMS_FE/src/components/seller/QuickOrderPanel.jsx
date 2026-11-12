@@ -307,32 +307,32 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
           <div className="small fw-semibold mb-2 d-flex align-items-center gap-2" style={{ color: 'var(--wms-text-primary, #141210)' }}>
             <Icon name="shop" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> Kênh Bán Hàng
           </div>
-          <ButtonGroup className="w-100">
+          <ButtonGroup className="w-100 shadow-none">
             <ToggleButton
               id="qop-mode-online"
               type="radio"
               size="sm"
               variant={channel === 'ONLINE' ? 'dark' : 'outline-secondary'}
-              className={channel === 'ONLINE' ? 'btn-wms-primary' : 'btn-wms-default'}
+              className={`d-flex align-items-center justify-content-center py-2 ${channel === 'ONLINE' ? 'btn-wms-primary' : 'btn-wms-default'}`}
               name="qop-mode"
               value="ONLINE"
               checked={channel === 'ONLINE'}
               onChange={() => { setChannel('ONLINE'); setShippingFee(30000); }}
             >
-              <Icon name="truck" className="me-1" /> Online
+              <Icon name="truck" className="me-2" /> Online
             </ToggleButton>
             <ToggleButton
               id="qop-mode-pos"
               type="radio"
               size="sm"
               variant={channel === 'POS' ? 'dark' : 'outline-secondary'}
-              className={channel === 'POS' ? 'btn-wms-primary' : 'btn-wms-default'}
+              className={`d-flex align-items-center justify-content-center py-2 ${channel === 'POS' ? 'btn-wms-primary' : 'btn-wms-default'}`}
               name="qop-mode"
               value="POS"
               checked={channel === 'POS'}
               onChange={() => { setChannel('POS'); setShippingFee(0); }}
             >
-              <Icon name="shop" className="me-1" /> Bán tại quầy
+              <Icon name="shop" className="me-2" /> Bán tại quầy
             </ToggleButton>
           </ButtonGroup>
         </Card.Body>
