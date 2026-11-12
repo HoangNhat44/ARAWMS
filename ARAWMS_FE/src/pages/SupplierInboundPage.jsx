@@ -1,10 +1,10 @@
-﻿/*
+/*
  * File: SupplierInboundPage.jsx
  * Description: Redesigned Supplier Inbound Page following ARA ATELIER Design System
  * Design System: Editorial Luxury & Refined Beige + Enterprise WMS High-Contrast
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import {
   Package, RefreshCw, Plus, FileText, AlertCircle,
   CheckCircle2, Clock, XCircle, Search, Filter,
@@ -167,12 +167,36 @@ export default function SupplierInboundPage() {
   });
 
   return (
-    <div className="ara-acc-main-wrapper" style={{ background: '#E8DFD3' }}>
+    <main className="supplier-inbound-page" style={{ padding: '1.5rem', maxWidth: '1440px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+      {/* Breadcrumb */}
+      <nav className="product-breadcrumb" aria-label="Đường dẫn" style={{ marginBottom: '1rem' }}>
+        <Link to="/">Trang chủ</Link>
+        <span>/</span>
+        <Link to="/warehouse/raw-materials/inbound">Quản lý kho</Link>
+        <span>/</span>
+        <strong>Nhập kho nguyên phụ liệu</strong>
+      </nav>
+
       <div className="wms-container">
 
         {/* PAGE HEADER */}
         <section className="wms-page-header">
           <div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                color: 'var(--ara-gold)',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                marginBottom: '0.25rem',
+              }}
+            >
+              <Package size={15} /> KHO NGUYÊN PHỤ LIỆU / TIẾP NHẬN TỪ NCC
+            </div>
             <h1 className="wms-page-title">Nhập kho Nguyên Phụ Liệu</h1>
             <p className="wms-page-subtitle">
               Quản lý yêu cầu nhập hàng từ kỹ thuật viên may và tiếp nhận nguyên phụ liệu từ nhà cung cấp
@@ -189,8 +213,6 @@ export default function SupplierInboundPage() {
             </button>
           </div>
         </section>
-
-        <RemnantReturnReview locations={options.locations} />
 
         {/* KPI STRIP */}
         <div className="wms-kpi-strip">
@@ -547,6 +569,9 @@ export default function SupplierInboundPage() {
           )}
         </div>
 
+        {/* REMNANT RETURN REQUESTS */}
+        <RemnantReturnReview locations={options.locations} />
+
       </div>
 
       {/* MODALS */}
@@ -576,6 +601,6 @@ export default function SupplierInboundPage() {
           }
         />
       )}
-    </div>
+    </main>
   );
 }

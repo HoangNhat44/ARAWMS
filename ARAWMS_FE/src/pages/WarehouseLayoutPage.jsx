@@ -352,7 +352,7 @@ export default function WarehouseLayoutPage() {
   </button>;
   };
 
-  return <main className="warehouse-layout-page">
+  return <main className="warehouse-layout-page" style={{ padding: '1.5rem', maxWidth: '1440px', margin: '0 auto' }}>
     <header className="layout-header"><div><small>HỆ THỐNG VẬN HÀNH KHO</small><h1>Cấu hình vị trí kho</h1>
       <p>Quản lý kệ, tầng và ô lưu trữ trong kho.</p></div>
       <div className="layout-header-actions"><button type="button" onClick={() => window.location.reload()} disabled={busy}>↻ Làm mới</button>

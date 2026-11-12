@@ -1,24 +1,36 @@
 /*
  * File: WarehouseStaffLayout.jsx
  * Role: WAREHOUSE_STAFF (Nhân viên kho)
- * Description: Sidebar layout for Warehouse Staff module, providing direct navigation between Putaway (Xếp hàng vào kệ), Packing (Đóng hàng), Order QR, and Shipping (Vận chuyển và bàn giao).
+ * Description: Unified Enterprise layout for Warehouse Staff module, providing standardized 64px header,
+ *              responsive collapsible sidebar, and Warm Stone surface.
  */
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Box,
   Grid,
   QrCode,
   Truck,
-  CheckCircle2,
   Shirt,
   ArrowUpRight,
+  TrendingUp,
+  PanelLeftClose,
+  PanelLeftOpen,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import WmsHeader from '../common/WmsHeader';
 
 export default function WarehouseStaffLayout({ children }) {
   const { user } = useAuth();
   const location = useLocation();
+
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
 
   const menuItems = [
     {
@@ -40,7 +52,14 @@ export default function WarehouseStaffLayout({ children }) {
       label: 'Kho thành phẩm',
       subLabel: 'Tra cứu tồn kho theo SKU',
       icon: Shirt,
-      match: (path) => path.startsWith('/warehouse/staff/finished-goods'),
+      match: (path) => path === '/warehouse/staff/finished-goods',
+    },
+    {
+      to: '/warehouse/staff/inbound-progress',
+      label: 'Tiến độ nhập kho',
+      subLabel: 'Theo dõi cất hàng & phân bổ kệ',
+      icon: TrendingUp,
+      match: (path) => path.startsWith('/warehouse/staff/inbound-progress'),
     },
     {
       to: '/packing/qr',
@@ -65,172 +84,143 @@ export default function WarehouseStaffLayout({ children }) {
     },
   ];
 
+  const currentItem =
+    menuItems.find((item) =>
+      item.match ? item.match(location.pathname) : location.pathname === item.to
+    ) || menuItems[0];
+
   return (
-    <div style={{ display: 'flex', minHeight: 'calc(100vh - 70px)', background: 'var(--ara-bg)' }}>
-      {/* Sidebar for Warehouse Staff */}
-      <aside
-        style={{
-          width: '260px',
-          background: '#FFFFFF',
-          borderRight: '1px solid var(--ara-border)',
-          display: 'flex',
-          flexDirection: 'column',
-          flexShrink: 0,
-          boxShadow: 'var(--ara-shadow-sm)',
-        }}
-      >
-        {/* Sidebar Header */}
+    <div className="wms-workspace-shell">
+      {/* Backdrop overlay khi mở mobile sidebar */}
+      {mobileOpen && (
         <div
           style={{
-            padding: '1.25rem 1.25rem',
-            borderBottom: '1px solid var(--ara-border)',
-            background: 'var(--ara-bg-surface)',
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(20, 18, 16, 0.45)',
+            zIndex: 35,
+            backdropFilter: 'blur(2px)',
           }}
-        >
-          <div
-            style={{
-              fontSize: '0.7rem',
-              fontWeight: 700,
-              color: 'var(--ara-gold)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              marginBottom: '0.25rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-            }}
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar for Warehouse Staff */}
+      <aside
+        className={`wms-sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}
+        aria-label="Thanh điều hướng Nhân viên kho"
+      >
+        {/* Brand Header */}
+        <div className="wms-sidebar-brand">
+          <Link
+            to="/warehouse/putaway"
+            className="wms-brand-link"
+            title="AraStore WMS – Nhân viên kho"
+            onClick={() => setMobileOpen(false)}
           >
-            <Box size={14} /> PHÂN HỆ NHÂN VIÊN KHO
-          </div>
-          <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--ara-noir)' }}>
-            Tác Nghiệp & Vận Hành
+            <img src="/logo.png" alt="AraStore Logo" className="wms-brand-logo" />
+            {(!collapsed || mobileOpen) && (
+              <div className="wms-brand-meta">
+                <span className="wms-brand-title">AraStore WMS</span>
+                <span className="wms-brand-subtitle">Nhân viên kho</span>
+              </div>
+            )}
+          </Link>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              type="button"
+              className="wms-icon-button"
+              style={{ display: typeof window !== 'undefined' && window.innerWidth < 768 ? 'none' : 'inline-flex' }}
+              onClick={() => setCollapsed((p) => !p)}
+              aria-label={collapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
+              title={collapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
+            >
+              {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+            </button>
+
+            <button
+              type="button"
+              className="wms-icon-button"
+              style={{ display: mobileOpen ? 'inline-flex' : 'none' }}
+              onClick={() => setMobileOpen(false)}
+              aria-label="Đóng thanh điều hướng"
+            >
+              <X size={18} />
+            </button>
           </div>
         </div>
 
         {/* Navigation Links */}
-        <nav style={{ padding: '1rem 0.75rem', flex: 1 }}>
-          <ul
-            style={{
-              listStyle: 'none',
-              margin: 0,
-              padding: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.45rem',
-            }}
-          >
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = item.match
-                ? item.match(location.pathname)
-                : location.pathname === item.to;
+        <nav className="wms-sidebar-nav" aria-label="Danh mục tác vụ nhân viên kho">
+          {(!collapsed || mobileOpen) && (
+            <div className="wms-nav-group-title">Tác vụ vận hành kho</div>
+          )}
 
-              return (
-                <li key={item.to}>
-                  <Link
-                    to={item.to}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.75rem',
-                      padding: '0.75rem 0.85rem',
-                      borderRadius: 'var(--radius-sm)',
-                      textDecoration: 'none',
-                      background: isActive ? 'var(--ara-bg-surface)' : 'transparent',
-                      color: isActive ? 'var(--ara-gold)' : 'var(--ara-text)',
-                      fontWeight: isActive ? 700 : 500,
-                      border: isActive ? '1px solid var(--ara-gold)' : '1px solid transparent',
-                      boxShadow: isActive ? 'var(--ara-shadow-sm)' : 'none',
-                      transition: 'all 0.2s ease',
-                    }}
-                  >
-                    <div
-                      style={{
-                        padding: '0.4rem',
-                        borderRadius: '6px',
-                        background: isActive ? 'rgba(159, 131, 101, 0.15)' : 'var(--ara-bg-surface)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Icon size={17} color={isActive ? 'var(--ara-gold)' : 'var(--ara-text-muted)'} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '0.88rem', lineHeight: 1.25 }}>{item.label}</div>
-                      <div
-                        style={{
-                          fontSize: '0.72rem',
-                          color: 'var(--ara-text-light)',
-                          marginTop: '2px',
-                        }}
-                      >
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = item.match
+              ? item.match(location.pathname)
+              : location.pathname === item.to;
+
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={`wms-nav-item ${isActive ? 'active' : ''}`}
+                title={collapsed && !mobileOpen ? item.label : undefined}
+                onClick={() => setMobileOpen(false)}
+              >
+                <div className="wms-nav-icon">
+                  <Icon size={18} />
+                </div>
+                {(!collapsed || mobileOpen) && (
+                  <div className="wms-nav-text">
+                    <span className="wms-nav-label">{item.label}</span>
+                    {item.subLabel && (
+                      <small className="wms-nav-sublabel">
                         {item.subLabel}
-                      </div>
-                    </div>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+                      </small>
+                    )}
+                  </div>
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
-        {/* Sidebar Footer Info */}
-        <div
-          style={{
-            padding: '1rem 1.25rem',
-            borderTop: '1px solid var(--ara-border)',
-            background: 'var(--ara-bg-surface)',
-            fontSize: '0.8rem',
-          }}
-        >
-          <div
-            style={{
-              color: 'var(--ara-text-muted)',
-              fontSize: '0.7rem',
-              textTransform: 'uppercase',
-              fontWeight: 600,
-            }}
-          >
-            Nhân viên kho trực ca
-          </div>
-          <div style={{ fontWeight: 700, color: 'var(--ara-noir)', marginTop: '2px' }}>
-            {user?.fullName || user?.username || 'Nhân viên vận hành kho'}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '4px' }}>
-            <span
-              style={{
-                fontSize: '0.68rem',
-                fontWeight: 700,
-                background: 'var(--ara-noir)',
-                color: 'var(--ara-gold)',
-                padding: '0.15rem 0.45rem',
-                borderRadius: '4px',
-                letterSpacing: '0.04em',
-              }}
-            >
+        {/* User Card footer */}
+        {(!collapsed || mobileOpen) && (
+          <div className="wms-sidebar-footer">
+            <div className="wms-sidebar-footer-label">
+              Nhân viên trực ca
+            </div>
+            <div className="wms-sidebar-footer-name">
+              {user?.fullName || user?.username || 'Nhân viên kho'}
+            </div>
+            <div className="wms-sidebar-footer-role">
               {user?.roleCode || 'WAREHOUSE_STAFF'}
-            </span>
-            <span
-              style={{
-                fontSize: '0.7rem',
-                color: '#047857',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '2px',
-              }}
-            >
-              <CheckCircle2 size={11} /> Sẵn sàng
-            </span>
+            </div>
           </div>
-        </div>
+        )}
       </aside>
 
-      {/* Main Page Area */}
-      <div style={{ flex: 1, minWidth: 0, overflowX: 'auto' }}>
-        {children}
+      {/* Main Wrapper */}
+      <div className="wms-main-wrapper">
+        <WmsHeader
+          roleTitle="Nhân viên kho"
+          currentTitle={currentItem?.label || 'Nhân viên kho'}
+          navItems={menuItems}
+          collapsed={collapsed}
+          onToggleCollapse={() => setCollapsed((p) => !p)}
+          onToggleMobile={() => setMobileOpen((p) => !p)}
+          profilePath="/account"
+        />
+        <main className="wms-content-container">
+          {children}
+        </main>
       </div>
     </div>
   );
 }
-

@@ -1,4 +1,4 @@
-﻿.stocktake-page{box-sizing:border-box;width:100%;max-width:1625px;margin:0 auto;padding:32px 28px 80px;color:#302a23;font:16px/1.5 var(--font-sans)}
+﻿.stocktake-page{box-sizing:border-box;width:100%;max-width: 1440px;margin:0 auto;padding:32px 28px 80px;color:#302a23;font:16px/1.5 var(--font-sans)}
 .stocktake-page *{box-sizing:border-box}.stocktake-page h1{margin:0;font-size:32px}.stocktake-page p{margin:8px 0}.stocktake-page nav{color:#746b60;font-size:14px}.stocktake-page nav a{color:inherit}
 .stocktake-hero,.stocktake-actions,.stocktake-tabs,.stocktake-modal header,.stocktake-modal footer{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}.stocktake-hero{margin-bottom:24px}.stocktake-hero p{color:#746b60}.stocktake-actions{justify-content:flex-end}
 .stocktake-page button{min-height:44px;padding:8px 13px;border:1px solid #d9c9b6;border-radius:9px;background:#fff;color:#62472d;font:600 15px var(--font-sans);cursor:pointer}.stocktake-page button.primary{background:#86653f;border-color:#86653f;color:#fff}.stocktake-page button:disabled{opacity:.5;cursor:not-allowed}

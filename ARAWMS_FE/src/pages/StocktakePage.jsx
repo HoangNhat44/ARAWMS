@@ -82,7 +82,7 @@ export default function StocktakePage() {
     finally { setBusy(false); }
   }
   const sessions = useMemo(() => data.sessions, [data.sessions]);
-  return <main className="stocktake-page">
+  return <main className="stocktake-page" style={{ padding: '1.5rem', maxWidth: '1440px', margin: '0 auto' }}>
     <header className="stocktake-hero"><div><nav><Link to="/">Trang chủ</Link> / Kiểm kê kho</nav><h1>Kiểm kê kho</h1>
       <p>Lập lịch, giao việc và xem xét kết quả kiểm kê.</p></div><div className="stocktake-actions"><span>Kho nguyên phụ liệu và thành phẩm</span>
         <button onClick={() => load().catch((e) => setError(e.message))}>Làm mới</button>{canManageStocktake && <button className="primary" disabled={busy} onClick={openCreate}>Tạo lệnh kiểm kê</button>}</div></header>

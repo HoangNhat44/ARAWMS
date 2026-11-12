@@ -346,8 +346,6 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
       throw new Error('Mỗi dòng cần có số lượng thực nhận lớn hơn 0.');
     for (const line of form.receiptLines) {
       const material = materials.get(id(line.rawMaterialId));
-      if (material?.materialType === 'FABRIC' && line.rolls?.some((roll) => !(Number(roll.widthCm) > 0)))
-        throw new Error(`Cần nhập khổ vải (cm) cho từng cây vải của ${material.materialName || 'vật tư'}.`);
       if (material?.materialType === 'FABRIC' && material.requiresWeightKg && line.rolls?.some((roll) => !(Number(roll.weightKg) > 0)))
         throw new Error(`Cần nhập cân nặng (kg) cho từng cây vải của ${material.materialName || 'vật tư'}.`);
       if (requestMode) {
@@ -464,8 +462,7 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
                 ['BUTTON', 'THREAD', 'ZIPPER', 'CARE_LABEL', 'PACKAGING_BAG', 'NEEDLE', 'CHALK', 'MARKER', 'ACCESSORY', 'OTHER'])
                 .map((value) => <option key={value}>{value}</option>)}</select></label>
             <label>Đơn vị<select style={field} value={newMaterial.unit} onChange={(event) => setNewMaterial({ ...newMaterial, unit: event.target.value })}>
-              {(newMaterial.materialType === 'FABRIC' ? MATERIAL_UNIT_OPTIONS.filter(({ value }) => value === 'METER') : MATERIAL_UNIT_OPTIONS)
-                .map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label>
+              {MATERIAL_UNIT_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label>
             <button type="button" className="btn-ara-primary" onClick={() => run(async () => {
               const material = (await api.createMaterial(newMaterial)).data.material;
               onMaterialCreated(material); addMaterial(material); setNewMaterialOpen(false);
@@ -486,7 +483,7 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
               {requestMode && <><div><span>Nhà cung cấp</span><strong>{line.supplierNameSnapshot || 'Chưa xác định'}</strong></div>
                 <div><span>Đơn giá</span><strong>{line.unitCost === '' || line.unitCost == null ? 'Chưa có dữ liệu' : Number(line.unitCost).toLocaleString('vi-VN')}</strong></div>
                 <div><span>Ngày kiểm tra</span><strong>{line.inspectedAt ? new Date(line.inspectedAt).toLocaleDateString('vi-VN') : '—'}</strong></div></>}
-              {requestMode ? <div><span>Số lượng đạt</span><strong>{qty(line.acceptedQty)} {unitName[material.unit]}</strong></div> : fabric ? <div><span>Thực nhận</span><strong>{qty(line.actualQty)} m</strong></div> :
+              {requestMode ? <div><span>Số lượng đạt</span><strong>{qty(line.acceptedQty)} {unitName[material.unit]}</strong></div> : fabric ? <div><span>Thực nhận</span><strong>{qty(line.actualQty)} {unitName[material.unit] || material.unit}</strong></div> :
                   <label>Thực nhận ({unitName[material.unit]})<input style={field} type="number" min="0" disabled={locked}
                     step={isFractionalMaterialUnit(material.unit) ? '.001' : '1'} value={line.actualQty}
                     onChange={(event) => changeLine(index, { actualQty: event.target.value })} /></label>}
@@ -501,9 +498,6 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
                   {requestMode && <small>Cây {roll.supplierRollCode || roll.lotCode || rollIndex + 1} · {roll.lengthMeters} m</small>}
                   <label>Cây {rollIndex + 1} · chiều dài (m)<input style={field} type="number" min="0" step=".001" disabled={locked || requestMode}
                     value={roll.lengthMeters ?? ''} onChange={(event) => changeRoll(index, rollIndex, { lengthMeters: event.target.value })} /></label>
-                  <label>Khổ vải (cm)<input style={field} type="number" min="0" step=".1" disabled={locked}
-                    value={Number(roll.widthCm) > 0 ? roll.widthCm : ''} placeholder="Bắt buộc"
-                    onChange={(event) => changeRoll(index, rollIndex, { widthCm: event.target.value })} /></label>
                   {!requestMode && <label>Kết quả<select style={field} value={roll.quality || ''} disabled={locked} onChange={(event) =>
                     changeRoll(index, rollIndex, { quality: event.target.value, locationId: '' })}>
                     <option value="">Chưa kiểm tra</option><option value="ACCEPTED">Đạt</option><option value="REJECTED">Không đạt</option></select></label>}

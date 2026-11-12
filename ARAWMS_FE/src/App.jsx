@@ -18,20 +18,40 @@ import FinishedGoodsSyncRunner from './components/FinishedGoodsSyncRunner';
 import RealtimeBridge from './components/RealtimeBridge';
 import { wmsTheme } from './theme/wmsTheme';
 
-// Layout Owner có header/sidebar riêng; trang chung dùng thanh điều hướng gọn, không xếp hai header.
+// Kiểm tra xem trang hiện tại có thuộc các phân hệ vận hành nội bộ WMS hay không
+function isWmsWorkspace(pathname) {
+  return (
+    pathname.startsWith('/owner') ||
+    pathname.startsWith('/accountant') ||
+    pathname.startsWith('/warehouse') ||
+    pathname.startsWith('/packing') ||
+    pathname.startsWith('/orders') ||
+    pathname.startsWith('/garment') ||
+    pathname.startsWith('/seller')
+  );
+}
+
+// Các phân hệ WMS có Header & Sidebar chuyên dụng; không hiển thị Navbar/Footer công cộng để tránh xếp tầng 2 header
 function AppChrome() {
   const { pathname } = useLocation();
+  const isWms = isWmsWorkspace(pathname);
   const isOwner = pathname === '/owner' || pathname.startsWith('/owner/');
   const isSellerWorkspace = pathname.startsWith('/seller');
 
   return (
-    <div className={`app-container ${isOwner ? 'wms-owner-app' : 'wms-public-app'} ${isSellerWorkspace ? 'seller-workspace-active' : ''}`}>
-      {!isOwner && <Navbar />}
-      <a className="wms-skip-link" href="#main-content">Bỏ qua điều hướng, đến nội dung</a>
+    <div
+      className={`app-container ${isWms ? 'wms-workspace-active' : 'wms-public-app'} ${
+        isOwner ? 'wms-owner-app' : ''
+      } ${isSellerWorkspace ? 'seller-workspace-active' : ''}`}
+    >
+      {!isWms && <Navbar />}
+      <a className="wms-skip-link" href="#main-content">
+        Bỏ qua điều hướng, đến nội dung
+      </a>
       <main id="main-content" className="main-content" tabIndex={-1}>
         <AppRouter />
       </main>
-      {!isOwner && <Footer />}
+      {!isWms && <Footer />}
     </div>
   );
 }

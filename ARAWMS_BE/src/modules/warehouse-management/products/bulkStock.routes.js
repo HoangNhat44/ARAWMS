@@ -163,8 +163,10 @@ router.get('/bin-options', async (req, res, next) => {
 /** Warehouse queue is sourced only from technician inspection tickets. */
 router.get('/technical-requests', async (req, res, next) => {
   try {
-    const tickets = await FinishedGoodsTicket.find({ ticketType: 'INBOUND_FROM_SEWING',
-      isDeleted: { $ne: true } }).sort({ createdAt: -1 })
+    const tickets = await FinishedGoodsTicket.find({
+      ticketType: { $in: ['INBOUND_FROM_SEWING', 'INBOUND_FROM_RETURN'] },
+      isDeleted: { $ne: true },
+    }).sort({ createdAt: -1 })
       .populate({ path: 'items.skuId', select: 'skuCode productId color size',
         populate: { path: 'productId', select: 'productCode productName' } })
       .populate('garmentInspection.inspectedByTechId', 'fullName username').lean();
@@ -185,7 +187,7 @@ router.get('/technical-requests', async (req, res, next) => {
         current.expectedQty += Number(item.expectedQty) || 0;
         lines.set(skuId, current);
       }
-      return { id: String(ticket._id), code: ticket.ticketCode, status: ticket.status,
+      return { id: String(ticket._id), code: ticket.ticketCode, ticketType: ticket.ticketType, status: ticket.status,
         createdAt: ticket.createdAt, inspectedAt: ticket.garmentInspection?.inspectedAt,
         technician: ticket.garmentInspection?.inspectedByTechId?.fullName ||
           ticket.garmentInspection?.inspectedByTechId?.username || '',
@@ -967,8 +969,12 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
   if (direction === 'IN') {
     if (!mongoose.isValidObjectId(req.body?.sourceTicketId))
       return sendError(res, 'Chỉ nhập kho từ lệnh của nhân viên kỹ thuật', { code: 'TECHNICAL_REQUEST_REQUIRED' }, 400);
-    sourceTicket = await FinishedGoodsTicket.findOne({ _id: req.body.sourceTicketId,
-      ticketType: 'INBOUND_FROM_SEWING', status: 'READY_TO_CONFIRM', isDeleted: { $ne: true } }).lean();
+    sourceTicket = await FinishedGoodsTicket.findOne({
+      _id: req.body.sourceTicketId,
+      ticketType: { $in: ['INBOUND_FROM_SEWING', 'INBOUND_FROM_RETURN'] },
+      status: 'READY_TO_CONFIRM',
+      isDeleted: { $ne: true },
+    }).lean();
     if (!sourceTicket) return sendError(res, 'Lệnh kỹ thuật không còn chờ nhập kho',
       { code: 'TECHNICAL_REQUEST_UNAVAILABLE' }, 409);
     if (documentCode !== `NK-${sourceTicket.ticketCode}`)
@@ -1113,9 +1119,15 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
         const allocationError = receiptAllocationError(lines, allocations);
         if (allocationError) throw createBulkStockRequestError(allocationError.message, allocationError.code);
         if (allocations.length) await confirmReceiptAllocation(req.user, documentId, allocations, session);
-        const claimed = await FinishedGoodsTicket.updateOne({ _id: sourceTicket._id,
-          ticketType: 'INBOUND_FROM_SEWING', status: 'READY_TO_CONFIRM' },
-        { $set: { status: 'COMPLETED' } }, { session });
+        const claimed = await FinishedGoodsTicket.updateOne(
+          {
+            _id: sourceTicket._id,
+            ticketType: { $in: ['INBOUND_FROM_SEWING', 'INBOUND_FROM_RETURN'] },
+            status: 'READY_TO_CONFIRM',
+          },
+          { $set: { status: 'COMPLETED' } },
+          { session }
+        );
         if (claimed.matchedCount !== 1) throw createBulkStockRequestError(
           'Lệnh kỹ thuật đã được xử lý', 'TECHNICAL_REQUEST_CHANGED', 409);
       }

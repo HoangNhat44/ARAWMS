@@ -765,15 +765,17 @@ export async function publishDraft(user, version) {
           });
         }
       }
-      // Managers already assigned to raw-material storage inherit newly published
-      // zone-A bins; finished-goods-only managers keep their existing scope.
+      // Managers and staff already assigned to raw-material storage inherit newly
+      // published zone-A bins (so putaway tasks stay visible); finished-goods-only
+      // accounts keep their existing scope.
       const rawBinIds = draft.bins.filter((bin) => draft.racks.some((rack) =>
         id(rack.id) === id(bin.rackId) && rack.zoneCode === "A")).map((bin) => bin.id);
       if (rawBinIds.length) {
+        // Inactive raw locations still count: older accounts were scoped to them.
         const rawAccessIds = await WarehouseLocation.distinct("_id", {
-          warehouseType: "RAW_MATERIAL", status: "ACTIVE", isDeleted: { $ne: true },
+          warehouseType: "RAW_MATERIAL", isDeleted: { $ne: true },
         }).session(session);
-        await User.updateMany({ roleCode: "WAREHOUSE_MANAGER",
+        await User.updateMany({ roleCode: { $in: ["WAREHOUSE_MANAGER", "WAREHOUSE_STAFF"] },
           warehouseIds: { $in: rawAccessIds } },
         { $addToSet: { warehouseIds: { $each: rawBinIds } } }, { session });
       }

@@ -134,6 +134,19 @@ export const validateContractForm = (contractForm) => {
       if (!Number.isFinite(qty) || qty <= 0) {
         lineErr.contractedQty = 'Số lượng ký phải > 0.';
       }
+      const isFabric = item.category === 'FABRIC_ROLL' || item.materialType === 'FABRIC' || ['METER', 'MET', 'M'].includes(item.unitSnapshot);
+      if (isFabric && Array.isArray(item.rollDetails) && item.rollDetails.length > 0) {
+        const hasInvalidRoll = item.rollDetails.some(
+          (r) =>
+            !Number(r.lengthMeters) ||
+            Number(r.lengthMeters) <= 0 ||
+            !Number(r.rollQty ?? 1) ||
+            Number(r.rollQty ?? 1) < 1
+        );
+        if (hasInvalidRoll) {
+          lineErr.rollDetails = 'Số lượng cuộn phải ≥ 1 và chiều dài mỗi cuộn phải lớn hơn 0.';
+        }
+      }
       const price = Number(item.unitPrice);
       if (!Number.isFinite(price) || price < 0) {
         lineErr.unitPrice = 'Đơn giá không được âm.';
@@ -213,16 +226,17 @@ export const validateContractForm = (contractForm) => {
         const rowErr = {};
         const stepNo = idx + 1;
         const pct = Number(inst.paymentPercent);
+        const amt = Number(inst.paymentAmount);
 
-        if (inst.paymentPercent === '' || inst.paymentPercent === null || Number.isNaN(pct)) {
-          rowErr.paymentPercent = `Nhập % thanh toán lần ${stepNo}.`;
-        } else if (pct <= 0) {
-          rowErr.paymentPercent =
+        if ((inst.paymentAmount === '' || inst.paymentAmount === null || Number.isNaN(amt)) && (inst.paymentPercent === '' || inst.paymentPercent === null || Number.isNaN(pct))) {
+          rowErr.paymentAmount = `Nhập số tiền thanh toán lần ${stepNo}.`;
+        } else if (amt <= 0 && pct <= 0) {
+          rowErr.paymentAmount =
             idx === schedule.length - 1
-              ? 'Tỷ lệ lần cuối phải > 0% (Tổng cọc & các lần trước đã chạm/vượt 100%).'
-              : `% thanh toán lần ${stepNo} phải > 0%.`;
+              ? 'Số tiền lần cuối phải > 0 đ (Tổng cọc & các lần trước đã chạm/vượt 100% hợp đồng).'
+              : `Số tiền thanh toán lần ${stepNo} phải > 0 đ.`;
         } else if (pct > 100) {
-          rowErr.paymentPercent = `% thanh toán lần ${stepNo} không vượt quá 100%.`;
+          rowErr.paymentAmount = `Số tiền thanh toán lần ${stepNo} không được vượt quá 100% giá trị hợp đồng.`;
         } else {
           sumInstallmentPct += pct;
         }
@@ -263,6 +277,7 @@ export const validateContractForm = (contractForm) => {
   if (Array.isArray(contractForm.inboundBatches) && contractForm.inboundBatches.length > 0) {
     const inboundBatchErrors = {};
     let prevDeliveryDate = null;
+    const itemQtyByLineIdx = {};
     const itemQtySumMap = {};
 
     contractForm.inboundBatches.forEach((b, bIdx) => {
@@ -293,6 +308,7 @@ export const validateContractForm = (contractForm) => {
           if (Number.isNaN(q) || q < 0) {
             lineItemErrors[itIdx] = 'Số lượng không được âm.';
           } else {
+            itemQtyByLineIdx[itIdx] = (itemQtyByLineIdx[itIdx] || 0) + q;
             itemQtySumMap[rawId] = (itemQtySumMap[rawId] || 0) + q;
           }
         });
@@ -311,15 +327,18 @@ export const validateContractForm = (contractForm) => {
       errors.inboundBatchErrors = inboundBatchErrors;
     }
 
-    // Đối soát tổng số lượng phân bổ qua các đợt so với số lượng ký hợp đồng
+    // Đối soát tổng số lượng phân bổ qua các đợt so với số lượng ký hợp đồng (theo đúng từng dòng cIdx)
     if (Array.isArray(contractForm.contractedMaterials)) {
       const allocationMismatchMessages = [];
       contractForm.contractedMaterials.forEach((cm, cIdx) => {
         const rawId = String(cm.rawMaterialId);
         const contracted = Number(cm.contractedQty || 0);
-        const scheduled = itemQtySumMap[rawId] || 0;
+        const scheduled =
+          itemQtyByLineIdx[cIdx] !== undefined
+            ? itemQtyByLineIdx[cIdx]
+            : itemQtySumMap[rawId] || 0;
         if (Math.abs(contracted - scheduled) > 0.001) {
-          const matLabel = cm.materialNameSnapshot || `Mặt hàng ${cIdx + 1}`;
+          const matLabel = `${cm.materialNameSnapshot || `Mặt hàng #${cIdx + 1}`} (${cm.unitSnapshot || 'ĐVT'})`;
           allocationMismatchMessages.push(
             `"${matLabel}": đã phân bổ ${scheduled} / ${contracted} (chênh lệch ${contracted - scheduled}).`
           );
@@ -406,12 +425,23 @@ export const validateInboundPlanForm = (planForm) => {
         bErr.expectedItems = `Đợt ${batchNo} phải có ít nhất 1 mặt hàng.`;
       } else {
         const bItemErrors = {};
+        const isMultiBatch = planForm.batches.length > 1;
+        let batchTotalQty = 0;
+
         b.expectedItems.forEach((item, itemIdx) => {
           const q = Number(item.plannedQty);
-          if (!Number.isFinite(q) || q <= 0) {
-            bItemErrors[itemIdx] = 'Số lượng đợt này phải > 0.';
+          if (!Number.isFinite(q) || q < 0 || (!isMultiBatch && q <= 0)) {
+            bItemErrors[itemIdx] = isMultiBatch
+              ? 'Số lượng đợt này không được nhỏ hơn 0.'
+              : 'Số lượng đợt này phải > 0.';
+          } else {
+            batchTotalQty += q;
           }
         });
+
+        if (isMultiBatch && batchTotalQty <= 0) {
+          bErr.expectedItems = `Đợt ${batchNo} phải có ít nhất 1 mặt hàng có số lượng giao > 0.`;
+        }
         if (Object.keys(bItemErrors).length > 0) {
           bErr.itemErrors = bItemErrors;
         }

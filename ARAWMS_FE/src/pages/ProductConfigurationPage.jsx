@@ -516,7 +516,7 @@ export default function ProductConfigurationPage() {
     return () => document.body.classList.remove('has-selection');
   }, [selected, mode]);
 
-  return <main className="ara-page">
+  return <main className="ara-page" style={{ padding: '1.5rem', maxWidth: '1440px', margin: '0 auto' }}>
     <nav className="ara-breadcrumb" aria-label="Đường dẫn">
       <Link to="/">Trang chủ</Link>
       <span className="ara-breadcrumb-separator">/</span>

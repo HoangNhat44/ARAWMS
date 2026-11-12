@@ -62,7 +62,7 @@ export function Pagination({ data, onPage }) {
 // Chỉ dùng hộp thoại cho xác nhận/chỉnh sửa ngắn; nghiệp vụ dài được tách thành trang.
 export function Modal({ title, children, onClose, busy = false }) {
   return <AntModal open title={title} footer={null} onCancel={() => { if (!busy) onClose(); }} keyboard={!busy} maskClosable={!busy} closable={!busy}
-    width="min(760px, calc(100vw - 32px))" className="owner-modal" destroyOnHidden styles={{ body: { maxHeight: 'calc(100dvh - 184px)', overflowY: 'auto', overflowX: 'hidden' } }}>{children}</AntModal>;
+    width="min(760px, calc(100vw - 32px))" className="owner-modal" rootClassName="owner-modal-root" destroyOnHidden styles={{ body: { maxHeight: 'calc(100dvh - 184px)', overflowY: 'auto', overflowX: 'hidden' } }}>{children}</AntModal>;
 }
 // Chuyển các dòng JSX sẵn có thành dữ liệu bảng Ant Design, giữ nguyên nút và handler nghiệp vụ.
 const flatten = (nodes) => Children.toArray(nodes).flatMap((node) => isValidElement(node) && node.type === Fragment ? flatten(node.props.children) : [node]);

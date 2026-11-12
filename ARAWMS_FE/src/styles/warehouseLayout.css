@@ -61,7 +61,7 @@
 @media(max-width:600px){.warehouse-layout-page{padding:12px}.layout-map-card,.layout-config-panel{padding:12px}.layout-zones{grid-template-columns:1fr;gap:12px}.layout-zone-card{min-height:0}.layout-rack-grid{grid-template-columns:repeat(auto-fill,minmax(138px,1fr))}}
 
 /* The warehouse overview follows the supplied two-area layout. */
-.warehouse-layout-page{max-width:1540px;margin:auto;padding:28px 30px 50px;background:#f8f9fa;color:#111827}
+.warehouse-layout-page{max-width: 1440px;margin:auto;padding:28px 30px 50px;background:#f8f9fa;color:#111827}
 .layout-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:20px;margin-bottom:28px;padding-bottom:22px;border-bottom:1px solid #e5e7eb}
 .layout-header small,.layout-panel-heading small{color:#b45309;font-size:.7rem;letter-spacing:.15em}
 .layout-header h1{font-family:var(--font-sans);font-size:clamp(1.8rem,3vw,2.4rem);font-weight:500;margin:7px 0}

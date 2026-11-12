@@ -21,7 +21,7 @@
 /* Page layout */
 .product-workspace {
   width: calc(100% - 64px);
-  max-width: 1625px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 32px 0 40px;
   font-family: var(--ara-font);
@@ -552,7 +552,7 @@
 .bottom-inner {
   pointer-events: auto;
   width: calc(100% - 64px);
-  max-width: 1625px;
+  max-width: 1440px;
   margin: 0 auto;
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(10px);

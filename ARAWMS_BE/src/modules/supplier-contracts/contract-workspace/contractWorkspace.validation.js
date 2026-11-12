@@ -169,9 +169,9 @@ export const validateDraftContract = (req, res, next) => {
   // 3. Loại hợp đồng
   if (
     contractType &&
-    !['FRAMEWORK_AGREEMENT', 'BATCH_LUMP_SUM', 'FIXED_UNIT_PRICE'].includes(contractType)
+    !['SALES_CONTRACT', 'FRAMEWORK_AGREEMENT', 'BATCH_LUMP_SUM', 'FIXED_UNIT_PRICE'].includes(contractType)
   ) {
-    errors.push('Loại hình hợp đồng không hợp lệ (FRAMEWORK_AGREEMENT, BATCH_LUMP_SUM, FIXED_UNIT_PRICE).');
+    errors.push('Loại hình hợp đồng không hợp lệ.');
   }
 
   // 4. Nhà cung ứng (Bên B)
@@ -217,6 +217,16 @@ export const validateDraftContract = (req, res, next) => {
       const qty = Number(item.contractedQty);
       if (!Number.isFinite(qty) || qty <= 0) {
         errors.push(`Dòng ${lineNo}: Số lượng ký hợp đồng phải là số lớn hơn 0.`);
+      }
+
+      if (Array.isArray(item.rollDetails) && item.rollDetails.length > 0) {
+        item.rollDetails.forEach((r, rIdx) => {
+          const rNo = rIdx + 1;
+          const rMeters = Number(r.lengthMeters);
+          if (!Number.isFinite(rMeters) || rMeters <= 0) {
+            errors.push(`Dòng ${lineNo} - Cuộn #${rNo}: Chiều dài mét vải phải là số lớn hơn 0.`);
+          }
+        });
       }
 
       const price = Number(item.unitPrice);
@@ -313,11 +323,15 @@ export const validateDraftContract = (req, res, next) => {
 
     schedule.forEach((inst, idx) => {
       const stepNo = idx + 1;
-      const pct = Number(inst.paymentPercent);
+      let pct = Number(inst.paymentPercent);
+      const amt = Number(inst.paymentAmount);
+      if ((!Number.isFinite(pct) || pct <= 0) && Number.isFinite(amt) && amt > 0) {
+        pct = 1;
+      }
       if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
-        errors.push(`Lần thanh toán ${stepNo}: Tỷ lệ phần trăm thanh toán phải lớn hơn 0% và tối đa 100%.`);
+        errors.push(`Lần thanh toán ${stepNo}: Số tiền hoặc tỷ lệ phần trăm thanh toán phải lớn hơn 0 và không vượt quá 100% hợp đồng.`);
       } else {
-        sumInstallmentPct += pct;
+        sumInstallmentPct += Number(inst.paymentPercent || pct);
       }
 
       if (!inst.dueDate || !isValidDate(inst.dueDate)) {

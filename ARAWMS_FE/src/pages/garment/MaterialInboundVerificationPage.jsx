@@ -162,9 +162,11 @@ export default function MaterialInboundVerificationPage() {
 
     const verificationSource = targetBatch?.technicianVerification || plan.technicianVerification;
     setSupplierDeliveryCode(targetBatch?.deliveryNote || plan.deliveryNote || '');
-    setIsMatched(verificationSource?.isMatchedWithPlan ?? true);
+    const initialMatched = verificationSource?.isMatchedWithPlan ?? true;
+    setIsMatched(initialMatched);
     setDeviationSummary(verificationSource?.deviationSummary || '');
-    setCreateInboundRequest(true);
+    // Chỉ mặc định gửi yêu cầu nhập kho khi lô khớp kế hoạch; khi có sai lệch, KTV phải chủ động tick
+    setCreateInboundRequest(initialMatched);
 
     // Populate verification items for this batch or root plan
     const rawItems = targetBatch?.expectedItems && targetBatch.expectedItems.length > 0
@@ -182,6 +184,8 @@ export default function MaterialInboundVerificationPage() {
         actualVerifiedPassedQty: passed > 0 ? passed : (item.actualVerifiedPassedQty === 0 && defective > 0 ? 0 : planned),
         actualDefectiveOrShortQty: defective,
         defectReason: item.defectReason || '',
+        rollCount: item.rollCount || item.selectedRolls?.length || 0,
+        selectedRolls: Array.isArray(item.selectedRolls) ? item.selectedRolls : [],
       };
     });
     setVerificationItems(items);
@@ -199,8 +203,9 @@ export default function MaterialInboundVerificationPage() {
         hasDeviation = true;
       }
     });
-    if (hasDeviation) {
+    if (hasDeviation && isMatched) {
       setIsMatched(false);
+      setCreateInboundRequest(false);
     }
 
     setVerificationItems(updated);
@@ -241,7 +246,7 @@ export default function MaterialInboundVerificationPage() {
         'success',
         isMatched
           ? `Đã nghiệm thu KCS thành công${batchTitleInfo} và gửi Phiếu yêu cầu nhập kho (${res?.data?.ticket?.ticketCode || 'PNNL'}) tới Quản lý kho!`
-          : `Đã ghi nhận sai lệch KCS cho kế hoạch ${selectedPlan.planCode}${batchTitleInfo} và gửi thông báo Realtime tới bộ phận Kế toán!`
+          : `Đã ghi nhận sai lệch KCS cho kế hoạch ${selectedPlan.planCode}${batchTitleInfo} và gửi thông báo Realtime tới bộ phận Kế toán!${res?.data?.ticket?.ticketCode ? ` Đã gửi phần đạt KCS tới Quản lý kho (${res.data.ticket.ticketCode}).` : ''}`
       );
 
       setSelectedPlan(null);
@@ -1569,6 +1574,28 @@ export default function MaterialInboundVerificationPage() {
                               {item.material?.widthCm ? ` · Khổ: ${item.material.widthCm}cm` : ''}
                               {item.material?.gsm ? ` · GSM: ${item.material.gsm}` : ''}
                             </div>
+                            {item.selectedRolls && item.selectedRolls.length > 0 && (
+                              <div style={{ marginTop: '5px', display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: 600 }}>
+                                  🧵 {item.selectedRolls.length} cuộn giao đợt này:
+                                </span>
+                                {item.selectedRolls.map((r, rIdx) => (
+                                  <span
+                                    key={rIdx}
+                                    style={{
+                                      fontSize: '0.7rem',
+                                      background: '#e0f2fe',
+                                      color: '#0369a1',
+                                      padding: '1px 5px',
+                                      borderRadius: '3px',
+                                      border: '1px solid #bae6fd',
+                                    }}
+                                  >
+                                    {r.rollCode || `C-${rIdx + 1}`}: {r.lengthMeters}m {r.note ? `(${r.note})` : ''}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: '0.8rem 0.9rem', fontWeight: 600 }}>
                             {item.plannedQty}
@@ -1643,7 +1670,10 @@ export default function MaterialInboundVerificationPage() {
                       type="radio"
                       name="matchingStatus"
                       checked={isMatched}
-                      onChange={() => setIsMatched(true)}
+                      onChange={() => {
+                        setIsMatched(true);
+                        setCreateInboundRequest(true);
+                      }}
                     />
                     <CheckCircle2 size={17} /> Khớp 100% với kế hoạch nhập
                   </label>
@@ -1653,7 +1683,10 @@ export default function MaterialInboundVerificationPage() {
                       type="radio"
                       name="matchingStatus"
                       checked={!isMatched}
-                      onChange={() => setIsMatched(false)}
+                      onChange={() => {
+                        setIsMatched(false);
+                        setCreateInboundRequest(false);
+                      }}
                     />
                     <AlertTriangle size={17} /> Có sai lệch (thiếu hàng, lỗi ngoại quan)
                   </label>

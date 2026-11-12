@@ -192,8 +192,9 @@ export const verifyInboundPlan = async (planId, payload = {}, user) => {
     deviationSummary = '',
     evidenceImages = [],
     supplierDeliveryCode = '',
-    createInboundRequest = true,
   } = payload;
+  // Khi có sai lệch, chỉ tạo phiếu nếu KTV chủ động yêu cầu (tránh tự sinh phiếu ngoài ý muốn)
+  const createInboundRequest = payload.createInboundRequest ?? Boolean(isMatchedWithPlan);
 
   // Validate required deviationSummary when there is a mismatch
   if (!isMatchedWithPlan && !deviationSummary?.trim()) {
@@ -361,7 +362,10 @@ export const verifyInboundPlan = async (planId, payload = {}, user) => {
   let createdTicket = null;
 
   // Tạo MaterialTicket cho Quản lý kho nếu KCS yêu cầu
-  if (createInboundRequest) {
+  const hasAcceptedQty = itemsForTicket.some((item) => Number(item.actualVerifiedPassedQty) > 0);
+
+  // Không sinh phiếu rỗng: chỉ tạo khi có ít nhất một dòng đạt KCS
+  if (createInboundRequest && hasAcceptedQty) {
     const ticketCode = await CounterSequence.getNextSequence('MATERIAL_INBOUND_TICKET', 'PNNL', 6);
 
     const receiptLines = itemsForTicket

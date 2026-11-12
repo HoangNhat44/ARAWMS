@@ -26,6 +26,17 @@ const contractedMaterialSchema = new Schema(
     moq: { type: Number, default: 100, min: 1 },
     leadTimeDays: { type: Number, default: 7, min: 1 },
     contractedQty: { type: Number, required: true, min: 1 },
+    rollCount: { type: Number, default: 0, min: 0 },
+    rollDetails: [
+      {
+        rollIndex: { type: Number, required: true },
+        rollCode: { type: String, default: '' },
+        rollQty: { type: Number, default: 1, min: 1 },
+        lengthMeters: { type: Number, required: true, min: 0 },
+        weightKg: { type: Number, default: 0 },
+        note: { type: String, default: '' },
+      },
+    ],
     unitPrice: { type: Number, required: true, min: 0 },
     vatRatePct: { type: Number, default: 8, min: 0 },
     packagingSpec: {
@@ -46,7 +57,7 @@ const supplierContractSchema = new Schema(
     },
     contractType: {
       type: String,
-      enum: ['FRAMEWORK_AGREEMENT', 'BATCH_LUMP_SUM', 'FIXED_UNIT_PRICE'],
+      enum: ['SALES_CONTRACT', 'FRAMEWORK_AGREEMENT', 'BATCH_LUMP_SUM', 'FIXED_UNIT_PRICE'],
       default: 'FRAMEWORK_AGREEMENT',
     },
     signingDate: { type: Date, default: Date.now },

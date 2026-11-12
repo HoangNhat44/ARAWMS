@@ -8,7 +8,11 @@ import { ReceiptError, confirmMaterialPutaway } from '../../raw-material-warehou
 
 const id = (value) => String(value || '');
 const fail = (message, code, status = 400) => { throw new ReceiptError(message, code, status); };
-const accessible = (locationId, user) => !user.warehouseIds?.length ||
+// Raw-material putaway is one shared warehouse: warehouse managers and staff see every
+// raw-material shelf, so a stale per-account warehouseIds list cannot hide tasks.
+const warehouseRoles = ['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'];
+const accessible = (locationId, user) => warehouseRoles.includes(user.roleCode) ||
+  user.roles?.some((role) => warehouseRoles.includes(role)) || !user.warehouseIds?.length ||
   user.warehouseIds.some((assigned) => id(assigned) === id(locationId));
 
 /** Lists physical rolls and allocated accessory lots that still need a shelf scan. */

@@ -1045,7 +1045,7 @@ export default function MaterialOutboundPage({ isStaffMode = false }) {
   };
 
   return (
-    <div className="material-outbound-page">
+    <div className="material-outbound-page" style={{ padding: '1.5rem', maxWidth: '1440px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
       <div className="mo-breadcrumb">
         <Link to="/">Trang chủ</Link> /{' '}
         {isStaff ? (

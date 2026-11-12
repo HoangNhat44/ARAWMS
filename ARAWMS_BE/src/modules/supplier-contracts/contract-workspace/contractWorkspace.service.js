@@ -451,7 +451,31 @@ export async function normalizeContractMaterialsAndTotals(payload) {
 
   const normalizedMaterials = processedContractedMaterials.map((item) => {
     const dbMat = materialMap.get(String(item.rawMaterialId));
-    const qty = Number(item.contractedQty) || 0;
+    const rawRolls = Array.isArray(item.rollDetails) ? item.rollDetails : [];
+    const rollDetails = rawRolls.map((r, rIdx) => ({
+      rollIndex: Number(r.rollIndex || rIdx + 1),
+      rollCode: r.rollCode || `C-${String(rIdx + 1).padStart(2, '0')}`,
+      rollQty: Math.max(1, Math.floor(Number(r.rollQty ?? 1) || 1)),
+      lengthMeters: Number(r.lengthMeters || 0),
+      weightKg: Number(r.weightKg || 0),
+      note: r.note || '',
+    }));
+
+    let qty = Number(item.contractedQty) || 0;
+    if (rollDetails.length > 0) {
+      const sumRollMeters = rollDetails.reduce(
+        (sum, r) => sum + (Number(r.rollQty ?? 1) || 1) * (Number(r.lengthMeters) || 0),
+        0
+      );
+      if (sumRollMeters > 0) {
+        qty = sumRollMeters;
+      }
+    }
+    const rollCount =
+      rollDetails.length > 0
+        ? rollDetails.reduce((sum, r) => sum + (Number(r.rollQty ?? 1) || 1), 0)
+        : Number(item.rollCount || 0);
+
     const price = Number(item.unitPrice) || 0;
     const itemVatPct = Number(item.vatRatePct ?? defaultVatRate);
     const lineSubtotal = qty * price;
@@ -475,6 +499,8 @@ export async function normalizeContractMaterialsAndTotals(payload) {
       moq: Number(item.moq ?? 100),
       leadTimeDays: Number(item.leadTimeDays ?? 7),
       contractedQty: qty,
+      rollCount: rollCount,
+      rollDetails: rollDetails,
       unitPrice: price,
       vatRatePct: itemVatPct,
       packagingSpec:
@@ -492,12 +518,19 @@ export async function normalizeContractMaterialsAndTotals(payload) {
     ? payload.commercialTerms.paymentSchedule
     : [];
   const paymentSchedule = rawSchedule.map((inst, idx) => {
-    const pct = Number(inst.paymentPercent || 0);
+    let pct = Number(inst.paymentPercent || 0);
+    let amt = Number(inst.paymentAmount || 0);
+    if (amt > 0 && totalContractAmount > 0 && (pct <= 0 || !Number.isFinite(pct))) {
+      pct = Number(((amt / totalContractAmount) * 100).toFixed(2));
+    }
+    if (pct > 0 && totalContractAmount > 0 && amt <= 0) {
+      amt = Math.round((totalContractAmount * pct) / 100);
+    }
     return {
       installmentNumber: idx + 1,
       dueDate: inst.dueDate ? new Date(inst.dueDate) : new Date(),
       paymentPercent: pct,
-      paymentAmount: Math.round((totalContractAmount * pct) / 100),
+      paymentAmount: amt,
       note: inst.note || `Thanh toán lần ${idx + 1}`,
     };
   });
@@ -708,17 +741,32 @@ export const draftContractFramework = async (payload, currentUserId) => {
       notes: b.notes || '',
       expectedItems: (b.expectedItems || []).map((item, itemIdx) => {
         const cMat =
+          normalizedMaterials[itemIdx] ||
           normalizedMaterials.find(
             (cm) => String(cm.rawMaterialId?._id || cm.rawMaterialId) === String(item.rawMaterialId)
           ) ||
           normalizedMaterials.find(
             (cm) => cm.materialCodeSnapshot && cm.materialCodeSnapshot === (item.materialCodeSnapshot || item.materialCode)
-          ) ||
-          normalizedMaterials[itemIdx];
+          );
+        const rawRolls = (Array.isArray(item.rollDetails) && item.rollDetails.length > 0)
+          ? item.rollDetails
+          : (Array.isArray(item.selectedRolls) ? item.selectedRolls : []);
+        const rolls = rawRolls.map((r, rIdx) => ({
+          rollIndex: Number(r.rollIndex || rIdx + 1),
+          rollCode: r.rollCode || `C-${String(rIdx + 1).padStart(2, '0')}`,
+          rollQty: Math.max(1, Math.floor(Number(r.rollQty ?? 1) || 1)),
+          lengthMeters: Number(r.lengthMeters || 0),
+          weightKg: Number(r.weightKg || 0),
+          note: r.note || '',
+        }));
+        const sumBatchRolls = rolls.reduce((sum, r) => sum + (Number(r.rollQty ?? 1) || 1), 0);
         return {
           rawMaterialId: cMat?.rawMaterialId || item.rawMaterialId,
           plannedQty: Number(item.plannedQty || 0),
           unitSnapshot: item.unitSnapshot || item.unit || cMat?.unitSnapshot || 'METER',
+          rollCount: sumBatchRolls || Number(item.rollCount || 0),
+          rollDetails: rolls,
+          selectedRolls: rolls,
           actualVerifiedPassedQty: 0,
           actualDefectiveOrShortQty: 0,
         };
@@ -735,12 +783,21 @@ export const draftContractFramework = async (payload, currentUserId) => {
           rawMaterialId: it.rawMaterialId,
           plannedQty: it.plannedQty,
           unitSnapshot: it.unitSnapshot,
+          rollCount: it.rollCount || 0,
+          rollDetails: it.rollDetails || it.selectedRolls || [],
+          selectedRolls: it.selectedRolls || it.rollDetails || [],
           actualVerifiedPassedQty: 0,
           actualDefectiveOrShortQty: 0,
         });
       } else {
         const cur = aggregatedItemsMap.get(idStr);
         cur.plannedQty += it.plannedQty;
+        cur.rollCount = (cur.rollCount || 0) + (it.rollCount || 0);
+        const newRolls = it.rollDetails || it.selectedRolls || [];
+        if (Array.isArray(newRolls) && newRolls.length > 0) {
+          cur.rollDetails = [...(cur.rollDetails || []), ...newRolls];
+          cur.selectedRolls = [...(cur.selectedRolls || []), ...newRolls];
+        }
       }
     });
   });
@@ -967,13 +1024,13 @@ export const amendContractVersion = async (contractId, payload, currentUserId) =
       notes: b.notes || '',
       expectedItems: (b.expectedItems || []).map((it, itIdx) => {
         const cMat =
+          normalizedMaterials[itIdx] ||
           normalizedMaterials.find(
             (cm) => String(cm.rawMaterialId?._id || cm.rawMaterialId) === String(it.rawMaterialId)
           ) ||
           normalizedMaterials.find(
             (cm) => cm.materialCodeSnapshot && cm.materialCodeSnapshot === (it.materialCodeSnapshot || it.materialCode)
-          ) ||
-          normalizedMaterials[itIdx];
+          );
         return {
           rawMaterialId: cMat?.rawMaterialId || it.rawMaterialId,
           plannedQty: Number(it.plannedQty || 0),
@@ -1233,7 +1290,15 @@ export async function contractDetail(id) {
   const materialMap = new Map(materials.map(m => [String(m._id), m]));
   const name = (id) => users.find(u => String(u._id) === String(id))?.fullName || null;
   const item = (line) => { const material = materialMap.get(String(line.rawMaterialId)); return { materialId: String(line.rawMaterialId || ''), code: line.materialCodeSnapshot || material?.materialCode || null, name: line.materialNameSnapshot || material?.materialName || null, unit: line.unitSnapshot || material?.unit || null }; };
-  const planItems = (lines) => (lines || []).map(line => ({ ...item(line), plannedQty: line.plannedQty, verifiedQty: line.actualVerifiedPassedQty, defectiveOrShortQty: line.actualDefectiveOrShortQty }));
+  const planItems = (lines) => (lines || []).map(line => ({
+    ...item(line),
+    plannedQty: line.plannedQty,
+    rollCount: line.rollCount || (line.rollDetails?.length || line.selectedRolls?.length || 0),
+    rollDetails: line.rollDetails || line.selectedRolls || [],
+    selectedRolls: line.selectedRolls || line.rollDetails || [],
+    verifiedQty: line.actualVerifiedPassedQty,
+    defectiveOrShortQty: line.actualDefectiveOrShortQty,
+  }));
   const supplier = suppliers[0];
   return {
     id: String(contract._id), code: contract.contractCode, title: contract.contractTitle, type: contract.contractType, status: contract.status,
@@ -1246,7 +1311,7 @@ export async function contractDetail(id) {
     versionNumber: contract.versionNumber, amendmentReason: contract.amendmentReason,
     frameworkDocumentUrl: safeUrl(contract.frameworkDocumentUrl), signedContractDocumentUrl: safeUrl(contract.signedContractDocumentUrl),
     supplier: supplier ? { code: supplier.supplierCode, name: supplier.supplierName, taxCode: supplier.taxCode, contact: supplier.contactName || supplier.representativeName, phone: supplier.phone, email: supplier.email, address: supplier.address } : null,
-    items: (contract.contractedMaterials || []).map(line => ({ ...item(line), quantity: line.contractedQty, unitPrice: line.unitPrice, vatRatePct: line.vatRatePct, composition: line.composition, colorSpec: line.colorSpec, widthCm: line.widthCm, gsm: line.gsm, shrinkageTolerancePct: line.shrinkageTolerancePct, colorFastnessGrade: line.colorFastnessGrade, qtyTolerancePct: line.qtyTolerancePct, moq: line.moq, leadTimeDays: line.leadTimeDays, packagingSpec: line.packagingSpec, technicalNote: line.technicalNote })),
+    items: (contract.contractedMaterials || []).map(line => ({ ...item(line), quantity: line.contractedQty, rollCount: line.rollCount || (line.rollDetails?.length || 0), rollDetails: line.rollDetails || [], unitPrice: line.unitPrice, vatRatePct: line.vatRatePct, composition: line.composition, colorSpec: line.colorSpec, widthCm: line.widthCm, gsm: line.gsm, shrinkageTolerancePct: line.shrinkageTolerancePct, colorFastnessGrade: line.colorFastnessGrade, qtyTolerancePct: line.qtyTolerancePct, moq: line.moq, leadTimeDays: line.leadTimeDays, packagingSpec: line.packagingSpec, technicalNote: line.technicalNote })),
     plans: plans.sort((a,b) => new Date(a.scheduledDeliveryDate) - new Date(b.scheduledDeliveryDate)).map(p => ({ id: String(p._id), code: p.planCode, status: p.status, scheduledDeliveryDate: p.scheduledDeliveryDate, notes: p.notes, items: planItems(p.expectedItems), batches: (p.batches || []).map(b => ({ number: b.batchNumber, title: b.batchTitle, percentage: b.batchPercentage, scheduledDeliveryDate: b.scheduledDeliveryDate, status: b.status, notes: b.notes, items: planItems(b.expectedItems) })) })),
     payments: payments.sort((a,b) => new Date(b.voucherDate) - new Date(a.voucherDate)).map(v => ({ id: String(v._id), code: v.voucherCode, date: v.voucherDate, category: v.category, amount: v.amount, method: v.paymentMethod, status: v.status, paidAt: v.paidAt, note: v.note, attachmentUrl: safeUrl(v.attachmentUrl) })),
     basis: 'Giá trị và số đã trả lấy từ hợp đồng; lịch sử phiếu chi hiển thị riêng, không tự cộng phiếu nháp hoặc phiếu hủy vào số đã thanh toán. Đơn vị và tên nguyên liệu ưu tiên thông tin chốt trên hợp đồng.',

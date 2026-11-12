@@ -462,7 +462,7 @@ function validateConfirmation(receipt, materials, locations, user) {
       (line.inspectionConclusion || line.qualityInspectionRef),
     'Cần người kiểm tra, thời gian và kết luận hoặc tham chiếu KCS', 'INSPECTION_REQUIRED');
     const objects = material.materialType === 'FABRIC' ? line.rolls : line.lots;
-    fail(material.materialType === 'FABRIC' ? !line.lots.length && material.unit === 'METER' : !line.rolls.length,
+    fail(material.materialType === 'FABRIC' ? !line.lots.length : !line.rolls.length,
       'Loại cây/lô hoặc đơn vị tồn không được hỗ trợ', 'OBJECT_TYPE_INVALID');
     for (const quality of ['ACCEPTED', 'REJECTED']) {
       const total = objects.filter((item) => item.quality === quality)
@@ -475,10 +475,10 @@ function validateConfirmation(receipt, materials, locations, user) {
       fail(value > 0 && ['ACCEPTED', 'REJECTED'].includes(object.quality), 'Cây/lô cần số lượng và kết quả', 'INVALID_OBJECT');
       fail(object.quality !== 'REJECTED' || object.defectReason, 'Cây/lô không đạt cần lý do', 'DEFECT_REASON_REQUIRED');
       // Author: Duy Anh. Accessory receipts may record counted stock directly; packaging is optional unless one side is supplied.
-      fail(material.materialType === 'FABRIC' ? object.widthCm > 0 &&
-        (!material.requiresWeightKg || object.weightKg > 0) :
+      // Khổ vải không còn nhập khi nhận hàng (lấy theo khổ của nguyên phụ liệu khi tạo cây vải).
+      fail(material.materialType === 'FABRIC' ? (!material.requiresWeightKg || object.weightKg > 0) :
         !object.packageCount && !object.unitsPerPackage || object.packageCount > 0 && object.unitsPerPackage > 0,
-      'Thiếu khổ vải hoặc quy cách bao gói chưa đủ', 'OBJECT_DETAILS_REQUIRED');
+      'Thiếu cân nặng cây vải hoặc quy cách bao gói chưa đủ', 'OBJECT_DETAILS_REQUIRED');
       const destinations = material.materialType === 'FABRIC'
         ? [{ locationId: object.locationId, quantity: value }] : object.allocations;
       fail((destinations.length > 0 || object.quality === 'ACCEPTED') &&
@@ -601,7 +601,7 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
           const [createdRoll] = await FabricRoll.create([{ rollBarcode: barcode,
             rawMaterialId: material._id, supplierId, supplierNameSnapshot, inboundTicketId: receipt._id,
             clientLineId: roll.clientLineId, supplierRollCode: roll.supplierRollCode, supplierLotCode: roll.lotCode,
-            measuredWidthCm: roll.widthCm, defectReason: roll.defectReason,
+            measuredWidthCm: roll.widthCm > 0 ? roll.widthCm : material.widthCm || undefined, defectReason: roll.defectReason,
             initialLengthMeters: roll.lengthMeters, currentLengthMeters: roll.lengthMeters,
             initialWeightKg: roll.weightKg, currentWeightKg: roll.weightKg,
             unitCostPerMeter: unitCost, locationId: roll.locationId, fifoInboundTimestamp: receivedAt,

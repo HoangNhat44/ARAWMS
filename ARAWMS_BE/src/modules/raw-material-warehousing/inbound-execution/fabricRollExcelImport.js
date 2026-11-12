@@ -51,7 +51,6 @@ export async function previewFabricRollImport(buffer, user) {
     if (!validNumber(widthCm, true) || !validNumber(lengthMeters, true) || !validNumber(weightKg, false) ||
       !['ACCEPTED', 'REJECTED'].includes(quality) || !location ||
       location.warehouseType !== (quality === 'ACCEPTED' ? 'RAW_MATERIAL' : 'DEFECT_QUARANTINE') ||
-      (location.capacityUnit && location.capacityUnit !== 'METER') ||
       (quality === 'REJECTED' && !text(7))) {
       errors.push({ row: rowNumber, message: 'Kiểm tra khổ, chiều dài, cân nặng, kết quả, lý do và mã vị trí' });
       continue;

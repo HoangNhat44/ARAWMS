@@ -26,6 +26,9 @@ import OrderQrPage from '../pages/OrderQrPage';
 import WarehousePackingPage from '../pages/WarehousePackingPage';
 import ProductConfigurationPage from '../pages/ProductConfigurationPage';
 import FinishedGoodsPage from '../pages/FinishedGoodsPage';
+import TechnicalInboundPage from '../pages/TechnicalInboundPage';
+import TechnicalOutboundPage from '../pages/TechnicalOutboundPage';
+import InboundProgressPage from '../pages/InboundProgressPage';
 import SupplierInboundPage from '../pages/SupplierInboundPage';
 import MaterialOutboundPage from '../pages/MaterialOutboundPage';
 import WarehouseLayoutPage from '../pages/WarehouseLayoutPage';
@@ -34,6 +37,7 @@ import StocktakePage from '../pages/StocktakePage';
 import ShippingPage from '../pages/ShippingPage';
 import MaterialInboundVerificationPage from '../pages/garment/MaterialInboundVerificationPage';
 import GarmentRawMaterialsPage from '../pages/garment/GarmentRawMaterialsPage';
+import GarmentReturnInspectionPage from '../pages/garment/GarmentReturnInspectionPage';
 import FinishedGoodsInspectionPage from '../pages/garment/FinishedGoodsInspectionPage';
 import GarmentStocktakeExecutionPage from '../pages/garment/GarmentStocktakeExecutionPage';
 import GarmentMaterialOutboundPage from '../pages/garment/GarmentMaterialOutboundPage';
@@ -41,6 +45,7 @@ import GarmentCuttingAndRemnantPage from '../pages/garment/GarmentCuttingAndRemn
 import GarmentLayout from '../components/garment/GarmentLayout';
 import WarehouseManagerLayout from '../components/warehouse/WarehouseManagerLayout';
 import WarehouseStaffLayout from '../components/warehouse/WarehouseStaffLayout';
+import SellerLayout from '../components/seller/SellerLayout';
 import AccountantRoutes from './AccountantRoutes';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -125,7 +130,7 @@ export default function AppRouter() {
         <Route path="/account" element={<ProtectedRoute><AccountEntry /></ProtectedRoute>} />
 
         {/* Phân hệ Seller Workspace (Bán hàng & CSKH đa kênh, Quản lý đơn hàng, TMĐT, RMA) */}
-        <Route element={<ProtectedRoute role="SELLER" />}>
+        <Route element={<ProtectedRoute role="SELLER"><SellerLayout /></ProtectedRoute>}>
           <Route path="/seller/chat" element={<SellerChatPage />} />
           <Route path="/seller/orders" element={<SellerOrdersPage />} />
         </Route>
@@ -138,6 +143,9 @@ export default function AppRouter() {
           <Route path="/warehouse/raw-materials/inbound" element={<SupplierInboundPage />} />
           <Route path="/warehouse/raw-materials/outbound" element={<MaterialOutboundPage />} />
           <Route path="/warehouse/finished-goods" element={<FinishedGoodsPage />} />
+          <Route path="/warehouse/technical-inbound" element={<TechnicalInboundPage />} />
+          <Route path="/warehouse/technical-outbound" element={<TechnicalOutboundPage />} />
+          <Route path="/warehouse/inbound-progress" element={<InboundProgressPage />} />
           <Route path="/warehouse/products/new" element={<ProductConfigurationPage />} />
           <Route path="/warehouse/products/:id/edit" element={<ProductConfigurationPage />} />
           <Route path="/warehouse/layout" element={<WarehouseLayoutPage />} />
@@ -149,6 +157,7 @@ export default function AppRouter() {
           <Route path="/warehouse/putaway" element={<WarehousePutawayPage />} />
           <Route path="/warehouse/staff/outbound" element={<MaterialOutboundPage isStaffMode />} />
           <Route path="/warehouse/staff/finished-goods" element={<FinishedGoodsPage isStaffMode />} />
+          <Route path="/warehouse/staff/inbound-progress" element={<InboundProgressPage />} />
           <Route path="/packing/qr" element={<WarehousePackingPage />} />
           <Route path="/orders/qr" element={<OrderQrPage />} />
           <Route path="/warehouse/shipping" element={<ShippingPage />} />
@@ -159,6 +168,7 @@ export default function AppRouter() {
           <Route path="/garment/raw-materials" element={<GarmentRawMaterialsPage />} />
           <Route path="/garment/material-inbound-verification" element={<MaterialInboundVerificationPage />} />
           <Route path="/garment/finished-goods-inspection" element={<FinishedGoodsInspectionPage />} />
+          <Route path="/garment/return-inspection" element={<GarmentReturnInspectionPage />} />
           <Route path="/garment/stocktake-execution" element={<GarmentStocktakeExecutionPage />} />
           <Route path="/garment/material-outbound-request" element={<GarmentMaterialOutboundPage />} />
           <Route path="/garment/remnant-recovery" element={<GarmentCuttingAndRemnantPage />} />

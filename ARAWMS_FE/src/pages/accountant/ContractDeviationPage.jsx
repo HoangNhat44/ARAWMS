@@ -389,12 +389,12 @@ const ContractDeviationPage = () => {
           <div className="wms-table-scroll no-horizontal-scroll">
             <table className="wms-table wms-table-responsive-fit">
               <colgroup>
-                <col style={{ width: '20%' }} />
+                <col style={{ width: '19%' }} />
                 <col style={{ width: '18%' }} />
                 <col style={{ width: '12%' }} />
-                <col style={{ width: '28%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '10%' }} />
+                <col style={{ width: '24%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '14%' }} />
               </colgroup>
               <thead>
                 <tr>
