@@ -3,7 +3,7 @@
  * @title        : Quick Order Inline Panel (Pancake-style)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-28
+ * @lastModified : 2026-11-14
  * @description  : Panel tạo đơn hàng bán lẻ nhanh tích hợp tại Pane tác nghiệp phải theo phong cách Pancake.
  *                 Hỗ trợ tìm kiếm tồn kho khả dụng thời gian thực (UC-77), điền thông tin người nhận,
  *                 tính toán tổng tiền và tạo/xác nhận giữ chỗ đơn hàng (UC-78, UC-79).
@@ -302,9 +302,9 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
   return (
     <Stack gap={3} className="w-100 overflow-x-hidden">
       {/* Chọn kênh bán hàng */}
-      <Card className="shadow-sm" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
-        <Card.Body className="py-2 px-3">
-          <div className="small fw-semibold mb-2 d-flex align-items-center gap-2" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+      <Card className="shadow-sm bg-white" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
+        <Card.Body className="py-2.5 px-3">
+          <div className="small fw-bold text-uppercase mb-2 d-flex align-items-center gap-1.5" style={{ color: 'var(--wms-text-primary, #141210)', letterSpacing: '0.03em' }}>
             <Icon name="shop" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> Kênh Bán Hàng
           </div>
           <ButtonGroup className="w-100 shadow-none">
@@ -319,7 +319,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
               checked={channel === 'ONLINE'}
               onChange={() => { setChannel('ONLINE'); setShippingFee(30000); }}
             >
-              <Icon name="truck" className="me-2" /> Online
+              <Icon name="truck" className="me-1.5" /> Online (Chat)
             </ToggleButton>
             <ToggleButton
               id="qop-mode-pos"
@@ -332,31 +332,44 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
               checked={channel === 'POS'}
               onChange={() => { setChannel('POS'); setShippingFee(0); }}
             >
-              <Icon name="shop" className="me-2" /> Bán tại quầy
+              <Icon name="shop" className="me-1.5" /> Tại quầy
             </ToggleButton>
           </ButtonGroup>
         </Card.Body>
       </Card>
 
       {/* Thông tin người nhận */}
-      <Card className="shadow-sm" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
+      <Card className="shadow-sm bg-white" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
         <Card.Body className="p-3">
-          <Card.Title as="div" className="small fw-semibold d-flex align-items-center gap-2 mb-2 pb-1 border-bottom" style={{ color: 'var(--wms-text-primary, #141210)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
-            <Icon name="person" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> {channel === 'POS' ? 'Khách mua tại quầy' : 'Thông tin người nhận'}
-          </Card.Title>
+          <div className="d-flex align-items-center justify-content-between mb-2 pb-1 border-bottom" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
+            <div className="small fw-bold text-uppercase d-flex align-items-center gap-1.5" style={{ color: 'var(--wms-text-primary, #141210)', letterSpacing: '0.03em' }}>
+              <Icon name="person" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> {channel === 'POS' ? 'Khách mua tại quầy' : 'Thông tin người nhận'}
+            </div>
+            {isValidVnPhone(recipient.phone) && (
+              <span
+                className="badge rounded-pill px-2 py-0.5 d-inline-flex align-items-center gap-1"
+                style={{ backgroundColor: '#ECFDF5', color: '#006C4A', border: '1px solid #A7F3D0', fontSize: '11px' }}
+              >
+                <Icon name="check2" /> Khớp danh bạ
+              </span>
+            )}
+          </div>
           <RecipientFields recipient={recipient} onChange={setRecipient} />
         </Card.Body>
       </Card>
 
-      {/* Tìm kiếm sản phẩm */}
-      <Card className="shadow-sm" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
+      {/* Tìm kiếm & Chọn sản phẩm */}
+      <Card className="shadow-sm bg-white" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
         <Card.Body className="p-3">
           <div className="d-flex align-items-center justify-content-between mb-2 pb-1 border-bottom" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
-            <Card.Title as="div" className="small fw-semibold d-flex align-items-center gap-2 mb-0" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+            <div className="small fw-bold text-uppercase d-flex align-items-center gap-1.5" style={{ color: 'var(--wms-text-primary, #141210)', letterSpacing: '0.03em' }}>
               <Icon name="box-seam" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> Sản phẩm ({items.length})
-            </Card.Title>
-            <span className="badge rounded px-2 py-0.5" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', color: 'var(--wms-secondary, #574F46)', border: '1px solid var(--wms-border, #C8B9A6)' }}>
-              {defaultSkus.length} mẫu có sẵn
+            </div>
+            <span
+              className="badge rounded-pill px-2 py-0.5"
+              style={{ backgroundColor: '#ECFDF5', color: '#006C4A', border: '1px solid #A7F3D0', fontSize: '11px' }}
+            >
+              {defaultSkus.length} sẵn kho
             </span>
           </div>
 
@@ -376,7 +389,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
           {/* Danh sách sản phẩm đã thêm vào đơn */}
           {items.length > 0 && (
             <>
-              <div className="fw-semibold small mt-2 mb-1" style={{ fontSize: '11.5px', color: 'var(--wms-secondary, #574F46)' }}>
+              <div className="fw-semibold small mt-2 mb-1" style={{ fontSize: '11.5px', color: 'var(--wms-text-secondary, #514536)' }}>
                 Đã chọn vào đơn ({items.length} món)
               </div>
               <SelectedItemsList items={items} onQty={updateQty} onRemove={removeItem} maxHeight="none" />
@@ -384,7 +397,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
           )}
 
           {/* Khối gợi ý sản phẩm có sẵn trong kho */}
-          <div className="fw-semibold small mt-3 mb-2" style={{ fontSize: '11.5px', color: 'var(--wms-secondary, #574F46)' }}>
+          <div className="fw-semibold small mt-3 mb-2" style={{ fontSize: '11.5px', color: 'var(--wms-text-secondary, #514536)' }}>
             Sản phẩm có sẵn trong kho ({defaultSkus.length})
           </div>
           <AvailableSkuList
@@ -398,13 +411,20 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
         </Card.Body>
       </Card>
 
-      {/* Thanh toán */}
-      <Card className="shadow-sm" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
-        <Card.Body>
-          <Card.Title as="div" className="small fw-bold text-uppercase d-flex align-items-center gap-2 mb-2" style={{ color: 'var(--wms-text-primary, #141210)' }}>
-            <Icon name="wallet2" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> Thanh toán
-          </Card.Title>
-          <ButtonGroup className="w-100 mb-3">
+      {/* Thanh toán & Vận chuyển */}
+      <Card className="shadow-sm bg-white" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
+        <Card.Body className="p-3">
+          <div className="d-flex align-items-center justify-content-between mb-2">
+            <div className="small fw-bold text-uppercase d-flex align-items-center gap-1.5" style={{ color: 'var(--wms-text-primary, #141210)', letterSpacing: '0.03em' }}>
+              <Icon name="wallet2" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> Thanh toán
+            </div>
+            {channel === 'ONLINE' && (
+              <span className="small text-muted" style={{ fontSize: '11px' }}>
+                Đơn vị: <strong style={{ color: 'var(--wms-text-primary, #1C1B1B)' }}>GHN Express</strong>
+              </span>
+            )}
+          </div>
+          <ButtonGroup className="w-100 mb-3 shadow-none">
             {PAYMENT_METHODS.map((m) => (
               <ToggleButton
                 key={m.value}
@@ -418,7 +438,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
                 checked={paymentMethod === m.value}
                 onChange={(e) => setPaymentMethod(e.currentTarget.value)}
               >
-                <Icon name={m.icon} className="me-1" />{m.label}
+                <Icon name={m.icon} className="me-1.5" />{m.label}
               </ToggleButton>
             ))}
           </ButtonGroup>
@@ -430,6 +450,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
             onDiscountChange={setDiscountAmount}
             total={total}
             totalLabel="Tổng COD"
+            itemCount={items.length}
           />
         </Card.Body>
       </Card>
@@ -441,7 +462,8 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
       {channel === 'POS' ? (
         <Button
           size="sm"
-          className="w-100 py-2 fw-semibold d-flex align-items-center justify-content-center gap-2 btn-wms-primary"
+          className="w-100 py-2.5 fw-semibold d-flex align-items-center justify-content-center gap-2 btn-wms-accent rounded shadow-sm"
+          style={{ height: '42px' }}
           disabled={loading || items.length === 0}
           onClick={() => handleCreate(false)}
         >
@@ -452,7 +474,8 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
         <Stack direction="horizontal" gap={2}>
           <Button
             size="sm"
-            className="w-50 py-2 fw-semibold btn-wms-default"
+            className="w-50 py-2.5 fw-semibold btn-wms-default rounded"
+            style={{ height: '42px' }}
             disabled={loading || items.length === 0}
             onClick={() => handleCreate(false)}
           >
@@ -460,7 +483,8 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
           </Button>
           <Button
             size="sm"
-            className="w-50 py-2 fw-semibold d-flex align-items-center justify-content-center gap-2 btn-wms-accent"
+            className="w-50 py-2.5 fw-semibold d-flex align-items-center justify-content-center gap-2 btn-wms-accent rounded shadow-sm"
+            style={{ height: '42px' }}
             disabled={loading || items.length === 0}
             onClick={() => handleCreate(true)}
           >

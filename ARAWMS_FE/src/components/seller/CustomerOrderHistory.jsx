@@ -3,7 +3,7 @@
  * @title        : Customer Order History Component
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-28
+ * @lastModified : 2026-11-14
  * @description  : Hiển thị danh sách lịch sử mua hàng của khách hàng (UC-76),
  *                 hỗ trợ mở popup chi tiết đơn (UC-80) và kích hoạt yêu cầu đổi trả RMA (UC-82).
  *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
@@ -23,15 +23,16 @@ import { Icon, EmptyState, formatVnd, ORDER_STATUS_CLASS } from './SellerUi';
  * @constant {Object<string,{label:string, icon:string}>}
  */
 const HISTORY_STATUS_META = {
-  PENDING: { label: 'Mới', icon: 'clock' },
-  CONFIRMED_RESERVED: { label: 'Chờ lấy hàng', icon: 'clock' },
-  PICKING: { label: 'Đang lấy hàng', icon: 'box-seam' },
-  PACKED: { label: 'Đã lấy hàng', icon: 'archive' },
-  HANDED_OVER_CARRIER: { label: 'Đang giao hàng', icon: 'truck' },
+  PENDING: { label: 'Chờ xác nhận', icon: 'clock' },
+  CONFIRMED_RESERVED: { label: 'Đã xác nhận, đã giữ hàng', icon: 'clock' },
+  PICKING: { label: 'Đang soạn hàng', icon: 'box-seam' },
+  PACKED: { label: 'Đã đóng hàng, chờ bàn giao', icon: 'archive' },
+  HANDED_OVER_CARRIER: { label: 'Đã bàn giao cho bên vận chuyển', icon: 'truck' },
+  CARRIER_PICKED_UP: { label: 'Đã lấy hàng', icon: 'truck' },
   DELIVERED: { label: 'Đã giao thành công', icon: 'check-circle' },
-  COMPLETED: { label: 'Hoàn thành', icon: 'check-circle-fill' },
+  COMPLETED: { label: 'Hoàn thành (Bán tại quầy)', icon: 'check-circle-fill' },
   EXCHANGE_REQUESTED: { label: 'Đang đổi hàng', icon: 'arrow-repeat' },
-  RETURN_REQUESTED: { label: 'Đang hoàn hàng', icon: 'arrow-counterclockwise' },
+  RETURN_REQUESTED: { label: 'Khách yêu cầu trả hàng', icon: 'arrow-counterclockwise' },
   CANCELLED: { label: 'Đã hủy', icon: 'x-circle' },
   RETURNED: { label: 'Đã hoàn về kho', icon: 'box-arrow-in-down-left' },
 };
@@ -115,27 +116,26 @@ const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail }) => {
         orders.map((ord) => (
           <Card
             key={ord._id || ord.id}
-            className="shadow-sm"
+            className="shadow-sm bg-white"
             style={{
               border: '1px solid var(--wms-border, #C8B9A6)',
-              borderRadius: '6px',
-              backgroundColor: 'var(--wms-bg-surface, #FFFFFF)'
+              borderRadius: '8px',
             }}
           >
-            <Card.Body className="pb-2">
+            <Card.Body className="p-3">
               <div className="d-flex align-items-center justify-content-between mb-2">
-                <span className="font-monospace fw-bold" style={{ color: 'var(--wms-primary, #141210)' }}>
+                <span className="font-monospace fw-bold tabular-nums" style={{ color: 'var(--wms-text-primary, #141210)' }}>
                   {ord.orderCode}
                 </span>
                 {getOrderStatusBadge(ord.status)}
               </div>
 
               {/* Items summary */}
-              <div style={{ color: 'var(--wms-text-secondary, #574F46)' }}>
+              <div style={{ color: 'var(--wms-secondary, #574F46)' }}>
                 {ord.items?.map((it, idx) => (
-                  <div key={idx} className="d-flex justify-content-between">
-                    <span><strong style={{ color: 'var(--wms-primary, #141210)' }}>{it.orderedQty}x</strong> {it.skuCode}</span>
-                    <span className="fw-medium">{formatVnd(it.subtotalAmount)}</span>
+                  <div key={idx} className="d-flex justify-content-between py-0.5">
+                    <span><strong style={{ color: 'var(--wms-text-primary, #141210)' }}>{it.orderedQty}x</strong> {it.skuCode}</span>
+                    <span className="fw-medium tabular-nums">{formatVnd(it.subtotalAmount)}</span>
                   </div>
                 ))}
               </div>
@@ -143,30 +143,29 @@ const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail }) => {
 
             {/* Total and Action */}
             <Card.Footer
-              className="d-flex align-items-center justify-content-between"
+              className="d-flex align-items-center justify-content-between bg-white"
               style={{
-                backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)',
                 borderTop: '1px solid var(--wms-border, #C8B9A6)',
-                padding: '8px 12px'
+                padding: '10px 14px'
               }}
             >
               <div>
-                <span style={{ color: 'var(--wms-text-secondary, #574F46)' }}>Tổng: </span>
-                <span className="fw-bold" style={{ color: 'var(--wms-accent, #8A6A46)', fontSize: '0.95rem' }}>
+                <span style={{ color: 'var(--wms-text-secondary, #574F46)', fontSize: '11.5px' }}>Tổng: </span>
+                <span className="fw-bold tabular-nums" style={{ color: 'var(--wms-accent, #8A6A46)', fontSize: '0.95rem' }}>
                   {formatVnd(ord.financialSummary?.totalOrderAmount)}
                 </span>
               </div>
-              <Stack direction="horizontal" gap={1}>
+              <Stack direction="horizontal" gap={1.5}>
                 {/* Xem chi tiết và đổi trạng thái */}
                 {onViewDetail && (
-                  <Button size="sm" className="btn-wms-default" onClick={() => onViewDetail(ord)}>
+                  <Button size="sm" className="btn-wms-default rounded-pill px-2.5 py-0.5" style={{ fontSize: '11.5px' }} onClick={() => onViewDetail(ord)}>
                     <Icon name="eye" className="me-1" />Chi tiết
                   </Button>
                 )}
-                {/* RMA Button (UC-82) - Chỉ đơn đã giao thành công hoặc hoàn tất mới có nút đổi trả */}
+                {/* RMA Button (UC-82) */}
                 {['DELIVERED', 'COMPLETED'].includes(ord.status) && (
-                  <Button size="sm" className="btn-wms-accent" onClick={() => onRequestRma && onRequestRma(ord)}>
-                    <Icon name="arrow-counterclockwise" className="me-1" />Đổi/Trả
+                  <Button size="sm" className="btn-wms-default rounded-pill px-2.5 py-0.5" style={{ fontSize: '11.5px' }} onClick={() => onRequestRma && onRequestRma(ord)}>
+                    <Icon name="arrow-counterclockwise" className="me-1" />Đổi / Trả
                   </Button>
                 )}
               </Stack>

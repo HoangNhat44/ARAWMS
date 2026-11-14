@@ -3,7 +3,7 @@
  * @title        : Conversation List Component (Pancake-style)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-28
+ * @lastModified : 2026-11-14
  * @description  : Danh sách cuộc hội thoại khách hàng Messenger của Seller (UC-72),
  *                 tích hợp thanh lọc thẻ tag nhanh (Pancake Quick Tag Filter) và tìm kiếm khách hàng.
  *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
@@ -48,38 +48,42 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
   });
 
   return (
-    <div className="d-flex flex-column h-100 bg-white">
+    <div className="d-flex flex-column h-100 bg-white" style={{ minHeight: 0 }}>
       {/* Search Header */}
-      <div className="p-2 border-bottom" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
+      <div className="p-2 border-bottom flex-shrink-0" style={{ borderColor: 'var(--wms-border, #C8B9A6)', backgroundColor: '#FFFFFF' }}>
         <InputGroup size="sm" className="ara-search-capsule">
           <InputGroup.Text><Icon name="search" /></InputGroup.Text>
           <Form.Control
-            placeholder="Tìm theo tên, SĐT, mã khách..."
+            placeholder="Tìm hội thoại, SĐT..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </InputGroup>
       </div>
 
-      {/* Quick Tag Pills Bar - dùng allTags từ DB */}
-      <div className="d-flex flex-wrap gap-1 p-2 border-bottom" style={{ borderColor: 'var(--wms-border, #C8B9A6)', backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)' }}>
+      {/* Quick Tag Pills Bar - Horizontal scrollable single clean row */}
+      <div
+        className="d-flex align-items-center gap-1.5 px-2 py-2 border-bottom flex-shrink-0 overflow-x-auto text-nowrap"
+        style={{
+          borderColor: 'var(--wms-border, #C8B9A6)',
+          backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)',
+          scrollbarWidth: 'none',
+        }}
+      >
         <button
           type="button"
           className={`ara-status-pill-btn ${!activeFilterTag ? 'active' : ''}`}
           onClick={() => onTagFilter && onTagFilter('')}
         >
-          <span>Tất cả</span>
+          <span>Tất cả ({conversations.length})</span>
         </button>
-        {allTags.slice(0, 6).map((tag) => {
+        {allTags.map((tag) => {
           const isActive = activeFilterTag === tag.name;
           return (
             <button
               key={tag._id || tag.name}
               type="button"
-              className="ara-status-pill-btn"
-              style={isActive
-                ? { background: tag.color, borderColor: tag.color, color: tag.textColor || '#fff' }
-                : { borderColor: tag.color, color: tag.color, background: 'transparent' }}
+              className={`ara-status-pill-btn ${isActive ? 'active' : ''}`}
               onClick={() => onTagFilter && onTagFilter(isActive ? '' : tag.name)}
             >
               <span>{tag.name}</span>
@@ -89,7 +93,7 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
       </div>
 
       {/* Conversation Stream List */}
-      <div className="flex-grow-1 overflow-auto">
+      <div className="flex-grow-1 overflow-auto" style={{ minHeight: 0 }}>
         {loading ? (
           [1, 2, 3, 4, 5].map((i) => <SkeletonConversationItem key={i} />)
         ) : filteredConversations.length === 0 ? (
@@ -108,13 +112,13 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
                   action
                   active={isSelected}
                   onClick={() => onSelect(conv)}
-                  className="d-flex gap-2 py-3"
+                  className="d-flex gap-2.5 py-3 px-3"
                   style={{
                     backgroundColor: isSelected ? 'var(--wms-primary-subtle, #EFE6DA)' : 'transparent',
-                    borderLeft: isSelected ? '4px solid var(--wms-accent, #8A6A46)' : '4px solid transparent',
+                    borderLeft: isSelected ? '3px solid var(--wms-accent, #8A6A46)' : '3px solid transparent',
                     color: 'var(--wms-text-primary, #141210)',
                     borderColor: 'var(--wms-border, #C8B9A6)',
-                    transition: 'all 0.12s ease',
+                    transition: 'all 0.15s ease',
                   }}
                 >
                   {/* Avatar Icon */}
@@ -123,7 +127,7 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
                     {conv.unreadCount > 0 && !isSelected && (
                       <span
                         className="position-absolute top-0 start-100 translate-middle badge rounded-pill"
-                        style={{ backgroundColor: '#A62626', color: '#FFFFFF', fontSize: '10px' }}
+                        style={{ backgroundColor: 'var(--wms-error, #BA1A1A)', color: '#FFFFFF', fontSize: '10px' }}
                       >
                         {conv.unreadCount}
                       </span>
@@ -133,33 +137,30 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
                   {/* Conversation Details */}
                   <div className="flex-grow-1 overflow-hidden">
                     <div className="d-flex align-items-center justify-content-between mb-1">
-                      <div className="d-flex align-items-center gap-1 overflow-hidden me-1">
+                      <div className="d-flex align-items-center gap-1.5 overflow-hidden me-1">
                         <span className="fw-bold text-truncate small" style={{ color: 'var(--wms-text-primary, #141210)' }}>
                           {customer?.fullName || 'Khách chưa đặt tên'}
                         </span>
-                        {conv.pageName && (
-                          <span
-                            className="badge rounded-pill px-1.5 py-0.5 flex-shrink-0"
-                            style={{
-                              backgroundColor: 'var(--wms-primary-subtle, #EFE6DA)',
-                              color: 'var(--wms-accent-hover, #6E5233)',
-                              border: '1px solid var(--wms-border, #C8B9A6)',
-                              fontSize: '10px',
-                            }}
-                          >
-                            {conv.pageName}
-                          </span>
+                        {customer?.tier && (
+                          <span className="ara-vip-badge" style={{ fontSize: '9.5px', padding: '1px 6px' }}>{customer.tier}</span>
                         )}
                       </div>
-                      <span className="small flex-shrink-0 ms-1" style={{ color: 'var(--wms-secondary, #574F46)', fontSize: '11px' }}>
+                      <span className="small flex-shrink-0 ms-1 tabular-nums" style={{ color: 'var(--wms-text-light, #786E63)', fontSize: '11px' }}>
                         {conv.lastMessageAt
                           ? new Date(conv.lastMessageAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
                           : ''}
                       </span>
                     </div>
 
+                    {/* Phone / Subtitle info */}
+                    {customer?.phone && (
+                      <div className="small text-truncate mb-0.5 tabular-nums" style={{ color: 'var(--wms-text-light, #786E63)', fontSize: '11px' }}>
+                        {customer.phone}
+                      </div>
+                    )}
+
                     {/* Last Message Preview */}
-                    <p className="small mb-1 text-truncate" style={{ color: 'var(--wms-secondary, #574F46)' }}>
+                    <p className="small mb-1 text-truncate" style={{ color: 'var(--wms-secondary, #574F46)', fontSize: '12px' }}>
                       {conv.lastMessagePreview || 'Bắt đầu cuộc trò chuyện...'}
                     </p>
 
@@ -169,12 +170,13 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
                         {conv.tags.slice(0, 2).map((tg, idx) => (
                           <span
                             key={idx}
-                            className="badge rounded px-1.5 py-0.5"
+                            className="badge rounded-pill px-2 py-0.5"
                             style={{
-                              backgroundColor: '#FEF0C7',
-                              color: '#9A5B06',
-                              border: '1px solid #F5B95F',
-                              fontSize: '10.5px',
+                              backgroundColor: '#FFFBEB',
+                              color: '#D97706',
+                              border: '1px solid #FDE68A',
+                              fontSize: '10px',
+                              fontWeight: 600,
                             }}
                           >
                             {tg}
@@ -182,12 +184,13 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
                         ))}
                         {conv.tags.length > 2 && (
                           <span
-                            className="badge rounded px-1.5 py-0.5"
+                            className="badge rounded-pill px-1.5 py-0.5"
                             style={{
-                              backgroundColor: '#FEF0C7',
-                              color: '#9A5B06',
-                              border: '1px solid #F5B95F',
-                              fontSize: '10.5px',
+                              backgroundColor: 'var(--wms-primary-subtle, #EFE6DA)',
+                              color: 'var(--wms-text-secondary, #574F46)',
+                              border: '1px solid var(--wms-border, #C8B9A6)',
+                              fontSize: '10px',
+                              fontWeight: 600,
                             }}
                           >
                             +{conv.tags.length - 2}

@@ -3,7 +3,7 @@
  * @title        : Quick Order Modal Component (UC-78 & UC-79)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-28
+ * @lastModified : 2026-11-14
  * @description  : Modal tạo đơn hàng bán lẻ nhanh hiển thị nổi bật trên màn hình
  *                 khi Seller bấm nút "Tạo đơn nhanh" tại khung chat.
  *                 Tự động tải danh sách sản phẩm có sẵn trong kho, hỗ trợ tìm kiếm tồn kho
@@ -293,8 +293,8 @@ const QuickOrderModal = ({
   return (
     <Modal show={isOpen} onHide={onClose} centered size="lg" fullscreen="md-down" backdrop="static" scrollable>
       {/* Header */}
-      <Modal.Header closeButton style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
-        <Modal.Title as="h5" className="d-flex align-items-center gap-2" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+      <Modal.Header closeButton style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--wms-border, #C8B9A6)' }}>
+        <Modal.Title as="h5" className="d-flex align-items-center gap-2 ara-headline" style={{ color: 'var(--wms-text-primary, #141210)' }}>
           <Icon name="bag-plus" style={{ color: 'var(--wms-accent, #8A6A46)' }} />
           Tạo Đơn Hàng Nhanh
         </Modal.Title>
@@ -341,7 +341,7 @@ const QuickOrderModal = ({
               </Alert>
             )}
             <div>
-              <Button className="btn-wms-primary" onClick={onClose}>Đóng cửa sổ</Button>
+              <Button className="btn-wms-accent" onClick={onClose}>Đóng cửa sổ</Button>
             </div>
           </div>
         ) : (

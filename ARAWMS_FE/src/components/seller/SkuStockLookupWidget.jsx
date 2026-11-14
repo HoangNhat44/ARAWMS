@@ -3,7 +3,7 @@
  * @title        : SKU Stock Lookup Widget (UC-77)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-28
+ * @lastModified : 2026-11-14
  * @description  : Tra cứu tồn kho khả dụng realtime theo SKU, gửi SKU vào chat hoặc thêm vào đơn.
  *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
  * @module       : Conversational Commerce / Inventory Widget

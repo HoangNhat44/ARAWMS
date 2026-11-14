@@ -3,7 +3,7 @@
  * @title        : Seller Orders Workspace Page (Bootstrap / React-Bootstrap)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-28
+ * @lastModified : 2026-11-14
  * @description  : Màn hình quản lý danh sách đơn hàng bán lẻ của Seller: Tab đa kênh, dải đếm trạng thái realtime,
  *                 bảng chi tiết đầy đủ cột với React-Bootstrap Table, Form và Icons.
  *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
@@ -50,18 +50,19 @@ const detectTelco = (phone = '') => {
  * Danh sách trạng thái Pancake và cấu hình nhãn đếm
  */
 const PANCAKE_STATUSES = [
-  { key: '',                    label: 'Tất cả',                countKey: 'ALL' },
-  { key: 'PENDING',             label: 'Mới',                   countKey: 'PENDING' },
-  { key: 'CONFIRMED_RESERVED',  label: 'Chờ lấy hàng',          countKey: 'CONFIRMED_RESERVED' },
-  { key: 'PICKING',             label: 'Đang lấy hàng',         countKey: 'PICKING' },
-  { key: 'PACKED',              label: 'Đã lấy hàng',           countKey: 'PACKED' },
-  { key: 'HANDED_OVER_CARRIER', label: 'Đang giao hàng',        countKey: 'HANDED_OVER_CARRIER' },
-  { key: 'DELIVERED',           label: 'Đã giao thành công',    countKey: 'DELIVERED' },
-  { key: 'EXCHANGE_REQUESTED',  label: 'Đang đổi hàng',         countKey: 'EXCHANGE_REQUESTED' },
-  { key: 'RETURN_REQUESTED',    label: 'Đang hoàn hàng',        countKey: 'RETURN_REQUESTED' },
-  { key: 'COMPLETED',           label: 'Hoàn thành',            countKey: 'COMPLETED' },
-  { key: 'CANCELLED',           label: 'Đã hủy',                countKey: 'CANCELLED' },
-  { key: 'RETURNED',            label: 'Đã hoàn về kho',        countKey: 'RETURNED' },
+  { key: '',                    label: 'Tất cả',                            countKey: 'ALL' },
+  { key: 'PENDING',             label: 'Chờ xác nhận',                      countKey: 'PENDING' },
+  { key: 'CONFIRMED_RESERVED',  label: 'Đã xác nhận, đã giữ hàng',          countKey: 'CONFIRMED_RESERVED' },
+  { key: 'PICKING',             label: 'Đang soạn hàng',                    countKey: 'PICKING' },
+  { key: 'PACKED',              label: 'Đã đóng hàng, chờ bàn giao',        countKey: 'PACKED' },
+  { key: 'HANDED_OVER_CARRIER', label: 'Đã bàn giao cho bên vận chuyển',    countKey: 'HANDED_OVER_CARRIER' },
+  { key: 'CARRIER_PICKED_UP',   label: 'Đã lấy hàng',                       countKey: 'CARRIER_PICKED_UP' },
+  { key: 'DELIVERED',           label: 'Đã giao thành công',                countKey: 'DELIVERED' },
+  { key: 'EXCHANGE_REQUESTED',  label: 'Đang đổi hàng',                     countKey: 'EXCHANGE_REQUESTED' },
+  { key: 'RETURN_REQUESTED',    label: 'Khách yêu cầu trả hàng',            countKey: 'RETURN_REQUESTED' },
+  { key: 'COMPLETED',           label: 'Hoàn thành (Bán tại quầy)',         countKey: 'COMPLETED' },
+  { key: 'CANCELLED',           label: 'Đã hủy',                            countKey: 'CANCELLED' },
+  { key: 'RETURNED',            label: 'Đã hoàn về kho',                    countKey: 'RETURNED' },
 ];
 
 /**
@@ -331,20 +332,22 @@ const SellerOrdersPage = () => {
         const custName = customer.fullName || recipient.name || 'Khách vãng lai';
         const phone = recipient.phone || customer.phone || '';
         const telco = detectTelco(phone)?.name || '';
-        const address = [recipient.addressDetail, recipient.ward, recipient.district, recipient.province]
-          .filter(Boolean)
-          .join(', ') || '-';
+        const address = recipient.address
+          || [recipient.addressDetail, recipient.ward, recipient.district, recipient.province]
+            .filter(Boolean)
+            .join(', ')
+          || '-';
 
         const itemsStr = (ord.items || [])
           .map((item) => {
             const sku = item.skuCode || item.skuId?.skuCode || 'SKU';
-            const name = item.styleName || item.skuId?.styleName || '';
+            const name = item.productName || item.styleName || item.skuId?.styleName || '';
             const qty = item.orderedQty || 1;
             return `[${sku}] ${name} (x${qty})`;
           })
           .join('; ');
 
-        const prodAmount = ord.financialSummary?.totalProductAmount || 0;
+        const prodAmount = ord.financialSummary?.itemsSubtotal ?? ord.financialSummary?.totalProductAmount ?? 0;
         const shippingFee = ord.financialSummary?.shippingFee || 0;
         const discount = ord.financialSummary?.discountAmount || 0;
         const totalAmount = ord.financialSummary?.totalOrderAmount || 0;
@@ -405,9 +408,9 @@ const SellerOrdersPage = () => {
   };
 
   return (
-    <div className="d-flex flex-column h-100 seller-workspace" style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
+    <div className="seller-orders-workspace d-flex flex-column" style={{ minHeight: 'calc(100vh - 64px)', backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
       {/* ── Top Header Navigation Bar (Enterprise Solid Surface) ─── */}
-      <div className="ara-seller-header px-2 px-md-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2 flex-shrink-0">
+      <div className="ara-seller-header px-2 px-md-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2 flex-shrink-0" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
         <Stack direction="horizontal" gap={2} className="align-items-center">
           <Button
             size="sm"
@@ -416,19 +419,19 @@ const SellerOrdersPage = () => {
           >
             <Icon name="arrow-left" /> <span className="d-none d-sm-inline">Về Chat</span>
           </Button>
-          <div className="vr opacity-25 d-none d-sm-block" style={{ height: 22, backgroundColor: 'var(--wms-border-strong, #AE9C86)' }} />
+          <div className="vr opacity-25 d-none d-sm-block" style={{ height: 22, backgroundColor: 'var(--wms-border, #C8B9A6)' }} />
           <div className="d-flex align-items-center gap-2">
-            <span className="fw-bold fs-6 text-nowrap" style={{ color: 'var(--wms-text-primary, #141210)', letterSpacing: '0.01em' }}>
-              Quản Lý Đơn Hàng
+            <span className="fw-bold fs-6 text-nowrap" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+              Quản lý đơn hàng
             </span>
           </div>
         </Stack>
 
         {/* Action Buttons Top Right */}
-        <Stack direction="horizontal" gap={1} className="order-2 order-md-3 flex-wrap ms-auto">
+        <Stack direction="horizontal" gap={1.5} className="order-2 order-md-3 flex-wrap ms-auto">
           <Button
             size="sm"
-            className="btn-wms-default d-flex align-items-center gap-1 px-2 py-1"
+            className="btn-wms-default d-flex align-items-center gap-1 px-2.5 py-1"
             onClick={() => fetchOrders(currentPage)}
             title="Đồng bộ danh sách đơn"
           >
@@ -437,8 +440,7 @@ const SellerOrdersPage = () => {
 
           <Button
             size="sm"
-            variant="warning"
-            className="d-flex align-items-center gap-1 px-2 px-sm-3 py-1 fw-bold text-dark shadow-sm"
+            className="btn-wms-default d-flex align-items-center gap-1 px-2.5 py-1"
             onClick={() => setImportModalOpen(true)}
             title="Import đơn hàng từ Shopee, TikTok Shop và File Excel"
           >
@@ -447,7 +449,7 @@ const SellerOrdersPage = () => {
 
           <Button
             size="sm"
-            className="btn-wms-default d-flex align-items-center gap-1 px-2 py-1"
+            className="btn-wms-default d-flex align-items-center gap-1 px-2.5 py-1"
             onClick={() => { setSelectedOrderForRma(null); setRmaModalOpen(true); }}
             title="Tạo phiếu đổi trả hàng"
           >
@@ -456,7 +458,7 @@ const SellerOrdersPage = () => {
 
           <Button
             size="sm"
-            className="btn-wms-default d-flex align-items-center gap-1 px-2 py-1"
+            className="btn-wms-default d-flex align-items-center gap-1 px-2.5 py-1"
             onClick={() => handleExportOrders(filteredOrders, `don-hang-ara-${channelFilter.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`)}
             title="Xuất file toàn bộ danh sách đơn hàng đang hiển thị"
           >
@@ -465,7 +467,7 @@ const SellerOrdersPage = () => {
 
           <Button
             size="sm"
-            className="btn-wms-accent d-flex align-items-center gap-1 px-2 px-sm-3 py-1"
+            className="btn-wms-accent d-flex align-items-center gap-1 px-3 py-1"
             onClick={() => setCreateOrderModalOpen(true)}
             title="Tạo đơn hàng mới"
           >
@@ -572,7 +574,10 @@ const SellerOrdersPage = () => {
       </div>
 
       {/* ── Pancake Status Pill Counters Bar ─── */}
-      <div className="ara-status-pills-container px-3 py-2 d-flex align-items-center gap-1 overflow-x-auto flex-shrink-0">
+      <div
+        className="ara-status-pills-container px-3 py-2 d-flex align-items-center gap-1 overflow-x-auto flex-shrink-0"
+        style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}
+      >
         {PANCAKE_STATUSES.map((st) => {
           const count = statusCounts[st.countKey] !== undefined ? statusCounts[st.countKey] : 0;
           const isActive = statusFilter === st.key;
@@ -582,13 +587,13 @@ const SellerOrdersPage = () => {
               key={st.key}
               type="button"
               className={`ara-status-pill-btn ${isActive ? 'active' : ''}`}
-              style={isZero && !isActive ? { opacity: 0.55, backgroundColor: '#FAFAF8' } : {}}
+              style={isZero && !isActive ? { opacity: 0.55, backgroundColor: '#FFFFFF' } : {}}
               onClick={() => setStatusFilter(st.key)}
             >
               <span>{st.label}</span>
               <span
                 className="ara-status-pill-count"
-                style={count > 0 && !isActive ? { backgroundColor: '#E2D3C0', color: '#1C1A17' } : {}}
+                style={count > 0 && !isActive ? { backgroundColor: 'var(--wms-primary-subtle, #EFE6DA)', color: 'var(--wms-secondary, #574F46)' } : {}}
               >
                 {count}
               </span>
@@ -597,10 +602,13 @@ const SellerOrdersPage = () => {
         })}
       </div>
 
-      {/* ── Main Orders Data View: Desktop/Tablet Table vs Mobile Cards Stream ─── */}
-      {/* 1. Desktop & Tablet Table (>= md, >= 768px) */}
-      <div className="d-none d-md-flex flex-column flex-grow-1 overflow-hidden bg-white" style={{ minHeight: 0 }}>
-        <div className="flex-grow-1 overflow-auto ara-seller-table-scroll" style={{ minHeight: 0, height: '100%' }}>
+      {/* ── Main Orders Data View: Desktop/Tablet Table Card vs Mobile Cards Stream ─── */}
+      {/* 1. Desktop & Tablet Table Card Container (>= md, >= 768px) */}
+      <div
+        className="d-none d-md-flex flex-column flex-grow-1 mx-2 mx-md-3 my-2 bg-white border rounded shadow-sm overflow-hidden"
+        style={{ borderColor: 'var(--wms-border, #C8B9A6)', minHeight: 480 }}
+      >
+        <div className="flex-grow-1 overflow-auto ara-seller-table-scroll" style={{ minHeight: 380, maxHeight: 'calc(100vh - 280px)' }}>
           <Table hover className="ara-seller-table align-middle mb-0 text-nowrap w-100">
             <thead className="sticky-top shadow-sm" style={{ zIndex: 10 }}>
               <tr>
@@ -706,9 +714,11 @@ const SellerOrdersPage = () => {
                             <span className="fw-semibold text-primary font-monospace" style={{ fontSize: '0.82rem' }}>
                               {waybill}
                             </span>
-                            <span className="text-muted" style={{ fontSize: '0.68rem' }}>
-                              GHN: {ord.warehouseFulfillment?.ghnStatus || 'ready_to_pick'}
-                            </span>
+                            {ord.warehouseFulfillment?.ghnStatus ? (
+                              <span className="text-muted" style={{ fontSize: '0.68rem' }}>
+                                GHN: {ord.warehouseFulfillment.ghnStatus}
+                              </span>
+                            ) : null}
                           </div>
                         ) : ord.orderType !== 'POS_DIRECT' && ord.channel !== 'POS' && ord.channel !== 'POS_OFFLINE' && !['CANCELLED', 'RETURNED'].includes(ord.status) ? (
                           <Button
@@ -813,7 +823,7 @@ const SellerOrdersPage = () => {
                       {/* Ghi chú nội bộ */}
                       <td>
                         <div className="text-truncate text-secondary" style={{ maxWidth: 110, fontSize: '0.8rem' }} title={ord.notes || ''}>
-                          {ord.notes || (ord.financialSummary?.discountAmount > 0 ? 'Đã giảm giá' : 'Đơn COD')}
+                          {ord.notes || '-'}
                         </div>
                       </td>
 
@@ -873,6 +883,68 @@ const SellerOrdersPage = () => {
               )}
             </tbody>
           </Table>
+        </div>
+
+        {/* ── Desktop Card Footer: Status summary & Pagination bar ─── */}
+        <div
+          className="border-top px-3 py-2 small d-flex flex-wrap align-items-center justify-content-between gap-2 flex-shrink-0"
+          style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)', color: 'var(--wms-secondary, #574F46)' }}
+        >
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <div>
+              Tổng số: <strong className="text-dark">{pagination.total ?? filteredOrders.length}</strong> đơn hàng · Đã chọn <strong className="text-dark">{selectedIds.length}</strong> đơn
+            </div>
+            <div className="vr opacity-25 d-none d-sm-block" style={{ height: 16 }} />
+            <div className="d-flex align-items-center gap-1">
+              <span className="text-muted d-none d-sm-inline">Hiển thị:</span>
+              <Form.Select
+                size="sm"
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                style={{ width: 'auto', padding: '2px 24px 2px 8px', fontSize: '0.8rem', backgroundColor: '#FFFFFF', borderColor: 'var(--wms-border, #C8B9A6)' }}
+              >
+                <option value={10}>10 đơn/trang</option>
+                <option value={20}>20 đơn/trang</option>
+                <option value={50}>50 đơn/trang</option>
+                <option value={100}>100 đơn/trang</option>
+              </Form.Select>
+            </div>
+          </div>
+
+          {/* Phân trang Bootstrap */}
+          {(pagination.totalPages > 1 || pagination.total > pageSize) && (
+            <div className="d-flex align-items-center gap-2 ms-auto">
+              <span className="text-muted small d-none d-md-inline">
+                Trang {currentPage} / {pagination.totalPages || 1}
+              </span>
+              <Pagination size="sm" className="mb-0 ara-pagination">
+                <Pagination.First
+                  disabled={currentPage <= 1 || loading}
+                  onClick={() => handlePageChange(1)}
+                  title="Trang đầu"
+                />
+                <Pagination.Prev
+                  disabled={currentPage <= 1 || loading}
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  title="Trang trước"
+                />
+                {renderPaginationItems()}
+                <Pagination.Next
+                  disabled={currentPage >= (pagination.totalPages || 1) || loading}
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  title="Trang sau"
+                />
+                <Pagination.Last
+                  disabled={currentPage >= (pagination.totalPages || 1) || loading}
+                  onClick={() => handlePageChange(pagination.totalPages || 1)}
+                  title="Trang cuối"
+                />
+              </Pagination>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1030,9 +1102,9 @@ const SellerOrdersPage = () => {
         )}
       </div>
 
-      {/* ── Footer status & Pagination bar ─── */}
+      {/* ── Mobile Footer status & Pagination bar (< md) ─── */}
       <div
-        className="border-top px-3 py-2 small d-flex flex-wrap align-items-center justify-content-between gap-2 flex-shrink-0"
+        className="d-md-none border-top px-3 py-2 small d-flex flex-wrap align-items-center justify-content-between gap-2 flex-shrink-0"
         style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)', color: 'var(--wms-secondary, #574F46)' }}
       >
         <div className="d-flex align-items-center gap-2 flex-wrap">

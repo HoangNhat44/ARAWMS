@@ -3,7 +3,7 @@
  * @title        : Order Detail Modal (Pancake-style)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-29
+ * @lastModified : 2026-11-14
  * @description  : Modal xem chi tiết đơn hàng, chỉnh sửa sản phẩm/số lượng khi PENDING,
  *                 khóa cứng khi đã chốt đơn, gửi phiếu xác nhận tự động
  *                 và kiểm soát điều kiện hủy đơn kèm lý do bắt buộc.
@@ -24,13 +24,14 @@ import { Icon, formatVnd, ORDER_STATUS_VARIANT } from './SellerUi';
  */
 const ORDER_STATUSES = [
   { value: 'PENDING',             label: 'Chờ xác nhận' },
-  { value: 'CONFIRMED_RESERVED',  label: 'Chờ lấy hàng' },
-  { value: 'PICKING',             label: 'Đang lấy hàng' },
-  { value: 'PACKED',              label: 'Đã lấy hàng' },
-  { value: 'HANDED_OVER_CARRIER', label: 'Đang giao hàng' },
+  { value: 'CONFIRMED_RESERVED',  label: 'Đã xác nhận, đã giữ hàng' },
+  { value: 'PICKING',             label: 'Đang soạn hàng' },
+  { value: 'PACKED',              label: 'Đã đóng hàng, chờ bàn giao' },
+  { value: 'HANDED_OVER_CARRIER', label: 'Đã bàn giao cho bên vận chuyển' },
+  { value: 'CARRIER_PICKED_UP',   label: 'Đã lấy hàng' },
   { value: 'DELIVERED',           label: 'Đã giao thành công' },
-  { value: 'COMPLETED',           label: 'Hoàn thành' },
-  { value: 'RETURN_REQUESTED',    label: 'Đang hoàn hàng' },
+  { value: 'COMPLETED',           label: 'Hoàn thành (Bán tại quầy)' },
+  { value: 'RETURN_REQUESTED',    label: 'Khách yêu cầu trả hàng' },
   { value: 'EXCHANGE_REQUESTED',  label: 'Đang đổi hàng' },
   { value: 'RETURNED',            label: 'Đã hoàn về kho' },
   { value: 'CANCELLED',           label: 'Đã hủy' },
@@ -44,6 +45,7 @@ const SectionTitle = ({ icon, children, right }) => (
       backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)',
       color: 'var(--wms-text-primary, #141210)',
       borderBottom: '1px solid var(--wms-border, #C8B9A6)',
+      letterSpacing: '0.03em',
     }}
   >
     <span className="d-flex align-items-center gap-2">
@@ -109,8 +111,14 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
       setHasItemsChanged(false);
       setError('');
 
-      // Tự động lấy mã vận đơn GHN hoặc đồng bộ trạng thái realtime từ GHN khi mở chi tiết đơn Online
-      if (isOpen && order.orderType !== 'POS_DIRECT' && order.channel !== 'POS' && order.channel !== 'POS_OFFLINE' && !['CANCELLED', 'RETURNED'].includes(order.status)) {
+      // Tự động lấy mã vận đơn GHN hoặc đồng bộ trạng thái realtime từ GHN khi mở chi tiết đơn Online (chỉ đơn đang tiến hành)
+      if (
+        isOpen &&
+        order.orderType !== 'POS_DIRECT' &&
+        order.channel !== 'POS' &&
+        order.channel !== 'POS_OFFLINE' &&
+        !['DELIVERED', 'COMPLETED', 'CANCELLED', 'RETURNED'].includes(order.status)
+      ) {
         const orderId = order._id || order.id;
         if (orderId) {
           sellerService
@@ -138,7 +146,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
   const pickedStatuses = ['picked', 'storing', 'transporting', 'sorting', 'delivering', 'delivered', 'return', 'returned'];
   const isShipperPicked =
     pickedStatuses.includes(String(ghnStatus || '').toLowerCase()) ||
-    ['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'COMPLETED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED'].includes(status);
+    ['PACKED', 'HANDED_OVER_CARRIER', 'CARRIER_PICKED_UP', 'DELIVERED', 'COMPLETED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED'].includes(status);
   const isCancelable = ['PENDING', 'CONFIRMED_RESERVED', 'PICKING'].includes(status) && !isShipperPicked && status !== 'CANCELLED';
 
   // Tính toán tổng tiền realtime theo items hiện tại
@@ -278,65 +286,55 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
   };
 
   /**
-   * Thực hiện gọi API cập nhật trạng thái
+   * Thực hiện gọi API hủy đơn hàng chuyên biệt (UC-81: giải phóng tồn kho giữ chỗ & đồng bộ hủy GHN)
    */
-  const executeStatusUpdate = async (newStatus, extraPayload = {}) => {
+  const executeCancelOrder = async (cancelReason) => {
     try {
       setUpdating(true);
       setError('');
-      const payload = { status: newStatus, ...extraPayload };
-
-      const res = await sellerService.updateOrderStatus(order._id || order.id, payload);
+      const res = await sellerService.cancelOrder(order._id || order.id, cancelReason);
       if (res.success) {
-        const updated = res.data || { ...order, status: newStatus, ...extraPayload };
-        setStatus(updated.status || newStatus);
+        const updated = res.data || { ...order, status: 'CANCELLED', cancelReason };
+        setStatus(updated.status || 'CANCELLED');
         setWaybillCode(updated.warehouseFulfillment?.waybillCode || waybillCode);
         setGhnStatus(updated.warehouseFulfillment?.ghnStatus || ghnStatus);
         setGhnStatusName(updated.warehouseFulfillment?.ghnStatusName || ghnStatusName);
         if (onStatusUpdated) onStatusUpdated(updated);
-        const targetObj = ORDER_STATUSES.find((s) => s.value === newStatus);
-        showSuccess(`Đã chuyển trạng thái đơn hàng sang "${targetObj?.label || newStatus}" và gửi thông báo cho khách!`, 'Cập nhật đơn hàng');
+        showSuccess('Đã hủy đơn hàng và giải phóng tồn kho giữ chỗ thành công!', 'Hủy đơn hàng');
       }
     } catch (err) {
-      const msg = err.message || 'Lỗi cập nhật trạng thái';
+      const msg = err.message || 'Lỗi hủy đơn hàng';
       setError(msg);
-      showError(msg, 'Lỗi cập nhật');
+      showError(msg, 'Lỗi hủy đơn');
     } finally {
       setUpdating(false);
     }
   };
 
   /**
-   * Cập nhật trạng thái đơn hàng (Mã vận đơn tự động lấy từ GHN API theo GBR-10, bỏ hoàn toàn nhập tay).
+   * Mở hộp thoại xác nhận lý do hủy đơn hàng
    */
-  const handleUpdateStatus = async (newStatus) => {
-    if (newStatus === status) return;
-
-    if (newStatus === 'CANCELLED') {
-      if (!isCancelable) {
-        showError('Shipper đã lấy hàng, không thể hủy đơn hàng này.', 'Không thể hủy đơn');
-        return;
-      }
-      setPromptDialog({
-        isOpen: true,
-        title: 'Hủy Đơn Hàng',
-        label: 'Vui lòng nhập lý do hủy đơn hàng:',
-        value: 'Khách đổi ý hủy đơn',
-        targetStatus: 'CANCELLED',
-        field: 'cancelReason',
-      });
+  const handleCancelOrder = () => {
+    if (!isCancelable) {
+      showError('Shipper đã lấy hàng, không thể hủy đơn hàng này.', 'Không thể hủy đơn');
       return;
     }
-
-    return executeStatusUpdate(newStatus);
+    setPromptDialog({
+      isOpen: true,
+      title: 'Hủy Đơn Hàng',
+      label: 'Vui lòng nhập lý do hủy đơn hàng:',
+      value: 'Khách đổi ý hủy đơn',
+      targetStatus: 'CANCELLED',
+      field: 'cancelReason',
+    });
   };
 
   const handleConfirmPrompt = (e) => {
     e.preventDefault();
     if (!promptDialog.value.trim()) return;
-    const { targetStatus, field, value } = promptDialog;
+    const { value } = promptDialog;
     setPromptDialog({ ...promptDialog, isOpen: false });
-    executeStatusUpdate(targetStatus, { [field]: value.trim() });
+    executeCancelOrder(value.trim());
   };
 
   const formatDate = (dateStr) => {
@@ -354,36 +352,36 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
             <Icon name="bag" className="fs-4" style={{ color: 'var(--wms-accent, #8A6A46)' }} />
             <div>
               <Stack direction="horizontal" gap={2} className="align-items-center">
-                <Modal.Title as="span" className="font-monospace fw-bold fs-5" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+                <Modal.Title as="span" className="font-monospace fw-bold fs-5 ara-headline" style={{ color: 'var(--wms-text-primary, #141210)' }}>
                   {order.orderCode
                     ? (order.orderCode.startsWith('#') ? order.orderCode : `#${order.orderCode}`)
                     : (order._id ? `#${String(order._id).slice(-8).toUpperCase()}` : 'CHI TIẾT ĐƠN HÀNG')}
                 </Modal.Title>
                 <span
-                  className="badge rounded px-2 py-0.5"
+                  className="badge rounded-pill px-2.5 py-0.5"
                   style={
                     status === 'DELIVERED' || status === 'COMPLETED'
-                      ? { backgroundColor: '#E3F5EC', color: '#1E6B47', border: '1px solid #86CFA8', fontSize: '12px' }
+                      ? { backgroundColor: '#ECFDF5', color: '#006C4A', border: '1px solid #A7F3D0', fontSize: '12px', fontWeight: 600 }
                       : status === 'PENDING'
-                      ? { backgroundColor: '#FEF0C7', color: '#9A5B06', border: '1px solid #F5B95F', fontSize: '12px' }
+                      ? { backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A', fontSize: '12px', fontWeight: 600 }
                       : status === 'CANCELLED'
-                      ? { backgroundColor: '#FCE4E4', color: '#A62626', border: '1px solid #EDA1A1', fontSize: '12px' }
-                      : { backgroundColor: '#EFE6DA', color: '#6E5233', border: '1px solid #C8B9A6', fontSize: '12px' }
+                      ? { backgroundColor: '#FFDAD6', color: '#BA1A1A', border: '1px solid #FFB4AB', fontSize: '12px', fontWeight: 600 }
+                      : { backgroundColor: 'var(--wms-primary-subtle, #EFE6DA)', color: 'var(--wms-accent-hover, #6E5233)', border: '1px solid var(--wms-accent-light, #D4B48C)', fontSize: '12px', fontWeight: 600 }
                   }
                 >
                   {currentStatusObj.label || status}
                 </span>
                 {order.orderType === 'POS_DIRECT' && (
                   <span
-                    className="badge rounded px-2 py-0.5 d-flex align-items-center gap-1"
-                    style={{ backgroundColor: '#E3F5EC', color: '#1E6B47', border: '1px solid #86CFA8', fontSize: '11px' }}
+                    className="badge rounded-pill px-2 py-0.5 d-flex align-items-center gap-1"
+                    style={{ backgroundColor: '#ECFDF5', color: '#006C4A', border: '1px solid #A7F3D0', fontSize: '11px', fontWeight: 600 }}
                   >
                     <Icon name="shop" /> Bán tại quầy POS
                   </span>
                 )}
               </Stack>
               {order.createdAt && (
-                <div className="small d-flex align-items-center gap-1 mt-1" style={{ color: 'var(--wms-secondary, #574F46)' }}>
+                <div className="small d-flex align-items-center gap-1 mt-1 tabular-nums" style={{ color: 'var(--wms-text-secondary, #574F46)' }}>
                   <Icon name="calendar3" /> Đặt lúc: {formatDate(order.createdAt)}
                   {order.confirmedAt && (
                     <span className="ms-2" style={{ color: 'var(--wms-accent, #8A6A46)' }}>
@@ -653,6 +651,60 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
               </Card.Body>
             </Card>
           )}
+
+          {/* Khối 4: Lịch sử xử lý & thay đổi trạng thái đơn hàng (Audit Trail) */}
+          {Array.isArray(order.statusHistory) && order.statusHistory.length > 0 && (
+            <Card className="shadow-sm">
+              <SectionTitle icon="clock-history">
+                Lịch Sử Xử Lý &amp; Trạng Thái Đơn Hàng ({order.statusHistory.length})
+              </SectionTitle>
+              <Card.Body className="p-0">
+                <ListGroup variant="flush">
+                  {order.statusHistory.map((hist, hIdx) => {
+                    const fromObj = ORDER_STATUSES.find((s) => s.value === hist.from);
+                    const toObj = ORDER_STATUSES.find((s) => s.value === hist.to);
+                    const fromLabel = hist.from === 'NONE' ? 'Khởi tạo đơn' : (fromObj?.label || hist.from);
+                    const toLabel = toObj?.label || hist.to;
+                    const actorName = hist.by?.fullName || (hist.by?.employeeCode ? `NV: ${hist.by.employeeCode}` : 'Hệ thống tự động / GHN');
+
+                    return (
+                      <ListGroup.Item
+                        key={hist._id || hIdx}
+                        className="py-2 px-3 small d-flex flex-wrap align-items-center justify-content-between gap-2 border-bottom"
+                        style={{ backgroundColor: hIdx % 2 === 0 ? '#FFFFFF' : '#FAF8F5' }}
+                      >
+                        <div className="d-flex align-items-center gap-2 flex-wrap">
+                          <span className="badge bg-secondary-subtle text-secondary border font-monospace" style={{ fontSize: '11px' }}>
+                            {fromLabel}
+                          </span>
+                          <Icon name="arrow-right" className="text-secondary" />
+                          <span className={`ara-badge-status ${ORDER_STATUS_CLASS[hist.to] || 'ara-badge-confirmed'}`} style={{ fontSize: '11px' }}>
+                            {toLabel}
+                          </span>
+                          {hist.note && (
+                            <span className="text-muted ms-1" style={{ fontSize: '11.5px' }}>
+                              — {hist.note}
+                            </span>
+                          )}
+                        </div>
+                        <div className="d-flex align-items-center gap-2 text-secondary" style={{ fontSize: '11.5px' }}>
+                          <span>
+                            <Icon name="person" className="me-1" />
+                            <strong>{actorName}</strong>
+                          </span>
+                          <span>•</span>
+                          <span>
+                            <Icon name="calendar3" className="me-1" />
+                            {formatDate(hist.at)}
+                          </span>
+                        </div>
+                      </ListGroup.Item>
+                    );
+                  })}
+                </ListGroup>
+              </Card.Body>
+            </Card>
+          )}
         </Modal.Body>
 
         {/* Footer */}
@@ -682,7 +734,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
                 variant="outline-danger"
                 className="d-flex align-items-center gap-1"
                 disabled={updating}
-                onClick={() => handleUpdateStatus('CANCELLED')}
+                onClick={handleCancelOrder}
               >
                 <Icon name="x-circle" /> Hủy Đơn Hàng
               </Button>

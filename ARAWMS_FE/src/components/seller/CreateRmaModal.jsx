@@ -3,7 +3,7 @@
  * @title        : Advanced RMA Create Modal (Mentor Feedback 4.3.2)
  * @author       : AraStore Frontend Team
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-11-02
+ * @lastModified : 2026-11-14
  * @description  : Modal Đổi & Trả Hàng (RMA) hoàn thiện:
  *                 1. Cho phép Seller tự tìm kiếm & chọn đơn hàng cũ (theo Mã đơn / SĐT / Tên).
  *                 2. Chọn từng sản phẩm cụ thể cần đổi hoặc trả (Partial Return / Exchange).
@@ -28,15 +28,16 @@ import { Icon, formatVnd } from './SellerUi';
  */
 const STATUS_LABELS = {
   DRAFT: 'Bản nháp',
-  PENDING: 'Mới',
-  CONFIRMED_RESERVED: 'Chờ lấy hàng',
-  PICKING: 'Đang lấy hàng',
-  PACKED: 'Đã lấy hàng',
-  HANDED_OVER_CARRIER: 'Đang giao hàng',
+  PENDING: 'Chờ xác nhận',
+  CONFIRMED_RESERVED: 'Đã xác nhận, đã giữ hàng',
+  PICKING: 'Đang soạn hàng',
+  PACKED: 'Đã đóng hàng, chờ bàn giao',
+  HANDED_OVER_CARRIER: 'Đã bàn giao cho bên vận chuyển',
+  CARRIER_PICKED_UP: 'Đã lấy hàng',
   DELIVERED: 'Đã giao thành công',
-  COMPLETED: 'Hoàn thành',
+  COMPLETED: 'Hoàn thành (Bán tại quầy)',
   CANCELLED: 'Đã hủy',
-  RETURN_REQUESTED: 'Đang hoàn hàng',
+  RETURN_REQUESTED: 'Khách yêu cầu trả hàng',
   EXCHANGE_REQUESTED: 'Đang đổi hàng',
   RETURNED: 'Đã hoàn về kho',
 };
@@ -342,20 +343,20 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
 
   return (
     <Modal show={isOpen} onHide={onClose} centered size="lg" fullscreen="md-down" scrollable>
-      <Modal.Header closeButton style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderBottom: '1px solid var(--wms-border, #C8B9A6)' }}>
-        <Modal.Title as="h6" className="d-flex align-items-center gap-2 fw-bold text-dark">
+      <Modal.Header closeButton style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid var(--wms-border, #C8B9A6)' }}>
+        <Modal.Title as="h6" className="d-flex align-items-center gap-2 fw-bold ara-headline" style={{ color: 'var(--wms-text-primary, #141210)' }}>
           <Icon name="arrow-counterclockwise" style={{ color: 'var(--wms-accent, #8A6A46)' }} />
           Xử Lý Yêu Cầu Đổi / Trả Hàng
         </Modal.Title>
       </Modal.Header>
 
-      <Modal.Body style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)', padding: '1rem' }}>
+      <Modal.Body style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)', padding: '1.25rem' }}>
         {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
 
         {successResult ? (
-          <div className="text-center py-4 bg-white rounded p-4 border" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
-            <Icon name="check-circle-fill" style={{ color: 'var(--wms-success, #1E6B47)' }} className="display-4 d-block mb-3" />
-            <h4 className="fw-bold" style={{ color: 'var(--wms-primary, #141210)' }}>
+          <div className="text-center py-4 bg-white rounded-3 p-4 border" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
+            <Icon name="check-circle-fill" style={{ color: 'var(--wms-success, #006C4A)' }} className="display-4 d-block mb-3" />
+            <h4 className="fw-bold" style={{ color: 'var(--wms-text-primary, #141210)' }}>
               Đã Tiếp Nhận Yêu Cầu Đổi / Trả Hàng!
             </h4>
             <div className="mb-3">
