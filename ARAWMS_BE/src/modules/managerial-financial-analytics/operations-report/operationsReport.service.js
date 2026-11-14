@@ -4,6 +4,7 @@
  */
 import mongoose from 'mongoose';
 import { httpError } from '../../../common/utils/httpError.js';
+import { channels, paymentStatusOf, salesChannelOf, salesReportScope } from './salesReportScope.js';
 
 export const num = (v) => Number(v) || 0;
 export const sum = (rows, fn) => rows.reduce((a, r) => a + num(fn(r)), 0);
@@ -19,22 +20,70 @@ export function period(from, to) {
   return { $gte: new Date(`${from}T00:00:00+07:00`), $lt: new Date(Date.parse(`${to}T00:00:00+07:00`) + 86400000) };
 }
 export const percent = (current, previous) => previous === 0 ? null : (current - previous) / Math.abs(previous) * 100;
-export const channels = ['FACEBOOK', 'SHOPEE', 'TIKTOK', 'WHOLESALE', 'RETAIL', 'DIRECT', 'UNKNOWN'];
+export const ownerToday = (now = new Date()) => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(now);
+
+// Kiểm tra khoảng gốc rồi giới hạn thống kê ở ngày Việt Nam hiện tại.
+// Khoảng hoàn toàn trong tương lai trả về tập rỗng.
+export function reportPeriod(from, to, today = ownerToday()) {
+  period(from, to);
+  return { to: to < today ? to : today, range: from > today
+    ? { $gte: new Date(`${from}T00:00:00+07:00`), $lt: new Date(`${from}T00:00:00+07:00`) }
+    : period(from, to < today ? to : today) };
+}
+// Ghép phiếu hoàn với đơn gốc ngay ở MongoDB. Đơn có thể được đóng gói ở kỳ trước.
+export async function readSalesPeriod(range, scope) {
+  const [orders, returns] = await Promise.all([
+    read('sales_orders', { ...scope, $or: [
+      { 'warehouseFulfillment.packedAt': range },
+      { 'warehouseFulfillment.packedAt': null, createdAt: range },
+    ] }, {
+      salesChannel: 1, channel: 1, sourceDetails: 1, conversationId: 1, paymentStatus: 1,
+      status: 1, createdAt: 1, financialSummary: 1, 'warehouseFulfillment.packedAt': 1,
+      'warehouseFulfillment.deliveredAt': 1, deliveredAt: 1, expectedDeliveryAt: 1,
+    }),
+    mongoose.connection.collection('return_requests').aggregate([
+      { $match: { ...active, $or: [
+        { 'financialAccounting.approvedAt': range },
+        { 'financialAccounting.approvedAt': null, createdAt: range },
+      ] } },
+      { $lookup: {
+        from: 'sales_orders', localField: 'originalOrderId', foreignField: '_id', as: 'originalOrder',
+        pipeline: [{ $match: { ...active, ...scope } }, {
+          $project: { salesChannel: 1, channel: 1, sourceDetails: 1, conversationId: 1 },
+        }],
+      } },
+      ...(Object.keys(scope).length ? [{ $match: { 'originalOrder.0': { $exists: true } } }] : []),
+      { $project: { status: 1, reasonCode: 1, financialAccounting: 1, createdAt: 1, originalOrder: { $first: '$originalOrder' } } },
+    ]).toArray(),
+  ]);
+  return { orders, returns };
+}
 // UC-13: Doanh thu ghi nhận khi đóng gói, trừ giá trị hàng trả được duyệt trong kỳ; thanh toán đếm theo trường riêng.
 export function salesSummary(orders, returns) {
+  const refundsByChannel = new Map();
+  for (const request of returns) {
+    if (!['ACCOUNTANT_APPROVED', 'COMPLETED'].includes(request.status)) continue;
+    const channel = salesChannelOf(request.originalOrder || {});
+    refundsByChannel.set(channel, (refundsByChannel.get(channel) || 0) + num(request.financialAccounting?.returnedMerchandiseValue));
+  }
   // Gom từng nguồn bán. Tiền hàng chỉ ghi nhận với đơn đã đóng gói và không ở trạng thái hủy.
   const grouped = channels.map((channel) => {
-    const rows = orders.filter((o) => (o.salesChannel || 'UNKNOWN') === channel);
+    const rows = orders.filter((o) => salesChannelOf(o) === channel);
     // Tổng giá trị đơn lấy totalOrderAmount của đơn chưa hủy (đã gồm giảm giá/phí vận chuyển).
     // Giữ riêng revenue vì doanh thu sau hoàn và tổng giá trị đơn là hai chỉ số khác nhau.
-    return { channel, orders: rows.length, orderValue: sum(rows.filter((o) => o.status !== 'CANCELLED'), (o) => o.financialSummary?.totalOrderAmount), revenue: sum(rows.filter((r) => r.warehouseFulfillment?.packedAt && r.status !== 'CANCELLED'), (o) => num(o.financialSummary?.itemsSubtotal) - num(o.financialSummary?.discountAmount)),
-      paid: rows.filter((o) => o.paymentStatus === 'PAID').length, unpaid: rows.filter((o) => ['UNPAID', 'PARTIAL'].includes(o.paymentStatus)).length,
-      unknownPayment: rows.filter((o) => !o.paymentStatus || o.paymentStatus === 'UNKNOWN').length, shipping: sum(rows.filter((o) => o.status !== 'CANCELLED'), (o) => o.financialSummary?.shippingFee),
-      late: rows.filter((o) => o.expectedDeliveryAt && new Date(o.deliveredAt || Date.now()) > new Date(o.expectedDeliveryAt) && o.status !== 'CANCELLED').length };
+    const grossRevenue = sum(rows.filter((r) => r.warehouseFulfillment?.packedAt && r.status !== 'CANCELLED'), (o) => num(o.financialSummary?.itemsSubtotal) - num(o.financialSummary?.discountAmount));
+    const refunded = refundsByChannel.get(channel) || 0;
+    return { channel, orders: rows.length, orderValue: sum(rows.filter((o) => o.status !== 'CANCELLED'), (o) => o.financialSummary?.totalOrderAmount),
+      grossRevenue, refunded, revenue: grossRevenue - refunded,
+      paid: rows.filter((o) => paymentStatusOf(o) === 'PAID').length, unpaid: rows.filter((o) => ['UNPAID', 'PARTIAL'].includes(paymentStatusOf(o))).length,
+      unknownPayment: rows.filter((o) => paymentStatusOf(o) === 'UNKNOWN').length, shipping: sum(rows.filter((o) => o.status !== 'CANCELLED'), (o) => o.financialSummary?.shippingFee),
+      late: rows.filter((o) => o.expectedDeliveryAt && new Date(o.deliveredAt || o.warehouseFulfillment?.deliveredAt || Date.now()) > new Date(o.expectedDeliveryAt) && o.status !== 'CANCELLED').length };
   });
   // Chỉ trừ giá trị hàng hoàn đã được kế toán duyệt/hoàn tất; phí vận chuyển là chỉ số riêng.
-  const refunded = sum(returns.filter((r) => ['ACCOUNTANT_APPROVED', 'COMPLETED'].includes(r.status)), (r) => r.financialAccounting?.returnedMerchandiseValue);
-  return { channels: grouped, orderValue: sum(grouped, (r) => r.orderValue), revenue: sum(grouped, (r) => r.revenue) - refunded, refunded, orders: orders.length, returns: returns.length,
+  const refunded = sum(grouped, (r) => r.refunded);
+  return { channels: grouped, orderValue: sum(grouped, (r) => r.orderValue), revenue: sum(grouped, (r) => r.revenue), refunded, orders: orders.length, returns: returns.length,
     shipping: sum(grouped, (r) => r.shipping), paid: sum(grouped, (r) => r.paid), unpaid: sum(grouped, (r) => r.unpaid),
     returnReasons: ['CUSTOMER_REFUSED', 'INVALID_ORDER', 'PRODUCT_DEFECT', 'OTHER', 'UNKNOWN'].map((reason) => ({ reason, count: returns.filter((r) => (r.reasonCode || 'UNKNOWN') === reason).length })),
     returnStatuses: ['REQUESTED', 'UNBOXED_INSPECTED', 'ACCOUNTANT_APPROVED', 'COMPLETED', 'REJECTED'].map((status) => ({ status, count: returns.filter((r) => r.status === status).length })) };
@@ -65,25 +114,19 @@ export function productionRows(orders, materials, boms = []) {
  */
 export async function operationsReport(query) {
   if (query.scope && !['all', 'period'].includes(query.scope)) throw httpError(400, 'Phạm vi không hợp lệ.');
-  const range = period(query.from, query.to); const previousRange = period(query.compareFrom, query.compareTo);
-  if (query.salesChannel && !channels.includes(query.salesChannel)) throw httpError(400, 'Nguồn bán không hợp lệ.');
-  if (query.paymentStatus && !['PAID', 'UNPAID', 'PARTIAL', 'UNKNOWN'].includes(query.paymentStatus)) throw httpError(400, 'Trạng thái thanh toán không hợp lệ.');
-  // Kiểm tra enum trước khi đưa điều kiện vào MongoDB; UNKNOWN bao gồm dữ liệu cũ chưa có trường.
-  const salesScope = { ...(query.salesChannel ? { salesChannel: query.salesChannel === 'UNKNOWN' ? { $in: ['UNKNOWN', null] } : query.salesChannel } : {}), ...(query.paymentStatus ? { paymentStatus: query.paymentStatus === 'UNKNOWN' ? { $in: ['UNKNOWN', null] } : query.paymentStatus } : {}) };
-  const scopedOrders = Object.keys(salesScope).length ? await read('sales_orders', salesScope, { _id: 1 }) : null;
-  // Ưu tiên ngày đóng gói/ngày duyệt hoàn. Nếu chưa có ngày nghiệp vụ, dùng createdAt
-  // để thống kê bản ghi trong kỳ; salesSummary vẫn yêu cầu packedAt trước khi tính doanh thu.
-  // Khi lọc nguồn bán/thanh toán, phiếu hoàn phải liên kết với đơn thỏa cùng bộ lọc.
-  const salesFilter = (r) => ({ ...salesScope, $or: [{ 'warehouseFulfillment.packedAt': r }, { 'warehouseFulfillment.packedAt': null, createdAt: r }] });
-  const returnFilter = (r) => ({ ...(scopedOrders ? { originalOrderId: { $in: scopedOrders.map((o) => o._id) } } : {}), $or: [{ 'financialAccounting.approvedAt': r }, { 'financialAccounting.approvedAt': null, createdAt: r }] });
+  const today = ownerToday();
+  const range = period(query.from, query.to);
+  const { range: salesRange } = reportPeriod(query.from, query.to, today);
+  const { range: previousRange } = reportPeriod(query.compareFrom, query.compareTo, today);
+  const salesScope = salesReportScope(query);
   // Các truy vấn độc lập chạy song song; đọc cả kỳ đang xem và kỳ đối chiếu để dùng cùng công thức.
-  const [orders, returns, oldOrders, oldReturns, materials, skus, plans, contracts, suppliers, production, sessions, movements, employees, tasks, targets] = await Promise.all([
-    read('sales_orders', salesFilter(range)), read('return_requests', returnFilter(range)), read('sales_orders', salesFilter(previousRange)), read('return_requests', returnFilter(previousRange)),
+  const [current, old, materials, skus, plans, contracts, suppliers, production, sessions, movements, employees, tasks, targets] = await Promise.all([
+    readSalesPeriod(salesRange, salesScope), readSalesPeriod(previousRange, salesScope),
     read('raw_materials'), read('skus'), read('material_inbound_plans', query.scope === 'all' ? {} : { scheduledDeliveryDate: range }), read('supplier_contracts'), read('suppliers'),
     read('production_orders', { plannedStart: range }), read('stocktake_sessions', { createdAt: range }), read('inventory_transactions', { createdAt: range }),
     read('users', { status: 'ACTIVE', roleCode: { $ne: 'OWNER' } }, { fullName: 1, employeeCode: 1 }), read('work_assignments', { dueDate: range }), read('owner_targets', { year: Number(query.from.slice(0, 4)) }),
   ]);
-  const sales = salesSummary(orders, returns); const previous = salesSummary(oldOrders, oldReturns);
+  const sales = salesSummary(current.orders, current.returns); const previous = salesSummary(old.orders, old.returns);
   // Tạo bảng tra theo ObjectId để ghép tên nhà cung cấp/nguyên liệu mà không truy vấn riêng từng dòng.
   const supplierMap = new Map(suppliers.map((r) => [String(r._id), r])); const contractMap = new Map(contracts.map((r) => [String(r._id), r]));
   const materialMap = new Map(materials.map((r) => [String(r._id), r]));

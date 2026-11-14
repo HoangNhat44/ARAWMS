@@ -27,7 +27,8 @@ export default function ActivityPage() {
     for (const key of ['targetId', 'actorId']) if (draft[key] && !/^[a-f0-9]{24}$/i.test(draft[key].trim())) { setError('Mã định danh phải có 24 ký tự, gồm số và chữ a–f.'); return; }
     setFilters({ ...Object.fromEntries(Object.entries(draft).map(([key, value]) => [key, value.trim()]).filter(([, value]) => value)), page: 1, trace: trace ? '1' : '' });
   };
-  return <><header className="owner-page-heading"><div><p className="owner-eyebrow">Quản lý người dùng</p><h1>Nhật ký và truy vết</h1><p>Xem hoạt động đã ghi nhận, người thực hiện và đối tượng chịu thay đổi.</p></div></header>
+  return <><header className="owner-page-heading"><div><h1>Nhật ký hoạt động</h1><p>Xem hoạt động đã ghi nhận, người thực hiện và đối tượng chịu thay đổi.</p></div></header>
+    <h2>Lịch sử hệ thống</h2>
     <form className="owner-filters" onSubmit={submit}>{[['search', 'Từ khóa'], ['targetCode', 'Mã nghiệp vụ'], ['targetId', 'Mã định danh đối tượng'], ['actorId', 'Mã định danh người thực hiện'], ['action', 'Hành động chính xác'], ['from', 'Từ ngày'], ['to', 'Đến ngày']].map(([key, label]) =>
       <WmsField key={key}>{label}<WmsInput type={['from', 'to'].includes(key) ? 'date' : 'text'} maxLength={100} value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} /></WmsField>)}
       <WmsField className="owner-checkbox"><WmsInput type="checkbox" checked={trace} onChange={(e) => setTrace(e.target.checked)} />Truy vết theo đối tượng</WmsField><WmsButton className="btn-ara-primary">Áp dụng</WmsButton>
@@ -41,6 +42,7 @@ export default function ActivityPage() {
       {selected.targetId && <WmsButton onClick={() => { setDraft({ ...initial, targetId: selected.targetId }); setTrace(true); setFilters({ targetId: selected.targetId, page: 1, trace: '1' }); setSelected(null); }}>Truy vết toàn bộ đối tượng này</WmsButton>}</Modal>}
   </>;
 }
+
 // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-10/11 - Hiển thị lịch sử bằng nhãn nghiệp vụ thay cho cấu trúc dữ liệu kỹ thuật.
 function AuditValues({ value }) {
   const fields = { status: 'Trạng thái', fullName: 'Họ tên', email: 'Thư điện tử', phone: 'Điện thoại', roleCode: 'Vai trò', employeeCode: 'Mã nhân viên', managementVersion: 'Lần cập nhật', permissionOverrides: 'Quyền được cấp riêng', code: 'Quyền', granted: 'Được cấp', reason: 'Lý do', totalPaidAmount: 'Đã thanh toán', voucherId: 'Mã phiếu chi', note: 'Ghi chú', plannedQty: 'Số lượng kế hoạch', completedQty: 'Số lượng hoàn thành', items: 'Sản phẩm', materialRequirements: 'Nhu cầu nguyên liệu', requiredQty: 'Số lượng cần', materialId: 'Mã nguyên liệu', by: 'Người thực hiện', at: 'Thời gian' };

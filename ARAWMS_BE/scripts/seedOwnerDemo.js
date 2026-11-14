@@ -14,6 +14,7 @@ import InventoryTransaction from '../src/models/InventoryTransaction.model.js';
 import ProductionOrder from '../src/models/ProductionOrder.model.js';
 import SalesOrder from '../src/models/SalesOrder.model.js';
 import ReturnRequest from '../src/models/ReturnRequest.model.js';
+import ReturnInspection from '../src/models/ReturnInspection.model.js';
 import Sku from '../src/models/Sku.model.js';
 import StocktakeSession from '../src/models/StocktakeSession.model.js';
 import CashFlowVoucher from '../src/models/CashFlowVoucher.model.js';
@@ -48,9 +49,9 @@ export function demoRecords(year = 2026, staffId = id(900), ownerId = id(901)) {
     add(ProductionOrder, { _id: id(key + 4), code: `DEMO-SX-${y}-${m}`, status: 'MATERIAL_SHORTAGE', plannedStart: date, plannedEnd: at(y, m, 20), items: [{ skuId: id(32), skuCode: 'DEMO-AO-M', plannedQty: 300, completedQty: 100 }], materialRequirements: [{ materialId: id(1), requiredQty: 600 }], stages: [{ stage: 'CUTTING', status: 'BLOCKED', blockedReason: 'Cần 600 mét vải, tồn khả dụng chỉ còn 400 mét.' }, { stage: 'SEWING', status: 'NOT_STARTED' }] }, date);
     add(FinishedGoodsTicket, { _id: id(key + 5), ticketCode: `DEMO-TP-${y}-${m}`, ticketType: 'INBOUND_FROM_SEWING', status: 'COMPLETED', createdByManagerId: staffId, items: [{ skuId: id(32), skuBarcode: 'DEMO-AO-M', designatedFifoLocationId: id(40), expectedQty: 100, scannedQty: 100 }] }, date);
     add(InventoryTransaction, { _id: id(key + 6), transactionCode: `DEMO-TP-GD-${y}-${m}`, warehouseType: 'FINISHED_GOODS', itemType: 'FINISHED_SKU', skuId: id(32), transactionType: 'INBOUND_PUTAWAY', referenceModel: 'FinishedGoodsTicket', referenceId: id(key + 5), quantityChange: 100, onHandBefore: 100, onHandAfter: 200, performedByUserId: staffId }, date);
-    ['FACEBOOK', 'SHOPEE', 'TIKTOK', 'WHOLESALE', 'RETAIL', 'DIRECT'].forEach((channel, c) => {
+    ['FACEBOOK', 'SHOPEE', 'TIKTOK', 'SHOPEE', 'FACEBOOK', m % 6 === 0 ? 'UNKNOWN' : 'TIKTOK'].forEach((channel, c) => {
       const amount = (y === year ? 150000 : 120000 - (year - 1 - y) * 10000) * (c + 1) * (m + 1);
-      add(SalesOrder, { _id: id(key + 10 + c), orderCode: `DEMO-DH-${y}-${m}-${c}`, customerId: id(31), sellerId: staffId, salesChannel: channel, paymentStatus: c % 2 ? 'UNPAID' : 'PAID', status: 'DELIVERED', expectedDeliveryAt: at(y, m, 4), deliveredAt: at(y, m, c % 2 ? 6 : 3), items: [{ skuId: id(32), skuCode: 'DEMO-AO-M', skuBarcode: 'DEMO-AO-M', orderedQty: (c + 1) * (m + 1), unitSalePrice: y === year ? 150000 : 120000 - (year - 1 - y) * 10000 }], financialSummary: { itemsSubtotal: amount, totalOrderAmount: amount + 25000, shippingFee: 25000, expectedCodAmount: c % 2 ? amount + 25000 : 0 }, warehouseFulfillment: { packedAt: date } }, date);
+      add(SalesOrder, { _id: id(key + 10 + c), orderCode: `DEMO-DH-${y}-${m}-${c}`, customerId: id(31), sellerId: staffId, salesChannel: channel, paymentStatus: c % 2 ? 'PENDING' : 'PAID', status: 'DELIVERED', expectedDeliveryAt: at(y, m, 4), deliveredAt: at(y, m, c % 2 ? 6 : 3), items: [{ skuId: id(32), skuCode: 'DEMO-AO-M', skuBarcode: 'DEMO-AO-M', orderedQty: (c + 1) * (m + 1), unitSalePrice: y === year ? 150000 : 120000 - (year - 1 - y) * 10000 }], financialSummary: { itemsSubtotal: amount, totalOrderAmount: amount + 25000, shippingFee: 25000, expectedCodAmount: c % 2 ? amount + 25000 : 0 }, warehouseFulfillment: { packedAt: date, handedOverAt: date } }, date);
     });
     add(ReturnRequest, { _id: id(key + 20), rmaCode: `DEMO-HOAN-${y}-${m}`, originalOrderId: id(key + 10), customerId: id(31), createdBySellerId: staffId, returnType: 'RETURN_FOR_REFUND', reasonCode: m % 2 ? 'CUSTOMER_REFUSED' : 'INVALID_ORDER', status: 'COMPLETED', financialAccounting: { returnedMerchandiseValue: 50000, approvedAt: date } }, date);
     add(StocktakeSession, { _id: id(key + 21), sessionCode: `DEMO-KK-NL-${y}-${m}`, warehouseType: 'RAW_MATERIAL', createdByManagerId: staffId, status: 'APPROVED_COMPLETED', approvalInfo: { approvedAt: date, approvedByUserId: ownerId } }, date);
@@ -61,10 +62,81 @@ export function demoRecords(year = 2026, staffId = id(900), ownerId = id(901)) {
   }
   records.filter((r) => r.model === ProductionOrder).forEach((r) => { r.value.items[0].bomId = id(42); });
   records.filter((r) => r.model === FinishedGoodsTicket).forEach((r) => { r.value.items[0].designatedFifoLocationId = id(41); });
-  return [...records, ...catalogRecords(id, staffId, ownerId)];
+  addActivityDemoRecords(year, staffId, add);
+  // Phiếu chi/thu trong các bộ mẫu cũ thiếu người nhận và nội dung bắt buộc
+  // theo schema hiện tại. Bổ sung ngay trên dữ liệu mẫu trước khi xác thực.
+  return [...records, ...catalogRecords(id, staffId, ownerId)].map(record => {
+    if (record.model !== CashFlowVoucher) return record;
+    const { value } = record;
+    const supplierPayment = Boolean(value.supplierId);
+    return { model: record.model, value: {
+      paymentReason: value.note || 'Thanh toán công nợ theo hợp đồng mẫu',
+      recipient: { name: supplierPayment ? 'Nhà cung cấp mẫu' : 'Đơn vị vận chuyển mẫu',
+        recipientType: supplierPayment ? 'SUPPLIER' : 'CARRIER' },
+      ...value,
+    } };
+  });
+}
+
+// Cụm mã riêng giúp chạy lại seed trên bản demo cũ. Lọc 10/11 để thấy
+// đúng 100 đơn bàn giao và 10 đơn chuyển hoàn ngày 13/11.
+function addActivityDemoRecords(year, staffId, add) {
+  const sent = at(year, 11, 10);
+  const returned = at(year, 11, 13);
+  // Mỗi nhóm 25 đơn tập trung vào ba kênh online, chỉ một đơn thiếu nguồn.
+  // Đặt các ca quay đầu đầu tiên trải đều để biểu đồ có đủ lý do theo kênh.
+  const sources = ['FACEBOOK', 'SHOPEE', 'TIKTOK', 'FACEBOOK', 'SHOPEE', 'TIKTOK', 'FACEBOOK',
+    'SHOPEE', 'TIKTOK', ...Array(8).fill('FACEBOOK'), ...Array(5).fill('SHOPEE'), ...Array(2).fill('TIKTOK'), 'UNKNOWN'];
+  const otherStatuses = ['PENDING', 'CONFIRMED_RESERVED', 'PICKING', 'PACKED', 'CANCELLED'];
+  const orders = Array.from({ length: 105 }, (_, index) => index);
+  for (const index of orders) {
+    const customerId = id(201000 + index);
+    const orderId = id(202000 + index);
+    const orderCode = `DEMO-OWNER-DH-${year}-${index + 1}`;
+    const turnedBack = index < 10;
+    const shipped = index < 100;
+    const delivered = shipped && !turnedBack && index % 5 !== 0;
+    const salesChannel = sources[index % sources.length];
+    const status = turnedBack ? (index < 7 ? 'RETURNED' : 'RETURN_REQUESTED')
+      : delivered ? 'DELIVERED' : shipped ? 'HANDED_OVER_CARRIER' : otherStatuses[index - 100];
+    add(Customer, { _id: customerId, customerCode: `DEMO-OWNER-KH-${index + 1}`, fullName: `Khách demo ${index + 1}` }, sent);
+    add(SalesOrder, {
+      _id: orderId, orderCode, sellerId: staffId, customerId, salesChannel, status,
+      paymentStatus: delivered ? 'PAID' : 'PENDING', deliveredAt: delivered ? returned : undefined,
+      items: [{ skuId: id(32), skuCode: 'DEMO-AO-M', skuBarcode: 'DEMO-AO-M', orderedQty: 1, unitSalePrice: 150000 }],
+      financialSummary: { itemsSubtotal: 150000, totalOrderAmount: 175000, shippingFee: 25000, expectedCodAmount: 175000 },
+      warehouseFulfillment: {
+        packedAt: shipped || status === 'PACKED' ? sent : undefined, handedOverAt: shipped ? sent : undefined,
+        ghnStatus: turnedBack ? (index < 7 ? 'returned' : 'returning') : undefined,
+        ghnUpdatedAt: turnedBack ? returned : undefined,
+      },
+      statusHistory: turnedBack ? [{ from: 'HANDED_OVER_CARRIER', to: status, at: returned }] : [],
+    }, sent);
+    if (!turnedBack) continue;
+    add(ReturnRequest, {
+      _id: id(203000 + index), rmaCode: `DEMO-OWNER-HOAN-${index + 1}`, originalOrderId: orderId, customerId,
+      createdBySellerId: staffId, returnType: 'RETURN_FOR_REFUND', status: 'REQUESTED',
+      reasonCode: index === 0 ? 'INVALID_ORDER' : index < 6 ? 'CUSTOMER_REFUSED'
+        : index === 6 ? 'PRODUCT_DEFECT' : index === 7 ? 'OTHER' : 'UNKNOWN',
+    }, returned);
+    // Mẫu cả chờ mở kiện, chờ nhập, không đạt và đã nhập. ID phiếu dùng riêng cho báo cáo demo.
+    if (index >= 4) continue;
+    const completed = index === 0;
+    if (completed) add(FinishedGoodsTicket, {
+      _id: id(205000), ticketCode: 'DEMO-OWNER-NHAP-HOAN', ticketType: 'INBOUND_FROM_RETURN', status: 'COMPLETED',
+      items: [{ skuId: id(32), skuBarcode: 'DEMO-AO-M', designatedFifoLocationId: id(41), expectedQty: 1, scannedQty: 1 }],
+    }, returned);
+    add(ReturnInspection, {
+      _id: id(204000 + index), inspectionCode: `DEMO-OWNER-KIEM-${index + 1}`, orderId, orderCode, customerId,
+      inspectionResult: index === 3 ? 'FAILED' : 'PASSED', inspectedByTechId: staffId,
+      inspectedAt: returned, inboundTicketId: completed ? id(205000) : undefined,
+      items: [{ skuId: id(32), quantity: 1, passed: index !== 3 }],
+    }, returned);
+  }
 }
 async function main() {
   const dry = process.argv.includes('--dry-run');
+  const activityOnly = process.argv.includes('--activity-only');
   if (!dry) {
     if (!process.env.MONGODB_URI) throw new Error('Cần cấu hình MONGODB_URI trong tệp .env.');
     await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 10000 });
@@ -73,7 +145,13 @@ async function main() {
     const staff = dry ? null : await mongoose.connection.collection('users').findOne({ isDeleted: { $ne: true }, status: 'ACTIVE', roleCode: 'ACCOUNTANT' });
     const owner = dry ? null : await mongoose.connection.collection('users').findOne({ isDeleted: { $ne: true }, status: 'ACTIVE', roleCode: 'OWNER' });
     if (!dry && (!staff || !owner)) throw new Error('Cần có tài khoản chủ cửa hàng và kế toán đang hoạt động trước khi thêm dữ liệu mẫu.');
-    const records = demoRecords(2026, staff?._id, owner?._id);
+    const allRecords = demoRecords(2026, staff?._id, owner?._id);
+    // Chỉ chèn bộ dữ liệu mục 4.4 và các mã hàng liên kết khi demo báo cáo kinh doanh.
+    const linkedCodes = ['DEMO-SP-01', 'DEMO-AO-M', 'DEMO-KHO-TP'];
+    const records = activityOnly ? allRecords.filter(({ value }) => [
+      value.orderCode, value.customerCode, value.rmaCode, value.inspectionCode, value.ticketCode,
+      value.productCode, value.skuCode, value.locationCode,
+    ].some(code => code?.startsWith('DEMO-OWNER-') || linkedCodes.includes(code))) : allRecords;
     for (const { model, value } of records) { const doc = new model(value); await doc.validate(); }
     if (dry) { console.log(`Đã kiểm tra ${records.length} bản ghi mẫu hợp lệ; chưa kết nối cơ sở dữ liệu.`); return; }
     let count = 0;
@@ -81,6 +159,18 @@ async function main() {
     const groups = new Map();
     for (const { model, value } of records) { const doc = new model(value).toObject({ transform: false, virtuals: false }); if (!groups.has(model)) groups.set(model, []); groups.get(model).push({ updateOne: { filter: { _id: doc._id }, update: { $setOnInsert: doc }, upsert: true } }); }
     for (const [model, operations] of groups) { const result = await model.collection.bulkWrite(operations, { ordered: true }); count += result.upsertedCount; }
+    if (activityOnly) {
+      // Chỉ chỉnh các mã mẫu thuộc bộ Owner. Giữ nguyên nguồn của đơn thật.
+      const historicalOrders = allRecords.filter(({ model, value }) => model === SalesOrder && /^DEMO-DH-\d{4}-\d{1,2}-[345]$/.test(value.orderCode));
+      const updated = await SalesOrder.collection.bulkWrite(historicalOrders.map(({ value }) => ({
+        updateOne: {
+          filter: { _id: value._id, orderCode: value.orderCode, salesChannel: { $in: ['WHOLESALE', 'RETAIL', 'DIRECT', 'UNKNOWN'] } },
+          update: { $set: { salesChannel: value.salesChannel } },
+        },
+      })));
+      console.log(`Đã thêm ${count} bản ghi mẫu mục 4.4 và cập nhật nguồn bán của ${updated.modifiedCount} đơn mẫu cũ.`);
+      return;
+    }
     // UC-19: Bổ sung liên kết định mức còn thiếu cho bản mẫu phiên bản đầu, không đổi số lượng/kế hoạch đã chỉnh.
     await ProductionOrder.collection.updateMany({ _id: { $in: records.filter((r) => r.model === ProductionOrder && r.value.code.startsWith('DEMO-SX-202')).map((r) => r.value._id) }, 'items.0.bomId': { $exists: false } }, { $set: { 'items.0.bomId': id(42) } });
     await FinishedGoodsTicket.collection.updateMany({ _id: { $in: records.filter((r) => r.model === FinishedGoodsTicket).map((r) => r.value._id) }, 'items.0.designatedFifoLocationId': id(40) }, { $set: { 'items.0.designatedFifoLocationId': id(41) } });

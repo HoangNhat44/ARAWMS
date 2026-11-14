@@ -606,9 +606,12 @@ html{scrollbar-gutter:stable;}
 .owner-notifications-list{max-height:min(440px,calc(100dvh - 230px));overflow-y:auto;overscroll-behavior:contain;}
 .owner-notifications-list ul{list-style:none;margin:0;padding:6px 0;}
 .owner-notification-item{display:flex;align-items:center;gap:12px;padding:12px 8px;border-radius:8px;color:inherit;text-decoration:none;}
+button.owner-notification-item{width:100%;border:0;background:transparent;text-align:left;cursor:pointer;font:inherit;}
 .owner-notification-item:hover,.owner-notification-item:focus-visible{background:#edf5f0;color:inherit;}
 .owner-notification-item:focus-visible{outline:2px solid var(--wms-primary);outline-offset:-2px;}
 .owner-notification-icon{display:flex;align-items:center;justify-content:center;flex:0 0 44px;height:44px;border-radius:50%;color:var(--wms-primary);background:#e6f0e9;}
+.owner-notification-icon.owner-notification-warning{color:#9f1239;background:#fff1f2;}
+.owner-notification-target{scroll-margin-top:100px;}
 .owner-notification-copy{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;overflow-wrap:anywhere;}
 .owner-notification-copy strong{font-size:14px;}
 .owner-notification-copy>span{font-size:13px;color:var(--wms-secondary);}
@@ -707,6 +710,15 @@ html{scrollbar-gutter:stable;}
 .owner-chart-legend,.owner-share-legend{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 16px;margin:0;padding:0;list-style:none;}
 .owner-chart-legend>span,.owner-share-legend>li{display:flex;align-items:baseline;gap:8px;font-size:13px;overflow-wrap:anywhere;}
 .owner-chart-legend i,.owner-share-legend i{flex:0 0 10px;height:10px;border-radius:2px;}
+
+/* Hai kỳ dùng cùng chiều rộng và bảng số liệu làm phương án đọc không phụ thuộc màu sắc. */
+.owner-channel-share-bar {
+  display: flex;
+  min-height: 20px;
+  margin-block: 8px 16px;
+  overflow: hidden;
+  border-radius: 5px;
+}
 .owner-donut-layout{display:grid;justify-items:center;gap:12px;}
 .owner-donut-graphic{position:relative;width:min(100%, 264px);display:grid;place-items:center;}
 .owner-donut-graphic svg{display:block;width:100%;height:auto;}

@@ -1,5 +1,10 @@
-import { read, period, channels, num } from './operationsReport.service.js';
-import { httpError } from '../../../common/utils/httpError.js';
+/*
+ * Nguyễn Ngọc Huy - HE171157
+ * Ngày: 14-11-2026
+ * Thống kê sản phẩm bán chạy theo phạm vi nguồn bán của chủ cửa hàng.
+ */
+import { read, period, num } from './operationsReport.service.js';
+import { salesReportScope } from './salesReportScope.js';
 // Quantity is taken from actual order lines, never from inventory balances or catalogue prices.
 export function bestSellerRows(orders, products, skus) {
   const bySku = new Map(skus.map(s => [String(s._id), s]));
@@ -30,9 +35,7 @@ export function bestSellerRows(orders, products, skus) {
 }
 export async function bestSellersReport(query) {
   const range = period(query.from, query.to);
-  if (query.salesChannel && !channels.includes(query.salesChannel)) throw httpError(400, 'Nguồn bán không hợp lệ.');
-  if (query.paymentStatus && !['PAID', 'UNPAID', 'PARTIAL', 'UNKNOWN'].includes(query.paymentStatus)) throw httpError(400, 'Thanh toán không hợp lệ.');
-  const scope = Object.fromEntries(['salesChannel', 'paymentStatus'].filter(k => query[k]).map(k => [k, query[k] === 'UNKNOWN' ? { $in: ['UNKNOWN', null] } : query[k]]));
+  const scope = salesReportScope(query);
   const [orders, products, skus] = await Promise.all([
     read('sales_orders', { ...scope, status: { $ne: 'CANCELLED' }, 'warehouseFulfillment.packedAt': range }, { items: 1 }),
     read('products', {}, { productCode: 1, productName: 1 }),
