@@ -180,6 +180,7 @@ const salesOrderSchema = new Schema(
       handedOverAt: { type: Date, index: true },
       handedOverByStaffId: { type: Schema.Types.ObjectId, ref: 'User' },
       handedOverByName: String,
+      carrierPickedUpAt: Date,
       deliveredAt: Date,
     },
     codReconciliationStatus: {

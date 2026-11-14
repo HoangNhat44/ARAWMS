@@ -3,7 +3,7 @@
  * @title        : Order Management Routes
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-11-14
  * @description  : Định tuyến các endpoints cho Quản lý Đơn hàng của Seller,
  *                 tích hợp xác thực JWT, phân quyền SELLER/OWNER và validation.
  * @module       : Order Fulfillment / Order Management
@@ -16,7 +16,6 @@ import {
   createDirectOrder,
   updateOrderItems,
   confirmOrderReserve,
-  updateOrderStatus,
   cancelOrder,
   createPosDirectOrder,
   sendOrderConfirmationReceipt,
@@ -28,7 +27,11 @@ import {
 } from './orderManagement.controller.js';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
-import { validateCreateOrder } from './orderManagement.validation.js';
+import {
+  validateCreateOrder,
+  validateUpdateOrderItems,
+  validateCancelOrder,
+} from './orderManagement.validation.js';
 
 const router = express.Router();
 
@@ -60,7 +63,7 @@ router.post('/pos-direct', authorizeRole('SELLER', 'OWNER'), validateCreateOrder
  * @access  SELLER, OWNER
  * @see     BR: GBR-08
  */
-router.put('/:id/items', authorizeRole('SELLER', 'OWNER'), updateOrderItems);
+router.put('/:id/items', authorizeRole('SELLER', 'OWNER'), validateUpdateOrderItems, updateOrderItems);
 
 // UC-79: Xác nhận đơn hàng & Kích hoạt giữ chỗ tồn kho
 router.post('/:id/confirm', authorizeRole('SELLER', 'OWNER'), confirmOrderReserve);
@@ -77,10 +80,7 @@ router.post('/:id/sync-ghn', authorizeRole('SELLER', 'OWNER', 'WAREHOUSE_MANAGER
 // Chuyển trạng thái vận đơn theo GHN (Sandbox / Webhook) và tự động bắn tin cho khách
 router.post('/:id/ghn-status', authorizeRole('SELLER', 'OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'), switchOrderGhnStatus);
 
-// UC-80: Cập nhật thông tin nhận hàng / trạng thái
-router.patch('/:id/status', authorizeRole('SELLER', 'OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'), updateOrderStatus);
-
 // UC-81: Hủy đơn hàng & Giải phóng tồn kho giữ chỗ
-router.post('/:id/cancel', authorizeRole('SELLER', 'OWNER'), cancelOrder);
+router.post('/:id/cancel', authorizeRole('SELLER', 'OWNER'), validateCancelOrder, cancelOrder);
 
 export default router;

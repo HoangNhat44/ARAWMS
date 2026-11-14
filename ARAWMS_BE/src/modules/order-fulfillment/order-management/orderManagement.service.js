@@ -3,7 +3,7 @@
  * @title        : Order Management Service
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-11-14
  * @description  : Xử lý toàn bộ logic nghiệp vụ cốt lõi cho phân hệ Seller Order:
  *                 tạo đơn hàng (UC-78), xác nhận giữ chỗ tồn kho (UC-79, GBR-10),
  *                 cập nhật trạng thái (UC-80), hủy đơn và giải phóng tồn kho (UC-81, GBR-11),
@@ -197,6 +197,13 @@ export const createDirectOrder = async (orderData, user, req) => {
     notes: orderData.notes || '',
     linkedReturnRequestId: orderData.linkedReturnRequestId || null,
     status: 'PENDING',
+    statusHistory: [{
+      from: 'NONE',
+      to: 'PENDING',
+      by: user._id,
+      at: new Date(),
+      note: 'Tạo đơn hàng mới',
+    }],
     isCustomerConfirmed: false,
     shippingRecipient: {
       name: shippingRecipient?.name || customer.fullName,
@@ -420,13 +427,28 @@ export const confirmOrderReserve = async (orderId, user, req) => {
     }
   }
 
-  // Tăng tồn giữ chỗ (+reservedQty) và ghi nhận InventoryTransaction (ORDER_RESERVE)
+  // Tăng tồn giữ chỗ (+reservedQty) nguyên tử và ghi nhận InventoryTransaction (ORDER_RESERVE)
   for (const item of order.items) {
-    const sku = await Sku.findByIdAndUpdate(
-      item.skuId,
+    const sku = await Sku.findOneAndUpdate(
+      {
+        _id: item.skuId,
+        $expr: {
+          $gte: [
+            { $subtract: [{ $ifNull: ['$onHandQty', 0] }, { $ifNull: ['$reservedQty', 0] }] },
+            item.orderedQty,
+          ],
+        },
+      },
       { $inc: { reservedQty: item.orderedQty } },
       { new: true }
     );
+
+    if (!sku) {
+      throw new Error(
+        `Không thể chốt đơn ${order.orderCode}: sản phẩm ${item.skuCode} vừa có đơn khác chốt trước và không còn đủ tồn khả dụng. ` +
+        'Vui lòng làm mới danh sách và kiểm tra lại số lượng.'
+      );
+    }
 
     const txCode = await CounterSequence.getNextSequence('INVENTORY_TX', 'TX', 6);
     await InventoryTransaction.create({
@@ -445,8 +467,19 @@ export const confirmOrderReserve = async (orderId, user, req) => {
     });
   }
 
+  const prevConfirmStatus = order.status;
   // Cập nhật trạng thái đơn hàng
   order.status = 'CONFIRMED_RESERVED';
+  order.statusHistory = [
+    ...(order.statusHistory || []),
+    {
+      from: prevConfirmStatus,
+      to: 'CONFIRMED_RESERVED',
+      by: user?._id,
+      at: new Date(),
+      note: 'Xác nhận chốt đơn và kích hoạt giữ chỗ tồn kho',
+    },
+  ];
   order.isCustomerConfirmed = true;
   order.customerConfirmedAt = new Date();
   order.confirmedAt = new Date();
@@ -506,169 +539,6 @@ export const confirmOrderReserve = async (orderId, user, req) => {
     majorFeature: 'Order Fulfillment',
     subFeature: 'Order Management',
     action: 'CONFIRM_ORDER_RESERVE',
-    targetCollection: 'SalesOrder',
-    targetId: order._id,
-    targetCode: order.orderCode,
-    beforeSnapshot,
-    afterSnapshot: order.toObject(),
-    req,
-  });
-
-  return order;
-};
-
-/**
- * Ma trận chuyển trạng thái hợp lệ của đơn bán lẻ (linh hoạt theo luồng trạng thái Realtime GHN).
- * Trạng thái CANCELLED / RETURNED là trạng thái kết thúc, không thể chuyển tiếp.
- * @constant {Object<string, string[]>}
- */
-export const ORDER_STATUS_TRANSITIONS = {
-  PENDING: ['CONFIRMED_RESERVED', 'PICKING', 'PACKED', 'HANDED_OVER_CARRIER', 'CANCELLED'],
-  CONFIRMED_RESERVED: ['PICKING', 'PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'CANCELLED'],
-  PICKING: ['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'CANCELLED'],
-  PACKED: ['HANDED_OVER_CARRIER', 'DELIVERED', 'RETURN_REQUESTED'],
-  HANDED_OVER_CARRIER: ['DELIVERED', 'RETURN_REQUESTED', 'RETURNED'],
-  DELIVERED: ['RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED'],
-  COMPLETED: ['RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED'],
-  RETURN_REQUESTED: ['RETURNED'],
-  EXCHANGE_REQUESTED: ['RETURNED'],
-  CANCELLED: [],
-  RETURNED: [],
-};
-
-/**
- * Cập nhật thông tin người nhận và/hoặc trạng thái đơn hàng đồng bộ với GHN.
- * - Bỏ hoàn toàn việc bắt người dùng tự gõ mã vận đơn: nếu chưa có mã vận đơn, tự động gọi GHN API để lấy order_code.
- * - Hỗ trợ cập nhật theo ghnStatus (ready_to_pick, picking, picked, storing, delivering, delivered, cancel, return, returned)
- *   và bắn tin nhắn tự động cho khách qua Chat.
- *
- * @businessRule GBR-07 Chuyển sang CONFIRMED_RESERVED kích hoạt giữ chỗ tồn kho.
- * @businessRule GBR-08 Chuyển sang CANCELLED giải phóng tồn kho giữ chỗ.
- * @businessRule GBR-10 Mọi kiện hàng giao vận chuyển tự động lấy mã vận đơn từ GHN API.
- */
-export const updateOrderStatus = async (orderId, updateData, user, req) => {
-  const order = await SalesOrder.findById(orderId);
-  if (!order) {
-    throw new Error('Đơn hàng không tồn tại');
-  }
-
-  // Nếu truyền trực tiếp ghnStatus (hoặc chuyển trạng thái vận đơn theo GHN)
-  if (updateData.ghnStatus) {
-    return switchOrderGhnStatus(orderId, updateData.ghnStatus, user, req);
-  }
-
-  const nextStatus = updateData.status;
-  if (nextStatus && nextStatus !== order.status) {
-    // 1. Trạng thái phải thuộc danh mục hệ thống
-    if (!ORDER_STATUS.includes(nextStatus)) {
-      throw new Error(`Trạng thái "${getOrderStatusLabel(nextStatus)}" không tồn tại trong danh mục hệ thống.`);
-    }
-    // 2. Kiểm tra ma trận chuyển trạng thái
-    const allowed = ORDER_STATUS_TRANSITIONS[order.status] || [];
-    if (!allowed.includes(nextStatus)) {
-      const currentLabel = getOrderStatusLabel(order.status);
-      const nextLabel = getOrderStatusLabel(nextStatus);
-      const allowedLabels = allowed.map((s) => `"${getOrderStatusLabel(s)}"`).join(', ');
-      throw new Error(
-        `Không thể chuyển trạng thái đơn hàng ${order.orderCode} từ "${currentLabel}" sang "${nextLabel}". ` +
-          (allowed.length
-            ? `Chức năng này chỉ có thể chuyển sang các trạng thái: ${allowedLabels} để đảm bảo quy trình luân chuyển đơn hàng đúng trình tự thực tế.`
-            : 'Đơn hàng này đã kết thúc vòng đời xử lý và không thể chuyển trạng thái khác.')
-      );
-    }
-    // 3. [GBR-07] / [GBR-08] Uỷ quyền cho luồng chuyên biệt để xử lý tồn kho
-    if (nextStatus === 'CONFIRMED_RESERVED') return confirmOrderReserve(orderId, user, req);
-    if (nextStatus === 'CANCELLED') {
-      return cancelOrder(orderId, updateData.cancelReason || 'Seller cập nhật trạng thái Hủy', user, req);
-    }
-  }
-
-  const beforeSnapshot = order.toObject();
-
-  // Cho phép cập nhật thông tin người nhận nếu chưa đóng gói
-  if (updateData.shippingRecipient && !['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED'].includes(order.status)) {
-    order.shippingRecipient = {
-      ...order.shippingRecipient,
-      ...updateData.shippingRecipient,
-    };
-  }
-
-  if (nextStatus && nextStatus !== order.status) {
-    // [GBR-10] Tự động lấy mã vận đơn từ GHN API nếu đơn chưa có mã vận đơn (không bắt nhập tay)
-    let waybill = (order.warehouseFulfillment?.waybillCode || '').trim();
-    if (!waybill && order.orderType !== 'POS_DIRECT') {
-      try {
-        const ghnRes = await ghnService.createShippingOrderFromSalesOrder(order);
-        if (ghnRes?.waybillCode) {
-          waybill = ghnRes.waybillCode;
-          order.warehouseFulfillment.waybillCode = waybill;
-          order.warehouseFulfillment.carrierName = 'GHN';
-          order.warehouseFulfillment.ghnStatus = ghnRes.ghnStatus || 'ready_to_pick';
-          order.warehouseFulfillment.ghnStatusName = ghnRes.ghnStatusName || 'Chờ lấy hàng';
-          order.warehouseFulfillment.ghnUpdatedAt = new Date();
-        }
-      } catch (ghnErr) {
-        console.warn('⚠️ [GHN Auto-Waybill on Status Update]:', ghnErr.message);
-      }
-    }
-
-    // Ánh xạ ngược từ trạng thái đơn sang trạng thái GHN tương ứng để đồng bộ với GHN Sandbox & bắn tin cho khách
-    const statusToGhnMap = {
-      PICKING: 'picking',
-      PACKED: 'picked',
-      HANDED_OVER_CARRIER: 'delivering',
-      DELIVERED: 'delivered',
-      RETURN_REQUESTED: 'return',
-      RETURNED: 'returned',
-    };
-    const targetGhnStatus = statusToGhnMap[nextStatus];
-
-    if (waybill && targetGhnStatus) {
-      try {
-        await ghnService.devSwitchStatus(waybill, targetGhnStatus);
-      } catch (swErr) {
-        console.warn('⚠️ [GHN devSwitchStatus]:', swErr.message);
-      }
-      const syncRes = await applyGhnStatusToSalesOrder({
-        order,
-        ghnStatus: targetGhnStatus,
-        waybillCode: waybill,
-        sendChatNotification: true,
-      });
-
-      await recordSystemLog({
-        actor: user,
-        majorFeature: 'Order Fulfillment',
-        subFeature: 'Order Management',
-        action: 'UPDATE_ORDER_STATUS_GHN_SYNC',
-        targetCollection: 'SalesOrder',
-        targetId: order._id,
-        targetCode: order.orderCode,
-        beforeSnapshot,
-        afterSnapshot: syncRes.order.toObject(),
-        req,
-      });
-
-      return syncRes.order;
-    }
-
-    if (nextStatus === 'PACKED') {
-      order.warehouseFulfillment.packedAt = new Date();
-      order.warehouseFulfillment.packedByStaffId = user._id;
-    }
-    if (nextStatus === 'HANDED_OVER_CARRIER') {
-      order.warehouseFulfillment.handedOverAt = new Date();
-    }
-    order.status = nextStatus;
-  }
-
-  await order.save();
-
-  await recordSystemLog({
-    actor: user,
-    majorFeature: 'Order Fulfillment',
-    subFeature: 'Order Management',
-    action: 'UPDATE_ORDER_STATUS',
     targetCollection: 'SalesOrder',
     targetId: order._id,
     targetCode: order.orderCode,
@@ -853,11 +723,22 @@ export const cancelOrder = async (orderId, cancelReason, user, req) => {
     }
   }
 
+  const prevCancelStatus = order.status;
   // Cập nhật trạng thái đơn và lý do hủy
   order.status = 'CANCELLED';
   order.cancelReason = cancelReason.trim();
   order.canceledByUserId = user?._id;
   order.canceledAt = new Date();
+  order.statusHistory = [
+    ...(order.statusHistory || []),
+    {
+      from: prevCancelStatus,
+      to: 'CANCELLED',
+      by: user?._id,
+      at: new Date(),
+      note: `Hủy đơn: ${cancelReason.trim()}`,
+    },
+  ];
 
   // Đồng bộ trạng thái hủy sang GHN nếu đơn đã có mã vận đơn
   if (order.warehouseFulfillment?.waybillCode) {
@@ -975,6 +856,13 @@ export const createPosDirectOrder = async (posData, user, req) => {
     orderType: 'POS_DIRECT',
     channel: 'POS_OFFLINE',
     status: 'COMPLETED',
+    statusHistory: [{
+      from: 'NONE',
+      to: 'COMPLETED',
+      by: user._id,
+      at: new Date(),
+      note: 'Tạo đơn bán lẻ trực tiếp tại quầy AraStore POS',
+    }],
     isCustomerConfirmed: true,
     customerConfirmedAt: new Date(),
     confirmedAt: new Date(),
@@ -1256,6 +1144,7 @@ export const getOrderById = async (orderId) => {
   const order = await SalesOrder.findById(orderId)
     .populate('customerId')
     .populate('sellerId', 'employeeCode fullName email')
+    .populate('statusHistory.by', 'employeeCode fullName roleCode')
     .populate('items.skuId')
     .lean();
 
@@ -1270,7 +1159,6 @@ export default {
   createDirectOrder,
   updateOrderItemsAndDetails,
   confirmOrderReserve,
-  updateOrderStatus,
   syncOrderWithGhn,
   switchOrderGhnStatus,
   cancelOrder,

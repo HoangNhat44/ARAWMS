@@ -3,13 +3,15 @@
  * @title        : Order Management Validation
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-11-14
  * @description  : Xác thực tính hợp lệ của dữ liệu đầu vào cho quy trình tạo đơn,
  *                 xác nhận và hủy đơn hàng của phân hệ Seller.
  * @module       : Order Fulfillment / Order Management
  * @layer        : Validation
  * ============================================================================
  */
+
+import { ORDER_STATUS } from '../../../common/constants/enums.js';
 
 /**
  * Validation rules cho Tạo đơn hàng (UC-78)
@@ -29,10 +31,11 @@ export const validateCreateOrder = (req, res, next) => {
   }
 
   for (const item of items) {
-    if (!item.skuId || !item.orderedQty || Number(item.orderedQty) < 1) {
+    const qty = Number(item.orderedQty);
+    if (!item.skuId || isNaN(qty) || qty < 1) {
       return res.status(400).json({
         success: false,
-        message: 'Số lượng đặt mua của mỗi sản phẩm phải từ 1 trở lên.',
+        message: 'Số lượng đặt mua của mỗi sản phẩm phải là số nguyên từ 1 trở lên.',
       });
     }
   }
@@ -77,6 +80,70 @@ export const validateCreateOrder = (req, res, next) => {
   next();
 };
 
+/**
+ * Validation rules cho Sửa sản phẩm đơn hàng (GBR-08)
+ */
+export const validateUpdateOrderItems = (req, res, next) => {
+  const { items } = req.body;
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Đơn hàng phải chứa ít nhất một sản phẩm hợp lệ.',
+    });
+  }
+
+  for (const it of items) {
+    if (!it.skuId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mỗi dòng sản phẩm bắt buộc phải có thông tin SKU.',
+      });
+    }
+    const qty = Number(it.orderedQty);
+    if (!Number.isInteger(qty) || qty < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Số lượng đặt mua phải là số nguyên lớn hơn hoặc bằng 1.',
+      });
+    }
+    if (it.unitSalePrice !== undefined && it.unitSalePrice !== null) {
+      const price = Number(it.unitSalePrice);
+      if (isNaN(price) || price < 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Đơn giá bán không được là số âm.',
+        });
+      }
+    }
+  }
+
+  next();
+};
+
+/**
+ * Validation rules cho Hủy đơn hàng (UC-81)
+ */
+export const validateCancelOrder = (req, res, next) => {
+  const { cancelReason } = req.body;
+  if (!cancelReason || !String(cancelReason).trim()) {
+    return res.status(400).json({
+      success: false,
+      message: 'Vui lòng nhập lý do hủy đơn hàng.',
+    });
+  }
+
+  if (String(cancelReason).trim().length < 3) {
+    return res.status(400).json({
+      success: false,
+      message: 'Lý do hủy đơn hàng quá ngắn. Vui lòng nhập tối thiểu 3 ký tự.',
+    });
+  }
+
+  next();
+};
+
 export default {
   validateCreateOrder,
+  validateUpdateOrderItems,
+  validateCancelOrder,
 };

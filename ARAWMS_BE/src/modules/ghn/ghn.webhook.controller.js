@@ -12,6 +12,17 @@ import { mapGhnStatusToOrderStatus } from './ghn.service.js';
 import notificationTemplateService from '../conversational-commerce/chat-interface/notificationTemplate.service.js';
 import { emitOrderStatusUpdated } from '../../config/socket.js';
 
+// Trọng số tiến trình đơn hàng nội bộ của kho WMS (chống lùi trạng thái nội bộ)
+const WMS_INTERNAL_STATUS_RANK = Object.freeze({
+  PENDING: 0,
+  CONFIRMED_RESERVED: 1,
+  PICKING: 2,
+  PACKED: 3,
+  HANDED_OVER_CARRIER: 4,
+  CARRIER_PICKED_UP: 5,
+  DELIVERED: 6,
+});
+
 // Bộ nhớ đệm (In-memory cache) kiểm tra tính lũy kế (Idempotency)
 const processedWebhookEvents = new Map();
 
@@ -101,6 +112,14 @@ export const applyGhnStatusToSalesOrder = async ({
     order.warehouseFulfillment.handedOverAt = new Date();
   }
 
+  // Khi shipper GHN đã lấy hàng -> cập nhật carrierPickedUpAt
+  if (
+    ['picked', 'storing', 'transporting', 'sorting', 'delivering', 'money_collect_delivering', 'delivered'].includes(normalizedGhnStatus) &&
+    !order.warehouseFulfillment?.carrierPickedUpAt
+  ) {
+    order.warehouseFulfillment.carrierPickedUpAt = new Date();
+  }
+
   // [GBR-15 & GBR-16] Khi GHN giao thành công (delivered) -> cập nhật thanh toán & đối soát COD
   if (normalizedGhnStatus === 'delivered') {
     order.warehouseFulfillment.deliveredAt = order.warehouseFulfillment.deliveredAt || new Date();
@@ -129,7 +148,18 @@ export const applyGhnStatusToSalesOrder = async ({
     ghnUpdatedAt: new Date(),
   };
 
-  if (previousOrderStatus !== mapped.orderStatus) {
+  const currentInternalRank = WMS_INTERNAL_STATUS_RANK[previousOrderStatus] || 0;
+  const targetInternalRank = WMS_INTERNAL_STATUS_RANK[mapped.orderStatus] || 0;
+
+  // Điều kiện cho phép GHN cập nhật order.status của WMS:
+  // 1. Trạng thái GHN là ngoại lệ/kết thúc: cancel, return, returned, damage, lost
+  // 2. Hoặc trạng thái GHN tiến lên phía trước (targetInternalRank >= currentInternalRank)
+  // Tuyệt đối không để GHN kéo lùi trạng thái đơn nội bộ (ví dụ đơn đã PACKED hoặc HANDED_OVER_CARRIER mà GHN gửi ready_to_pick)
+  const canAdvanceOrderStatus =
+    ['cancel', 'return', 'returned', 'damage', 'lost'].includes(normalizedGhnStatus) ||
+    targetInternalRank >= currentInternalRank;
+
+  if (canAdvanceOrderStatus && previousOrderStatus !== mapped.orderStatus) {
     order.statusHistory = [
       ...(order.statusHistory || []),
       {
@@ -145,7 +175,7 @@ export const applyGhnStatusToSalesOrder = async ({
 
   await order.save();
 
-  const statusChanged = previousGhnStatus !== mapped.ghnStatus || previousOrderStatus !== mapped.orderStatus;
+  const statusChanged = previousGhnStatus !== mapped.ghnStatus || previousOrderStatus !== order.status;
 
   // Bắn tin nhắn tự động cho khách hàng qua Chat khi có mã vận đơn mới hoặc chuyển trạng thái GHN
   let chatMessage = null;
