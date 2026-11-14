@@ -348,7 +348,7 @@ export const getCarrierDebtOverview = async () => {
       if (feeUnsettled) {
         totalShippingFee += fee;
       }
-    } else if (o.status === 'HANDED_OVER_CARRIER') {
+    } else if (o.status === 'HANDED_OVER_CARRIER' || o.status === 'CARRIER_PICKED_UP') {
       inTransitOrdersCount++;
       totalPendingCod += cod;
       if (feeUnsettled) {

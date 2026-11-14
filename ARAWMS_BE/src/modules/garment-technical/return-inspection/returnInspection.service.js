@@ -187,6 +187,7 @@ export const getRecentReturnableOrders = async () => {
     'RETURN_REQUESTED',
     'EXCHANGE_REQUESTED',
     'HANDED_OVER_CARRIER',
+    'CARRIER_PICKED_UP',
     'DELIVERED',
     'RETURNED',
     'PACKED',
