@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test tests/*.test.mjs",
+    "test:seller": "node --test tests/sellerChat.test.mjs"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",

@@ -20,6 +20,7 @@
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "test:packing": "node --test test/packingBarcodeScan.test.js tests/warehouseCollectionMerge.test.mjs",
     "test:inbound": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.finishedGoodsInbound.config.cjs --runInBand",
+    "test:seller": "node --test tests/sellerOrderManagement.test.mjs",
     "provision:employee": "node scripts/provisionEmployee.js"
   },
   "keywords": [
