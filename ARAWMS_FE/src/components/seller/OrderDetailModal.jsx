@@ -16,7 +16,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Badge, Row, Col, Card, Alert, Button, ListGroup, Spinner, Stack, Form, ButtonGroup } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
 import { useToast } from '../../context/ToastContext';
-import { Icon, formatVnd, ORDER_STATUS_VARIANT } from './SellerUi';
+import { Icon, formatVnd, ORDER_STATUS_VARIANT, ORDER_STATUS_CLASS } from './SellerUi';
 
 /**
  * Danh sách trạng thái đơn hàng bán lẻ chuẩn Database (khớp SalesOrder.model & enums.js)
@@ -81,6 +81,13 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
   const [error, setError] = useState('');
   const [hasItemsChanged, setHasItemsChanged] = useState(false);
 
+  // Chỉnh sửa thông tin người nhận thật (thay thế thông tin bị che *** khi import sàn)
+  const [recipientState, setRecipientState] = useState(order?.shippingRecipient || {});
+  const [statusHistoryList, setStatusHistoryList] = useState(order?.statusHistory || []);
+  const [editingRecipient, setEditingRecipient] = useState(false);
+  const [recipientDraft, setRecipientDraft] = useState({ name: '', phone: '', address: '' });
+  const [savingRecipient, setSavingRecipient] = useState(false);
+
   // Dialog nhập thông tin trong web (thay thế window.prompt)
   const [promptDialog, setPromptDialog] = useState({
     isOpen: false,
@@ -109,11 +116,22 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
         }))
       );
       setHasItemsChanged(false);
+      setRecipientState(order.shippingRecipient || {});
+      setStatusHistoryList(order.statusHistory || []);
+      setEditingRecipient(false);
       setError('');
 
-      // Tự động lấy mã vận đơn GHN hoặc đồng bộ trạng thái realtime từ GHN khi mở chi tiết đơn Online (chỉ đơn đang tiến hành)
+      // Tự động lấy mã vận đơn GHN hoặc đồng bộ trạng thái realtime từ GHN khi mở chi tiết đơn Online
+      // (Bỏ qua nếu đơn đang có thông tin bị che *** từ sàn để Seller kịp bổ sung thông tin thật trước)
+      const hasMaskedInitial = [
+        order.shippingRecipient?.name,
+        order.shippingRecipient?.phone,
+        order.shippingRecipient?.address,
+      ].some((v) => String(v || '').includes('*'));
+
       if (
         isOpen &&
+        !hasMaskedInitial &&
         order.orderType !== 'POS_DIRECT' &&
         order.channel !== 'POS' &&
         order.channel !== 'POS_OFFLINE' &&
@@ -143,6 +161,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
 
   const currentStatusObj = ORDER_STATUSES.find((s) => s.value === status) || { value: status, label: status };
   const isPending = status === 'PENDING';
+  const isFacebookOrder = ['FACEBOOK', 'FACEBOOK_MESSENGER'].includes(order.channel) || order.sourceDetails?.sourceType === 'FANPAGE';
   const pickedStatuses = ['picked', 'storing', 'transporting', 'sorting', 'delivering', 'delivered', 'return', 'returned'];
   const isShipperPicked =
     pickedStatuses.includes(String(ghnStatus || '').toLowerCase()) ||
@@ -155,7 +174,46 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
   const shippingFee = Number(financial.shippingFee) || 0;
   const discountAmount = Number(financial.discountAmount) || 0;
   const currentTotal = currentSubtotal + shippingFee - discountAmount;
-  const recipient = order.shippingRecipient || {};
+  const recipient = recipientState || {};
+  const isMaskedRecipient = [recipient.name, recipient.phone, recipient.address].some((v) => String(v || '').includes('*'));
+  const canEditRecipient =
+    ['PENDING', 'CONFIRMED_RESERVED', 'PICKING', 'PACKED'].includes(status) &&
+    (!ghnStatus || String(ghnStatus).toLowerCase() === 'ready_to_pick');
+
+  const handleStartEditRecipient = () => {
+    setRecipientDraft({
+      name: recipient.name || '',
+      phone: recipient.phone || '',
+      address: recipient.address || '',
+    });
+    setEditingRecipient(true);
+  };
+
+  const handleSaveRecipient = async (e) => {
+    e.preventDefault();
+    try {
+      setSavingRecipient(true);
+      setError('');
+      const orderId = order._id || order.id;
+      const res = await sellerService.updateOrderRecipient(orderId, recipientDraft);
+      if (res.success && res.data) {
+        setRecipientState(res.data.shippingRecipient || recipientDraft);
+        setStatusHistoryList(res.data.statusHistory || statusHistoryList);
+        setWaybillCode(res.data.warehouseFulfillment?.waybillCode || '');
+        setGhnStatus(res.data.warehouseFulfillment?.ghnStatus || '');
+        setGhnStatusName(res.data.warehouseFulfillment?.ghnStatusName || '');
+        setEditingRecipient(false);
+        if (onStatusUpdated) onStatusUpdated(res.data);
+        showSuccess('Đã cập nhật thông tin người nhận thành công!', 'Cập nhật người nhận');
+      }
+    } catch (err) {
+      const msg = err.message || 'Không thể cập nhật thông tin người nhận';
+      setError(msg);
+      showError(msg, 'Lỗi cập nhật');
+    } finally {
+      setSavingRecipient(false);
+    }
+  };
 
   /**
    * Thay đổi số lượng sản phẩm khi đơn còn PENDING
@@ -398,8 +456,8 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
         <Modal.Body className="d-flex flex-column gap-3" style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
           {error && <Alert variant="danger" className="py-2 small mb-0">{error}</Alert>}
 
-          {/* Thanh công cụ xác nhận hai chiều dành cho đơn PENDING */}
-          {isPending && (
+          {/* Thanh công cụ xác nhận hai chiều dành cho đơn PENDING từ kênh Facebook */}
+          {isPending && isFacebookOrder && (
             <Card className="shadow-sm" style={{ backgroundColor: '#FEF0C7', border: '1px solid #F5B95F' }}>
               <Card.Body className="py-2 px-3">
                 <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -439,21 +497,98 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
           <Row className="g-3">
             <Col md={6}>
               <Card className="h-100 shadow-sm">
-                <SectionTitle icon="person">Thông Tin Người Nhận</SectionTitle>
+                <SectionTitle
+                  icon="person"
+                  right={
+                    canEditRecipient && !editingRecipient ? (
+                      <Button
+                        size="sm"
+                        variant={isMaskedRecipient ? 'warning' : 'outline-secondary'}
+                        className="py-0 px-2 d-flex align-items-center gap-1"
+                        style={{ fontSize: '0.75rem' }}
+                        onClick={handleStartEditRecipient}
+                      >
+                        <Icon name="pencil-square" />
+                        {isMaskedRecipient ? 'Bổ sung thông tin thật' : 'Sửa'}
+                      </Button>
+                    ) : null
+                  }
+                >
+                  Thông Tin Người Nhận
+                </SectionTitle>
                 <Card.Body className="small">
-                  <div className="fw-bold fs-6">{recipient.name || 'Khách vãng lai'}</div>
-                  <div className="d-flex align-items-center gap-2 mt-1">
-                    <Icon name="telephone" className="text-secondary" />
-                    <span className="fw-semibold">{recipient.phone || 'Chưa có SĐT'}</span>
-                  </div>
-                  <div className="d-flex align-items-start gap-2 mt-1 text-secondary">
-                    <Icon name="geo-alt" />
-                    <span>{recipient.address || 'Chưa cung cấp địa chỉ nhận hàng'}</span>
-                  </div>
-                  {order.notes && (
-                    <div className="mt-2 p-2 bg-light rounded text-muted small">
-                      <strong>Ghi chú:</strong> {order.notes}
-                    </div>
+                  {editingRecipient ? (
+                    <Form onSubmit={handleSaveRecipient} className="d-flex flex-column gap-2">
+                      <div>
+                        <Form.Label className="mb-1 text-secondary" style={{ fontSize: '0.75rem' }}>Họ tên người nhận</Form.Label>
+                        <Form.Control
+                          size="sm"
+                          value={recipientDraft.name}
+                          onChange={(e) => setRecipientDraft((prev) => ({ ...prev, name: e.target.value }))}
+                          placeholder="Nhập họ tên thật (không có dấu *)"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Form.Label className="mb-1 text-secondary" style={{ fontSize: '0.75rem' }}>Số điện thoại</Form.Label>
+                        <Form.Control
+                          size="sm"
+                          value={recipientDraft.phone}
+                          onChange={(e) => setRecipientDraft((prev) => ({ ...prev, phone: e.target.value }))}
+                          placeholder="VD: 0912345678"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Form.Label className="mb-1 text-secondary" style={{ fontSize: '0.75rem' }}>Địa chỉ giao hàng chi tiết</Form.Label>
+                        <Form.Control
+                          as="textarea"
+                          rows={2}
+                          size="sm"
+                          value={recipientDraft.address}
+                          onChange={(e) => setRecipientDraft((prev) => ({ ...prev, address: e.target.value }))}
+                          placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/TP"
+                          required
+                        />
+                      </div>
+                      <div className="d-flex gap-2 justify-content-end pt-1">
+                        <Button size="sm" variant="outline-secondary" onClick={() => setEditingRecipient(false)} disabled={savingRecipient}>
+                          Hủy
+                        </Button>
+                        <Button size="sm" type="submit" className="btn-wms-primary" disabled={savingRecipient}>
+                          {savingRecipient ? 'Đang lưu...' : 'Lưu thông tin'}
+                        </Button>
+                      </div>
+                    </Form>
+                  ) : (
+                    <>
+                      {isMaskedRecipient && (
+                        <Alert variant="warning" className="py-1 px-2 mb-2 small d-flex align-items-center gap-1">
+                          <Icon name="shield-exclamation" className="flex-shrink-0" />
+                          <span>Thông tin bị che (<code>***</code>) từ sàn. Cần bổ sung dữ liệu thật trước khi đẩy GHN.</span>
+                        </Alert>
+                      )}
+                      <div className="fw-bold fs-6" style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                        {recipient.name || 'Khách vãng lai'}
+                      </div>
+                      <div className="d-flex align-items-center gap-2 mt-1" style={{ minWidth: 0 }}>
+                        <Icon name="telephone" className="text-secondary flex-shrink-0" />
+                        <span className="fw-semibold" style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                          {recipient.phone || 'Chưa có SĐT'}
+                        </span>
+                      </div>
+                      <div className="d-flex align-items-start gap-2 mt-1 text-secondary" style={{ minWidth: 0 }}>
+                        <Icon name="geo-alt" className="flex-shrink-0 mt-1" />
+                        <span style={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                          {recipient.address || 'Chưa cung cấp địa chỉ nhận hàng'}
+                        </span>
+                      </div>
+                      {order.notes && (
+                        <div className="mt-2 p-2 bg-light rounded text-muted small" style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                          <strong>Ghi chú:</strong> {order.notes}
+                        </div>
+                      )}
+                    </>
                   )}
                 </Card.Body>
               </Card>
@@ -653,14 +788,14 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
           )}
 
           {/* Khối 4: Lịch sử xử lý & thay đổi trạng thái đơn hàng (Audit Trail) */}
-          {Array.isArray(order.statusHistory) && order.statusHistory.length > 0 && (
+          {Array.isArray(statusHistoryList) && statusHistoryList.length > 0 && (
             <Card className="shadow-sm">
               <SectionTitle icon="clock-history">
-                Lịch Sử Xử Lý &amp; Trạng Thái Đơn Hàng ({order.statusHistory.length})
+                Lịch Sử Xử Lý &amp; Trạng Thái Đơn Hàng ({statusHistoryList.length})
               </SectionTitle>
               <Card.Body className="p-0">
                 <ListGroup variant="flush">
-                  {order.statusHistory.map((hist, hIdx) => {
+                  {statusHistoryList.map((hist, hIdx) => {
                     const fromObj = ORDER_STATUSES.find((s) => s.value === hist.from);
                     const toObj = ORDER_STATUSES.find((s) => s.value === hist.to);
                     const fromLabel = hist.from === 'NONE' ? 'Khởi tạo đơn' : (fromObj?.label || hist.from);
@@ -709,25 +844,41 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
 
         {/* Footer */}
         <Modal.Footer className="justify-content-between" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
-          <div className="text-secondary small d-flex flex-wrap align-items-center gap-2">
+          <div className="text-secondary d-flex flex-wrap align-items-center gap-2" style={{ fontSize: '0.92rem' }}>
             <span>
               Mã đơn hàng:{' '}
-              <span className="font-monospace fw-bold text-dark">
+              <span className="fw-bold text-dark" style={{ fontSize: '0.98rem', letterSpacing: '0.02em' }}>
                 {order.orderCode || (order._id ? `#${String(order._id).slice(-8).toUpperCase()}` : '—')}
               </span>
             </span>
             {order.sourceDetails?.externalOrderCode && (
-              <span className="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace">
+              <span
+                className="badge bg-primary-subtle text-primary border border-primary-subtle"
+                style={{ fontSize: '0.84rem', padding: '0.38rem 0.65rem', letterSpacing: '0.02em' }}
+              >
                 Mã sàn: {order.sourceDetails.externalOrderCode}
               </span>
             )}
             {waybillCode && (
-              <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle font-monospace">
+              <span
+                className="badge bg-info-subtle text-info-emphasis border border-info-subtle"
+                style={{ fontSize: '0.84rem', padding: '0.38rem 0.65rem', letterSpacing: '0.02em' }}
+              >
                 Vận đơn GHN: {waybillCode}
               </span>
             )}
           </div>
           <Stack direction="horizontal" gap={2}>
+            {isPending && !isFacebookOrder && (
+              <Button
+                size="sm"
+                className="btn-wms-accent d-flex align-items-center gap-1"
+                disabled={actionLoading}
+                onClick={handleManualConfirm}
+              >
+                <Icon name="check-circle" /> Xác nhận giữ hàng
+              </Button>
+            )}
             {isCancelable && (
               <Button
                 size="sm"

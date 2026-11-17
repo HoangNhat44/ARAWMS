@@ -577,6 +577,12 @@ export const syncOrderWithGhn = async (orderId, user, req) => {
   let codAmount = undefined;
 
   if (!waybillCode) {
+    const rec = order.shippingRecipient || {};
+    const hasMaskedRecipient = [rec.name, rec.phone, rec.address].some((v) => String(v || '').includes('*'));
+    if (hasMaskedRecipient) {
+      throw new Error('Thông tin người nhận đang bị sàn che (***). Vui lòng bổ sung Tên, SĐT và Địa chỉ thật trước khi tạo vận đơn GHN.');
+    }
+
     const createRes = await ghnService.createShippingOrderFromSalesOrder(order);
     waybillCode = createRes.waybillCode;
     ghnStatus = createRes.ghnStatus || 'ready_to_pick';
@@ -940,6 +946,11 @@ export const sendOrderConfirmationReceipt = async (orderId, user, req) => {
   const order = await SalesOrder.findById(orderId);
   if (!order) throw new Error('Đơn hàng không tồn tại');
 
+  const isFacebookOrder = ['FACEBOOK', 'FACEBOOK_MESSENGER'].includes(order.channel) || order.sourceDetails?.sourceType === 'FANPAGE';
+  if (!isFacebookOrder) {
+    throw new Error('Chức năng gửi phiếu xác nhận qua Chat chỉ áp dụng cho đơn hàng từ kênh Facebook.');
+  }
+
   const msgText = notificationTemplateService.buildOrderConfirmationText(order);
   const chatMessage = await notificationTemplateService.sendOrderNotificationToChat({
     order,
@@ -967,6 +978,11 @@ export const sendOrderConfirmationReceipt = async (orderId, user, req) => {
 export const simulateCustomerConfirm = async (orderId, user, req) => {
   const order = await SalesOrder.findById(orderId);
   if (!order) throw new Error('Đơn hàng không tồn tại');
+
+  const isFacebookOrder = ['FACEBOOK', 'FACEBOOK_MESSENGER'].includes(order.channel) || order.sourceDetails?.sourceType === 'FANPAGE';
+  if (!isFacebookOrder) {
+    throw new Error('Luồng xác nhận hai chiều qua Chat chỉ áp dụng cho đơn hàng từ Facebook.');
+  }
 
   if (order.status !== 'PENDING') {
     throw new Error(`Đơn hàng hiện tại ở trạng thái ${order.status}, không thể xác nhận lại.`);
@@ -1155,9 +1171,119 @@ export const getOrderById = async (orderId) => {
   return order;
 };
 
+/**
+ * Cập nhật thông tin người nhận (Tên, SĐT, Địa chỉ thật) cho đơn chưa bàn giao vận chuyển.
+ * Hữu ích khi đơn import từ sàn TMĐT bị che thông tin (***) cần bổ sung dữ liệu thật trước khi đẩy GHN.
+ */
+export const updateOrderRecipient = async (orderId, recipientData, user, req) => {
+  const order = await SalesOrder.findById(orderId);
+  if (!order) {
+    throw new Error('Đơn hàng không tồn tại');
+  }
+
+  const EDITABLE_STATUSES = ['PENDING', 'CONFIRMED_RESERVED', 'PICKING', 'PACKED'];
+  if (!EDITABLE_STATUSES.includes(order.status)) {
+    throw new Error(
+      `Không thể sửa thông tin người nhận khi đơn hàng đang ở trạng thái ${getOrderStatusLabel(order.status)}.`
+    );
+  }
+
+  const currentGhnStatus = String(order.warehouseFulfillment?.ghnStatus || '').toLowerCase();
+  if (currentGhnStatus && currentGhnStatus !== 'ready_to_pick') {
+    throw new Error(
+      `Đơn hàng đã được GHN tiếp nhận vận chuyển (${order.warehouseFulfillment.waybillCode || ''} - ${currentGhnStatus}), không thể sửa thông tin người nhận.`
+    );
+  }
+
+  // Nếu trước đó đã lỡ tạo mã vận đơn nháp (ready_to_pick) với thông tin cũ/bị che -> hủy nháp & reset để đồng bộ lại với thông tin thật
+  if (order.warehouseFulfillment?.waybillCode && (!currentGhnStatus || currentGhnStatus === 'ready_to_pick')) {
+    try {
+      await ghnService.devSwitchStatus(order.warehouseFulfillment.waybillCode, 'cancel');
+    } catch {
+      // Không chặn cập nhật nếu GHN sandbox không hỗ trợ hủy nháp
+    }
+    order.warehouseFulfillment.waybillCode = '';
+    order.warehouseFulfillment.ghnStatus = '';
+    order.warehouseFulfillment.ghnStatusName = '';
+    order.warehouseFulfillment.ghnUpdatedAt = null;
+  }
+
+  const beforeRecipient = {
+    name: order.shippingRecipient?.name || '',
+    phone: order.shippingRecipient?.phone || '',
+    address: order.shippingRecipient?.address || '',
+  };
+
+  const cleanName = String(recipientData.name || '').trim();
+  const cleanPhone = String(recipientData.phone || '').trim();
+  const cleanAddress = String(recipientData.address || '').trim();
+
+  order.shippingRecipient = {
+    name: cleanName,
+    phone: cleanPhone,
+    address: cleanAddress,
+  };
+
+  // Đồng bộ hoặc gộp khách hàng nếu bản ghi Customer hiện tại đang lưu SĐT bị che (*)
+  if (order.customerId) {
+    const currentCustomer = await Customer.findById(order.customerId);
+    if (currentCustomer && (String(currentCustomer.phone || '').includes('*') || currentCustomer.phone === '0900000000')) {
+      const existingRealCustomer = await Customer.findOne({
+        _id: { $ne: currentCustomer._id },
+        phone: cleanPhone,
+      });
+
+      if (existingRealCustomer) {
+        order.customerId = existingRealCustomer._id;
+      } else {
+        currentCustomer.fullName = cleanName;
+        currentCustomer.phone = cleanPhone;
+        currentCustomer.addresses = [
+          {
+            recipientName: cleanName,
+            phone: cleanPhone,
+            fullAddress: cleanAddress,
+            isDefault: true,
+          },
+        ];
+        await currentCustomer.save();
+      }
+    }
+  }
+
+  order.statusHistory = [
+    ...(order.statusHistory || []),
+    {
+      from: order.status,
+      to: order.status,
+      by: user?._id || null,
+      at: new Date(),
+      note: `Cập nhật thông tin người nhận: ${cleanName} (${cleanPhone})`,
+    },
+  ];
+
+  await order.save();
+
+  await recordSystemLog({
+    actor: user,
+    majorFeature: 'Order Fulfillment',
+    subFeature: 'Order Management',
+    action: 'UPDATE_ORDER_RECIPIENT',
+    targetCollection: 'SalesOrder',
+    targetId: order._id,
+    targetCode: order.orderCode,
+    beforeSnapshot: beforeRecipient,
+    afterSnapshot: order.shippingRecipient,
+    req,
+  });
+
+  return getOrderById(order._id);
+};
+
 export default {
   createDirectOrder,
   updateOrderItemsAndDetails,
+  updateOrderRecipient,
   confirmOrderReserve,
   syncOrderWithGhn,
   switchOrderGhnStatus,

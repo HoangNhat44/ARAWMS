@@ -142,8 +142,56 @@ export const validateCancelOrder = (req, res, next) => {
   next();
 };
 
+/**
+ * Validation rules cho Cập nhật thông tin người nhận hàng (dữ liệu thật thay thế thông tin bị che *)
+ */
+export const validateUpdateOrderRecipient = (req, res, next) => {
+  const { name, phone, address } = req.body || {};
+
+  const cleanName = String(name || '').trim();
+  const rawPhone = String(phone || '').trim();
+  const cleanAddress = String(address || '').trim();
+
+  if (!cleanName || cleanName.includes('*')) {
+    return res.status(400).json({
+      success: false,
+      message: 'Vui lòng nhập Họ tên người nhận thật (không chứa ký tự che *).',
+    });
+  }
+
+  if (!rawPhone || rawPhone.includes('*')) {
+    return res.status(400).json({
+      success: false,
+      message: 'Vui lòng nhập Số điện thoại thật (không chứa ký tự che *).',
+    });
+  }
+
+  const normalizedPhone = rawPhone.replace(/^\+84/, '0').replace(/\D/g, '');
+  const VN_PHONE_REGEX = /^(0[35789])[0-9]{8}$/;
+  if (!VN_PHONE_REGEX.test(normalizedPhone)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Số điện thoại người nhận không đúng định dạng Việt Nam (10 chữ số, đầu số 03, 05, 07, 08, 09).',
+    });
+  }
+
+  if (!cleanAddress || cleanAddress.includes('*') || cleanAddress.length < 5) {
+    return res.status(400).json({
+      success: false,
+      message: 'Vui lòng nhập Địa chỉ giao hàng chi tiết thật (tối thiểu 5 ký tự, không chứa ký tự che *).',
+    });
+  }
+
+  req.body.name = cleanName;
+  req.body.phone = normalizedPhone;
+  req.body.address = cleanAddress;
+
+  next();
+};
+
 export default {
   validateCreateOrder,
   validateUpdateOrderItems,
   validateCancelOrder,
+  validateUpdateOrderRecipient,
 };

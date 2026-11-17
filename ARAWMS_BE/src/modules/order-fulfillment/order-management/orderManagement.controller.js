@@ -188,9 +188,23 @@ export const switchOrderGhnStatus = async (req, res) => {
   }
 };
 
+/**
+ * Cập nhật thông tin người nhận hàng (Tên, SĐT, Địa chỉ thật)
+ * PATCH /api/orders/:id/recipient
+ */
+export const updateOrderRecipient = async (req, res) => {
+  try {
+    const order = await orderManagementService.updateOrderRecipient(req.params.id, req.body, req.user, req);
+    return successResponse(res, order, 'Đã cập nhật thông tin người nhận hàng thành công!');
+  } catch (error) {
+    return errorResponse(res, error.message, 400);
+  }
+};
+
 export default {
   createDirectOrder,
   updateOrderItems,
+  updateOrderRecipient,
   confirmOrderReserve,
   syncOrderWithGhn,
   switchOrderGhnStatus,

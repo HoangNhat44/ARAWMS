@@ -15,6 +15,7 @@ import express from 'express';
 import {
   createDirectOrder,
   updateOrderItems,
+  updateOrderRecipient,
   confirmOrderReserve,
   cancelOrder,
   createPosDirectOrder,
@@ -30,6 +31,7 @@ import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
 import {
   validateCreateOrder,
   validateUpdateOrderItems,
+  validateUpdateOrderRecipient,
   validateCancelOrder,
 } from './orderManagement.validation.js';
 
@@ -64,6 +66,13 @@ router.post('/pos-direct', authorizeRole('SELLER', 'OWNER'), validateCreateOrder
  * @see     BR: GBR-08
  */
 router.put('/:id/items', authorizeRole('SELLER', 'OWNER'), validateUpdateOrderItems, updateOrderItems);
+
+/**
+ * @route   PATCH /api/orders/:id/recipient
+ * @desc    Cập nhật thông tin người nhận (Tên, SĐT, Địa chỉ thật) trước khi bàn giao GHN
+ * @access  SELLER, OWNER
+ */
+router.patch('/:id/recipient', authorizeRole('SELLER', 'OWNER'), validateUpdateOrderRecipient, updateOrderRecipient);
 
 // UC-79: Xác nhận đơn hàng & Kích hoạt giữ chỗ tồn kho
 router.post('/:id/confirm', authorizeRole('SELLER', 'OWNER'), confirmOrderReserve);

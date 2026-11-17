@@ -46,6 +46,7 @@ export const sellerService = {
   createDirectOrder: (orderData) => api.post('/orders', orderData),
   createPosDirectOrder: (orderData) => api.post('/orders/pos-direct', orderData),
   updateOrderItems: (id, data) => api.put(`/orders/${id}/items`, data),
+  updateOrderRecipient: (id, data) => api.patch(`/orders/${id}/recipient`, data),
   confirmOrderReserve: (id) => api.post(`/orders/${id}/confirm`),
   sendOrderConfirmationReceipt: (id) => api.post(`/orders/${id}/send-confirmation`),
   simulateCustomerConfirm: (id) => api.post(`/orders/${id}/simulate-confirm`),
