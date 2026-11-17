@@ -27,6 +27,9 @@ import QuickOrderModal from '../../components/seller/QuickOrderModal';
 import MarketplaceOrderImportModal from '../../components/seller/MarketplaceOrderImportModal';
 import { SkeletonOrderRow } from '../../components/common/Skeleton';
 import { Icon, Avatar, formatVnd, ORDER_STATUS_VARIANT, ORDER_STATUS_CLASS, EmptyState } from '../../components/seller/SellerUi';
+import { WmsSelect } from '../../components/ui/WmsControls';
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 /**
  * Nhận diện nhà mạng viễn thông tự động dựa trên đầu số điện thoại Việt Nam
@@ -412,13 +415,6 @@ const SellerOrdersPage = () => {
       {/* ── Top Header Navigation Bar (Enterprise Solid Surface) ─── */}
       <div className="ara-seller-header px-2 px-md-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2 flex-shrink-0" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
         <Stack direction="horizontal" gap={2} className="align-items-center">
-          <Button
-            size="sm"
-            onClick={() => navigate('/seller/chat')}
-            className="btn-wms-default d-flex align-items-center gap-1"
-          >
-            <Icon name="arrow-left" /> <span className="d-none d-sm-inline">Về Chat</span>
-          </Button>
           <div className="vr opacity-25 d-none d-sm-block" style={{ height: 22, backgroundColor: 'var(--wms-border, #C8B9A6)' }} />
           <div className="d-flex align-items-center gap-2">
             <span className="fw-bold fs-6 text-nowrap" style={{ color: 'var(--wms-text-primary, #141210)' }}>
@@ -444,7 +440,7 @@ const SellerOrdersPage = () => {
             onClick={() => setImportModalOpen(true)}
             title="Import đơn hàng từ Shopee, TikTok Shop và File Excel"
           >
-            <Icon name="cloud-arrow-up" /> <span className="d-none d-sm-inline">Import Sàn / Excel</span><span className="d-sm-none">Import</span>
+            <Icon name="cloud-arrow-up" /> <span className="d-none d-sm-inline">Import đơn Excel</span><span className="d-sm-none">Import</span>
           </Button>
 
           <Button
@@ -897,20 +893,20 @@ const SellerOrdersPage = () => {
             <div className="vr opacity-25 d-none d-sm-block" style={{ height: 16 }} />
             <div className="d-flex align-items-center gap-1">
               <span className="text-muted d-none d-sm-inline">Hiển thị:</span>
-              <Form.Select
-                size="sm"
+              <WmsSelect
+                size="small"
+                className="ara-wms-select-compact"
                 value={pageSize}
                 onChange={(e) => {
                   setPageSize(Number(e.target.value));
                   setCurrentPage(1);
                 }}
-                style={{ width: 'auto', padding: '2px 24px 2px 8px', fontSize: '0.8rem', backgroundColor: '#FFFFFF', borderColor: 'var(--wms-border, #C8B9A6)' }}
+                aria-label="Số đơn hàng mỗi trang"
               >
-                <option value={10}>10 đơn/trang</option>
-                <option value={20}>20 đơn/trang</option>
-                <option value={50}>50 đơn/trang</option>
-                <option value={100}>100 đơn/trang</option>
-              </Form.Select>
+                {PAGE_SIZE_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>{opt} đơn/trang</option>
+                ))}
+              </WmsSelect>
             </div>
           </div>
 
@@ -1114,20 +1110,20 @@ const SellerOrdersPage = () => {
           <div className="vr opacity-25 d-none d-sm-block" style={{ height: 16 }} />
           <div className="d-flex align-items-center gap-1">
             <span className="text-muted d-none d-sm-inline">Hiển thị:</span>
-            <Form.Select
-              size="sm"
+            <WmsSelect
+              size="small"
+              className="ara-wms-select-compact"
               value={pageSize}
               onChange={(e) => {
                 setPageSize(Number(e.target.value));
                 setCurrentPage(1);
               }}
-              style={{ width: 'auto', padding: '2px 24px 2px 8px', fontSize: '0.8rem', backgroundColor: '#FFFFFF', borderColor: 'var(--wms-border, #C8B9A6)' }}
+              aria-label="Số đơn hàng mỗi trang"
             >
-              <option value={10}>10 đơn/trang</option>
-              <option value={20}>20 đơn/trang</option>
-              <option value={50}>50 đơn/trang</option>
-              <option value={100}>100 đơn/trang</option>
-            </Form.Select>
+              {PAGE_SIZE_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{opt} đơn/trang</option>
+              ))}
+            </WmsSelect>
           </div>
         </div>
 

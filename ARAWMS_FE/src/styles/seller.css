@@ -349,12 +349,18 @@ body:has(.seller-chat-layout),
   padding-right: 12px;
 }
 
-.ara-search-capsule .form-control:focus {
+.ara-search-capsule .form-control:focus,
+.ara-search-capsule .form-control:focus-visible,
+.ara-search-capsule input:focus,
+.ara-search-capsule input:focus-visible {
   background-color: #FFFFFF !important;
   border-color: var(--wms-accent) !important;
   box-shadow: none !important;
+  outline: none !important;
 }
 
+.ara-search-capsule:hover .input-group-text,
+.ara-search-capsule:hover .form-control,
 .ara-search-capsule:focus-within .input-group-text,
 .ara-search-capsule:focus-within .form-control {
   border-color: var(--wms-accent) !important;
@@ -368,6 +374,117 @@ body:has(.seller-chat-layout),
   font-family: var(--wms-font);
   color: var(--wms-text-primary);
   transition: all 0.15s ease-in-out;
+}
+
+/* Đảm bảo dropdown Ant Design (WmsSelect) nổi trên React-Bootstrap Modal, nền trắng dễ nhìn & căn giữa dọc */
+.ant-select-dropdown {
+  z-index: 2000 !important;
+  background-color: #FFFFFF !important;
+  border: 1px solid var(--wms-border, #C8B9A6) !important;
+  border-radius: 8px !important;
+}
+
+.ant-select-dropdown .ant-select-item-option {
+  background-color: #FFFFFF !important;
+  color: var(--wms-text-primary, #141210) !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.ant-select-dropdown .ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background-color: #FAF6F0 !important;
+  color: var(--wms-text-primary, #141210) !important;
+}
+
+.ant-select-dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background-color: #FFFFFF !important;
+  color: var(--wms-accent-hover, #6E5233) !important;
+  font-weight: 600 !important;
+}
+
+.ant-select-dropdown .ant-select-item-option-selected.ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background-color: #FAF6F0 !important;
+  color: var(--wms-accent-hover, #6E5233) !important;
+}
+
+.ara-wms-select-sm > .ant-select,
+.ara-wms-select-compact > .ant-select {
+  display: inline-flex !important;
+  align-items: center !important;
+  padding-block: 0 !important;
+  border-radius: 6px !important;
+  border-color: var(--wms-border, #C8B9A6) !important;
+  background-color: #FFFFFF !important;
+  box-shadow: none !important;
+}
+
+.ara-wms-select-sm > .ant-select {
+  --ant-select-height: 36px;
+  min-height: 36px !important;
+  height: 36px !important;
+  font-size: 0.875rem !important;
+}
+
+.ara-wms-select-compact {
+  width: auto !important;
+  min-width: 138px;
+}
+
+.ara-wms-select-compact > .ant-select {
+  --ant-select-height: 30px;
+  min-height: 30px !important;
+  height: 30px !important;
+  font-size: 0.8rem !important;
+}
+
+.ara-wms-select-sm .ant-select-content,
+.ara-wms-select-compact .ant-select-content {
+  display: flex !important;
+  align-items: center !important;
+  align-self: center !important;
+  height: 100% !important;
+  line-height: 1.4 !important;
+  overflow: hidden !important;
+}
+
+.ara-wms-select-sm .ant-select-content-value,
+.ara-wms-select-compact .ant-select-content-value {
+  display: block !important;
+  width: 100% !important;
+  line-height: 1.4 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.ara-wms-select-sm > .ant-select.ant-select-open .ant-select-content-has-value,
+.ara-wms-select-compact > .ant-select.ant-select-open .ant-select-content-has-value {
+  opacity: 0.75 !important;
+}
+
+.ara-wms-select-sm > .ant-select:hover,
+.ara-wms-select-sm > .ant-select.ant-select-focused,
+.ara-wms-select-sm > .ant-select.ant-select-open,
+.ara-wms-select-compact > .ant-select:hover,
+.ara-wms-select-compact > .ant-select.ant-select-focused,
+.ara-wms-select-compact > .ant-select.ant-select-open,
+.wms-select-field .ant-select:hover,
+.wms-select-field .ant-select.ant-select-focused,
+.wms-select-field .ant-select.ant-select-open {
+  border-color: var(--wms-accent, #8A6A46) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.ara-wms-select-sm .ant-select-input:focus-visible,
+.ara-wms-select-compact .ant-select-input:focus-visible,
+.ara-wms-select-sm > .ant-select:focus-visible,
+.ara-wms-select-compact > .ant-select:focus-visible,
+.ara-wms-select-sm *:focus-visible,
+.ara-wms-select-compact *:focus-visible {
+  outline: none !important;
 }
 
 .form-control:focus,

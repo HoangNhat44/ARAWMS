@@ -20,6 +20,7 @@ import {
 } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
 import { Icon, formatVnd } from './SellerUi';
+import { WmsSelect } from '../ui/WmsControls';
 
 /**
  * Lấy ID SKU dạng chuỗi từ dòng sản phẩm của đơn hàng.
@@ -783,24 +784,25 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                     <Form.Label className="fw-bold text-dark mb-1">
                       Lý do đổi / trả hàng
                     </Form.Label>
-                    <Form.Select
-                      size="sm"
-                      className="mb-1"
-                      value={reasonDescription}
+                    <WmsSelect
+                      size="small"
+                      className="ara-wms-select-sm mb-2"
+                      value={COMMON_REASONS.includes(reasonDescription) ? reasonDescription : 'Lý do khác'}
                       onChange={(e) => setReasonDescription(e.target.value)}
                     >
                       {COMMON_REASONS.map((r, i) => (
                         <option key={i} value={r}>{r}</option>
                       ))}
                       <option value="Lý do khác">Lý do khác...</option>
-                    </Form.Select>
-                    {reasonDescription === 'Lý do khác' && (
+                    </WmsSelect>
+                    {!COMMON_REASONS.includes(reasonDescription) && (
                       <Form.Control
                         as="textarea"
                         rows={2}
                         size="sm"
                         placeholder="Mô tả cụ thể lý do khách muốn đổi/trả..."
-                        onChange={(e) => setReasonDescription(e.target.value)}
+                        value={reasonDescription === 'Lý do khác' ? '' : reasonDescription}
+                        onChange={(e) => setReasonDescription(e.target.value || 'Lý do khác')}
                         required
                       />
                     )}
