@@ -18,6 +18,7 @@ import {
 } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
 import { Icon, formatVnd } from './SellerUi';
+import { WmsSelect } from '../ui/WmsControls';
 
 const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
   const [channels, setChannels] = useState([]);
@@ -41,6 +42,10 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
   const [searchingSku, setSearchingSku] = useState(false);
   const [applyToAllSameName, setApplyToAllSameName] = useState(true);
 
+  // Chỉnh sửa inline thông tin người nhận bị che (***) ngay trên bảng Preview
+  const [editingRecipientIdx, setEditingRecipientIdx] = useState(null);
+  const [recipientDraft, setRecipientDraft] = useState({ customerName: '', phone: '', address: '' });
+
   // Tải danh sách cấu hình đa kênh từ Backend
   useEffect(() => {
     if (isOpen) {
@@ -51,6 +56,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
       setFile(null);
       setSkuModalOpen(false);
       setActiveItemTarget(null);
+      setEditingRecipientIdx(null);
     }
   }, [isOpen]);
 
@@ -374,6 +380,49 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
     }
   };
 
+  const handleStartEditRecipient = (idx, ord) => {
+    setError('');
+    setEditingRecipientIdx(idx);
+    setRecipientDraft({
+      customerName: ord.customerName || '',
+      phone: ord.phone || '',
+      address: ord.address || '',
+    });
+  };
+
+  const handleSaveRecipientEdit = (idx) => {
+    const cleanName = String(recipientDraft.customerName || '').trim();
+    const cleanPhone = String(recipientDraft.phone || '').trim();
+    const cleanAddress = String(recipientDraft.address || '').trim();
+
+    if (!cleanName || !cleanPhone || !cleanAddress) {
+      setError('Vui lòng nhập đầy đủ Tên khách hàng, Số điện thoại và Địa chỉ.');
+      return;
+    }
+
+    setError('');
+    setPreviewData((prev) => {
+      if (!prev) return prev;
+      const updatedOrders = prev.orders.map((ord, oIdx) => {
+        if (oIdx !== idx) return ord;
+        const hasMaskedInfo = [cleanName, cleanPhone, cleanAddress].some((v) => v.includes('*'));
+        return {
+          ...ord,
+          customerName: cleanName,
+          phone: cleanPhone,
+          address: cleanAddress,
+          hasMaskedInfo,
+        };
+      });
+      return {
+        ...prev,
+        orders: updatedOrders,
+        maskedOrdersCount: updatedOrders.filter((o) => o.hasMaskedInfo).length,
+      };
+    });
+    setEditingRecipientIdx(null);
+  };
+
   return (
     <>
       <Modal show={isOpen} onHide={onClose} centered size="xl" fullscreen="lg-down" scrollable>
@@ -456,8 +505,9 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                 <Row className="g-3">
                   <Col md={4}>
                     <Form.Label className="small text-muted mb-1">Kênh bán hàng</Form.Label>
-                    <Form.Select
-                      size="sm"
+                    <WmsSelect
+                      size="small"
+                      className="ara-wms-select-sm"
                       value={selectedChannel}
                       onChange={(e) => {
                         const ch = e.target.value;
@@ -470,14 +520,16 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                       <option value="TIKTOK">TikTok Shop</option>
                       <option value="FACEBOOK">Facebook Fanpages</option>
                       <option value="EXCEL_IMPORT">File Excel Tổng Hợp</option>
-                    </Form.Select>
+                    </WmsSelect>
                   </Col>
 
                   <Col md={5}>
                     <Form.Label className="small text-muted mb-1">Cửa hàng / Gian hàng liên kết</Form.Label>
-                    <Form.Select
-                      size="sm"
-                      value={selectedSourceId}
+                    <WmsSelect
+                      size="small"
+                      className="ara-wms-select-sm"
+                      value={selectedSourceId || undefined}
+                      placeholder="Chọn gian hàng..."
                       onChange={(e) => setSelectedSourceId(e.target.value)}
                     >
                       {availableSources.map((s) => (
@@ -485,7 +537,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                           {s.sourceName}
                         </option>
                       ))}
-                    </Form.Select>
+                    </WmsSelect>
                   </Col>
 
                   <Col md={3} className="d-flex align-items-end">
@@ -563,6 +615,15 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                     </Alert>
                   )}
 
+                  {previewData.maskedOrdersCount > 0 && (
+                    <Alert variant="warning" className="py-2 px-3 small border mb-0 d-flex align-items-center gap-2">
+                      <Icon name="shield-exclamation" className="text-warning-emphasis flex-shrink-0" />
+                      <div>
+                        Phát hiện <strong>{previewData.maskedOrdersCount} đơn hàng</strong> đang bị sàn che thông tin (<code>***</code>). Bạn có thể bấm <strong>Sửa</strong> ngay tại dòng tương ứng để nhập dữ liệu thật trước khi xử lý, hoặc cập nhật sau trong <em>Chi tiết đơn hàng</em>.
+                      </div>
+                    </Alert>
+                  )}
+
                   <Card className="border shadow-sm bg-white overflow-hidden">
                   <Card.Header className="py-2 bg-light d-flex justify-content-between align-items-center">
                     <div className="d-flex align-items-center gap-2">
@@ -608,11 +669,68 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                             <td>{idx + 1}</td>
                             <td className="font-monospace fw-bold text-nowrap">{ord.externalOrderCode}</td>
                             <td>
-                              <div className="fw-semibold">{ord.customerName}</div>
-                              <div className="text-muted">{ord.phone}</div>
+                              {editingRecipientIdx === idx ? (
+                                <div className="d-flex flex-column gap-1" style={{ minWidth: 190 }}>
+                                  <Form.Control
+                                    size="sm"
+                                    placeholder="Tên khách hàng thật"
+                                    value={recipientDraft.customerName}
+                                    onChange={(e) => setRecipientDraft((prev) => ({ ...prev, customerName: e.target.value }))}
+                                  />
+                                  <Form.Control
+                                    size="sm"
+                                    placeholder="SĐT thật (VD: 0912345678)"
+                                    value={recipientDraft.phone}
+                                    onChange={(e) => setRecipientDraft((prev) => ({ ...prev, phone: e.target.value }))}
+                                  />
+                                </div>
+                              ) : (
+                                <div>
+                                  <div className="fw-semibold d-flex align-items-center gap-1 flex-wrap">
+                                    <span>{ord.customerName}</span>
+                                    {ord.hasMaskedInfo && (
+                                      <Badge bg="warning" text="dark" style={{ fontSize: '0.65rem' }}>Bị che ***</Badge>
+                                    )}
+                                  </div>
+                                  <div className="text-muted">{ord.phone}</div>
+                                  <Button
+                                    variant="link"
+                                    size="sm"
+                                    className="p-0 text-decoration-none mt-1"
+                                    style={{ fontSize: '0.72rem' }}
+                                    onClick={() => handleStartEditRecipient(idx, ord)}
+                                  >
+                                    <Icon name="pencil-square" className="me-1" />
+                                    {ord.hasMaskedInfo ? 'Bổ sung thông tin thật' : 'Sửa người nhận'}
+                                  </Button>
+                                </div>
+                              )}
                             </td>
-                            <td className="text-truncate" style={{ maxWidth: 200 }} title={ord.address}>
-                              {ord.address}
+                            <td style={{ maxWidth: 230 }}>
+                              {editingRecipientIdx === idx ? (
+                                <div className="d-flex flex-column gap-1">
+                                  <Form.Control
+                                    as="textarea"
+                                    rows={2}
+                                    size="sm"
+                                    placeholder="Địa chỉ giao hàng chi tiết thật"
+                                    value={recipientDraft.address}
+                                    onChange={(e) => setRecipientDraft((prev) => ({ ...prev, address: e.target.value }))}
+                                  />
+                                  <div className="d-flex gap-1">
+                                    <Button size="sm" variant="success" className="py-0 px-2" onClick={() => handleSaveRecipientEdit(idx)}>
+                                      Lưu
+                                    </Button>
+                                    <Button size="sm" variant="outline-secondary" className="py-0 px-2" onClick={() => setEditingRecipientIdx(null)}>
+                                      Hủy
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-truncate" title={ord.address}>
+                                  {ord.address}
+                                </div>
+                              )}
                             </td>
                             <td>
                               {ord.items?.map((it, i) => (
