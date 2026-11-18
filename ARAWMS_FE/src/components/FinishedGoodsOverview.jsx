@@ -39,6 +39,7 @@ export default function FinishedGoodsOverview({
     ? product.skus.map((sku) => ({ product, sku })) : [{ product, sku: null }]), [products]);
   const filtered = rows.filter(({ product, sku }) => {
     const query = search.trim().toLocaleLowerCase('vi');
+    // TODO(xóa sampleCode): product.sampleCode only matters for legacy products before the migration.
     const text = [product.productCode, product.productName, product.sampleCode, product.category, sku?.skuCode, sku?.color, sku?.size].join(' ').toLocaleLowerCase('vi');
     const available = sku ? Number(sku.pickableQty ?? 0) : 0;
     const matchesAvailability = !availability || (availability === 'available' ? available > 0 : available === 0);

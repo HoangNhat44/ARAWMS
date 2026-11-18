@@ -39,7 +39,7 @@ export const lookupRealtimeStock = async (searchQuery) => {
         { productName: safeRegex },
         { productCode: safeRegex },
         { category: safeRegex },
-        { sampleCode: safeRegex },
+        { sampleCode: safeRegex }, // TODO(xóa sampleCode): legacy products only, remove after migration
       ],
     }).select('_id').lean();
 

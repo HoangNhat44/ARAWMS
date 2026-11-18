@@ -72,7 +72,6 @@ export const sellerService = {
   previewExcelImport: (formData) => api.post('/orders/marketplace/preview-excel', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
-  autoProvisionSkus: (items) => api.post('/orders/marketplace/auto-provision-skus', { items }),
   processImportOrders: (data) => api.post('/orders/marketplace/process-orders', data),
   warehouseApproveOrder: (id) => api.post(`/orders/marketplace/${id}/warehouse-approve`),
   warehouseApproveOrdersBulk: (orderIds) => api.post('/orders/marketplace/warehouse-approve-bulk', { orderIds }),

@@ -37,10 +37,11 @@ export const productService = {
     headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, timeout: 180000,
   }),
   getConfiguration: (id) => api.get(`/products/configuration/${id}`),
+  // SKUs stopped from sale that still hold stock (e.g. restocked returns).
+  discontinuedStock: () => api.get('/products/configuration/discontinued-stock'),
   updateConfiguration: (id, values) => api.patch(`/products/configuration/${id}`, values),
   addVariants: (id, variants) => api.post(`/products/configuration/${id}/variants`, { variants }),
   updateSkuPrice: (id, skuId, retailPrice) => api.patch(`/products/configuration/${id}/variants/${skuId}`, { retailPrice }),
-  create: (values) => api.post('/products', values),
   // Preserve the file media type for backend validation and Cloudinary upload.
   upload: (id, kind, file, fileId, sha256) => api.put(`/products/${id}/${kind}`, file, {
     headers: { 'Content-Type': file.type, ...(fileId ? { 'X-Catalog-File-Id': fileId, 'X-Content-SHA256': sha256 } : {}) },

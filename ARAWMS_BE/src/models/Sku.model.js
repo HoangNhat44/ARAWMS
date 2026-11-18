@@ -26,6 +26,8 @@ const skuSchema = new Schema(
     safetyStockThreshold: { type: Number, default: 10 },
     fifoAgingThresholdDays: { type: Number, default: 60 },
     isActive: { type: Boolean, default: true },
+    // Set when the color is stopped from sale; product activation must not re-enable this SKU.
+    discontinuedAt: { type: Date, default: null },
   },
   {
     collection: 'skus',

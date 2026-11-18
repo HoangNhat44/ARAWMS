@@ -28,7 +28,6 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
 
   const [parsing, setParsing] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [provisioning, setProvisioning] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [previewData, setPreviewData] = useState(null);
   const [error, setError] = useState('');
@@ -253,97 +252,6 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
 
     setSkuModalOpen(false);
     setActiveItemTarget(null);
-  };
-
-  // Tự động tạo sản phẩm & SKU kho cho tất cả sản phẩm chưa có trong hệ thống
-  const handleAutoProvisionAllMissing = async () => {
-    if (!previewData || !previewData.orders) return;
-
-    const missingMap = new Map();
-    for (const ord of previewData.orders) {
-      for (const it of ord.items) {
-        if (!it.isValidSku) {
-          const raw = it.rawProductName || it.skuCode;
-          if (raw && !missingMap.has(raw)) {
-            missingMap.set(raw, {
-              rawProductName: raw,
-              quantity: it.quantity || 1,
-              unitPrice: it.unitPrice || 0,
-            });
-          }
-        }
-      }
-    }
-
-    const missingList = Array.from(missingMap.values());
-    if (missingList.length === 0) return;
-
-    try {
-      setProvisioning(true);
-      setError('');
-      const res = await sellerService.autoProvisionSkus(missingList);
-      if (res.success && res.data) {
-        const createdMap = new Map();
-        for (const sk of res.data) {
-          if (sk.rawProductName) {
-            createdMap.set(sk.rawProductName, sk);
-          }
-        }
-
-        const updatedOrders = previewData.orders.map((ord) => {
-          const newItems = ord.items.map((it) => {
-            const raw = it.rawProductName || it.skuCode;
-            const newSku = createdMap.get(raw);
-            if (!newSku) return it;
-
-            const avail = newSku.availableQty ?? 100;
-            return {
-              ...it,
-              skuId: newSku._id,
-              skuCode: newSku.skuCode,
-              skuBarcode: newSku.skuBarcode,
-              productName: newSku.productName || newSku.skuCode,
-              color: newSku.color,
-              size: newSku.size,
-              availableQty: avail,
-              isValidSku: true,
-              isStockSufficient: avail >= it.quantity,
-              unitPrice: it.unitPrice > 0 ? it.unitPrice : newSku.retailPrice,
-            };
-          });
-
-          const isDup = ord.warningMessage && ord.warningMessage.includes('đã được import');
-          const allItemsValid = newItems.every((it) => it.isValidSku);
-
-          let warningMessage = isDup ? ord.warningMessage : '';
-          const stockShortage = newItems.find((it) => !it.isStockSufficient);
-          if (stockShortage && !isDup) {
-            warningMessage = `SKU [${stockShortage.skuCode}] tồn khả dụng thấp (còn ${stockShortage.availableQty})`;
-          }
-
-          return {
-            ...ord,
-            items: newItems,
-            isValid: !isDup && allItemsValid,
-            warningMessage,
-          };
-        });
-
-        const validCount = updatedOrders.filter((o) => o.isValid).length;
-        const invalidCount = updatedOrders.filter((o) => !o.isValid).length;
-
-        setPreviewData({
-          ...previewData,
-          orders: updatedOrders,
-          validOrdersCount: validCount,
-          invalidOrdersCount: invalidCount,
-        });
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Lỗi khi tự động tạo SKU kho');
-    } finally {
-      setProvisioning(false);
-    }
   };
 
   // Seller bấm "Xử lý đơn" (Marketplace Order Processing)
@@ -594,24 +502,10 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
               {previewData && (
                 <>
                   {previewData.invalidOrdersCount > 0 && (
-                    <Alert variant="warning" className="d-flex align-items-center justify-content-between py-2 px-3 small border mb-0 flex-wrap gap-2">
-                      <div>
-                        <Icon name="exclamation-triangle-fill" className="text-warning me-2" />
-                        Có <strong>{previewData.invalidOrdersCount} đơn hàng</strong> chứa sản phẩm chưa có trong danh mục kho ARAWMS. <strong>Bạn không cần xóa file!</strong>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="warning"
-                        className="fw-bold text-dark d-flex align-items-center gap-1 shadow-sm px-3"
-                        onClick={handleAutoProvisionAllMissing}
-                        disabled={provisioning}
-                      >
-                        {provisioning ? (
-                          <><Spinner animation="border" size="sm" /> Đang tạo SKU kho...</>
-                        ) : (
-                          <><Icon name="lightning-charge-fill" /> Tự động tạo SKU kho & Khớp tất cả</>
-                        )}
-                      </Button>
+                    <Alert variant="warning" className="py-2 px-3 small border mb-0">
+                      <Icon name="exclamation-triangle-fill" className="text-warning me-2" />
+                      Có <strong>{previewData.invalidOrdersCount} đơn hàng</strong> không xử lý được (trùng đơn hoặc chứa sản phẩm chưa có trong danh mục kho ARAWMS).
+                      Hãy ghép với SKU có sẵn, hoặc nhờ kho tạo sản phẩm tại màn <strong>Cấu hình sản phẩm</strong> / import Excel sản phẩm rồi kiểm tra lại file.
                     </Alert>
                   )}
 

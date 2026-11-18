@@ -43,24 +43,6 @@ export const previewExcelImport = async (req, res) => {
 };
 
 /**
- * POST /api/orders/marketplace/auto-provision-skus
- * Tự động tạo sản phẩm & SKU mới trong kho cho các sản phẩm chưa có mã
- */
-export const autoProvisionSkus = async (req, res) => {
-  try {
-    const { items } = req.body;
-    const result = await marketplaceService.autoProvisionSkus(items);
-    return res.status(200).json({
-      success: true,
-      message: `Đã tự động khởi tạo thành công ${result.length} SKU mới vào kho!`,
-      data: result,
-    });
-  } catch (err) {
-    return res.status(400).json({ success: false, message: err.message });
-  }
-};
-
-/**
  * POST /api/orders/marketplace/process-orders
  * Seller thực hiện "Xử lý đơn" (Tạo các đơn hàng hợp lệ vào hệ thống)
  */
@@ -80,7 +62,8 @@ export const processImportOrders = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: `Đã xử lý và import thành công ${result.totalCreated} đơn hàng từ sàn ${sourceName || channel}! Chờ Warehouse duyệt.`,
+      message: `Đã xử lý và import thành công ${result.totalCreated} đơn hàng từ sàn ${sourceName || channel}!` +
+        (result.rejectedOrders?.length ? ` ${result.rejectedOrders.length} đơn bị bỏ qua vì có sản phẩm chưa khớp SKU hoặc đã ngừng bán.` : ''),
       data: result,
     });
   } catch (err) {

@@ -1230,8 +1230,12 @@ const SellerOrdersPage = () => {
       <MarketplaceOrderImportModal
         isOpen={importModalOpen}
         onClose={() => setImportModalOpen(false)}
-        onImportSuccess={() => {
-          showSuccess('Đã import đơn hàng từ sàn thành công!', 'Import TMĐT');
+        onImportSuccess={(result) => {
+          // The modal closes right away, so orders skipped by the server are reported here.
+          const rejected = result?.rejectedOrders || [];
+          showSuccess(rejected.length
+            ? `Đã import ${result.totalCreated} đơn. ${rejected.length} đơn bị bỏ qua (${rejected.map((item) => item.externalOrderCode).join(', ')}) vì có sản phẩm chưa khớp SKU hoặc đã ngừng bán.`
+            : 'Đã import đơn hàng từ sàn thành công!', 'Import TMĐT');
           setImportModalOpen(false);
           fetchOrders();
         }}

@@ -34,7 +34,7 @@ const send = (body) => request(app).post('/api/products/configuration/sync')
 
 test('retry returns one product and rejects payload changes under the same operation ID', async () => {
   const body = { operationId: 'offline-create-0001', operationType: 'CREATE',
-    payload: { productName: 'Áo thử offline', sampleCode: 'OFFLINE-01', category: 'Áo',
+    payload: { productName: 'Áo thử offline', productCode: 'OFFLINE01', category: 'Áo',
       description: '', basePrice: 100000, status: 'ACTIVE',
       variants: [{ color: 'Đen', size: 'M', retailPrice: 100000 }] } };
   const first = await send(body);
@@ -42,7 +42,7 @@ test('retry returns one product and rejects payload changes under the same opera
   const second = await send(body);
   assert.equal(second.status, 200, JSON.stringify(second.body));
   assert.equal(first.body.data.product.id, second.body.data.product.id);
-  assert.equal(await Product.countDocuments({ sampleCode: 'OFFLINE-01' }), 1);
+  assert.equal(await Product.countDocuments({ productCode: 'OFFLINE01' }), 1);
   assert.equal(await Sku.countDocuments({ productId: first.body.data.product.id }), 1);
   const changed = await send({ ...body, payload: { ...body.payload, productName: 'Khác' } });
   assert.equal(changed.status, 409);
@@ -50,7 +50,7 @@ test('retry returns one product and rejects payload changes under the same opera
 });
 
 test('stale product version is rejected and does not overwrite the first edit', async () => {
-  const created = await Product.findOne({ sampleCode: 'OFFLINE-01' });
+  const created = await Product.findOne({ productCode: 'OFFLINE01' });
   const baseVersion = created.version ?? 0;
   const first = await send({ operationId: 'offline-update-0001', operationType: 'UPDATE_PRODUCT',
     serverEntityId: String(created._id), baseVersion, payload: { productName: 'Tên mới' } });
@@ -64,11 +64,12 @@ test('stale product version is rejected and does not overwrite the first edit', 
 
 test('Excel product row group replays once and duplicate codes require review', async () => {
   const importBody = { operationId: 'offline-import-0001', operationType: 'IMPORT_PRODUCT', payload: {
-    stt: '1', productCode: 'IMPORT-01', productName: 'Áo import - Đỏ', category: 'Áo',
-    color: 'Đỏ', description: '', basePrice: 120000, rows: [2, 3],
+    stt: '1', productCode: 'IMPORT01', productName: 'Áo import', category: 'Áo',
+    description: '', basePrice: 120000, rows: [2, 3, 4],
     variants: [
-      { skuCode: 'IMPORT-01-M', size: 'M', price: 120000, barcode: 'IMPORT-01-M', threshold: 10 },
-      { skuCode: 'IMPORT-01-L', size: 'L', price: 120000, barcode: 'IMPORT-01-L', threshold: 10 },
+      { color: 'Đỏ', size: 'M', price: 120000, barcode: 'BC-IMPORT-DO-M', threshold: 5 },
+      { color: 'Đỏ', size: 'L', price: 125000, threshold: 10 },
+      { color: 'Trắng', size: 'M', price: 120000, threshold: 10 },
     ],
   } };
   const first = await send(importBody);
@@ -76,10 +77,30 @@ test('Excel product row group replays once and duplicate codes require review', 
   const retry = await send(importBody);
   assert.equal(retry.status, 200);
   assert.equal(first.body.data.product.id, retry.body.data.product.id);
-  assert.equal(await Sku.countDocuments({ productId: first.body.data.product.id }), 2);
+  assert.ok(first.body.data.product.codeLockedAt);
+  const skus = await Sku.find({ productId: first.body.data.product.id }).sort({ skuCode: 1 });
+  assert.deepEqual(skus.map((sku) => sku.skuCode), ['IMPORT01-DO-L', 'IMPORT01-DO-M', 'IMPORT01-TRANG-M']);
+  assert.equal(skus.find((sku) => sku.skuCode === 'IMPORT01-DO-M').skuBarcode, 'BC-IMPORT-DO-M');
+  assert.equal(skus.find((sku) => sku.skuCode === 'IMPORT01-DO-M').safetyStockThreshold, 5);
+  assert.equal(skus.find((sku) => sku.skuCode === 'IMPORT01-DO-L').skuBarcode, 'IMPORT01-DO-L');
   const duplicate = await send({ ...importBody, operationId: 'offline-import-0002' });
   assert.equal(duplicate.status, 409);
-  assert.equal(await Product.countDocuments({ productCode: 'IMPORT-01' }), 1);
+  assert.equal(duplicate.body.error.code, 'DUPLICATE_PRODUCT_CODE');
+  assert.equal(await Product.countDocuments({ productCode: 'IMPORT01' }), 1);
+});
+
+test('Excel import rejects old per-color codes and accepts queued single-color payloads', async () => {
+  const oldCode = await send({ operationId: 'offline-import-old-0001', operationType: 'IMPORT_PRODUCT', payload: {
+    stt: '1', productCode: 'AL186-KEM', productName: 'Áo len', category: 'Áo', basePrice: 1000,
+    variants: [{ color: 'Kem', size: 'M', price: 1000, threshold: 10 }] } });
+  assert.equal(oldCode.status, 400);
+  assert.equal(oldCode.body.error.code, 'INVALID_PRODUCT_CODE');
+  // Operations queued before this change carry one product-level color and an unused skuCode.
+  const queued = await send({ operationId: 'offline-import-old-0002', operationType: 'IMPORT_PRODUCT', payload: {
+    stt: '2', productCode: 'QUEUED01', productName: 'Áo cũ - Xanh', category: 'Áo', color: 'Xanh', basePrice: 1000,
+    variants: [{ skuCode: 'QUEUED01-XANH-S', size: 'S', price: 1000, threshold: 10 }] } });
+  assert.equal(queued.status, 201, JSON.stringify(queued.body));
+  assert.equal(queued.body.data.skus[0].skuCode, 'QUEUED01-XANH-S');
 });
 
 test('an existing product without a version can be edited once from base version zero', async () => {
@@ -93,46 +114,140 @@ test('an existing product without a version can be edited once from base version
   assert.equal(changed.version, 1);
 });
 
-test('two devices cannot claim the same sample code', async () => {
+test('two devices cannot claim the same product code', async () => {
   const response = await send({ operationId: 'offline-create-0002', operationType: 'CREATE',
-    payload: { productName: 'Mẫu trên máy khác', sampleCode: 'OFFLINE-01', category: 'Áo',
+    payload: { productName: 'Mẫu trên máy khác', productCode: 'OFFLINE01', category: 'Áo',
       description: '', basePrice: 100000, status: 'ACTIVE',
       variants: [{ color: 'Trắng', size: 'L', retailPrice: 100000 }] } });
   assert.equal(response.status, 409);
-  assert.equal(response.body.error.code, 'DUPLICATE_PRODUCT_OR_VARIANT');
-  assert.equal(await Product.countDocuments({ sampleCode: 'OFFLINE-01' }), 1);
+  assert.equal(response.body.error.code, 'DUPLICATE_PRODUCT_CODE');
+  assert.equal(await Product.countDocuments({ productCode: 'OFFLINE01' }), 1);
 });
 
 test('the same operation ID belongs to each authenticated account separately', async () => {
   const secondToken = await createTestToken('WAREHOUSE_MANAGER');
   const response = await request(app).post('/api/products/configuration/sync')
     .set('Authorization', `Bearer ${secondToken}`).send({ operationId: 'offline-create-0001',
-      operationType: 'CREATE', payload: { productName: 'Mẫu khác tài khoản', sampleCode: 'ACCOUNT-02',
+      operationType: 'CREATE', payload: { productName: 'Mẫu khác tài khoản', productCode: 'ACCOUNT02',
         category: 'Áo', description: '', basePrice: 2000, status: 'ACTIVE',
         variants: [{ color: 'Xanh', size: 'S', retailPrice: 2000 }] } });
   assert.equal(response.status, 201, JSON.stringify(response.body));
   assert.equal(await CatalogOperation.countDocuments({ operationId: 'offline-create-0001' }), 2);
 });
 
-test('SKU color and size edits check version and physical stock', async () => {
-  const product = await Product.findOne({ sampleCode: 'OFFLINE-01' });
+test('SKU codes are PRODUCTCODE-COLOR-SIZE', async () => {
+  const product = await Product.findOne({ productCode: 'OFFLINE01' });
+  const sku = await Sku.findOne({ productId: product._id });
+  assert.equal(sku.skuCode, 'OFFLINE01-DEN-M');
+  assert.equal(sku.skuBarcode, 'OFFLINE01-DEN-M');
+  assert.ok(product.codeLockedAt, 'ACTIVE product must have its code locked');
+  const raw = await Product.collection.findOne({ _id: product._id });
+  assert.equal('sampleCode' in raw, false, 'productCode is the only code field; sampleCode is never written');
+});
+
+test('invalid product codes are rejected', async () => {
+  for (const [index, productCode] of ['AL-186', 'ÁO01', 'A'].entries()) {
+    const response = await send({ operationId: `offline-bad-code-000${index}`, operationType: 'CREATE',
+      payload: { productName: 'Mã sai', productCode, category: 'Áo', description: '', basePrice: 1000,
+        status: 'DRAFT', variants: [{ color: 'Đen', size: 'M' }] } });
+    assert.equal(response.status, 400, productCode);
+    assert.equal(response.body.error.code, 'INVALID_PRODUCT_CODE');
+  }
+});
+
+test('SKU edits change only the price; color and size are immutable', async () => {
+  const product = await Product.findOne({ productCode: 'OFFLINE01' });
   const before = await Sku.findOne({ productId: product._id });
-  const changed = await send({ operationId: 'offline-sku-edit-0001', operationType: 'UPDATE_SKU',
+  const price = await send({ operationId: 'offline-sku-edit-0001', operationType: 'UPDATE_SKU',
     serverEntityId: String(product._id), baseVersion: before.version ?? 0,
-    payload: { skuId: String(before._id), color: 'Trắng', size: 'L', retailPrice: 110000 } });
-  assert.equal(changed.status, 200, JSON.stringify(changed.body));
-  assert.equal(changed.body.data.sku.color, 'Trắng');
-  assert.equal(changed.body.data.sku.size, 'L');
+    payload: { skuId: String(before._id), retailPrice: 110000 } });
+  assert.equal(price.status, 200, JSON.stringify(price.body));
+  assert.equal(price.body.data.sku.retailPrice, 110000);
   const stale = await send({ operationId: 'offline-sku-edit-0002', operationType: 'UPDATE_SKU',
     serverEntityId: String(product._id), baseVersion: before.version ?? 0,
-    payload: { skuId: String(before._id), color: 'Xanh' } });
+    payload: { skuId: String(before._id), retailPrice: 120000 } });
   assert.equal(stale.status, 409);
-  await Sku.updateOne({ _id: before._id }, { $set: { onHandQty: 1 } });
-  const stocked = await send({ operationId: 'offline-sku-edit-0003', operationType: 'UPDATE_SKU',
-    serverEntityId: String(product._id), baseVersion: changed.body.data.sku.version,
+  const color = await send({ operationId: 'offline-sku-edit-0003', operationType: 'UPDATE_SKU',
+    serverEntityId: String(product._id), baseVersion: price.body.data.sku.version,
     payload: { skuId: String(before._id), color: 'Xanh' } });
-  assert.equal(stocked.status, 409);
-  assert.equal(stocked.body.error.code, 'SKU_HAS_STOCK');
+  assert.equal(color.status, 400);
+  assert.equal(color.body.error.code, 'SKU_ATTRIBUTE_IMMUTABLE');
+  assert.equal((await Sku.findById(before._id)).color, 'Đen');
+});
+
+test('a draft product code can change and regenerates SKU codes; it locks once ACTIVE', async () => {
+  const created = await send({ operationId: 'offline-draft-code-0001', operationType: 'CREATE',
+    payload: { productName: 'Mẫu nháp', productCode: 'DRAFT01', category: 'Áo', description: '',
+      basePrice: 5000, status: 'DRAFT', variants: [{ color: 'Trắng', size: 'S' }, { color: 'Đỏ đô', size: 'M' }] } });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const productId = created.body.data.product.id;
+  assert.equal(created.body.data.product.codeLockedAt, null);
+  const renamed = await send({ operationId: 'offline-draft-code-0002', operationType: 'UPDATE_PRODUCT',
+    serverEntityId: productId, baseVersion: 0, payload: { productCode: 'DRAFT02' } });
+  assert.equal(renamed.status, 200, JSON.stringify(renamed.body));
+  const codes = (await Sku.find({ productId }).sort({ size: 1 })).map((sku) => sku.skuCode).sort();
+  assert.deepEqual(codes, ['DRAFT02-DODO-M', 'DRAFT02-TRANG-S']);
+  const activated = await send({ operationId: 'offline-draft-code-0003', operationType: 'UPDATE_PRODUCT',
+    serverEntityId: productId, baseVersion: renamed.body.data.product.version, payload: { status: 'ACTIVE' } });
+  assert.equal(activated.status, 200, JSON.stringify(activated.body));
+  assert.ok(activated.body.data.product.codeLockedAt);
+  const backToDraft = await send({ operationId: 'offline-draft-code-0004', operationType: 'UPDATE_PRODUCT',
+    serverEntityId: productId, baseVersion: activated.body.data.product.version, payload: { status: 'DRAFT' } });
+  assert.equal(backToDraft.status, 200);
+  const locked = await send({ operationId: 'offline-draft-code-0005', operationType: 'UPDATE_PRODUCT',
+    serverEntityId: productId, baseVersion: backToDraft.body.data.product.version, payload: { productCode: 'DRAFT03' } });
+  assert.equal(locked.status, 409);
+  assert.equal(locked.body.error.code, 'PRODUCT_CODE_LOCKED');
+});
+
+test('stopping a color keeps its SKUs; adding it again re-enables the same SKUs', async () => {
+  const created = await send({ operationId: 'offline-color-0001', operationType: 'CREATE',
+    payload: { productName: 'Áo len', productCode: 'AL186', category: 'Áo', description: '', basePrice: 9000,
+      status: 'ACTIVE', variants: [{ color: 'Trắng', size: 'M' }, { color: 'Đỏ', size: 'M' }, { color: 'Đỏ', size: 'L' }] } });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const productId = created.body.data.product.id;
+  const redIds = (await Sku.find({ productId, color: 'Đỏ' })).map((sku) => String(sku._id)).sort();
+  await Sku.updateOne({ productId, color: 'Đỏ', size: 'M' }, { $set: { onHandQty: 3 } });
+  const stopped = await send({ operationId: 'offline-color-0002', operationType: 'SET_COLOR_ACTIVE',
+    serverEntityId: productId, baseVersion: created.body.data.product.version, payload: { color: 'đỏ', isActive: false } });
+  assert.equal(stopped.status, 200, JSON.stringify(stopped.body));
+  assert.equal(stopped.body.data.stock.onHand, 3);
+  const red = await Sku.find({ productId, color: 'Đỏ' });
+  assert.ok(red.every((sku) => !sku.isActive && sku.discontinuedAt));
+  assert.equal((await Sku.findOne({ productId, color: 'Trắng' })).isActive, true);
+  // Product re-activation must not re-enable a stopped color.
+  const draft = await send({ operationId: 'offline-color-0003', operationType: 'UPDATE_PRODUCT', serverEntityId: productId,
+    baseVersion: stopped.body.data.product.version, payload: { status: 'DRAFT' } });
+  const active = await send({ operationId: 'offline-color-0004', operationType: 'UPDATE_PRODUCT', serverEntityId: productId,
+    baseVersion: draft.body.data.product.version, payload: { status: 'ACTIVE' } });
+  assert.equal(active.status, 200, JSON.stringify(active.body));
+  assert.ok((await Sku.find({ productId, color: 'Đỏ' })).every((sku) => !sku.isActive));
+  const readded = await send({ operationId: 'offline-color-0005', operationType: 'ADD_VARIANTS', serverEntityId: productId,
+    baseVersion: active.body.data.product.version, payload: { variants: [{ color: 'Đỏ', size: 'M' }] } });
+  assert.equal(readded.status, 200, JSON.stringify(readded.body));
+  assert.equal(readded.body.data.skus[0].skuCode, 'AL186-DO-M');
+  assert.ok(redIds.includes(String(readded.body.data.skus[0].id)), 'must reuse the stopped SKU');
+  assert.equal(await Sku.countDocuments({ productId }), 3);
+});
+
+test('two color names that collapse to the same code are rejected', async () => {
+  const response = await send({ operationId: 'offline-color-code-0001', operationType: 'CREATE',
+    payload: { productName: 'Trùng mã màu', productCode: 'COLOR01', category: 'Áo', description: '', basePrice: 1000,
+      status: 'DRAFT', variants: [{ color: 'Đỏ', size: 'M' }, { color: 'Do', size: 'M' }] } });
+  assert.equal(response.status, 400);
+  assert.equal(response.body.error.code, 'DUPLICATE_COLOR_CODE');
+});
+
+test('stopped SKUs that still hold stock are listed for the owner', async () => {
+  const product = await Product.findOne({ productCode: 'AL186' });
+  await send({ operationId: 'offline-color-stock-0001', operationType: 'SET_COLOR_ACTIVE', serverEntityId: String(product._id),
+    baseVersion: product.version, payload: { color: 'Đỏ', isActive: false } });
+  const response = await request(app).get('/api/products/configuration/discontinued-stock').set('Authorization', `Bearer ${token}`);
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const codes = response.body.data.items.map((item) => item.skuCode);
+  assert.ok(codes.includes('AL186-DO-M'), 'stopped SKU with 3 on hand must be listed');
+  assert.ok(!codes.includes('AL186-DO-L'), 'stopped SKU without stock is not listed');
+  assert.equal(response.body.data.items.find((item) => item.skuCode === 'AL186-DO-M').productCode, 'AL186');
 });
 
 test('unavailable media storage leaves an Excel product uncommitted for retry', async () => {
@@ -141,11 +256,11 @@ test('unavailable media storage leaves an Excel product uncommitted for retry', 
   names.forEach((name) => { process.env[name] = ''; });
   try {
     const response = await send({ operationId: 'offline-import-media-0001', operationType: 'IMPORT_PRODUCT',
-      payload: { productCode: 'IMPORT-MEDIA', productName: 'Áo - Xanh', category: 'Áo',
+      payload: { productCode: 'IMPORTMEDIA', productName: 'Áo - Xanh', category: 'Áo',
         color: 'Xanh', basePrice: 120000, imageUrl: 'https://example.test/image.jpg',
-        variants: [{ skuCode: 'IMPORT-MEDIA-M', size: 'M', price: 120000, threshold: 10 }] } });
+        variants: [{ size: 'M', price: 120000, threshold: 10 }] } });
     assert.equal(response.status, 503);
-    assert.equal(await Product.countDocuments({ productCode: 'IMPORT-MEDIA' }), 0);
+    assert.equal(await Product.countDocuments({ productCode: 'IMPORTMEDIA' }), 0);
     assert.equal(await CatalogOperation.countDocuments({ operationId: 'offline-import-media-0001' }), 0);
   } finally { names.forEach((name, index) => {
     if (previous[index] == null) delete process.env[name]; else process.env[name] = previous[index];
@@ -153,7 +268,7 @@ test('unavailable media storage leaves an Excel product uncommitted for retry', 
 });
 
 test('retrying an uploaded additional image does not append it twice', async () => {
-  const product = await Product.findOne({ sampleCode: 'OFFLINE-01' });
+  const product = await Product.findOne({ productCode: 'OFFLINE01' });
   const fileId = 'offline-image-file-0001';
   const bytes = Buffer.from('test-image-bytes');
   const sha256 = createHash('sha256').update(bytes).digest('hex');
