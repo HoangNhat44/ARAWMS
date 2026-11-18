@@ -40,12 +40,13 @@ export const getCodOrdersList = async (filters = {}) => {
   // 3. Chỉ lấy các đơn đã bàn giao sang khâu vận chuyển:
   // - DELIVERED: Đã giao thành công (Đủ điều kiện đối soát tiền mặt)
   // - RETURNED: Đã chuyển hoàn (Đủ điều kiện đối soát hàng hoàn)
-  // - HANDED_OVER_CARRIER: Đang trên đường giao (Chờ giao xong)
+  // - HANDED_OVER_CARRIER: Đã bàn giao cho bên vận chuyển (Chờ giao xong)
+  // - CARRIER_PICKED_UP: Đã lấy hàng (Chờ giao xong)
   // LOẠI BỎ HOÀN TOÀN các trạng thái nội bộ kho chưa gửi hãng: PENDING, CONFIRMED_RESERVED, PICKING, PACKED, CANCELLED
   if (filters.shippingStatus && filters.shippingStatus !== 'ALL') {
     query.status = filters.shippingStatus;
   } else {
-    query.status = { $in: ['DELIVERED', 'RETURNED', 'HANDED_OVER_CARRIER'] };
+    query.status = { $in: ['DELIVERED', 'RETURNED', 'HANDED_OVER_CARRIER', 'CARRIER_PICKED_UP'] };
   }
 
   // Tìm kiếm theo mã đơn hoặc mã vận đơn

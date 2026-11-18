@@ -34,7 +34,7 @@ export const financialReport = async (query) => {
   // GBR-17: Ghi nhận đơn khi đã đóng gói (packedAt), dùng snapshot giá vốn từng dòng.
   // Không dùng ngày tạo đơn, đơn hủy hoặc giá vốn SKU hiện tại để tính lợi nhuận.
   const saleMatch = { ...active, 'warehouseFulfillment.packedAt': period,
-    status: { $in: ['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'RETURN_REQUESTED', 'RETURNED'] } };
+    status: { $in: ['PACKED', 'HANDED_OVER_CARRIER', 'CARRIER_PICKED_UP', 'DELIVERED', 'RETURN_REQUESTED', 'RETURNED'] } };
   const [sales, returns, cash, daily, cashCategories, missingSnapshots] = await Promise.all([
     // Cộng doanh thu hàng hóa sau chiết khấu và giá vốn đã chốt của các đơn trong kỳ.
     SalesOrder.aggregate([{ $match: saleMatch }, { $group: { _id: null, count: { $sum: 1 },

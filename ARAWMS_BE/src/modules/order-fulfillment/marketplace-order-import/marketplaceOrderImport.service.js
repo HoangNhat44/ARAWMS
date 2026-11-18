@@ -71,6 +71,82 @@ export const splitOrderItemsFromCell = (rawCellText, defaultQty = 1, defaultPric
   });
 };
 
+const VALID_SKU_SIZES = new Set(['XS', 'S', 'M', 'L', 'XL', 'XXL', 'FREESIZE']);
+
+/**
+ * Bóc tách thuộc tính chuẩn (mã mẫu, size, màu sắc) từ tên sản phẩm / chuỗi SKU sàn
+ * Đồng bộ quy tắc với dữ liệu DB thực tế:
+ *   - styleName / productCode: [BASE_CODE]-[COLOR_CODE] (VD: CV90-KEM, V178-HONG, SP-5643-BE)
+ *   - skuCode:                 [BASE_CODE]-[SIZE]-[COLOR_CODE] (VD: CV90-M-KEM, V178-S-HONG)
+ */
+const parseProductAttributes = (rawInput) => {
+  const cleaned = String(rawInput || '').trim();
+  const withoutQty = cleaned
+    .replace(/\s+[xX×]\s*\d+\s*$/, '')
+    .replace(/\s*[xX×]\d+\s*$/, '')
+    .trim();
+
+  // 1. Bóc tách Size
+  const sizeRegex = /(?:size\s*[:=\-\s]\s*|\b)(XS|S|M|L|XL|XXL|FREESIZE)\b/i;
+  const sizeMatch = withoutQty.match(sizeRegex);
+  const candidateSize = sizeMatch ? sizeMatch[1].toUpperCase() : null;
+  const extractedSize = candidateSize && VALID_SKU_SIZES.has(candidateSize) ? candidateSize : null;
+  const withoutSize = sizeMatch
+    ? withoutQty.replace(sizeMatch[0], ' ').replace(/\s+/g, ' ').trim()
+    : withoutQty;
+
+  // 2. Bóc tách Màu sắc
+  const keywordColorRegex = /\b(KEM|HỒNG|HONG|TRẮNG|TRANG|ĐEN|DEN|BE|NÂU|NAU|ĐỎ|DO|XANH|GHI|VÀNG|VANG|TÍM|TIM|CAM|KẺ\s+ĐEN)\b/i;
+  const explicitColorRegex = /màu\s*[:=\-\s]\s*([^:;\-\n]+)/i;
+  const trailingDashColorRegex = /-\s*([A-Za-zÀ-ỹ\s]{2,25})$/;
+
+  let extractedColor = null;
+  let withoutColor = withoutSize;
+
+  const explicitMatch = withoutSize.match(explicitColorRegex);
+  const trailingMatch = withoutSize.match(trailingDashColorRegex);
+  const keywordMatch = withoutSize.match(keywordColorRegex);
+
+  if (explicitMatch) {
+    extractedColor = explicitMatch[1].trim();
+    withoutColor = withoutSize.replace(explicitMatch[0], '').trim();
+  } else if (trailingMatch && !/\d/.test(trailingMatch[1])) {
+    extractedColor = trailingMatch[1].trim();
+    withoutColor = withoutSize.slice(0, trailingMatch.index).trim();
+  } else if (keywordMatch) {
+    extractedColor = keywordMatch[1].trim();
+    withoutColor = withoutSize.replace(keywordMatch[0], ' ').trim();
+  }
+
+  // 3. Bóc tách Mã mẫu (Base Code: SP-5643, CV68, AL186, V178...)
+  const hyphenPrefixMatch = withoutColor.match(/\b([A-Za-z]{1,6}-\d{2,6}(?:-\d+)?)\b/);
+  const codeTokens = withoutColor.match(/\b[A-Za-z]+[0-9]+[A-Za-z0-9_]*\b/g) || [];
+  if (hyphenPrefixMatch) {
+    codeTokens.unshift(hyphenPrefixMatch[1]);
+  }
+  if (codeTokens.length === 0) {
+    const firstWord = withoutColor.match(/^([A-Za-z0-9_-]{2,30})/);
+    if (firstWord && !['SET', 'BO', 'COMBO', 'AO', 'VAY', 'QUAN', 'DAM'].includes(normalizeHeader(firstWord[1]).toUpperCase())) {
+      codeTokens.push(firstWord[1]);
+    }
+  }
+
+  const colorLabel = extractedColor ? extractedColor.toUpperCase() : 'TIÊU CHUẨN';
+  const colorCode = extractedColor
+    ? (normalizeHeader(extractedColor).toUpperCase().replace(/\s+/g, '') || 'STD')
+    : 'STD';
+
+  return {
+    cleaned,
+    withoutQty,
+    extractedSize,
+    extractedColor,
+    colorLabel,
+    colorCode,
+    codeTokens: [...new Set(codeTokens)],
+  };
+};
+
 /**
  * Thuật toán thông minh tự động tìm kiếm và ghép SKU trong kho từ tên sản phẩm hoặc mã SKU sàn
  * Hỗ trợ các chuỗi tên từ Shopee/TikTok như:
@@ -80,38 +156,21 @@ export const splitOrderItemsFromCell = (rawCellText, defaultQty = 1, defaultPric
  */
 export const findMatchingSku = async (rawInput) => {
   if (!rawInput || typeof rawInput !== 'string') return null;
-  const cleaned = rawInput.trim();
-  if (!cleaned) return null;
+  const attrs = parseProductAttributes(rawInput);
+  if (!attrs.cleaned) return null;
+
+  const { cleaned, withoutQty, extractedSize, extractedColor, codeTokens } = attrs;
 
   // 1. Khớp chính xác skuCode (không phân biệt hoa thường) hoặc skuBarcode
   let sku = await Sku.findOne({
     $or: [
+      { skuCode: withoutQty.toUpperCase() },
       { skuCode: cleaned.toUpperCase() },
+      { skuBarcode: withoutQty },
       { skuBarcode: cleaned },
     ],
   }).populate('productId').lean();
   if (sku) return sku;
-
-  // 2. Bóc tách các thuộc tính nhận diện từ tên sản phẩm
-  // Size: size: M, size M, Size: L, hoặc các size chuẩn
-  const sizeMatch = cleaned.match(/size\s*[:=\-\s]\s*([A-Za-z0-9]+)/i)
-    || cleaned.match(/\b(XS|S|M|L|XL|XXL|FREESIZE)\b/i);
-  const extractedSize = sizeMatch ? sizeMatch[1].toUpperCase() : null;
-
-  // Màu sắc (ví dụ: "- KEM", "- ĐEN", "- TRẮNG", hoặc từ khóa màu)
-  const colorMatch = cleaned.match(/-\s*([^:;\-\n]+?)(?:\s+size|\s+x\d+|$)/i)
-    || cleaned.match(/màu\s*[:=\-\s]\s*([^\s:;,]+)/i)
-    || cleaned.match(/\b(KEM|HỒNG|TRẮNG|TRANG|ĐEN|DEN|BE|NÂU|NAU|ĐỎ|DO|XANH|GHI)\b/i);
-  const extractedColor = colorMatch ? colorMatch[1].trim() : null;
-
-  // Tìm tất cả ứng viên mã sản phẩm trong chuỗi (chữ kèm số như AL186, AK001, V178, CV68, Q22...)
-  const codeTokens = cleaned.match(/\b[A-Za-z]+[0-9]+[A-Za-z0-9_-]*\b/g) || [];
-  if (codeTokens.length === 0) {
-    const firstWord = cleaned.match(/^([A-Za-z0-9_-]{2,30})/);
-    if (firstWord && !['SET', 'BO', 'COMBO', 'AO', 'VAY', 'QUAN', 'DAM'].includes(normalizeHeader(firstWord[1]))) {
-      codeTokens.push(firstWord[1]);
-    }
-  }
 
   for (const token of codeTokens) {
     const codePrefix = token.toUpperCase();
@@ -142,7 +201,7 @@ export const findMatchingSku = async (rawInput) => {
     // Chiến lược B: Khớp sản phẩm qua Product model (productCode hoặc sampleCode)
     const product = await Product.findOne({
       $or: [
-        { productCode: new RegExp('^' + escapeRegex(codePrefix) + '$', 'i') },
+        { productCode: new RegExp('^' + escapeRegex(codePrefix) + '(?:-|$)', 'i') },
         { sampleCode: new RegExp('^' + escapeRegex(codePrefix) + '$', 'i') },
       ],
     }).lean();
@@ -173,7 +232,7 @@ export const findMatchingSku = async (rawInput) => {
   }
 
   // Chiến lược D: Khớp từ ngữ trong tên sản phẩm
-  const titleWithoutAttrs = cleaned.split(/[-:]/)[0].trim();
+  const titleWithoutAttrs = withoutQty.split(/[-:]/)[0].trim();
   if (titleWithoutAttrs.length >= 3) {
     const words = titleWithoutAttrs.split(/\s+/).filter((w) => w.length >= 2 && !['SET', 'COMBO', 'BỘ'].includes(w.toUpperCase()));
     if (words.length > 0) {
@@ -508,12 +567,14 @@ export const parseExcelFile = async (fileBuffer, channel, sourceId) => {
     // Đơn hợp lệ để import khi không bị trùng và tất cả sản phẩm đều đã được xác định SKU trong hệ thống
     const allItemsHaveValidSku = validatedItems.length > 0 && validatedItems.every((it) => it.isValidSku);
     const isOrderImportable = !existingOrder && allItemsHaveValidSku;
+    const hasMaskedInfo = [ord.customerName, ord.phone, ord.address].some((v) => String(v || '').includes('*'));
 
     validatedOrders.push({
       ...ord,
       items: validatedItems,
       totalAmount: itemsTotal > 0 ? itemsTotal : (ord.totalCodAmount || 0),
       isValid: isOrderImportable,
+      hasMaskedInfo,
       warningMessage,
     });
   }
@@ -524,6 +585,7 @@ export const parseExcelFile = async (fileBuffer, channel, sourceId) => {
     totalParsedOrders: validatedOrders.length,
     validOrdersCount: validatedOrders.filter((o) => o.isValid).length,
     invalidOrdersCount: validatedOrders.filter((o) => !o.isValid).length,
+    maskedOrdersCount: validatedOrders.filter((o) => o.hasMaskedInfo).length,
     orders: validatedOrders,
   };
 };
@@ -557,43 +619,29 @@ export const autoProvisionSkus = async (items) => {
       continue;
     }
 
-    // Trích xuất thuộc tính size
-    const sizeMatch = rawName.match(/size\s*[:=\-\s]\s*([A-Za-z0-9]+)/i)
-      || rawName.match(/\b(XS|S|M|L|XL|XXL|FREESIZE)\b/i);
-    const size = sizeMatch ? sizeMatch[1].toUpperCase() : 'FREESIZE';
+    const attrs = parseProductAttributes(rawName);
+    const size = attrs.extractedSize || 'FREESIZE';
+    const color = attrs.colorLabel;
+    const baseCode = (attrs.codeTokens[0] || `SP-${Date.now().toString().slice(-4)}`).toUpperCase();
+    const styleCode = `${baseCode}-${attrs.colorCode}`.toUpperCase();
+    const titleClean = attrs.withoutQty || rawName;
 
-    // Trích xuất màu sắc
-    const colorMatch = rawName.match(/-\s*([^:;\-\n]+?)(?:\s+size|\s+x\d+|$)/i)
-      || rawName.match(/màu\s*[:=\-\s]\s*([^\s:;,]+)/i)
-      || rawName.match(/\b(KEM|HỒNG|TRẮNG|TRANG|ĐEN|DEN|BE|NÂU|NAU|ĐỎ|DO|XANH|GHI)\b/i);
-    const color = colorMatch ? colorMatch[1].trim().toUpperCase() : 'TIÊU CHUẨN';
-
-    // Trích xuất mã sản phẩm (chữ + số)
-    const codeTokens = rawName.match(/\b[A-Za-z]+[0-9]+[A-Za-z0-9_-]*\b/g) || [];
-    let code = codeTokens[0] ? codeTokens[0].toUpperCase() : null;
-    if (!code) {
-      const first = rawName.match(/^([A-Za-z0-9_-]{2,30})/);
-      code = first ? first[1].toUpperCase() : `SP-${Date.now().toString().slice(-4)}`;
-    }
-
-    const productCode = code;
-    const titleClean = rawName.replace(/x\s*\d+$/i, '').trim();
-
-    let product = await Product.findOne({ productCode });
+    let product = await Product.findOne({
+      $or: [{ productCode: styleCode }, { productCode: baseCode }],
+    });
     if (!product) {
       product = await Product.create({
-        productCode,
+        productCode: styleCode,
         productName: titleClean,
-        sampleCode: productCode,
+        sampleCode: baseCode,
         category: 'Thời Trang Thiết Kế',
         basePrice: it.unitPrice || 350000,
         isActive: true,
       });
     }
 
-    const normalizedColor = normalizeHeader(color).toUpperCase().replace(/\s+/g, '');
-    const skuCode = `${productCode}-${size}-${normalizedColor || 'STD'}`.toUpperCase();
-    const skuBarcode = skuCode;
+    const skuCode = `${baseCode}-${size}-${attrs.colorCode}`.toUpperCase();
+    const skuBarcode = `SKU-${skuCode}`;
 
     let sku = await Sku.findOne({ skuCode });
     if (!sku) {
@@ -601,7 +649,7 @@ export const autoProvisionSkus = async (items) => {
         skuCode,
         skuBarcode,
         productId: product._id,
-        styleName: `${productCode}-${color}`,
+        styleName: styleCode,
         color,
         size,
         retailPrice: it.unitPrice || product.basePrice || 350000,
@@ -729,6 +777,13 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
       paymentMethod: 'COD',
       paymentStatus: 'PENDING',
       notes: ord.notes ? `[Import Sàn]: ${ord.notes}` : `[Import Sàn ${channel}]`,
+      statusHistory: [{
+        from: 'NONE',
+        to: 'CONFIRMED_RESERVED',
+        by: user._id,
+        at: new Date(),
+        note: `Import đơn hàng từ ${sourceInfo?.sourceName || channel} (Lô ${batchCode})`,
+      }],
       shippingRecipient: {
         name: ord.customerName,
         phone: ord.phone,

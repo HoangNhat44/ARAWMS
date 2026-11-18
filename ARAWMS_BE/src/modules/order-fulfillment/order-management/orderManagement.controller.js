@@ -3,7 +3,7 @@
  * @title        : Order Management Controller
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-11-14
  * @description  : Tiếp nhận và xử lý HTTP Request cho phân hệ Quản lý Đơn hàng
  *                 của Seller (UC-78, UC-79, UC-80, UC-81). Điều phối gọi Service
  *                 và định dạng phản hồi chuẩn API Response.
@@ -37,19 +37,6 @@ export const confirmOrderReserve = async (req, res) => {
   try {
     const order = await orderManagementService.confirmOrderReserve(req.params.id, req.user, req);
     return successResponse(res, order, 'Xác nhận đơn hàng và giữ chỗ kho thành công');
-  } catch (error) {
-    return errorResponse(res, error.message, 400);
-  }
-};
-
-/**
- * UC-80: Cập nhật thông tin nhận hàng / trạng thái đơn
- * PATCH /api/orders/:id/status
- */
-export const updateOrderStatus = async (req, res) => {
-  try {
-    const order = await orderManagementService.updateOrderStatus(req.params.id, req.body, req.user, req);
-    return successResponse(res, order, 'Cập nhật trạng thái đơn hàng thành công');
   } catch (error) {
     return errorResponse(res, error.message, 400);
   }
@@ -201,11 +188,24 @@ export const switchOrderGhnStatus = async (req, res) => {
   }
 };
 
+/**
+ * Cập nhật thông tin người nhận hàng (Tên, SĐT, Địa chỉ thật)
+ * PATCH /api/orders/:id/recipient
+ */
+export const updateOrderRecipient = async (req, res) => {
+  try {
+    const order = await orderManagementService.updateOrderRecipient(req.params.id, req.body, req.user, req);
+    return successResponse(res, order, 'Đã cập nhật thông tin người nhận hàng thành công!');
+  } catch (error) {
+    return errorResponse(res, error.message, 400);
+  }
+};
+
 export default {
   createDirectOrder,
   updateOrderItems,
+  updateOrderRecipient,
   confirmOrderReserve,
-  updateOrderStatus,
   syncOrderWithGhn,
   switchOrderGhnStatus,
   cancelOrder,

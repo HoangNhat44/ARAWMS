@@ -3,7 +3,7 @@
  * @title        : Notification Template Service
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-29
- * @lastModified : 2026-10-29
+ * @lastModified : 2026-11-14
  * @description  : Định dạng và phát các tin nhắn thông báo tự động (Receipt confirmation,
  *                 Post-purchase Waybill notifications) cho khách hàng qua Facebook Messenger
  *                 Send API (sử dụng MESSAGE_TAG: POST_PURCHASE_UPDATE tuân thủ chính sách 24h)
@@ -252,6 +252,18 @@ export const sendOrderNotificationToChat = async ({
 
     const conversation = await ChatConversation.findById(convId).populate('customerId');
     if (!conversation) return null;
+
+    // [DEDUPLICATION / CHỐNG LẶP TIN NHẮN TỰ ĐỘNG]
+    // Nếu trong vòng 45 giây gần nhất, hội thoại này đã có 1 tin nhắn tự động giống hệt nội dung
+    const recentDuplicate = await ChatMessage.findOne({
+      conversationId: convId,
+      messageText: cleanMessageText,
+      sentAt: { $gte: new Date(Date.now() - 45000) },
+    });
+    if (recentDuplicate) {
+      console.log(`🛡️ [Deduplication] Bỏ qua gửi tin tự động trùng lặp cho đơn ${order?.orderCode}: "${cleanMessageText.slice(0, 50)}..."`);
+      return recentDuplicate;
+    }
 
     const customer = conversation.customerId;
     let fbMessageId = null;

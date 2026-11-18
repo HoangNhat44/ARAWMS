@@ -49,8 +49,10 @@ export default function SellerLayout() {
       item.match ? item.match(location.pathname) : location.pathname === item.to
     ) || menuItems[0];
 
+  const isChatWorkspace = location.pathname.startsWith('/seller/chat');
+
   return (
-    <div className="wms-workspace-shell">
+    <div className={`wms-workspace-shell ${isChatWorkspace ? 'seller-chat-layout' : ''}`}>
       {/* Backdrop overlay khi mở mobile sidebar */}
       {mobileOpen && (
         <div
@@ -89,26 +91,33 @@ export default function SellerLayout() {
           </Link>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button
-              type="button"
-              className="wms-icon-button"
-              style={{ display: typeof window !== 'undefined' && window.innerWidth < 768 ? 'none' : 'inline-flex' }}
-              onClick={() => setCollapsed((p) => !p)}
-              aria-label={collapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
-              title={collapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
-            >
-              {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-            </button>
-
-            <button
-              type="button"
-              className="wms-icon-button"
-              style={{ display: mobileOpen ? 'inline-flex' : 'none' }}
-              onClick={() => setMobileOpen(false)}
-              aria-label="Đóng thanh điều hướng"
-            >
-              <X size={18} />
-            </button>
+            {collapsed && !mobileOpen ? (
+              <button
+                type="button"
+                className="wms-icon-button"
+                onClick={() => {
+                  setCollapsed(false);
+                  setMobileOpen(true);
+                }}
+                aria-label="Mở rộng sidebar"
+                title="Mở rộng sidebar"
+              >
+                <PanelLeftOpen size={16} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="wms-icon-button"
+                onClick={() => {
+                  setCollapsed(true);
+                  setMobileOpen(false);
+                }}
+                aria-label="Đóng thanh điều hướng"
+                title="Đóng / Thu gọn sidebar"
+              >
+                <X size={18} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -177,7 +186,28 @@ export default function SellerLayout() {
           onToggleMobile={() => setMobileOpen((p) => !p)}
           profilePath="/account"
         />
-        <main className="wms-content-container" style={{ padding: location.pathname.startsWith('/seller/chat') ? 0 : undefined }}>
+        <main
+          className="wms-content-container"
+          style={
+            isChatWorkspace
+              ? {
+                  padding: 0,
+                  height: 'calc(100vh - 64px)',
+                  maxHeight: 'calc(100vh - 64px)',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  flex: '1 1 0%',
+                  minHeight: 0,
+                }
+              : {
+                  minHeight: 'calc(100vh - 64px)',
+                  backgroundColor: 'var(--wms-bg-app, #E8DFD3)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }
+          }
+        >
           <Outlet />
         </main>
       </div>

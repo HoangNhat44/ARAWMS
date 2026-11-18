@@ -3,7 +3,7 @@
  * Author: Duy Anh & Nguyễn Ngọc Huy
  * Description: Defines frontend API base path, browser storage keys, and shared constants.
  */
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+export const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || '/api';
 
 export const STORAGE_KEYS = {
   TOKEN: 'arawms_auth_token',
