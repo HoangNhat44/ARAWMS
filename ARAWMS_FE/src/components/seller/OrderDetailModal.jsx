@@ -33,7 +33,9 @@ const ORDER_STATUSES = [
   { value: 'COMPLETED',           label: 'Hoàn thành (Bán tại quầy)' },
   { value: 'RETURN_REQUESTED',    label: 'Khách yêu cầu trả hàng' },
   { value: 'EXCHANGE_REQUESTED',  label: 'Đang đổi hàng' },
-  { value: 'RETURNED',            label: 'Đã hoàn về kho' },
+  { value: 'RETURNED',            label: 'Hoàn thành công' },
+  { value: 'PARTIALLY_RETURNED',  label: 'Hoàn một phần' },
+  { value: 'RETURN_FAILED',       label: 'Hoàn không thành công' },
   { value: 'CANCELLED',           label: 'Đã hủy' },
 ];
 

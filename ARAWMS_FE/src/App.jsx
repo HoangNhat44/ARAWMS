@@ -13,6 +13,7 @@ import AppRouter from './routes/AppRouter';
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
 import PackingUploadRunner from './components/PackingUploadRunner';
+import ReturnUploadRunner from './components/ReturnUploadRunner';
 import CatalogSyncRunner from './components/CatalogSyncRunner';
 import FinishedGoodsSyncRunner from './components/FinishedGoodsSyncRunner';
 import RealtimeBridge from './components/RealtimeBridge';
@@ -65,6 +66,7 @@ function App() {
           <AuthProvider>
             <ToastProvider>
               <PackingUploadRunner />
+              <ReturnUploadRunner />
               <CatalogSyncRunner />
               <FinishedGoodsSyncRunner />
               <RealtimeBridge />

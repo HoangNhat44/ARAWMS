@@ -28,12 +28,32 @@ import {
   Trash2,
 } from 'lucide-react';
 import garmentTechnicalService from '../../services/garmentTechnicalService';
+import {
+  translateColorVi,
+  translateProductNameVi,
+  formatStatusVi,
+  formatDefectActionVi,
+} from '../../utils/garmentDisplayVi';
+
+const DEFECT_CATEGORIES = [
+  { value: 'SEWING_DEFECT', label: 'Lỗi đường may / bung chỉ' },
+  { value: 'FABRIC_DEFECT', label: 'Lỗi vải / xước / rách vải' },
+  { value: 'SIZE_SPEC_ERROR', label: 'Sai thông số kích cỡ / phom dáng' },
+  { value: 'ACCESSORY_LABEL_ERROR', label: 'Lỗi cúc / khóa / nhãn mác' },
+  { value: 'STAIN_DAMAGE', label: 'Bẩn / ố màu / hư hỏng' },
+  { value: 'OTHER', label: 'Lỗi khác' },
+];
+
+const DEFECT_CATEGORY_LABELS = Object.fromEntries(
+  DEFECT_CATEGORIES.map((c) => [c.value, c.label])
+);
 
 const initialItemRow = {
   skuId: '',
   totalQty: '',
   passedQty: '',
   failedQty: '',
+  defectCategory: 'NONE',
   defectNote: '',
 };
 
@@ -132,6 +152,14 @@ export default function FinishedGoodsInspectionPage() {
       }
     }
 
+    const numericFailed = Number(row.failedQty) || 0;
+    if (numericFailed > 0 && (!row.defectCategory || row.defectCategory === 'NONE')) {
+      row.defectCategory = 'SEWING_DEFECT';
+    } else if (numericFailed === 0) {
+      row.defectCategory = 'NONE';
+      row.defectNote = '';
+    }
+
     updated[index] = row;
     setItems(updated);
   };
@@ -181,7 +209,7 @@ export default function FinishedGoodsInspectionPage() {
     // 1. Validation
     const validItems = items.filter((it) => it.skuId);
     if (!validItems.length) {
-      showAlert('error', 'Vui lòng chọn ít nhất một SKU thành phẩm');
+      showAlert('error', 'Vui lòng chọn ít nhất một sản phẩm thành phẩm');
       return;
     }
 
@@ -197,7 +225,7 @@ export default function FinishedGoodsInspectionPage() {
         return;
       }
       if (it.passedQty === '' || pas < 0) {
-        showAlert('error', `Dòng ${i + 1}: Vui lòng nhập số lượng đạt KCS`);
+        showAlert('error', `Dòng ${i + 1}: Vui lòng nhập số lượng đạt kiểm định`);
         return;
       }
       if (pas + fai !== tot) {
@@ -207,12 +235,13 @@ export default function FinishedGoodsInspectionPage() {
     }
 
     if (totalPassedQty <= 0) {
-      showAlert('error', 'Tổng số lượng đạt KCS phải lớn hơn 0 để có thể tạo yêu cầu nhập kho');
+      showAlert('error', 'Tổng số lượng đạt kiểm định phải lớn hơn 0 để có thể tạo yêu cầu nhập kho');
       return;
     }
 
-    if (totalFailedQty > 0 && !qcNote.trim()) {
-      showAlert('error', 'Vui lòng nhập biên bản kiểm tra KCS (mô tả lỗi) khi có hàng lỗi');
+    const hasRowDefectNote = validItems.some((it) => (Number(it.failedQty) || 0) > 0 && it.defectNote?.trim());
+    if (totalFailedQty > 0 && !qcNote.trim() && !hasRowDefectNote) {
+      showAlert('error', 'Vui lòng nhập ghi chú lỗi ở dòng sản phẩm hoặc biên bản kiểm định chất lượng khi có hàng lỗi');
       return;
     }
 
@@ -224,14 +253,22 @@ export default function FinishedGoodsInspectionPage() {
         failedDefectQty: totalFailedQty,
         qcNote: qcNote.trim(),
         defectAction: totalFailedQty > 0 ? (defectAction !== 'NONE' ? defectAction : 'REPAIR_AT_WORKSHOP') : 'NONE',
-        items: validItems.map((it) => ({
-          skuId: it.skuId,
-          expectedQty: Number(it.passedQty) || 0, // Only passed units are sent to warehouse
-        })),
+        items: validItems.map((it) => {
+          const itemFailed = Number(it.failedQty) || 0;
+          const itemPassed = Number(it.passedQty) || 0;
+          return {
+            skuId: it.skuId,
+            totalQty: Number(it.totalQty) || itemPassed + itemFailed,
+            expectedQty: itemPassed, // Only passed units are sent to warehouse
+            failedQty: itemFailed,
+            defectCategory: itemFailed > 0 ? (it.defectCategory && it.defectCategory !== 'NONE' ? it.defectCategory : 'OTHER') : 'NONE',
+            defectNote: itemFailed > 0 ? String(it.defectNote || '').trim() : '',
+          };
+        }),
       };
 
       const res = await garmentTechnicalService.finishedGoods.createTicket(payload);
-      showAlert('success', `Đã tạo phiếu yêu cầu nhập kho thành phẩm ${res?.data?.ticketCode} (${validItems.length} loại SKU) gửi Quản lý kho thành công!`);
+      showAlert('success', `Đã tạo phiếu yêu cầu nhập kho thành phẩm ${res?.data?.ticketCode} (${validItems.length} loại sản phẩm) gửi Quản lý kho thành công!`);
       setShowCreateModal(false);
       resetForm();
       fetchTickets();
@@ -288,13 +325,13 @@ export default function FinishedGoodsInspectionPage() {
             textTransform: 'uppercase',
             marginBottom: '0.4rem',
           }}>
-            <Sparkles size={14} /> Kỹ thuật xưởng · Nghiệp vụ KCS Thành phẩm
+            <Sparkles size={14} /> Kỹ thuật xưởng · Nghiệp vụ Kiểm định Thành phẩm
           </div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--ara-noir)', margin: 0 }}>
             Kiểm Định Chất Lượng & Yêu Cầu Nhập Kho Thành Phẩm
           </h1>
           <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.92rem', margin: '0.35rem 0 0', maxWidth: '820px' }}>
-            Nghiệm thu các loại thành phẩm may từ xưởng gia công, kiểm định đường may/kích thước/form dáng, tách số lượng đạt chuẩn và gửi yêu cầu nhập kho tới Quản lý kho.
+            Nghiệm thu các loại thành phẩm may từ xưởng gia công, kiểm định đường may, kích thước, phom dáng, tách số lượng đạt chuẩn và gửi yêu cầu nhập kho tới Quản lý kho.
           </p>
         </div>
 
@@ -317,7 +354,7 @@ export default function FinishedGoodsInspectionPage() {
             }}
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
           >
-            <Plus size={16} /> Lập Phiếu KCS & Yêu Cầu Nhập Kho Thành Phẩm
+            <Plus size={16} /> Lập Phiếu Kiểm Định & Yêu Cầu Nhập Kho
           </button>
         </div>
       </div>
@@ -337,19 +374,19 @@ export default function FinishedGoodsInspectionPage() {
             {stats.totalTickets}
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-light)', marginTop: '0.2rem' }}>
-            Phiếu nhập từ xưởng may (INBOUND_FROM_SEWING)
+            Phiếu nhập thành phẩm từ xưởng may
           </div>
         </div>
 
         <div style={{ background: '#FFFFFF', padding: '1.1rem', borderRadius: 'var(--radius-md)', border: '1px solid #FCD34D', boxShadow: 'var(--ara-shadow-sm)' }}>
           <div style={{ fontSize: '0.8rem', color: '#B45309', textTransform: 'uppercase', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <Calendar size={14} /> Chờ QL Kho xác nhận & xếp kệ
+            <Calendar size={14} /> Chờ Quản lý kho xác nhận & xếp kệ
           </div>
           <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#B45309', marginTop: '0.2rem' }}>
             {stats.readyTickets}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#92400E', marginTop: '0.2rem' }}>
-            Đã KCS xong, chờ cất lên kệ
+            Đã kiểm định xong, chờ cất lên kệ
           </div>
         </div>
 
@@ -384,7 +421,7 @@ export default function FinishedGoodsInspectionPage() {
           <input
             type="text"
             className="input-search"
-            placeholder="Tìm theo mã phiếu PNTP, ghi chú KCS..."
+            placeholder="Tìm theo mã phiếu nhập thành phẩm, ghi chú kiểm định..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && fetchTickets()}
@@ -407,9 +444,9 @@ export default function FinishedGoodsInspectionPage() {
             }}
           >
             <option value="ALL">Tất cả trạng thái</option>
-            <option value="READY_TO_CONFIRM">Chờ QL Kho xác nhận (READY_TO_CONFIRM)</option>
-            <option value="COMPLETED">Đã nhập kho xong (COMPLETED)</option>
-            <option value="CANCELLED">Đã hủy (CANCELLED)</option>
+            <option value="READY_TO_CONFIRM">Chờ Quản lý kho xác nhận</option>
+            <option value="COMPLETED">Đã nhập kho xong</option>
+            <option value="CANCELLED">Đã hủy</option>
           </select>
         </div>
       </div>
@@ -421,9 +458,9 @@ export default function FinishedGoodsInspectionPage() {
             <thead>
               <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)', color: 'var(--ara-text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                 <th style={{ padding: '0.9rem 1.1rem' }}>Mã Phiếu Yêu Cầu</th>
-                <th style={{ padding: '0.9rem 1.1rem' }}>Sản Phẩm & SKU May</th>
+                <th style={{ padding: '0.9rem 1.1rem' }}>Sản Phẩm May</th>
                 <th style={{ padding: '0.9rem 1.1rem', textAlign: 'center' }}>Tổng May</th>
-                <th style={{ padding: '0.9rem 1.1rem', textAlign: 'center' }}>Đạt KCS</th>
+                <th style={{ padding: '0.9rem 1.1rem', textAlign: 'center' }}>Đạt Kiểm Định</th>
                 <th style={{ padding: '0.9rem 1.1rem', textAlign: 'center' }}>Lỗi / Hỏng</th>
                 <th style={{ padding: '0.9rem 1.1rem' }}>Hướng Xử Lý Lỗi</th>
                 <th style={{ padding: '0.9rem 1.1rem' }}>Trạng Thái Kho</th>
@@ -461,12 +498,12 @@ export default function FinishedGoodsInspectionPage() {
                           {ticket.ticketCode}
                         </span>
                         <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', fontWeight: 400 }}>
-                          KCS: {inspection.inspectedByTechId?.fullName || 'Kỹ thuật may'}
+                          Kiểm định: {inspection.inspectedByTechId?.fullName || 'Kỹ thuật may'}
                         </div>
                       </td>
                       <td style={{ padding: '1rem 1.1rem' }}>
                         <div style={{ fontWeight: 600, color: 'var(--ara-noir)' }}>
-                          {sku.styleName || sku.productId?.productName || 'Sản phẩm may'}
+                          {translateProductNameVi(sku.styleName || sku.productId?.productName, 'Sản phẩm may')}
                           {ticket.items?.length > 1 && (
                             <span style={{ fontSize: '0.75rem', color: 'var(--ara-gold)', marginLeft: '6px', fontWeight: 700 }}>
                               (+{ticket.items.length - 1} loại khác)
@@ -475,9 +512,9 @@ export default function FinishedGoodsInspectionPage() {
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)' }}>
                           {ticket.items?.length === 1 ? (
-                            <>SKU: {sku.skuCode} · Size: <strong>{sku.size}</strong> · Màu: {sku.color}</>
+                            <>Mã sản phẩm: {sku.skuCode} · Kích cỡ: <strong>{sku.size}</strong> · Màu: {translateColorVi(sku.color)}</>
                           ) : (
-                            <>Tổng cộng <strong>{ticket.items?.length}</strong> loại SKU thành phẩm</>
+                            <>Tổng cộng <strong>{ticket.items?.length}</strong> loại thành phẩm</>
                           )}
                         </div>
                       </td>
@@ -495,7 +532,7 @@ export default function FinishedGoodsInspectionPage() {
                           <span style={{ color: '#D97706', fontWeight: 600 }}>Sửa tại xưởng may</span>
                         )}
                         {ticket.defectAction === 'LIQUIDATION' && (
-                          <span style={{ color: '#DC2626', fontWeight: 600 }}>Thanh lý hàng lỗi B</span>
+                          <span style={{ color: '#DC2626', fontWeight: 600 }}>Thanh lý hàng loại B</span>
                         )}
                         {ticket.defectAction === 'DESTRUCTION' && (
                           <span style={{ color: '#7F1D1D', fontWeight: 600 }}>Tiêu hủy hàng hỏng</span>
@@ -507,7 +544,7 @@ export default function FinishedGoodsInspectionPage() {
                       <td style={{ padding: '1rem 1.1rem' }}>
                         {isReady && (
                           <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#FEF3C7', color: '#92400E', fontSize: '0.78rem', fontWeight: 700 }}>
-                            Chờ QL Kho xếp kệ
+                            Chờ Quản lý kho xếp kệ
                           </span>
                         )}
                         {isCompleted && (
@@ -517,7 +554,7 @@ export default function FinishedGoodsInspectionPage() {
                         )}
                         {!isReady && !isCompleted && (
                           <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#F3F4F6', color: '#6B7280', fontSize: '0.78rem', fontWeight: 700 }}>
-                            {ticket.status}
+                            {formatStatusVi(ticket.status)}
                           </span>
                         )}
                       </td>
@@ -579,7 +616,7 @@ export default function FinishedGoodsInspectionPage() {
             }}>
               <div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--ara-gold)', fontWeight: 700, textTransform: 'uppercase' }}>
-                  KCS Nghiệm Thu Lô May Xưởng
+                  Kiểm Định Chất Lượng Lô May Xưởng
                 </div>
                 <h2 style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--ara-noir)', margin: '0.2rem 0 0' }}>
                   Lập Phiếu Yêu Cầu Nhập Kho Thành Phẩm (Nhiều Loại)
@@ -600,10 +637,10 @@ export default function FinishedGoodsInspectionPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <div>
                   <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--ara-noir)', margin: 0 }}>
-                    Danh sách thành phẩm may nghiệm thu KCS
+                    Danh sách thành phẩm may nghiệm thu
                   </h3>
                   <p style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)', margin: '2px 0 0' }}>
-                    Chọn từng mã SKU thành phẩm may và nhập số lượng kiểm tra thực tế (để trống ban đầu, tự điền)
+                    Chọn từng loại sản phẩm thành phẩm may và nhập số lượng kiểm tra thực tế
                   </p>
                 </div>
                 <button
@@ -621,11 +658,11 @@ export default function FinishedGoodsInspectionPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
                   <thead>
                     <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)', color: 'var(--ara-text-muted)', fontSize: '0.78rem', textTransform: 'uppercase' }}>
-                      <th style={{ padding: '0.7rem 0.8rem', textAlign: 'left' }}>SKU / Thành Phẩm May</th>
+                      <th style={{ padding: '0.7rem 0.8rem', textAlign: 'left' }}>Sản Phẩm Thành Phẩm</th>
                       <th style={{ padding: '0.7rem 0.8rem', width: '115px', textAlign: 'center' }}>Tổng May</th>
-                      <th style={{ padding: '0.7rem 0.8rem', width: '115px', textAlign: 'center' }}>Đạt KCS</th>
+                      <th style={{ padding: '0.7rem 0.8rem', width: '115px', textAlign: 'center' }}>Đạt Kiểm Định</th>
                       <th style={{ padding: '0.7rem 0.8rem', width: '115px', textAlign: 'center' }}>Lỗi / Hỏng</th>
-                      <th style={{ padding: '0.7rem 0.8rem', textAlign: 'left' }}>Ghi chú lỗi (nếu có)</th>
+                      <th style={{ padding: '0.7rem 0.8rem', textAlign: 'left' }}>Lý do &amp; Ghi chú lỗi (nếu có)</th>
                       <th style={{ padding: '0.7rem 0.8rem', width: '45px', textAlign: 'center' }}></th>
                     </tr>
                   </thead>
@@ -645,10 +682,10 @@ export default function FinishedGoodsInspectionPage() {
                               background: '#FFFFFF',
                             }}
                           >
-                            <option value="">-- Chọn thành phẩm & mã SKU --</option>
+                            <option value="">-- Chọn sản phẩm thành phẩm --</option>
                             {options.skus?.map((sku) => (
                               <option key={sku._id} value={sku._id}>
-                                {sku.styleName || sku.productId?.productName} — SKU: {sku.skuCode} (Size: {sku.size}, Màu: {sku.color})
+                                {translateProductNameVi(sku.styleName || sku.productId?.productName)} — Mã: {sku.skuCode} (Kích cỡ: {sku.size}, Màu: {translateColorVi(sku.color)})
                               </option>
                             ))}
                           </select>
@@ -710,19 +747,49 @@ export default function FinishedGoodsInspectionPage() {
                           />
                         </td>
                         <td style={{ padding: '0.65rem 0.8rem' }}>
-                          <input
-                            type="text"
-                            placeholder="Lỗi chỉ, xước vải, nhãn mác..."
-                            value={row.defectNote}
-                            onChange={(e) => handleItemChange(idx, 'defectNote', e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '0.45rem 0.6rem',
-                              borderRadius: '4px',
-                              border: '1px solid var(--ara-border)',
-                              fontSize: '0.85rem',
-                            }}
-                          />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                            {(Number(row.failedQty) || 0) > 0 && (
+                              <select
+                                value={row.defectCategory && row.defectCategory !== 'NONE' ? row.defectCategory : 'SEWING_DEFECT'}
+                                onChange={(e) => handleItemChange(idx, 'defectCategory', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '0.35rem 0.5rem',
+                                  borderRadius: '4px',
+                                  border: '1px solid #FCA5A5',
+                                  fontSize: '0.8rem',
+                                  background: '#FEF2F2',
+                                  color: '#991B1B',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {DEFECT_CATEGORIES.map((c) => (
+                                  <option key={c.value} value={c.value}>
+                                    {c.label}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            <input
+                              type="text"
+                              disabled={(Number(row.failedQty) || 0) === 0}
+                              placeholder={
+                                (Number(row.failedQty) || 0) > 0
+                                  ? 'Chi tiết lỗi: bung chỉ tay, xước vải...'
+                                  : 'Không có lỗi'
+                              }
+                              value={row.defectNote}
+                              onChange={(e) => handleItemChange(idx, 'defectNote', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '0.42rem 0.6rem',
+                                borderRadius: '4px',
+                                border: '1px solid var(--ara-border)',
+                                fontSize: '0.84rem',
+                                background: (Number(row.failedQty) || 0) === 0 ? 'var(--ara-bg-surface)' : '#FFFFFF',
+                              }}
+                            />
+                          </div>
                         </td>
                         <td style={{ padding: '0.65rem 0.8rem', textAlign: 'center' }}>
                           {items.length > 1 && (
@@ -764,7 +831,7 @@ export default function FinishedGoodsInspectionPage() {
 
                 <div>
                   <div style={{ fontSize: '0.78rem', color: '#047857', textTransform: 'uppercase', fontWeight: 600 }}>
-                    Tổng đạt KCS (Gửi nhập kho)
+                    Tổng đạt kiểm định (Gửi nhập kho)
                   </div>
                   <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#047857', marginTop: '2px' }}>
                     {totalPassedQty || 0}
@@ -802,7 +869,7 @@ export default function FinishedGoodsInspectionPage() {
                   >
                     <option value="NONE">Không có hàng lỗi (100% đạt)</option>
                     <option value="REPAIR_AT_WORKSHOP">Sửa chữa lại tại xưởng may</option>
-                    <option value="LIQUIDATION">Hạ cấp / Thanh lý hàng B</option>
+                    <option value="LIQUIDATION">Hạ cấp / Thanh lý hàng loại B</option>
                     <option value="DESTRUCTION">Tiêu hủy (do rách/hỏng nặng)</option>
                   </select>
                 </div>
@@ -828,11 +895,11 @@ export default function FinishedGoodsInspectionPage() {
               {/* QC Inspection Note */}
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--ara-noir)', marginBottom: '0.35rem' }}>
-                  Biên bản kiểm định chất lượng KCS {totalFailedQty > 0 ? <span style={{ color: '#DC2626' }}>* (bắt buộc khi có hàng lỗi)</span> : <span style={{ color: 'var(--ara-text-muted)', fontWeight: 400 }}>(tùy chọn)</span>}:
+                  Biên bản kiểm định chất lượng {totalFailedQty > 0 ? <span style={{ color: '#DC2626' }}>* (bắt buộc khi có hàng lỗi)</span> : <span style={{ color: 'var(--ara-text-muted)', fontWeight: 400 }}>(tùy chọn)</span>}:
                 </label>
                 <textarea
                   rows={3}
-                  placeholder={totalFailedQty > 0 ? "Yêu cầu nhập chi tiết lỗi: đường may, nhãn mác, thông số size, cúc, khóa..." : "Nhập ghi chú kiểm tra chất lượng (nếu có)..."}
+                  placeholder={totalFailedQty > 0 ? "Yêu cầu nhập chi tiết lỗi: đường may, nhãn mác, thông số kích cỡ, cúc, khóa..." : "Nhập ghi chú kiểm tra chất lượng (nếu có)..."}
                   value={qcNote}
                   onChange={(e) => setQcNote(e.target.value)}
                   style={{
@@ -847,7 +914,7 @@ export default function FinishedGoodsInspectionPage() {
                 />
                 {totalFailedQty > 0 && !qcNote.trim() && (
                   <div style={{ color: '#DC2626', fontSize: '0.78rem', marginTop: '0.25rem', fontWeight: 500 }}>
-                    * Bắt buộc nhập biên bản kiểm tra KCS khi phát hiện có hàng lỗi.
+                    * Bắt buộc nhập biên bản kiểm định chất lượng khi phát hiện có hàng lỗi.
                   </div>
                 )}
               </div>
@@ -878,7 +945,7 @@ export default function FinishedGoodsInspectionPage() {
                 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
               >
                 {actionLoading ? <RefreshCw size={16} className="spinning" /> : <Send size={16} />}
-                Gửi Yêu Cầu Nhập Kho Tới Quản Lý Kho ({totalPassedQty} Đạt KCS)
+                Gửi Yêu Cầu Nhập Kho Tới Quản Lý Kho ({totalPassedQty} Đạt kiểm định)
               </button>
             </div>
           </div>
@@ -946,12 +1013,12 @@ export default function FinishedGoodsInspectionPage() {
                 marginBottom: '1.25rem',
               }}>
                 <div>
-                  <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Kỹ thuật viên KCS</span>
-                  <strong>{selectedTicket.garmentInspection?.inspectedByTechId?.fullName || 'KCS'}</strong>
+                  <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Kỹ thuật viên kiểm định</span>
+                  <strong>{selectedTicket.garmentInspection?.inspectedByTechId?.fullName || 'Kỹ thuật viên may'}</strong>
                 </div>
                 <div>
                   <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Trạng thái kho</span>
-                  <strong>{selectedTicket.status}</strong>
+                  <strong>{formatStatusVi(selectedTicket.status)}</strong>
                 </div>
                 <div>
                   <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Ngày lập</span>
@@ -959,7 +1026,7 @@ export default function FinishedGoodsInspectionPage() {
                 </div>
                 <div>
                   <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Hướng xử lý lỗi</span>
-                  <strong>{selectedTicket.defectAction || 'NONE'}</strong>
+                  <strong>{formatDefectActionVi(selectedTicket.defectAction)}</strong>
                 </div>
               </div>
 
@@ -970,7 +1037,7 @@ export default function FinishedGoodsInspectionPage() {
                   <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{selectedTicket.garmentInspection?.totalBatchQty || 0}</div>
                 </div>
                 <div style={{ padding: '0.75rem', background: '#ECFDF5', borderRadius: 'var(--radius-sm)' }}>
-                  <div style={{ fontSize: '0.78rem', color: '#047857' }}>Đạt KCS (Nhập kho)</div>
+                  <div style={{ fontSize: '0.78rem', color: '#047857' }}>Đạt kiểm định (Nhập kho)</div>
                   <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#047857' }}>{selectedTicket.garmentInspection?.passedQty || 0}</div>
                 </div>
                 <div style={{ padding: '0.75rem', background: '#FEF2F2', borderRadius: 'var(--radius-sm)' }}>
@@ -982,29 +1049,48 @@ export default function FinishedGoodsInspectionPage() {
               {/* Items */}
               <div style={{ marginBottom: '1.25rem' }}>
                 <h4 style={{ fontSize: '0.92rem', fontWeight: 700, margin: '0 0 0.5rem' }}>
-                  Danh sách thành phẩm may ({selectedTicket.items?.length || 0} loại SKU):
+                  Danh sách thành phẩm may ({selectedTicket.items?.length || 0} loại sản phẩm):
                 </h4>
                 <div style={{ border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead>
                       <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)' }}>
-                        <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>SKU</th>
-                        <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>Barcode</th>
+                        <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>Sản phẩm</th>
                         <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>Vị trí kệ kho</th>
-                        <th style={{ padding: '0.6rem 0.8rem', textAlign: 'right' }}>Số lượng nhập</th>
+                        <th style={{ padding: '0.6rem 0.8rem', textAlign: 'right' }}>Đạt</th>
+                        <th style={{ padding: '0.6rem 0.8rem', textAlign: 'right' }}>Lỗi</th>
+                        <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>Lý do / Ghi chú lỗi</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedTicket.items?.map((item, idx) => (
                         <tr key={idx} style={{ borderBottom: '1px solid var(--ara-border-subtle)' }}>
                           <td style={{ padding: '0.6rem 0.8rem' }}>
-                            <div style={{ fontWeight: 600 }}>{item.skuId?.styleName || item.skuId?.skuCode}</div>
+                            <div style={{ fontWeight: 600 }}>{translateProductNameVi(item.skuId?.styleName || item.skuId?.skuCode)}</div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)' }}>
-                              Size: {item.skuId?.size} · Màu: {item.skuId?.color}
+                              {item.skuBarcode} · Kích cỡ: {item.skuId?.size} · Màu: {translateColorVi(item.skuId?.color)}
                             </div>
-                          </td>
-                          <td style={{ padding: '0.6rem 0.8rem', fontFamily: 'monospace' }}>
-                            {item.skuBarcode}
+                            {item.batchCode && (
+                              <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+                                <span style={{
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  background: '#EFF6FF',
+                                  color: '#1D4ED8',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #BFDBFE',
+                                }}>
+                                  Lô: {item.batchCode}
+                                </span>
+                                {item.qrValue && (
+                                  <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#4B5563' }}>
+                                    Mã QR: {item.qrValue}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: '0.6rem 0.8rem' }}>
                             {selectedTicket.status === 'COMPLETED' ? (
@@ -1013,12 +1099,29 @@ export default function FinishedGoodsInspectionPage() {
                               </span>
                             ) : (
                               <span style={{ color: 'var(--ara-text-muted)', fontSize: '0.78rem' }}>
-                                Chờ QL Kho xếp kệ
+                                Chờ Quản lý kho xếp kệ
                               </span>
                             )}
                           </td>
                           <td style={{ padding: '0.6rem 0.8rem', textAlign: 'right', fontWeight: 700, color: '#047857' }}>
                             {item.expectedQty}
+                          </td>
+                          <td style={{ padding: '0.6rem 0.8rem', textAlign: 'right', fontWeight: 700, color: item.failedQty > 0 ? '#B91C1C' : 'var(--ara-text-muted)' }}>
+                            {item.failedQty || 0}
+                          </td>
+                          <td style={{ padding: '0.6rem 0.8rem', fontSize: '0.8rem' }}>
+                            {item.failedQty > 0 ? (
+                              <div>
+                                {item.defectCategory && item.defectCategory !== 'NONE' && (
+                                  <div style={{ fontWeight: 700, color: '#B91C1C' }}>
+                                    {DEFECT_CATEGORY_LABELS[item.defectCategory] || item.defectCategory}
+                                  </div>
+                                )}
+                                {item.defectNote && <div style={{ color: '#4B5563' }}>{item.defectNote}</div>}
+                              </div>
+                            ) : (
+                              <span style={{ color: 'var(--ara-text-muted)' }}>—</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1029,7 +1132,7 @@ export default function FinishedGoodsInspectionPage() {
 
               {/* QC Note */}
               <div>
-                <h4 style={{ fontSize: '0.92rem', fontWeight: 700, margin: '0 0 0.4rem' }}>Biên bản kiểm tra KCS:</h4>
+                <h4 style={{ fontSize: '0.92rem', fontWeight: 700, margin: '0 0 0.4rem' }}>Biên bản kiểm định chất lượng:</h4>
                 <div style={{
                   padding: '0.75rem 0.9rem',
                   background: 'var(--ara-bg-surface)',

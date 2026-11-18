@@ -33,6 +33,8 @@ export const ORDER_STATUS_VARIANT = {
   DELIVERED: 'success',
   COMPLETED: 'success',
   RETURN_REQUESTED: 'warning',
+  PARTIALLY_RETURNED: 'warning',
+  RETURN_FAILED: 'danger',
   CANCELLED: 'danger',
   RETURNED: 'dark',
 };
@@ -52,6 +54,7 @@ export const ORDER_STATUS_CLASS = {
   COMPLETED: 'ara-badge-completed',
   RETURN_REQUESTED: 'ara-badge-return',
   PARTIALLY_RETURNED: 'ara-badge-return',
+  RETURN_FAILED: 'ara-badge-cancelled',
   EXCHANGE_REQUESTED: 'ara-badge-handed',
   CANCELLED: 'ara-badge-cancelled',
   RETURNED: 'ara-badge-returned',

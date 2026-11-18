@@ -94,7 +94,13 @@ export default function TechnicalInboundPage() {
     return technicalRequests.filter((item) => {
       // Lọc theo loại lệnh
       if (typeFilter !== 'ALL') {
-        const itemType = item.ticketType || (item.code?.startsWith('PNHH') ? 'INBOUND_FROM_RETURN' : 'INBOUND_FROM_SEWING');
+        const itemType =
+          item.ticketType ||
+          (item.code?.startsWith('PNHL')
+            ? 'DEFECT_QUARANTINE_INBOUND'
+            : item.code?.startsWith('PNHH')
+              ? 'INBOUND_FROM_RETURN'
+              : 'INBOUND_FROM_SEWING');
         if (itemType !== typeFilter) return false;
       }
 
@@ -458,6 +464,7 @@ export default function TechnicalInboundPage() {
                 <option value="ALL">Tất cả nguồn thành phẩm</option>
                 <option value="INBOUND_FROM_SEWING">May mới xưởng KCS (PKCS)</option>
                 <option value="INBOUND_FROM_RETURN">Hàng hoàn/trả đạt KCS (PNHH)</option>
+                <option value="DEFECT_QUARANTINE_INBOUND">Hàng hoàn lỗi — Khu cách ly (PNHL)</option>
               </select>
             </div>
 
@@ -514,6 +521,8 @@ export default function TechnicalInboundPage() {
               </thead>
               <tbody>
                 {visibleRequests.map((request) => {
+                  const isDefect =
+                    request.ticketType === 'DEFECT_QUARANTINE_INBOUND' || request.code?.startsWith('PNHL');
                   const isReturn =
                     request.ticketType === 'INBOUND_FROM_RETURN' || request.code?.startsWith('PNHH');
                   const isPending = request.status === 'READY_TO_CONFIRM' && !request.receiptId;
@@ -531,7 +540,24 @@ export default function TechnicalInboundPage() {
                       </td>
 
                       <td style={{ padding: '0.85rem 1rem' }}>
-                        {isReturn ? (
+                        {isDefect ? (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                              padding: '0.25rem 0.6rem',
+                              borderRadius: '6px',
+                              background: '#FEF2F2',
+                              color: '#B91C1C',
+                              fontSize: '0.78rem',
+                              fontWeight: 700,
+                              border: '1px solid #FECACA',
+                            }}
+                          >
+                            <RotateCcw size={12} /> Hàng hoàn lỗi (DEFECTIVE)
+                          </span>
+                        ) : isReturn ? (
                           <span
                             style={{
                               display: 'inline-flex',

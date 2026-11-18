@@ -24,6 +24,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { garmentTechnicalService } from '../../services/garmentTechnicalService';
+import { formatUnitVi, formatStatusVi, translateColorVi } from '../../utils/garmentDisplayVi';
 
 export default function GarmentMaterialOutboundPage() {
   const [tickets, setTickets] = useState([]);
@@ -240,7 +241,7 @@ export default function GarmentMaterialOutboundPage() {
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.25rem' }}
           >
             <Plus size={18} />
-            <span>Tạo yêu cầu xuất NPL mới</span>
+            <span>Tạo yêu cầu xuất nguyên phụ liệu mới</span>
           </button>
         </div>
       </div>
@@ -328,7 +329,7 @@ export default function GarmentMaterialOutboundPage() {
                     <td style={{ padding: '1rem' }}>
                       <strong style={{ color: 'var(--ara-noir)', fontSize: '0.95rem' }}>{t.ticketCode}</strong>
                       <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)', marginTop: '0.2rem' }}>
-                        Loại: {t.ticketType === 'OUTBOUND_FOR_CUTTING' ? 'Xuất cắt may' : 'Xuất kho NPL'}
+                        Loại: {t.ticketType === 'OUTBOUND_FOR_CUTTING' ? 'Xuất cắt may' : 'Xuất kho nguyên phụ liệu'}
                       </div>
                     </td>
                     <td style={{ padding: '1rem' }}>
@@ -342,7 +343,7 @@ export default function GarmentMaterialOutboundPage() {
                         <strong>{t.lines?.length || 0} loại</strong> ({totalItems} mét/chiếc)
                       </div>
                       <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)', marginTop: '0.2rem' }}>
-                        {t.lines?.slice(0, 2).map((l) => `${l.materialName || l.materialCode} (${l.quantity} ${l.unit || ''})`).join(', ')}
+                        {t.lines?.slice(0, 2).map((l) => `${l.materialName || l.materialCode} (${l.quantity} ${formatUnitVi(l.unit)})`).join(', ')}
                         {t.lines?.length > 2 && ' ...'}
                       </div>
                     </td>
@@ -384,7 +385,7 @@ export default function GarmentMaterialOutboundPage() {
                           </span>
                           {t.assignedStaffName && (
                             <div style={{ fontSize: '0.75rem', color: '#1a73e8', marginTop: 3 }}>
-                              NV: <strong>{t.assignedStaffName}</strong>
+                              Nhân viên: <strong>{t.assignedStaffName}</strong>
                             </div>
                           )}
                         </div>
@@ -406,7 +407,7 @@ export default function GarmentMaterialOutboundPage() {
                           </span>
                           {t.assignedStaffName && (
                             <div style={{ fontSize: '0.75rem', color: '#0d47a1', marginTop: 3 }}>
-                              NV: <strong>{t.assignedStaffName}</strong>
+                              Nhân viên: <strong>{t.assignedStaffName}</strong>
                             </div>
                           )}
                         </div>
@@ -440,7 +441,7 @@ export default function GarmentMaterialOutboundPage() {
                             <CheckCircle2 size={13} /> Hoàn thành
                           </span>
                           <div style={{ fontSize: '0.75rem', color: '#137333', marginTop: 3 }}>
-                            ✓ Đã xuất kho NPL
+                            ✓ Đã xuất kho nguyên phụ liệu
                           </div>
                         </div>
                       ) : (
@@ -534,7 +535,7 @@ export default function GarmentMaterialOutboundPage() {
                     type="text"
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
-                    placeholder="VD: Xưởng may chuyền 1"
+                    placeholder="Ví dụ: Xưởng may chuyền 1"
                     style={{ width: '100%', padding: '0.6rem 0.8rem', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-sm)', fontSize: '0.9rem' }}
                     required
                   />
@@ -547,7 +548,7 @@ export default function GarmentMaterialOutboundPage() {
                     type="text"
                     value={purpose}
                     onChange={(e) => setPurpose(e.target.value)}
-                    placeholder="VD: Cắt may áo khoác thu đông theo Lệnh SX #45"
+                    placeholder="Ví dụ: Cắt may áo khoác thu đông theo Lệnh sản xuất #45"
                     style={{ width: '100%', padding: '0.6rem 0.8rem', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-sm)', fontSize: '0.9rem' }}
                     required
                   />
@@ -595,13 +596,13 @@ export default function GarmentMaterialOutboundPage() {
                                 <option value="">-- Chọn nguyên phụ liệu trong kho --</option>
                                 {materials.map((m) => (
                                   <option key={m._id} value={m._id}>
-                                    {m.materialCode} · {m.materialName} ({m.color || ''} - Tồn khả dụng: {m.availableQty} {m.unit})
+                                    {m.materialCode} · {m.materialName} ({translateColorVi(m.color) || 'Tiêu chuẩn'} - Tồn khả dụng: {m.availableQty} {formatUnitVi(m.unit)})
                                   </option>
                                 ))}
                               </select>
                               {selectedMat && (
                                 <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', marginTop: '0.2rem' }}>
-                                  Đơn vị: <strong>{selectedMat.unit}</strong> · Khổ vải: {selectedMat.widthCm ? `${selectedMat.widthCm}cm` : '—'} · Định lượng: {selectedMat.gsm ? `${selectedMat.gsm}gsm` : '—'}
+                                  Đơn vị: <strong>{formatUnitVi(selectedMat.unit)}</strong> · Khổ vải: {selectedMat.widthCm ? `${selectedMat.widthCm} cm` : '—'} · Định lượng: {selectedMat.gsm ? `${selectedMat.gsm} g/m²` : '—'}
                                 </div>
                               )}
                             </td>
@@ -618,7 +619,7 @@ export default function GarmentMaterialOutboundPage() {
                                   required
                                 />
                                 <span style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)', whiteSpace: 'nowrap' }}>
-                                  {selectedMat ? selectedMat.unit : ''}
+                                  {selectedMat ? formatUnitVi(selectedMat.unit) : ''}
                                 </span>
                               </div>
                             </td>
@@ -721,18 +722,18 @@ export default function GarmentMaterialOutboundPage() {
                     <span style={{ color: '#b06000', fontWeight: 700 }}>Chờ quản lý kho duyệt</span>
                   ) : viewingTicket.status === 'WAITING_PICKING' ? (
                     <span style={{ color: '#1a73e8', fontWeight: 700 }}>
-                      Đã duyệt · Chờ nhân viên lấy hàng {viewingTicket.assignedStaffName ? `(NV: ${viewingTicket.assignedStaffName})` : ''}
+                      Đã duyệt · Chờ nhân viên lấy hàng {viewingTicket.assignedStaffName ? `(Nhân viên: ${viewingTicket.assignedStaffName})` : ''}
                     </span>
                   ) : viewingTicket.status === 'PICKING' ? (
                     <span style={{ color: '#0d47a1', fontWeight: 700 }}>
-                      Đang xuất kho {viewingTicket.assignedStaffName ? `(NV: ${viewingTicket.assignedStaffName})` : ''}
+                      Đang xuất kho {viewingTicket.assignedStaffName ? `(Nhân viên: ${viewingTicket.assignedStaffName})` : ''}
                     </span>
                   ) : viewingTicket.status === 'WAITING_DISCREPANCY' ? (
                     <span style={{ color: '#c5221f', fontWeight: 700 }}>Chờ xử lý sai lệch</span>
                   ) : viewingTicket.status === 'COMPLETED' ? (
-                    <span style={{ color: '#137333', fontWeight: 700 }}>✓ Hoàn thành (Đã xuất kho NPL)</span>
+                    <span style={{ color: '#137333', fontWeight: 700 }}>✓ Hoàn thành (Đã xuất kho nguyên phụ liệu)</span>
                   ) : (
-                    <span>{viewingTicket.status}</span>
+                    <span>{formatStatusVi(viewingTicket.status)}</span>
                   )}
                 </div>
               </div>
@@ -743,7 +744,7 @@ export default function GarmentMaterialOutboundPage() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead>
                       <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)' }}>
-                        <th style={{ padding: '0.6rem' }}>Mã NPL</th>
+                        <th style={{ padding: '0.6rem' }}>Mã nguyên phụ liệu</th>
                         <th style={{ padding: '0.6rem' }}>Tên nguyên phụ liệu</th>
                         <th style={{ padding: '0.6rem', textAlign: 'center' }}>Số lượng yêu cầu</th>
                         <th style={{ padding: '0.6rem' }}>Cây vải / Lô kho xuất thực tế</th>
@@ -762,16 +763,16 @@ export default function GarmentMaterialOutboundPage() {
                         return (
                           <tr key={i} style={{ borderBottom: '1px solid var(--ara-border)' }}>
                             <td style={{ padding: '0.6rem', fontFamily: 'monospace', fontWeight: 700 }}>{l.materialCode}</td>
-                            <td style={{ padding: '0.6rem' }}>{l.materialName} ({l.color || ''})</td>
+                            <td style={{ padding: '0.6rem' }}>{l.materialName}{l.color ? ` (${translateColorVi(l.color)})` : ''}</td>
                             <td style={{ padding: '0.6rem', textAlign: 'center', fontWeight: 700, color: 'var(--ara-gold)' }}>
-                              {l.quantity} {l.unit}
+                              {l.quantity} {formatUnitVi(l.unit)}
                             </td>
                             <td style={{ padding: '0.6rem' }}>
                               {sourcesList.length > 0 ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                                   {sourcesList.map((s, si) => (
                                     <div key={si} style={{ fontSize: '0.78rem', background: '#e6f4ea', color: '#137333', padding: '0.3rem 0.5rem', borderRadius: '4px', border: '1px solid #cce8d4' }}>
-                                      Barcode: <strong>{s.barcode}</strong> ({s.locationCode || 'Kho NPL'}{s.rackName ? `, ${s.rackName}` : ''}) · <strong>{s.quantity} {l.unit}</strong>
+                                      Mã vạch: <strong>{s.barcode}</strong> ({s.locationCode || 'Kho nguyên phụ liệu'}{s.rackName ? `, ${s.rackName}` : ''}) · <strong>{s.quantity} {formatUnitVi(l.unit)}</strong>
                                     </div>
                                   ))}
                                 </div>

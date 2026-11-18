@@ -107,6 +107,17 @@ export async function createTechnicianInboundRequest(input, user) {
       inspectionRef: String(line?.inspectionRef || '').trim().slice(0, 120),
       inspectedAt: line?.inspectedAt ? new Date(line.inspectedAt) : new Date(), inspectedByUserId: user._id,
       inspectionConclusion: String(line?.inspectionConclusion || 'Đã kiểm tra').trim(),
+      lotId: line?.lotId || undefined,
+      lotCode: String(line?.lotCode || '').trim().toUpperCase() || undefined,
+      qrValue: String(line?.qrValue || '').trim() || undefined,
+      supplierLotCode: String(line?.supplierLotCode || '').trim() || undefined,
+      dyeLot: String(line?.dyeLot || '').trim() || undefined,
+      manufactureDate: line?.manufactureDate ? new Date(line.manufactureDate) : undefined,
+      expiryDate: line?.expiryDate ? new Date(line.expiryDate) : undefined,
+      packageUnit: String(line?.packageUnit || '').trim() || undefined,
+      packageCount: line?.packageCount != null ? Number(line.packageCount) : undefined,
+      unitsPerPackage: line?.unitsPerPackage != null ? Number(line.unitsPerPackage) : undefined,
+      lotNote: String(line?.lotNote || '').trim() || undefined,
       rolls: Array.isArray(line?.rolls) ? line.rolls : [], lots: Array.isArray(line?.lots) ? line.lots : [] };
   });
   const materials = await RawMaterial.find({ _id: { $in: [...seen] }, isActive: true,

@@ -34,7 +34,9 @@ const HISTORY_STATUS_META = {
   EXCHANGE_REQUESTED: { label: 'Đang đổi hàng', icon: 'arrow-repeat' },
   RETURN_REQUESTED: { label: 'Khách yêu cầu trả hàng', icon: 'arrow-counterclockwise' },
   CANCELLED: { label: 'Đã hủy', icon: 'x-circle' },
-  RETURNED: { label: 'Đã hoàn về kho', icon: 'box-arrow-in-down-left' },
+  RETURNED: { label: 'Hoàn thành công', icon: 'box-arrow-in-down-left' },
+  PARTIALLY_RETURNED: { label: 'Hoàn một phần', icon: 'exclamation-triangle' },
+  RETURN_FAILED: { label: 'Hoàn không thành công', icon: 'x-octagon' },
 };
 
 /**

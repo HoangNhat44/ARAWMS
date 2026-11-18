@@ -35,6 +35,7 @@ import {
   History,
 } from 'lucide-react';
 import garmentTechnicalService from '../../services/garmentTechnicalService';
+import { formatStatusVi, formatUnitVi, translateColorVi } from '../../utils/garmentDisplayVi';
 
 export default function MaterialInboundVerificationPage() {
   const [activeTab, setActiveTab] = useState('PLANS'); // 'PLANS' | 'REQUESTS'
@@ -79,6 +80,7 @@ export default function MaterialInboundVerificationPage() {
   // Modal: View Plan Details (with all batches)
   const [selectedPlanForDetail, setSelectedPlanForDetail] = useState(null);
   const [planVersionsForDetail, setPlanVersionsForDetail] = useState([]);
+  const [selectedTicketForDetail, setSelectedTicketForDetail] = useState(null);
 
   // Modal: Verify Plan / Specific Batch
   const [selectedPlan, setSelectedPlan] = useState(null);
@@ -299,7 +301,7 @@ export default function MaterialInboundVerificationPage() {
   // Open Verify Modal for a plan or a specific batch of that plan
   const openVerifyModal = (plan, batch = null) => {
     if (isPlanReadOnly(plan)) {
-      showAlert('warning', `${getReadOnlyReason(plan)}. Phiên bản này chỉ lưu trữ dữ liệu đối soát, không thể thực hiện nghiệm thu KCS.`);
+      showAlert('warning', `${getReadOnlyReason(plan)}. Phiên bản này chỉ lưu trữ dữ liệu đối soát, không thể thực hiện nghiệm thu kiểm định.`);
       return;
     }
     setModalAlert(null);
@@ -417,7 +419,7 @@ export default function MaterialInboundVerificationPage() {
       setCreateInboundRequest(false);
       // Tự động điền tóm tắt sai lệch nếu có sai lệch và deviationSummary đang trống
       if (!deviationSummary.trim() && defectLines.length > 0) {
-        setDeviationSummary(`Biên bản sai lệch KCS: ${defectLines.join('; ')}`);
+        setDeviationSummary(`Biên bản sai lệch kiểm định: ${defectLines.join('; ')}`);
       }
     } else {
       setIsMatched(true);
@@ -461,7 +463,7 @@ export default function MaterialInboundVerificationPage() {
           return `${name}: Kế hoạch ${planned}, Thực đạt ${passed}, Lỗi/thiếu ${short}${reason}`;
         });
       finalDeviationSummary = defectLines.length > 0
-        ? `Biên bản sai lệch KCS: ${defectLines.join('; ')}`
+        ? `Biên bản sai lệch kiểm định: ${defectLines.join('; ')}`
         : 'Phát hiện sai lệch số lượng / chất lượng khi kiểm định thực tế tại cửa kho';
       setDeviationSummary(finalDeviationSummary);
     }
@@ -491,8 +493,8 @@ export default function MaterialInboundVerificationPage() {
       showAlert(
         'success',
         isMatched
-          ? `Đã nghiệm thu KCS thành công${batchTitleInfo} và gửi Phiếu yêu cầu nhập kho (${res?.data?.ticket?.ticketCode || 'PNNL'}) tới Quản lý kho!`
-          : `Đã ghi nhận sai lệch KCS cho kế hoạch ${selectedPlan.planCode}${batchTitleInfo} và gửi thông báo Realtime tới bộ phận Kế toán!${res?.data?.ticket?.ticketCode ? ` Đã gửi phần đạt KCS tới Quản lý kho (${res.data.ticket.ticketCode}).` : ''}`
+          ? `Đã nghiệm thu kiểm định thành công${batchTitleInfo} và gửi Phiếu yêu cầu nhập kho (${res?.data?.ticket?.ticketCode || 'Phiếu nhập'}) tới Quản lý kho!`
+          : `Đã ghi nhận sai lệch kiểm định cho kế hoạch ${selectedPlan.planCode}${batchTitleInfo} và gửi thông báo tức thời tới bộ phận Kế toán!${res?.data?.ticket?.ticketCode ? ` Đã gửi phần đạt kiểm định tới Quản lý kho (${res.data.ticket.ticketCode}).` : ''}`
       );
 
       setSelectedPlan(null);
@@ -507,7 +509,7 @@ export default function MaterialInboundVerificationPage() {
         setSelectedPlanForDetail(res.data.plan);
       }
     } catch (err) {
-      showModalAlert('error', err.response?.data?.message || err.message || 'Lỗi khi gửi nghiệm thu KCS');
+      showModalAlert('error', err.response?.data?.message || err.message || 'Lỗi khi gửi nghiệm thu kiểm định');
     } finally {
       setActionLoading(false);
     }
@@ -572,7 +574,7 @@ export default function MaterialInboundVerificationPage() {
     if (plan.status === 'SCHEDULED') {
       return (
         <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#FEF3C7', color: '#92400E', fontSize: '0.78rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-          <Clock size={13} /> Chờ KCS nghiệm thu
+          <Clock size={13} /> Chờ kiểm định nghiệm thu
         </span>
       );
     }
@@ -593,11 +595,11 @@ export default function MaterialInboundVerificationPage() {
     if (plan.status === 'DEVIATION_REPORTED') {
       return (
         <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', fontSize: '0.78rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-          <AlertTriangle size={13} /> Có sai lệch KCS
+          <AlertTriangle size={13} /> Có sai lệch kiểm định
         </span>
       );
     }
-    return <span style={{ fontSize: '0.78rem' }}>{plan.status}</span>;
+    return <span style={{ fontSize: '0.78rem' }}>{formatStatusVi(plan.status)}</span>;
   };
 
   const renderBatchStatusBadge = (status) => {
@@ -611,7 +613,7 @@ export default function MaterialInboundVerificationPage() {
       case 'DEVIATION_REPORTED':
         return (
           <span style={{ padding: '0.2rem 0.55rem', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B', fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-            <AlertTriangle size={12} /> Có sai lệch KCS
+            <AlertTriangle size={12} /> Có sai lệch kiểm định
           </span>
         );
       case 'IN_INSPECTION':
@@ -624,7 +626,7 @@ export default function MaterialInboundVerificationPage() {
       default:
         return (
           <span style={{ padding: '0.2rem 0.55rem', borderRadius: '4px', background: '#FEF3C7', color: '#92400E', fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-            <Clock size={12} /> Chờ KCS nghiệm thu
+            <Clock size={12} /> Chờ kiểm định nghiệm thu
           </span>
         );
     }
@@ -676,13 +678,13 @@ export default function MaterialInboundVerificationPage() {
             textTransform: 'uppercase',
             marginBottom: '0.4rem',
           }}>
-            <ClipboardCheck size={14} /> Kỹ thuật xưởng · KCS Nguyên Phụ Liệu
+            <ClipboardCheck size={14} /> Kỹ thuật xưởng · Kiểm định Nguyên Phụ Liệu
           </div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--ara-noir)', margin: 0 }}>
             Kế Hoạch & Nghiệm Thu Nhập Nguyên Phụ Liệu
           </h1>
           <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.92rem', margin: '0.35rem 0 0', maxWidth: '850px' }}>
-            Tiếp nhận kế hoạch giao hàng từ Kế toán, kiểm định KCS thực tế tại cửa kho theo từng đợt nhập, đối chiếu sai lệch và lập phiếu yêu cầu nhập kho gửi Quản lý kho duyệt.
+            Tiếp nhận kế hoạch giao hàng từ Kế toán, kiểm định chất lượng thực tế tại cửa kho theo từng đợt nhập, đối chiếu sai lệch và lập phiếu yêu cầu nhập kho gửi Quản lý kho duyệt.
           </p>
         </div>
 
@@ -702,7 +704,7 @@ export default function MaterialInboundVerificationPage() {
             onClick={() => setShowDirectModal(true)}
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
           >
-            <Plus size={16} /> Tạo yêu cầu nhập NPL trực tiếp
+            <Plus size={16} /> Tạo yêu cầu nhập nguyên phụ liệu trực tiếp
           </button>
         </div>
       </div>
@@ -728,7 +730,7 @@ export default function MaterialInboundVerificationPage() {
 
         <div style={{ background: '#FFFFFF', padding: '1.1rem', borderRadius: 'var(--radius-md)', border: '1px solid #FCD34D', boxShadow: 'var(--ara-shadow-sm)' }}>
           <div style={{ fontSize: '0.8rem', color: '#B45309', textTransform: 'uppercase', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <Calendar size={14} /> Chờ KCS đối soát
+            <Calendar size={14} /> Chờ kiểm định đối soát
           </div>
           <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#B45309', marginTop: '0.2rem' }}>
             {stats.totalScheduled}
@@ -819,7 +821,7 @@ export default function MaterialInboundVerificationPage() {
             gap: '0.5rem',
           }}
         >
-          <Truck size={17} /> Yêu cầu nhập kho đã gửi QL Kho
+          <Truck size={17} /> Yêu cầu nhập kho đã gửi Quản lý kho
         </button>
       </div>
 
@@ -866,16 +868,16 @@ export default function MaterialInboundVerificationPage() {
             <option value="ALL">Tất cả trạng thái</option>
             {activeTab === 'PLANS' ? (
               <>
-                <option value="SCHEDULED">Chờ KCS nghiệm thu (SCHEDULED)</option>
-                <option value="IN_INSPECTION">Đang nghiệm thu theo đợt (IN_INSPECTION)</option>
-                <option value="VERIFIED_MATCHED">Đã nghiệm thu khớp (VERIFIED_MATCHED)</option>
-                <option value="DEVIATION_REPORTED">Báo cáo có sai lệch (DEVIATION_REPORTED)</option>
+                <option value="SCHEDULED">Chờ kiểm định nghiệm thu</option>
+                <option value="IN_INSPECTION">Đang nghiệm thu theo đợt</option>
+                <option value="VERIFIED_MATCHED">Đã nghiệm thu khớp</option>
+                <option value="DEVIATION_REPORTED">Báo cáo có sai lệch</option>
               </>
             ) : (
               <>
-                <option value="READY_TO_CONFIRM">Chờ QL Kho xác nhận (READY_TO_CONFIRM)</option>
-                <option value="COMPLETED">Đã nhập kho xong (COMPLETED)</option>
-                <option value="CANCELLED">Đã hủy (CANCELLED)</option>
+                <option value="READY_TO_CONFIRM">Chờ Quản lý kho xác nhận</option>
+                <option value="COMPLETED">Đã nhập kho xong</option>
+                <option value="CANCELLED">Đã hủy</option>
               </>
             )}
           </select>
@@ -896,7 +898,7 @@ export default function MaterialInboundVerificationPage() {
                   <th style={{ padding: '0.9rem 1.1rem' }}>Ngày Hẹn Giao</th>
                   <th style={{ padding: '0.9rem 1.1rem' }}>Số Loại Vật Tư</th>
                   <th style={{ padding: '0.9rem 1.1rem' }}>Kế Toán Lập</th>
-                  <th style={{ padding: '0.9rem 1.1rem' }}>Trạng Thái KCS</th>
+                  <th style={{ padding: '0.9rem 1.1rem' }}>Trạng Thái Kiểm Định</th>
                   <th style={{ padding: '0.9rem 1.1rem', textAlign: 'right' }}>Thao Tác</th>
                 </tr>
               </thead>
@@ -974,7 +976,7 @@ export default function MaterialInboundVerificationPage() {
                                   }}
                                   title="Nhấn để mở rộng/thu gọn lịch sử các phiên bản kế hoạch này"
                                 >
-                                  v{plan.versionNumber || 1} ({family.totalVersions} pb)
+                                  Phiên bản {plan.versionNumber || 1} ({family.totalVersions} phiên bản)
                                   {isFamilyExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
                                 </button>
                               ) : (
@@ -1052,7 +1054,7 @@ export default function MaterialInboundVerificationPage() {
                                   fontWeight: 700,
                                   width: 'fit-content'
                                 }}>
-                                  HĐ v{plan.contractId.versionNumber}
+                                  Hợp đồng v{plan.contractId.versionNumber}
                                 </span>
                               )}
                               {['SUPERSEDED'].includes(plan.contractId?.status) && (
@@ -1066,7 +1068,7 @@ export default function MaterialInboundVerificationPage() {
                                   width: 'fit-content',
                                   fontWeight: 600
                                 }}>
-                                  Đã có HĐ mới
+                                  Đã có hợp đồng mới
                                 </span>
                               )}
                             </div>
@@ -1145,7 +1147,7 @@ export default function MaterialInboundVerificationPage() {
                                       onClick={() => openVerifyModal(plan, plan.batches?.[0] || null)}
                                       style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
                                     >
-                                      {isPending ? 'Nghiệm thu KCS & Gửi QL Kho' : 'Xem & Cập nhật KCS'}
+                                      {isPending ? 'Nghiệm thu & Gửi Quản lý kho' : 'Xem & Cập nhật kiểm định'}
                                     </button>
                                   ) : (
                                     <span style={{
@@ -1215,7 +1217,7 @@ export default function MaterialInboundVerificationPage() {
                                       <th style={{ padding: '0.65rem 0.9rem' }}>Nội dung điều chỉnh / Ghi chú</th>
                                       <th style={{ padding: '0.65rem 0.9rem', width: '120px' }}>Lịch trình</th>
                                       <th style={{ padding: '0.65rem 0.9rem', width: '130px' }}>Quy mô</th>
-                                      <th style={{ padding: '0.65rem 0.9rem', width: '140px', textAlign: 'center' }}>Trạng thái KCS</th>
+                                      <th style={{ padding: '0.65rem 0.9rem', width: '140px', textAlign: 'center' }}>Trạng thái kiểm định</th>
                                       <th style={{ padding: '0.65rem 0.9rem', width: '110px', textAlign: 'right' }}>Thao tác</th>
                                     </tr>
                                   </thead>
@@ -1264,7 +1266,7 @@ export default function MaterialInboundVerificationPage() {
                                             {v.batches?.length || v.totalBatches || 1} đợt giao
                                           </td>
                                           <td style={{ padding: '0.65rem 0.9rem', fontWeight: 700 }}>
-                                            {vTotalQty.toLocaleString('vi-VN')} {vUnit}
+                                            {vTotalQty.toLocaleString('vi-VN')} {formatUnitVi(vUnit)}
                                           </td>
                                           <td style={{ padding: '0.65rem 0.9rem', textAlign: 'center' }}>
                                             {renderPlanStatusBadge(v)}
@@ -1320,7 +1322,7 @@ export default function MaterialInboundVerificationPage() {
                                     Các đợt giao hàng & nghiệm thu ({plan.batches?.length || 0} đợt) của kế hoạch {plan.planCode}
                                   </div>
                                   <span style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)' }}>
-                                    KCS kiểm định từng đợt hàng thực nhận tại cửa kho
+                                    Kiểm định chất lượng từng đợt hàng thực nhận tại cửa kho
                                   </span>
                                 </div>
 
@@ -1331,7 +1333,7 @@ export default function MaterialInboundVerificationPage() {
                                       <th style={{ padding: '0.65rem 0.9rem' }}>Tiêu đề / Tỷ lệ</th>
                                       <th style={{ padding: '0.65rem 0.9rem' }}>Ngày hẹn giao</th>
                                       <th style={{ padding: '0.65rem 0.9rem' }}>Vật tư của đợt</th>
-                                      <th style={{ padding: '0.65rem 0.9rem' }}>Trạng thái KCS</th>
+                                      <th style={{ padding: '0.65rem 0.9rem' }}>Trạng thái kiểm định</th>
                                       <th style={{ padding: '0.65rem 0.9rem' }}>Kết quả / Ghi chú</th>
                                       <th style={{ padding: '0.65rem 0.9rem', textAlign: 'right' }}>Thao tác đợt</th>
                                     </tr>
@@ -1363,7 +1365,7 @@ export default function MaterialInboundVerificationPage() {
                                             <td style={{ padding: '0.75rem 0.9rem' }}>
                                               <div style={{ fontWeight: 600 }}>{bItems.length} loại vật tư</div>
                                               <div style={{ fontSize: '0.73rem', color: 'var(--ara-text-muted)' }}>
-                                                {bItems.slice(0, 2).map((it) => `${it.rawMaterialId?.materialName || 'Vật tư'}: ${it.plannedQty || 0} ${it.rawMaterialId?.unit || ''}`).join(', ')}
+                                                {bItems.slice(0, 2).map((it) => `${it.rawMaterialId?.materialName || 'Vật tư'}: ${it.plannedQty || 0} ${formatUnitVi(it.rawMaterialId?.unit)}`).join(', ')}
                                                 {bItems.length > 2 ? '...' : ''}
                                               </div>
                                             </td>
@@ -1453,29 +1455,33 @@ export default function MaterialInboundVerificationPage() {
                   <th style={{ padding: '0.9rem 1.1rem' }}>Mã Phiếu Yêu Cầu</th>
                   <th style={{ padding: '0.9rem 1.1rem' }}>Kế Hoạch Gốc</th>
                   <th style={{ padding: '0.9rem 1.1rem' }}>Nhà Cung Cấp</th>
-                  <th style={{ padding: '0.9rem 1.1rem' }}>Số Dòng NPL</th>
+                  <th style={{ padding: '0.9rem 1.1rem' }}>Nguyên Phụ Liệu &amp; Mã Lô</th>
                   <th style={{ padding: '0.9rem 1.1rem' }}>Ngày Lập</th>
                   <th style={{ padding: '0.9rem 1.1rem' }}>Trạng Thái Phê Duyệt Kho</th>
-                  <th style={{ padding: '0.9rem 1.1rem' }}>Ghi Chú KCS</th>
+                  <th style={{ padding: '0.9rem 1.1rem' }}>Ghi Chú Kiểm Định</th>
+                  <th style={{ padding: '0.9rem 1.1rem', textAlign: 'right' }}>Chi Tiết</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: '3rem', color: 'var(--ara-text-muted)' }}>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--ara-text-muted)' }}>
                       <RefreshCw size={24} className="spinning" style={{ margin: '0 auto 0.5rem' }} />
                       <div>Đang tải danh sách yêu cầu...</div>
                     </td>
                   </tr>
                 ) : requests.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: '3rem', color: 'var(--ara-text-muted)' }}>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--ara-text-muted)' }}>
                       <Truck size={32} style={{ margin: '0 auto 0.5rem', opacity: 0.5 }} />
                       <div>Chưa có phiếu yêu cầu nhập kho nguyên phụ liệu nào</div>
                     </td>
                   </tr>
                 ) : (
-                  requests.map((ticket) => (
+                  requests.map((ticket) => {
+                    const ticketLines = ticket.receiptLines?.length ? ticket.receiptLines : (ticket.requestLines || []);
+                    const lotCodes = ticketLines.map((l) => l.lotCode).filter(Boolean);
+                    return (
                     <tr key={ticket._id} style={{ borderBottom: '1px solid var(--ara-border-subtle)' }}>
                       <td style={{ padding: '1rem 1.1rem', fontWeight: 700, color: 'var(--ara-noir)' }}>
                         <span style={{ fontFamily: 'monospace', fontSize: '0.95rem', color: 'var(--ara-gold)' }}>
@@ -1483,7 +1489,7 @@ export default function MaterialInboundVerificationPage() {
                         </span>
                         {ticket.supplierDeliveryCode && (
                           <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', fontWeight: 400 }}>
-                            Vận đơn NCC: {ticket.supplierDeliveryCode}
+                            Vận đơn nhà cung cấp: {ticket.supplierDeliveryCode}
                           </div>
                         )}
                       </td>
@@ -1506,22 +1512,55 @@ export default function MaterialInboundVerificationPage() {
                             )}
                           </div>
                         ) : (
-                          <span style={{ color: 'var(--ara-text-light)' }}>Tạo trực tiếp</span>
+                          <span style={{ color: 'var(--ara-text-light)' }}>
+                            {ticket.ticketType === 'INBOUND_REQUEST' ? 'Từ Quản lý Lô' : 'Tạo trực tiếp'}
+                          </span>
                         )}
                       </td>
                       <td style={{ padding: '1rem 1.1rem' }}>
                         <div style={{ fontWeight: 600 }}>{ticket.supplierId?.supplierName || '—'}</div>
                       </td>
                       <td style={{ padding: '1rem 1.1rem' }}>
-                        <span style={{ fontWeight: 600 }}>{ticket.receiptLines?.length || 0}</span> loại NPL
+                        <div>
+                          <span style={{ fontWeight: 600 }}>{ticketLines.length}</span> loại nguyên phụ liệu
+                        </div>
+                        {lotCodes.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                            {lotCodes.slice(0, 3).map((code) => (
+                              <span
+                                key={code}
+                                style={{
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  background: '#EFF6FF',
+                                  color: '#1D4ED8',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #BFDBFE',
+                                }}
+                              >
+                                {code}
+                              </span>
+                            ))}
+                            {lotCodes.length > 3 && (
+                              <span style={{ fontSize: '0.72rem', color: '#6B7280' }}>+{lotCodes.length - 3} lô</span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: '1rem 1.1rem' }}>
                         {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString('vi-VN') : '—'}
                       </td>
                       <td style={{ padding: '1rem 1.1rem' }}>
-                        {ticket.status === 'READY_TO_CONFIRM' && (
+                        {(ticket.status === 'READY_TO_CONFIRM' || ticket.status === 'WAITING_RECEIPT') && (
                           <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#FEF3C7', color: '#92400E', fontSize: '0.78rem', fontWeight: 700 }}>
-                            Chờ QL Kho duyệt & xếp kệ
+                            Chờ Quản lý kho duyệt &amp; xếp kệ
+                          </span>
+                        )}
+                        {ticket.status === 'PARTIALLY_RECEIVED' && (
+                          <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#DBEAFE', color: '#1E40AF', fontSize: '0.78rem', fontWeight: 700 }}>
+                            Đang nhận một phần
                           </span>
                         )}
                         {ticket.status === 'COMPLETED' && (
@@ -1535,14 +1574,162 @@ export default function MaterialInboundVerificationPage() {
                           </span>
                         )}
                       </td>
-                      <td style={{ padding: '1rem 1.1rem', fontSize: '0.85rem', color: 'var(--ara-text-muted)', maxWidth: '280px' }}>
-                        {ticket.receiptNote || '—'}
+                      <td style={{ padding: '1rem 1.1rem', fontSize: '0.85rem', color: 'var(--ara-text-muted)', maxWidth: '240px' }}>
+                        {ticket.receiptNote || ticket.requestNote || '—'}
+                      </td>
+                      <td style={{ padding: '1rem 1.1rem', textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTicketForDetail(ticket)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '0.35rem 0.7rem',
+                            borderRadius: '6px',
+                            border: '1px solid var(--ara-border)',
+                            background: '#FFFFFF',
+                            color: 'var(--ara-noir)',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Eye size={14} /> Xem lô
+                        </button>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: VIEW MATERIAL INBOUND TICKET DETAILS & LOTS */}
+      {selectedTicketForDetail && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '1rem',
+          }}
+          onClick={() => setSelectedTicketForDetail(null)}
+        >
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: 'var(--radius-md)',
+              width: '100%',
+              maxWidth: '780px',
+              maxHeight: '88vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              boxShadow: 'var(--ara-shadow-lg)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{
+              padding: '1.1rem 1.4rem',
+              borderBottom: '1px solid var(--ara-border)',
+              background: 'var(--ara-bg-surface)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <div>
+                <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--ara-gold)' }}>
+                  CHI TIẾT PHIẾU YÊU CẦU NHẬP KHO NGUYÊN PHỤ LIỆU &amp; MÃ LÔ
+                </div>
+                <h3 style={{ margin: '2px 0 0', fontFamily: 'monospace' }}>{selectedTicketForDetail.ticketCode}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTicketForDetail(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ara-text-muted)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1.25rem 1.4rem', overflowY: 'auto', flex: 1 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', padding: '0.85rem', background: 'var(--ara-bg-surface)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.86rem' }}>
+                <div><strong>Nhà cung cấp:</strong> {selectedTicketForDetail.supplierId?.supplierName || '—'}</div>
+                <div><strong>Kế hoạch gốc:</strong> {selectedTicketForDetail.inboundPlanId?.planCode || 'Không theo kế hoạch'}</div>
+                <div><strong>Ngày lập:</strong> {selectedTicketForDetail.createdAt ? new Date(selectedTicketForDetail.createdAt).toLocaleString('vi-VN') : '—'}</div>
+                <div><strong>Trạng thái:</strong> {formatStatusVi(selectedTicketForDetail.status)}</div>
+              </div>
+
+              <div style={{ border: '1px solid var(--ara-border)', borderRadius: '8px', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)', textAlign: 'left' }}>
+                      <th style={{ padding: '0.65rem 0.8rem' }}>Nguyên phụ liệu</th>
+                      <th style={{ padding: '0.65rem 0.8rem' }}>Mã Lô &amp; Chuỗi QR</th>
+                      <th style={{ padding: '0.65rem 0.8rem', textAlign: 'right' }}>Số lượng đạt / Yêu cầu</th>
+                      <th style={{ padding: '0.65rem 0.8rem', textAlign: 'right' }}>Số lượng lỗi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(selectedTicketForDetail.receiptLines?.length ? selectedTicketForDetail.receiptLines : (selectedTicketForDetail.requestLines || [])).map((line, idx) => (
+                      <tr key={line.clientLineId || idx} style={{ borderTop: '1px solid var(--ara-border-subtle)' }}>
+                        <td style={{ padding: '0.65rem 0.8rem' }}>
+                          <div style={{ fontWeight: 600 }}>{line.rawMaterialId?.materialName || 'Nguyên phụ liệu'}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)' }}>
+                            {line.rawMaterialId?.materialCode || ''} {line.rawMaterialId?.color ? `· ${translateColorVi(line.rawMaterialId.color)}` : ''}
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.65rem 0.8rem' }}>
+                          {line.lotCode ? (
+                            <div>
+                              <span style={{
+                                fontFamily: 'monospace',
+                                fontWeight: 700,
+                                fontSize: '0.76rem',
+                                background: '#EFF6FF',
+                                color: '#1D4ED8',
+                                padding: '2px 7px',
+                                borderRadius: '4px',
+                                border: '1px solid #BFDBFE',
+                              }}>
+                                {line.lotCode}
+                              </span>
+                              {line.qrValue && (
+                                <div style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: '#4B5563', marginTop: '3px' }}>
+                                  Mã QR: {line.qrValue}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--ara-text-muted)', fontSize: '0.78rem' }}>Chưa gán mã lô</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.65rem 0.8rem', textAlign: 'right', fontWeight: 700, color: '#047857' }}>
+                          {line.acceptedQty ?? line.requestedQty ?? 0} {formatUnitVi(line.rawMaterialId?.unit)}
+                        </td>
+                        <td style={{ padding: '0.65rem 0.8rem', textAlign: 'right', fontWeight: 600, color: (line.rejectedQty || 0) > 0 ? '#B91C1C' : 'var(--ara-text-muted)' }}>
+                          {line.rejectedQty || 0}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {(selectedTicketForDetail.receiptNote || selectedTicketForDetail.requestNote) && (
+                <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--ara-bg-surface)', borderRadius: '8px', fontSize: '0.84rem' }}>
+                  <strong>Ghi chú:</strong> {selectedTicketForDetail.receiptNote || selectedTicketForDetail.requestNote}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1686,7 +1873,7 @@ export default function MaterialInboundVerificationPage() {
                           <th style={{ padding: '6px 10px', width: '140px' }}>Hợp đồng</th>
                           <th style={{ padding: '6px 10px' }}>Nội dung điều chỉnh / Ghi chú</th>
                           <th style={{ padding: '6px 10px', width: '90px' }}>Số đợt</th>
-                          <th style={{ padding: '6px 10px', width: '130px', textAlign: 'center' }}>Trạng thái KCS</th>
+                          <th style={{ padding: '6px 10px', width: '130px', textAlign: 'center' }}>Trạng thái kiểm định</th>
                           <th style={{ padding: '6px 10px', width: '90px', textAlign: 'right' }}>Thao tác</th>
                         </tr>
                       </thead>
@@ -1774,7 +1961,7 @@ export default function MaterialInboundVerificationPage() {
                   <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.78rem' }}>Nhà cung cấp</span>
                   <strong style={{ color: 'var(--ara-noir)' }}>{selectedPlanForDetail.supplierId?.supplierName || '—'}</strong>
                   <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)' }}>
-                    Mã: {selectedPlanForDetail.supplierId?.supplierCode} {selectedPlanForDetail.supplierId?.phone ? `· SĐT: ${selectedPlanForDetail.supplierId.phone}` : ''}
+                    Mã: {selectedPlanForDetail.supplierId?.supplierCode} {selectedPlanForDetail.supplierId?.phone ? `· Số điện thoại: ${selectedPlanForDetail.supplierId.phone}` : ''}
                   </div>
                 </div>
 
@@ -1826,7 +2013,7 @@ export default function MaterialInboundVerificationPage() {
                     Danh Sách Các Đợt Giao Hàng & Nghiệm Thu ({selectedPlanForDetail.batches?.length || 1} đợt)
                   </h3>
                   <span style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)' }}>
-                    KCS kiểm định chi tiết theo từng đợt bên dưới
+                    Kiểm định chi tiết theo từng đợt bên dưới
                   </span>
                 </div>
 
@@ -1925,9 +2112,9 @@ export default function MaterialInboundVerificationPage() {
                                 <tr style={{ color: 'var(--ara-text-muted)', fontSize: '0.76rem', textTransform: 'uppercase', borderBottom: '1px solid var(--ara-border-subtle)' }}>
                                   <th style={{ padding: '0.5rem 0.6rem' }}>Nguyên phụ liệu</th>
                                   <th style={{ padding: '0.5rem 0.6rem', width: '100px' }}>Quy cách / Khổ</th>
-                                  <th style={{ padding: '0.5rem 0.6rem', width: '100px' }}>ĐVT</th>
+                                  <th style={{ padding: '0.5rem 0.6rem', width: '100px' }}>Đơn vị tính</th>
                                   <th style={{ padding: '0.5rem 0.6rem', width: '110px' }}>Kế hoạch đợt</th>
-                                  <th style={{ padding: '0.5rem 0.6rem', width: '110px' }}>Thực đạt KCS</th>
+                                  <th style={{ padding: '0.5rem 0.6rem', width: '110px' }}>Thực đạt kiểm định</th>
                                   <th style={{ padding: '0.5rem 0.6rem', width: '100px' }}>Lỗi / Thiếu</th>
                                   <th style={{ padding: '0.5rem 0.6rem' }}>Mô tả lỗi</th>
                                 </tr>
@@ -1975,7 +2162,7 @@ export default function MaterialInboundVerificationPage() {
                                       {item.rawMaterialId?.gsm ? ` · ${item.rawMaterialId.gsm}gsm` : ''}
                                     </td>
                                     <td style={{ padding: '0.6rem 0.6rem' }}>
-                                      {item.rawMaterialId?.unit || '—'}
+                                      {formatUnitVi(item.rawMaterialId?.unit, '—')}
                                     </td>
                                     <td style={{ padding: '0.6rem 0.6rem', fontWeight: 700 }}>
                                       {item.plannedQty || 0}
@@ -2009,7 +2196,7 @@ export default function MaterialInboundVerificationPage() {
                                 gap: '0.5rem',
                                 flexWrap: 'wrap',
                               }}>
-                                <strong>Biên bản KCS:</strong>
+                                <strong>Biên bản kiểm định:</strong>
                                 <span>
                                   {batch.technicianVerification.isMatchedWithPlan
                                     ? 'Khớp 100% với kế hoạch nhập'
@@ -2044,7 +2231,7 @@ export default function MaterialInboundVerificationPage() {
                           onClick={() => openVerifyModal(selectedPlanForDetail, null)}
                           style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
                         >
-                          Nghiệm thu KCS & Gửi QL Kho
+                          Nghiệm thu & Gửi Quản lý kho
                         </button>
                       ) : (
                         <span style={{
@@ -2077,9 +2264,9 @@ export default function MaterialInboundVerificationPage() {
                     <thead>
                       <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)', color: 'var(--ara-text-muted)', fontSize: '0.76rem', textTransform: 'uppercase' }}>
                         <th style={{ padding: '0.65rem 0.8rem' }}>Nguyên phụ liệu</th>
-                        <th style={{ padding: '0.65rem 0.8rem' }}>ĐVT</th>
-                        <th style={{ padding: '0.65rem 0.8rem' }}>Tổng SL Kế Hoạch</th>
-                        <th style={{ padding: '0.65rem 0.8rem' }}>Tổng Thực Đạt KCS</th>
+                        <th style={{ padding: '0.65rem 0.8rem' }}>Đơn vị tính</th>
+                        <th style={{ padding: '0.65rem 0.8rem' }}>Tổng Số Lượng Kế Hoạch</th>
+                        <th style={{ padding: '0.65rem 0.8rem' }}>Tổng Thực Đạt Kiểm Định</th>
                         <th style={{ padding: '0.65rem 0.8rem' }}>Tổng Lỗi / Thiếu</th>
                       </tr>
                     </thead>
@@ -2090,7 +2277,7 @@ export default function MaterialInboundVerificationPage() {
                             <div style={{ fontWeight: 600 }}>{item.rawMaterialId?.materialName || 'Vật tư'}</div>
                             <div style={{ fontSize: '0.74rem', color: 'var(--ara-text-muted)' }}>Mã: {item.rawMaterialId?.materialCode}</div>
                           </td>
-                          <td style={{ padding: '0.65rem 0.8rem' }}>{item.rawMaterialId?.unit || '—'}</td>
+                          <td style={{ padding: '0.65rem 0.8rem' }}>{formatUnitVi(item.rawMaterialId?.unit, '—')}</td>
                           <td style={{ padding: '0.65rem 0.8rem', fontWeight: 700 }}>{item.plannedQty || 0}</td>
                           <td style={{ padding: '0.65rem 0.8rem', fontWeight: 700, color: '#047857' }}>{item.actualVerifiedPassedQty || 0}</td>
                           <td style={{ padding: '0.65rem 0.8rem', fontWeight: 700, color: Number(item.actualDefectiveOrShortQty) > 0 ? '#B91C1C' : '#6B7280' }}>
@@ -2160,7 +2347,7 @@ export default function MaterialInboundVerificationPage() {
             }}>
               <div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--ara-gold)', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Nghiệp vụ KCS Kiểm Định Thực Tế Tại Cửa Kho
+                  Nghiệp vụ Kiểm Định Chất Lượng Thực Tế Tại Cửa Kho
                 </div>
                 <h2 style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--ara-noir)', margin: '0.2rem 0 0' }}>
                   Nghiệm Thu: {selectedPlan.planCode}
@@ -2227,7 +2414,7 @@ export default function MaterialInboundVerificationPage() {
               {/* Delivery Note / Code */}
               <div style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.88rem', fontWeight: 600, color: 'var(--ara-noir)', marginBottom: '0.4rem' }}>
-                  Số phiếu giao hàng / Vận đơn của NCC (nếu có):
+                  Số phiếu giao hàng / Vận đơn của nhà cung cấp (nếu có):
                 </label>
                 <input
                   type="text"
@@ -2261,9 +2448,9 @@ export default function MaterialInboundVerificationPage() {
                       <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)', color: 'var(--ara-text-muted)', fontSize: '0.78rem', textTransform: 'uppercase' }}>
                         <th style={{ padding: '0.7rem 0.9rem' }}>Vật tư / Quy cách</th>
                         <th style={{ padding: '0.7rem 0.9rem', width: '90px' }}>Kế hoạch</th>
-                        <th style={{ padding: '0.7rem 0.9rem', width: '120px' }}>Thực đạt KCS</th>
+                        <th style={{ padding: '0.7rem 0.9rem', width: '120px' }}>Thực đạt kiểm định</th>
                         <th style={{ padding: '0.7rem 0.9rem', width: '110px' }}>Lỗi / Thiếu</th>
-                        <th style={{ padding: '0.7rem 0.9rem' }}>Mô tả lỗi KCS</th>
+                        <th style={{ padding: '0.7rem 0.9rem' }}>Mô tả lỗi kiểm định</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2290,9 +2477,9 @@ export default function MaterialInboundVerificationPage() {
                                 {item.material?.materialName || 'Nguyên liệu'}
                               </div>
                               <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)' }}>
-                                Mã: {item.material?.materialCode} · ĐVT: {item.material?.unit || item.unitSnapshot || 'METER'}
-                                {item.material?.widthCm ? ` · Khổ: ${item.material.widthCm}cm` : ''}
-                                {item.material?.gsm ? ` · GSM: ${item.material.gsm}` : ''}
+                                Mã: {item.material?.materialCode} · Đơn vị tính: {formatUnitVi(item.material?.unit || item.unitSnapshot || 'METER')}
+                                {item.material?.widthCm ? ` · Khổ: ${item.material.widthCm} cm` : ''}
+                                {item.material?.gsm ? ` · Định lượng: ${item.material.gsm} g/m²` : ''}
                               </div>
 
                               {/* Chi tiết từng cuộn vải được giao đợt này giống bên kế toán */}
@@ -2461,7 +2648,7 @@ export default function MaterialInboundVerificationPage() {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--ara-noir)', marginBottom: '0.35rem' }}>
-                    Ghi chú kết luận KCS {!isMatched ? <span style={{ color: '#DC2626' }}>* (bắt buộc nhập khi có sai lệch)</span> : <span style={{ color: 'var(--ara-text-muted)', fontWeight: 400 }}>(tùy chọn)</span>}:
+                    Ghi chú kết luận kiểm định {!isMatched ? <span style={{ color: '#DC2626' }}>* (bắt buộc nhập khi có sai lệch)</span> : <span style={{ color: 'var(--ara-text-muted)', fontWeight: 400 }}>(tùy chọn)</span>}:
                   </label>
                   <textarea
                     rows={3}
@@ -2480,7 +2667,7 @@ export default function MaterialInboundVerificationPage() {
                   />
                   {!isMatched && !deviationSummary.trim() && (
                     <div style={{ color: '#DC2626', fontSize: '0.78rem', marginTop: '0.3rem', fontWeight: 500 }}>
-                      * Bắt buộc nhập chi tiết sai lệch KCS trước khi lưu.
+                      * Bắt buộc nhập chi tiết sai lệch kiểm định trước khi lưu.
                     </div>
                   )}
                 </div>
@@ -2495,7 +2682,7 @@ export default function MaterialInboundVerificationPage() {
                   onChange={(e) => setCreateInboundRequest(e.target.checked)}
                 />
                 <label htmlFor="autoCreateTicketCheckbox" style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--ara-noir)', cursor: 'pointer' }}>
-                  Tự động sinh Phiếu yêu cầu nhập kho gửi Quản lý kho (chỉ nhập số lượng thực đạt KCS)
+                  Tự động sinh Phiếu yêu cầu nhập kho gửi Quản lý kho (chỉ nhập số lượng thực đạt kiểm định)
                 </label>
               </div>
 
@@ -2516,7 +2703,7 @@ export default function MaterialInboundVerificationPage() {
                 }}>
                   <AlertTriangle size={16} color="#DC2626" style={{ flexShrink: 0 }} />
                   <span>
-                    Chưa khớp số lượng: Tổng số lượng [Thực đạt KCS] cộng với [Lỗi / Thiếu] phải bằng đúng số lượng [Kế hoạch] của từng loại nguyên phụ liệu.
+                    Chưa khớp số lượng: Tổng số lượng [Thực đạt kiểm định] cộng với [Lỗi / Thiếu] phải bằng đúng số lượng [Kế hoạch] của từng loại nguyên phụ liệu.
                   </span>
                 </div>
               )}
@@ -2588,10 +2775,10 @@ export default function MaterialInboundVerificationPage() {
                   <Send size={16} />
                 )}
                 {isMatched
-                  ? 'Xác nhận KCS & Gửi yêu cầu nhập kho tới QL Kho'
+                  ? 'Xác nhận kiểm định & Gửi yêu cầu nhập kho tới Quản lý kho'
                   : createInboundRequest
-                    ? 'Lưu biên bản sai lệch & Gửi phần đạt KCS tới QL Kho'
-                    : 'Lưu biên bản sai lệch KCS (Từ chối nhập kho)'}
+                    ? 'Lưu biên bản sai lệch & Gửi phần đạt tới Quản lý kho'
+                    : 'Lưu biên bản sai lệch kiểm định (Từ chối nhập kho)'}
               </button>
             </div>
           </div>
@@ -2685,11 +2872,11 @@ export default function MaterialInboundVerificationPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                    Số phiếu giao hàng NCC (nếu có)
+                    Số phiếu giao hàng nhà cung cấp (nếu có)
                   </label>
                   <input
                     type="text"
-                    placeholder="Mã phiếu giao NCC..."
+                    placeholder="Mã phiếu giao nhà cung cấp..."
                     value={directForm.supplierDeliveryCode}
                     onChange={(e) => setDirectForm({ ...directForm, supplierDeliveryCode: e.target.value })}
                     style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem' }}
@@ -2698,7 +2885,7 @@ export default function MaterialInboundVerificationPage() {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                    Ghi chú / Biên bản bàn giao KCS
+                    Ghi chú / Biên bản bàn giao kiểm định
                   </label>
                   <input
                     type="text"
@@ -2754,7 +2941,7 @@ export default function MaterialInboundVerificationPage() {
                               <option value="">-- Chọn vật tư --</option>
                               {options.materials?.map((m) => (
                                 <option key={m._id} value={m._id}>
-                                  {m.materialName} ({m.materialCode}) - ĐVT: {m.unit}
+                                  {m.materialName} ({m.materialCode}) - Đơn vị: {formatUnitVi(m.unit)}
                                 </option>
                               ))}
                             </select>

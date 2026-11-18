@@ -42,6 +42,8 @@ import FinishedGoodsInspectionPage from '../pages/garment/FinishedGoodsInspectio
 import GarmentStocktakeExecutionPage from '../pages/garment/GarmentStocktakeExecutionPage';
 import GarmentMaterialOutboundPage from '../pages/garment/GarmentMaterialOutboundPage';
 import GarmentCuttingAndRemnantPage from '../pages/garment/GarmentCuttingAndRemnantPage';
+import GarmentLotManagementPage from '../pages/garment/GarmentLotManagementPage';
+import GarmentDashboardPage from '../pages/garment/GarmentDashboardPage';
 import GarmentLayout from '../components/garment/GarmentLayout';
 import WarehouseManagerLayout from '../components/warehouse/WarehouseManagerLayout';
 import WarehouseStaffLayout from '../components/warehouse/WarehouseStaffLayout';
@@ -169,7 +171,9 @@ export default function AppRouter() {
 
         {/* Phân hệ Kỹ thuật may */}
         <Route element={<ProtectedRoute role="GARMENT_TECHNICIAN"><GarmentLayout><Outlet /></GarmentLayout></ProtectedRoute>}>
+          <Route path="/garment/dashboard" element={<GarmentDashboardPage />} />
           <Route path="/garment/raw-materials" element={<GarmentRawMaterialsPage />} />
+          <Route path="/garment/lots" element={<GarmentLotManagementPage />} />
           <Route path="/garment/material-inbound-verification" element={<MaterialInboundVerificationPage />} />
           <Route path="/garment/finished-goods-inspection" element={<FinishedGoodsInspectionPage />} />
           <Route path="/garment/return-inspection" element={<GarmentReturnInspectionPage />} />
