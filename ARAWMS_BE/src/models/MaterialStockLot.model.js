@@ -11,8 +11,6 @@ const { Schema } = mongoose;
 
 const materialStockLotSchema = new Schema({
   lotBarcode: { type: String, required: true, trim: true, uppercase: true, unique: true, index: true },
-  barcodeImageUrl: String,
-  barcodeImagePublicId: String,
   rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial', required: true, index: true },
   supplierId: { type: Schema.Types.ObjectId, ref: 'Supplier' },
   supplierNameSnapshot: { type: String, trim: true },

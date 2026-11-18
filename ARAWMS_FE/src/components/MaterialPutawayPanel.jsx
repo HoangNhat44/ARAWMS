@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { warehousePutawayService as api } from '../services/warehousePutawayService';
+import { useBarcodeCamera } from '../hooks/useBarcodeCamera';
 
 const taskKey = (item) => `${item.receiptId}:${item.objectBarcode}:${item.locationId}`;
 
@@ -20,12 +21,13 @@ export default function MaterialPutawayPanel() {
   const [pendingRetry, setPendingRetry] = useState(null);
   const [printDialog, setPrintDialog] = useState(null);
   const [printingReceiptId, setPrintingReceiptId] = useState('');
-  const [cameraOn, setCameraOn] = useState(false);
-  const videoRef = useRef(null);
-  const controlsRef = useRef(null);
   const handlerRef = useRef(null);
   const lockedRef = useRef(false);
   const lastSeenRef = useRef({ code: '', at: 0 });
+  // Duplicate reads are filtered by handlerRef itself (only accepted scans count), so the hook does not.
+  const camera = useBarcodeCamera({ onScan: (code) => handlerRef.current?.(code), onError: setError,
+    formats: ['CODE_128', 'QR_CODE'], duplicateWindowMs: 0 });
+  const { videoRef, cameraOn, stopCamera } = camera;
 
   const load = async () => {
     try {
@@ -37,15 +39,6 @@ export default function MaterialPutawayPanel() {
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
-  const stopCamera = () => {
-    controlsRef.current?.stop(); controlsRef.current = null;
-    if (videoRef.current?.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
-      videoRef.current.srcObject = null;
-    }
-    setCameraOn(false);
-  };
-  useEffect(() => () => controlsRef.current?.stop(), []);
 
   const openTask = (item) => {
     stopCamera(); setSelected(item); setVerifiedLocation(''); setCode('');
@@ -125,23 +118,10 @@ export default function MaterialPutawayPanel() {
     if (verifiedLocation) submitObject(barcode);
     else submitLocation(barcode);
   };
-  const startCamera = async () => {
+  const startCamera = () => {
     if (cameraOn || !selected) return;
     setError('');
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError('Camera cần HTTPS hoặc localhost và quyền truy cập thiết bị.'); return;
-    }
-    try {
-      const { BarcodeFormat, BrowserMultiFormatReader } = await import('@zxing/browser');
-      const reader = new BrowserMultiFormatReader();
-      reader.possibleFormats = [BarcodeFormat.CODE_128, BarcodeFormat.QR_CODE];
-      controlsRef.current = await reader.decodeFromConstraints({ video: {
-        facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 },
-      }, audio: false }, videoRef.current, (result) => {
-        if (result) handlerRef.current?.(result.getText());
-      });
-      setCameraOn(true);
-    } catch (err) { setError(`Không mở được camera: ${err.message}`); }
+    camera.startCamera();
   };
   /** Opens the receipt's pending rolls/lots for review; printing happens from the dialog. */
   const printReceipt = async (receipt) => {

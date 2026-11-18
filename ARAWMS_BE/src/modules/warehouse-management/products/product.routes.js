@@ -22,6 +22,9 @@ import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
+import { pickableQtyBySku, getProductDetail, getShelfStock, listProductReceipts,
+  getReceiptUnits, renderProductLabels } from './productDetail.service.js';
+import { getBarcodeTimeline } from './barcodeTracking.service.js';
 
 const router = express.Router();
 const media = {
@@ -72,18 +75,7 @@ router.get('/', async (req, res, next) => {
   try {
     const products = await Product.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean();
     const skus = await Sku.find({ productId: { $in: products.map((item) => item._id) }, isDeleted: { $ne: true } }).lean();
-    const batches = await FinishedGoodsBatch.find({ skuId: { $in: skus.map((sku) => sku._id) },
-      currentOnHandQty: { $gt: 0 }, isDefectQuarantine: false, isDeleted: { $ne: true } })
-      .select('skuId locationId currentOnHandQty reservedPickQty').lean();
-    const locations = await WarehouseLocation.find({ _id: { $in: batches.map((batch) => batch.locationId) },
-      warehouseType: 'FINISHED_GOODS', status: { $in: ['ACTIVE', 'FULL'] }, isFrozenForStocktake: false,
-      isSystemUnplaced: { $ne: true }, isDeleted: { $ne: true } }).select('_id').lean();
-    const usableLocations = new Set(locations.map((location) => String(location._id)));
-    const pickableBySku = new Map();
-    for (const batch of batches) if (usableLocations.has(String(batch.locationId))) {
-      const key = String(batch.skuId);
-      pickableBySku.set(key, (pickableBySku.get(key) || 0) + Math.max(0, batch.currentOnHandQty - (batch.reservedPickQty || 0)));
-    }
+    const pickableBySku = await pickableQtyBySku(skus.map((sku) => sku._id));
     const byProduct = new Map();
     for (const sku of skus) {
       const key = String(sku.productId);
@@ -110,6 +102,22 @@ router.get('/', async (req, res, next) => {
     }) });
   } catch (error) { next(error); }
 });
+
+/** Read-only product detail endpoints. Warehouse staff may view; editing goes through /configuration. */
+const respondWith = (message, load) => async (req, res, next) => {
+  try { return sendSuccess(res, message, await load(req)); } catch (error) {
+    if (error.status) return sendError(res, error.message, { code: error.code }, error.status);
+    next(error);
+  }
+};
+router.get('/units/:barcode/timeline', respondWith('Hành trình barcode', (req) => getBarcodeTimeline(req.params.barcode)));
+router.get('/:id/detail', respondWith('Chi tiết sản phẩm', (req) => getProductDetail(req.params.id)));
+router.get('/:id/shelf-stock', respondWith('Hàng đang trên kệ', (req) => getShelfStock(req.params.id)));
+router.get('/:id/receipts', respondWith('Phiếu nhập đã xác nhận', (req) =>
+  listProductReceipts(req.params.id, { page: req.query.page, limit: req.query.limit })));
+router.get('/:id/receipts/:documentId/units', respondWith('Barcode của sản phẩm trong phiếu', (req) =>
+  getReceiptUnits(req.params.id, req.params.documentId)));
+router.post('/:id/labels', respondWith('Tem barcode', (req) => renderProductLabels(req.params.id, req.body?.barcodes)));
 
 /** Issues unreserved stock for one active SKU and records the movement.
  * Receiving requires a separate barcode issuing flow; tracked batch stock cannot

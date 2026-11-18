@@ -8,6 +8,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { warehousePutawayService as api } from '../services/warehousePutawayService';
 import MaterialPutawayPanel from '../components/MaterialPutawayPanel';
+import { useBarcodeCamera } from '../hooks/useBarcodeCamera';
 import '../styles/warehousePutaway.css';
 
 const key = (task) => `${task.allocationId}:${task.lineId}`;
@@ -33,7 +34,6 @@ function FinishedGoodsPutawayPanel() {
   const [busy, setBusy] = useState(false);
   const [printingReceiptId, setPrintingReceiptId] = useState('');
   const [printDialog, setPrintDialog] = useState(null);
-  const [cameraOn, setCameraOn] = useState(false);
   const [pendingRetry, setPendingRetry] = useState(null);
   const [scanLog, setScanLog] = useState([]);
   const [showShortage, setShowShortage] = useState(false);
@@ -41,11 +41,13 @@ function FinishedGoodsPutawayPanel() {
   const [showIncident, setShowIncident] = useState(false);
   const [incidentReason, setIncidentReason] = useState('');
   const [incidentBarcode, setIncidentBarcode] = useState('');
-  const videoRef = useRef(null);
-  const controlsRef = useRef(null);
   const scanHandlerRef = useRef(null);
   const lockedRef = useRef(false);
   const lastSeenRef = useRef({ code: '', at: 0 });
+  // Duplicate reads are filtered by scanHandlerRef itself (only accepted scans count), so the hook does not.
+  const camera = useBarcodeCamera({ onScan: (code) => scanHandlerRef.current?.(code), onError: setError,
+    formats: ['CODE_128', 'QR_CODE'], duplicateWindowMs: 0 });
+  const { videoRef, cameraOn, stopCamera } = camera;
 
   /** Refreshes only the compact work queue; task progress loads on selection. */
   const loadTasks = async () => {
@@ -66,16 +68,6 @@ function FinishedGoodsPutawayPanel() {
     return () => window.removeEventListener('arawms-putaway-realtime', refresh);
   }, [task?.allocationId, task?.lineId]);
 
-  const stopCamera = () => {
-    controlsRef.current?.stop();
-    controlsRef.current = null;
-    if (videoRef.current?.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
-      videoRef.current.srcObject = null;
-    }
-    setCameraOn(false);
-  };
-  useEffect(() => () => { controlsRef.current?.stop(); }, []);
 
   /** Reopening a task intentionally requires another location scan. */
   const openTask = async (selected) => {
@@ -144,27 +136,11 @@ function FinishedGoodsPutawayPanel() {
     else submitLocation(barcode);
   };
 
-  /** The decode callback reads current task state through a ref without restarting the camera. */
-  const startCamera = async () => {
+  /** The scan callback reads current task state through a ref without restarting the camera. */
+  const startCamera = () => {
     if (cameraOn || !task) return;
     setError('');
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError('Camera cần HTTPS hoặc localhost và quyền truy cập thiết bị.');
-      return;
-    }
-    try {
-      const { BarcodeFormat, BrowserMultiFormatReader } = await import('@zxing/browser');
-      const reader = new BrowserMultiFormatReader();
-      reader.possibleFormats = [BarcodeFormat.CODE_128, BarcodeFormat.QR_CODE];
-      const controls = await reader.decodeFromConstraints({ video: {
-        facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 },
-      },
-        audio: false }, videoRef.current, (result) => {
-        if (result) scanHandlerRef.current?.(result.getText());
-      });
-      controlsRef.current = controls;
-      setCameraOn(true);
-    } catch (err) { setError(`Không mở được camera: ${err.message}`); }
+    camera.startCamera();
   };
 
   const reportShortage = async () => {

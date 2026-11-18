@@ -2,9 +2,9 @@
  * File: productLabelPrint.js
  * Author: Duy Anh
  * Date: 2026-10-27
- * Description: Prints one stable product-unit barcode per accepted finished product, using its Cloudinary image when available.
+ * Description: Prints one stable product-unit barcode per accepted finished product, using the image the backend renders from the stored barcode.
  */
-import { code128Svg } from './barcodePrint';
+import { labelImage } from './barcodePrint';
 
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -14,7 +14,7 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character
 export const printProductLabels = (labels, tab = window.open('', '_blank')) => {
   if (!tab) throw new Error('Trình duyệt đang chặn cửa sổ in tem');
   const articles = labels.map((label) => `<article>
-    ${label.imageUrl ? `<img src="${escapeHtml(label.imageUrl)}" alt="${escapeHtml(label.barcode)}"/>` : code128Svg(label.barcode)}
+    ${labelImage(label)}
     <strong>${escapeHtml(label.barcode)}</strong>
     ${label.skuCode ? `<div class="product">${escapeHtml(label.productName || label.skuCode)}</div>
     <div class="variant">${escapeHtml([label.skuCode, label.color, label.size].filter(Boolean).join(' · '))}</div>` : ''}

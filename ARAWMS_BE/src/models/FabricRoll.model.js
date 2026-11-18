@@ -13,8 +13,6 @@ const { Schema } = mongoose;
 const fabricRollSchema = new Schema(
   {
     rollBarcode: { type: String, required: true, trim: true, uppercase: true, unique: true, index: true },
-    barcodeImageUrl: String,
-    barcodeImagePublicId: String,
     rawMaterialId: { type: Schema.Types.ObjectId, ref: 'RawMaterial', required: true, index: true },
     supplierId: { type: Schema.Types.ObjectId, ref: 'Supplier', index: true },
     supplierNameSnapshot: { type: String, trim: true },

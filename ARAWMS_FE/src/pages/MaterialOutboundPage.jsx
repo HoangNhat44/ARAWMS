@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { materialOutboundService as api } from '../services/materialOutboundService';
 import { MATERIAL_UNIT_OPTIONS } from '../utils/materialUnits';
+import { useBarcodeCamera } from '../hooks/useBarcodeCamera';
 import '../styles/materialOutbound.css';
 
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString('vi-VN') : '—');
@@ -36,6 +37,8 @@ const display = (value) => Number(value || 0).toLocaleString('vi-VN', { maximumF
 const units = Object.fromEntries(MATERIAL_UNIT_OPTIONS.map(({ value, shortLabel }) => [value, shortLabel]));
 const id = (value) => String(value?._id || value?.id || value || '');
 const sum = (list) => Math.round(list.reduce((total, entry) => total + Number(entry.quantity || 0), 0) * 1000) / 1000;
+// Formats accepted when picking by camera: unit/lot labels, QR, and common supplier barcodes.
+const OUTBOUND_SCAN_FORMATS = ['CODE_128', 'QR_CODE', 'CODE_39', 'EAN_13', 'UPC_A'];
 const errorMessage = (error) => error?.response?.data?.message || error?.message || 'Không thể thực hiện thao tác.';
 
 const playScanSound = (isSuccess) => {
@@ -175,9 +178,6 @@ export default function MaterialOutboundPage({ isStaffMode = false }) {
   const [scannedBarcode, setScannedBarcode] = useState('');
   const [scanNotice, setScanNotice] = useState(null); // { type: 'error' | 'success', message: string, scannedCode: string }
   const barcodeInputRef = useRef(null);
-  const [cameraActive, setCameraActive] = useState(false);
-  const cameraRef = useRef(null);
-  const videoRef = useRef(null);
 
   // Scan Quantity Prompt Modal
   const [scanPrompt, setScanPrompt] = useState(null); // { scanId, barcode, kind, objectId, locationId, locationCode, available, lineIndex, pickedQuantity }
@@ -200,12 +200,26 @@ export default function MaterialOutboundPage({ isStaffMode = false }) {
   const [fgDetailDoc, setFgDetailDoc] = useState(null);
   const [fgScannedBarcode, setFgScannedBarcode] = useState('');
   const [fgScanNotice, setFgScanNotice] = useState(null); // { type: 'error' | 'success', message: string, scannedCode: string }
-  const [fgCameraActive, setFgCameraActive] = useState(false);
   const [fgBusy, setFgBusy] = useState(false);
   const [fgFilterStatus, setFgFilterStatus] = useState('ALL');
-  const fgCameraRef = useRef(null);
-  const fgVideoRef = useRef(null);
   const fgBarcodeInputRef = useRef(null);
+
+  // Camera scanning for raw-material picking and finished-goods picking. Each read closes the camera
+  // and goes through the same handler as a typed barcode.
+  const reportCameraError = (setNotice) => (message) => {
+    setError(message);
+    setNotice({ type: 'error', message, scannedCode: '' });
+    playScanSound(false);
+  };
+  const materialCamera = useBarcodeCamera({ onScan: (code) => handleScanBarcode(code),
+    onError: reportCameraError(setScanNotice), formats: OUTBOUND_SCAN_FORMATS, stopAfterScan: true,
+    duplicateWindowMs: 0, resolution: 'hd' });
+  const { videoRef, cameraOn: cameraActive, stopCamera } = materialCamera;
+  const startCamera = () => { setScanNotice(null); setError(''); materialCamera.startCamera(); };
+  const fgCamera = useBarcodeCamera({ onScan: (code) => handleFgScanBarcode(code),
+    onError: reportCameraError(setFgScanNotice), formats: OUTBOUND_SCAN_FORMATS, stopAfterScan: true,
+    duplicateWindowMs: 0, resolution: 'hd' });
+  const { videoRef: fgVideoRef, cameraOn: fgCameraActive, startCamera: startFgCamera, stopCamera: stopFgCamera } = fgCamera;
 
   // Sync tab with role mode
   useEffect(() => {
@@ -260,13 +274,6 @@ export default function MaterialOutboundPage({ isStaffMode = false }) {
       clearInterval(interval);
     };
   }, [refreshAll]);
-
-  useEffect(() => {
-    return () => {
-      cameraRef.current?.stop?.();
-      fgCameraRef.current?.stop?.();
-    };
-  }, []);
 
   // Filter requests
   const filteredRequests = useMemo(() => {
@@ -480,94 +487,6 @@ export default function MaterialOutboundPage({ isStaffMode = false }) {
     } finally {
       setBusy(false);
     }
-  };
-
-  // Camera integration for barcode scanning
-  const startCamera = async () => {
-    setScanNotice(null);
-    setError('');
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      const msg = 'Trình duyệt không hỗ trợ camera hoặc trang chưa được cấp quyền (cần localhost hoặc HTTPS).';
-      setError(msg);
-      setScanNotice({ type: 'error', message: msg, scannedCode: '' });
-      playScanSound(false);
-      return;
-    }
-
-    try {
-      setCameraActive(true);
-      const { BrowserMultiFormatReader, BarcodeFormat } = await import('@zxing/browser');
-      const reader = new BrowserMultiFormatReader();
-      reader.possibleFormats = [
-        BarcodeFormat.CODE_128,
-        BarcodeFormat.QR_CODE,
-        BarcodeFormat.CODE_39,
-        BarcodeFormat.EAN_13,
-        BarcodeFormat.UPC_A,
-      ];
-
-      // Stop previous instance if any
-      stopCamera();
-      setCameraActive(true);
-
-      // Brief pause to ensure the video element DOM is ready
-      await new Promise((resolve) => setTimeout(resolve, 80));
-
-      const videoElement = videoRef.current;
-      if (!videoElement) {
-        throw new Error('Không tìm thấy phần tử hiển thị video camera.');
-      }
-
-      const controls = await reader.decodeFromConstraints(
-        {
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        },
-        videoElement,
-        (result) => {
-          if (result && result.getText()) {
-            const code = result.getText().trim();
-            if (code) {
-              stopCamera();
-              handleScanBarcode(code);
-            }
-          }
-        }
-      );
-
-      cameraRef.current = controls;
-    } catch (failure) {
-      stopCamera();
-      const msg = `Không mở được camera: ${errorMessage(failure)}`;
-      setError(msg);
-      setScanNotice({
-        type: 'error',
-        message: msg,
-        scannedCode: '',
-      });
-      playScanSound(false);
-    }
-  };
-
-  const stopCamera = () => {
-    try {
-      if (cameraRef.current) {
-        cameraRef.current.stop();
-        cameraRef.current = null;
-      }
-      if (videoRef.current?.srcObject) {
-        videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
-        videoRef.current.srcObject = null;
-      }
-    } catch {
-      // ignore
-    }
-    setCameraActive(false);
   };
 
   // Perform Barcode Scan
@@ -858,77 +777,6 @@ export default function MaterialOutboundPage({ isStaffMode = false }) {
     }
     return list.reverse();
   }, [fgPickingDoc]);
-
-  const stopFgCamera = () => {
-    try {
-      if (fgCameraRef.current) {
-        fgCameraRef.current.stop();
-        fgCameraRef.current = null;
-      }
-      if (fgVideoRef.current?.srcObject) {
-        fgVideoRef.current.srcObject.getTracks().forEach((track) => track.stop());
-        fgVideoRef.current.srcObject = null;
-      }
-    } catch {
-      // ignore
-    }
-    setFgCameraActive(false);
-  };
-
-  const startFgCamera = async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      const msg = 'Trình duyệt không hỗ trợ camera hoặc chưa cấp quyền (cần HTTPS/localhost).';
-      setError(msg);
-      setFgScanNotice({ type: 'error', message: msg, scannedCode: '' });
-      playScanSound(false);
-      return;
-    }
-    try {
-      stopFgCamera();
-      setFgCameraActive(true);
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      const videoElement = fgVideoRef.current;
-      if (!videoElement) {
-        throw new Error('Không tìm thấy phần tử hiển thị video camera.');
-      }
-      const { BrowserMultiFormatReader, BarcodeFormat } = await import('@zxing/browser');
-      const reader = new BrowserMultiFormatReader();
-      reader.possibleFormats = [
-        BarcodeFormat.CODE_128,
-        BarcodeFormat.QR_CODE,
-        BarcodeFormat.CODE_39,
-        BarcodeFormat.EAN_13,
-        BarcodeFormat.UPC_A,
-      ];
-      const controls = await reader.decodeFromConstraints(
-        {
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        },
-        videoElement,
-        (result) => {
-          if (result && result.getText()) {
-            const code = result.getText().trim();
-            if (code) {
-              stopFgCamera();
-              handleFgScanBarcode(code);
-            }
-          }
-        }
-      );
-      fgCameraRef.current = controls;
-    } catch (failure) {
-      stopFgCamera();
-      const msg = `Không mở được camera: ${errorMessage(failure)}`;
-      setError(msg);
-      setFgScanNotice({ type: 'error', message: msg, scannedCode: '' });
-      playScanSound(false);
-    }
-  };
 
   const handleFgScanBarcode = async (barcodeToScan = fgScannedBarcode) => {
     const code = String(barcodeToScan || '').trim().toUpperCase();

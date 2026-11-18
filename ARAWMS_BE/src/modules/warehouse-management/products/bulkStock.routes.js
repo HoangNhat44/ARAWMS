@@ -23,7 +23,7 @@ import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
 import ProductUnit from '../../../models/ProductUnit.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
-import { scheduleBarcodeImages } from '../../../common/services/barcodeImageStorage.js';
+import { code128DataUrl } from '../../../common/services/codeImageRenderer.js';
 import PutawayAllocation from '../../../models/PutawayAllocation.model.js';
 import { confirmReceiptAllocation, fingerprint, parseLines, remainingQuantity } from '../location-layout/allocation.service.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
@@ -149,7 +149,6 @@ router.get('/bin-options', async (req, res, next) => {
  * THÔNG TIN TRẢ VỀ:
  * - documentCode, direction (IN/OUT)
  * - totalQuantity: tổng số sản phẩm
- * - barcodeImagesReady: số tem đã có ảnh
  * - unallocated: số sản phẩm chưa phân bổ vị trí
  * - pending: số sản phẩm đang chờ xếp
  * - placed: số sản phẩm đã xếp xong
@@ -600,9 +599,6 @@ router.get('/documents', async (req, res, next) => {
   try {
     const documents = await FinishedGoodsBulkDocument.find({ isDeleted: { $ne: true } })
       .sort({ createdAt: -1 }).limit(20).lean();
-    const readyCounts = await ProductUnit.aggregate([{ $match: { receivingDocumentId: { $in: documents.map((item) => item._id) },
-      barcodeImageUrl: { $type: 'string' } } }, { $group: { _id: '$receivingDocumentId', count: { $sum: 1 } } }]);
-    const readyByDocument = new Map(readyCounts.map((item) => [String(item._id), item.count]));
     const allocations = await PutawayAllocation.find({ sourceReceiptId: { $in: documents.map((item) => item._id) },
       status: 'CONFIRMED' }).select('sourceReceiptId lines').lean();
     const progress = new Map();
@@ -613,14 +609,9 @@ router.get('/documents', async (req, res, next) => {
       row.placed += line.placedQuantity || 0;
       progress.set(key, row);
     }
-    for (const document of documents) if (document.direction === 'IN' &&
-      (readyByDocument.get(String(document._id)) || 0) < document.totalQuantity) {
-      scheduleBarcodeImages('FINISHED_GOODS', String(document._id));
-    }
     return sendSuccess(res, 'Phiếu kho gần đây', { documents: documents.map((document) => ({
       id: String(document._id), documentCode: document.documentCode, direction: document.direction,
       totalQuantity: document.totalQuantity, createdAt: document.createdAt,
-      barcodeImagesReady: readyByDocument.get(String(document._id)) || 0,
       lineCount: document.items.length,
       unallocated: Math.max(0, document.totalQuantity - (progress.get(String(document._id))?.pending || 0) -
         (progress.get(String(document._id))?.placed || 0)),
@@ -642,16 +633,11 @@ router.get('/documents', async (req, res, next) => {
  * 
  * RESPONSE:
  * - total: tổng số tem
- * - ready: số tem đã có ảnh
  * - labels: mảng các tem {barcode, imageUrl, skuId, batchId}
+ *   imageUrl là ảnh SVG (data URL) vẽ tại thời điểm gọi từ barcode lưu trong MongoDB
  * 
  * SỬ DỤNG:
  * - Hiển thị danh sách tem để in
- * - Download tất cả tem dạng ZIP
- * - Kiểm tra tem nào chưa có ảnh
- * 
- * TỰ ĐỘNG:
- * - Nếu có tem chưa có ảnh → schedule background job
  */
 router.get('/documents/:id/barcodes', async (req, res, next) => {
   try {
@@ -660,39 +646,11 @@ router.get('/documents/:id/barcodes', async (req, res, next) => {
       .select('documentCode totalQuantity items').lean();
     if (!document) return sendError(res, 'Không tìm thấy phiếu nhập', { code: 'DOCUMENT_NOT_FOUND' }, 404);
     const units = await ProductUnit.find({ receivingDocumentId: document._id })
-      .select('barcode barcodeImageUrl skuId batchId').sort({ createdAt: 1 }).lean();
-    if (units.some((unit) => !unit.barcodeImageUrl)) scheduleBarcodeImages('FINISHED_GOODS', String(document._id));
+      .select('barcode skuId batchId').sort({ createdAt: 1 }).lean();
     return sendSuccess(res, 'Tem sản phẩm của phiếu nhập', { documentCode: document.documentCode,
-      total: units.length, ready: units.filter((unit) => unit.barcodeImageUrl).length,
-      labels: units.map((unit) => ({ barcode: unit.barcode, imageUrl: unit.barcodeImageUrl || null,
+      total: units.length,
+      labels: units.map((unit) => ({ barcode: unit.barcode, imageUrl: code128DataUrl(unit.barcode),
         skuId: String(unit.skuId), batchId: String(unit.batchId) })) });
-  } catch (error) { next(error); }
-});
-
-/**
- * POST /documents/:id/barcodes/sync
- * 
- * Tạo lại ảnh barcode bị thiếu
- * 
- * KHI NÀO DÙNG:
- * - Upload Cloudinary bị lỗi lần đầu
- * - Ảnh barcode bị xóa nhầm
- * - Cần regenerate ảnh với quality cao hơn
- * 
- * CƠ CHẾ:
- * - Schedule background job (async)
- * - Chỉ tạo lại ảnh chưa có (barcodeImageUrl === null)
- * - Barcode text không đổi
- * 
- * RESPONSE: 202 Accepted (background job đang chạy)
- */
-router.post('/documents/:id/barcodes/sync', async (req, res, next) => {
-  try {
-    if (!mongoose.isValidObjectId(req.params.id)) return sendError(res, 'Mã phiếu không hợp lệ', { code: 'INVALID_DOCUMENT' }, 400);
-    const exists = await FinishedGoodsBulkDocument.exists({ _id: req.params.id, direction: 'IN', isDeleted: { $ne: true } });
-    if (!exists) return sendError(res, 'Không tìm thấy phiếu nhập', { code: 'DOCUMENT_NOT_FOUND' }, 404);
-    scheduleBarcodeImages('FINISHED_GOODS', req.params.id);
-    return sendSuccess(res, 'Đang tạo các ảnh barcode còn thiếu', { scheduled: true }, 202);
   } catch (error) { next(error); }
 });
 
@@ -1133,7 +1091,6 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
       }
     });
     if (direction === 'IN' && saved.totalQuantity > 0) {
-      scheduleBarcodeImages('FINISHED_GOODS', String(saved._id));
       publishRealtime('finished-goods:changed', { warehouseType: 'FINISHED_GOODS', direction,
         documentId: String(saved._id), documentCode: saved.documentCode, totalQuantity: saved.totalQuantity,
         skuIds: saved.items.map((item) => String(item.skuId)) });

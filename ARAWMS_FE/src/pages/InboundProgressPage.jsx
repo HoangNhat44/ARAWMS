@@ -155,30 +155,18 @@ export default function InboundProgressPage() {
         const response = await productService.documentBarcodes(document.id);
         labels = response.data?.labels;
         if (ownerId) await finishedGoodsOffline.cache(ownerId, 'labels', document.id, labels);
-        setRecentDocuments((current) =>
-          current.map((item) => (item.id === document.id ? { ...item, barcodeImagesReady: response.data?.ready } : item))
-        );
       } catch (requestError) {
         const snapshot = ownerId && (await finishedGoodsOffline.getCached(ownerId, 'labels', document.id));
         if (!snapshot) throw requestError;
         labels = snapshot.value;
       }
-      printProductLabels(labels.map((item) => ({ ...item, imageUrl: navigator.onLine ? item.imageUrl : null })), tab);
+      // imageUrl là ảnh SVG backend vẽ từ barcode lưu trong MongoDB nên vẫn in được khi offline từ bản cache.
+      printProductLabels(labels, tab);
     } catch (printError) {
       setError(printError.message);
     }
   };
 
-  // Tạo lại ảnh mã vạch còn thiếu
-  const retryDocumentBarcodeImages = async (document) => {
-    try {
-      await productService.syncDocumentBarcodes(document.id);
-      setNotice(`Đang lưu ảnh mã cho phiếu ${document.documentCode}. Tem vẫn có thể in bằng mã đã cấp.`);
-      window.setTimeout(loadRecentStockDocuments, 5000);
-    } catch (requestError) {
-      setError(requestError.message);
-    }
-  };
 
   useEffect(() => {
     loadInboundProgress();
@@ -548,16 +536,6 @@ export default function InboundProgressPage() {
                             >
                               <Printer size={13} /> In tem barcode
                             </button>
-                            {(document.barcodeImagesReady || 0) < document.totalQuantity && (
-                              <button
-                                className="btn-ara-secondary"
-                                type="button"
-                                onClick={() => retryDocumentBarcodeImages(document)}
-                                style={{ fontSize: '0.78rem', padding: '0.3rem 0.65rem' }}
-                              >
-                                Tạo ảnh ({document.barcodeImagesReady || 0}/{document.totalQuantity})
-                              </button>
-                            )}
                           </div>
                         )}
                       </td>

@@ -369,7 +369,7 @@ export default function OrderQrPage() {
                 <div style={{ display: 'grid', gap: '.4rem' }}>
                   <h3 style={{ margin: 0 }}>QR đơn {activeOrder.orderCode}</h3>
                   <small style={{ color: 'var(--ara-text-secondary, #66717c)' }}>Quét QR này ở màn Đóng hàng. Chỉ nhân viên đã đăng nhập mới xem được đơn.</small>
-                  {detailQr.image && <a href={detailQr.image} target="_blank" rel="noreferrer">Mở ảnh QR</a>}
+                  {detailQr.image && <a href={detailQr.image} download={`QR-${activeOrder.orderCode}.svg`}>Tải ảnh QR</a>}
                 </div>
               </section>}
               <section className="order-detail-recipient"><h3>Thông tin người nhận</h3><dl><div><dt>Người nhận</dt><dd>{activeOrder.recipient?.name || activeOrder.recipientName || '—'}</dd></div><div><dt>Điện thoại</dt><dd>{activeOrder.recipient?.phone || '—'}</dd></div><div><dt>Địa chỉ</dt><dd>{activeOrder.recipient?.address || '—'}</dd></div></dl>{activeOrder.note && <p className="order-detail-note"><strong>Ghi chú:</strong> {activeOrder.note}</p>}{activeOrder.packagingVideoUrl && <p className="order-detail-note"><strong>Video đóng hàng:</strong> <a href={activeOrder.packagingVideoUrl} target="_blank" rel="noreferrer">Mở video</a></p>}</section>

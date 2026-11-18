@@ -15,7 +15,7 @@ import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import { usablePickLocationFilter } from './orderReservation.service.js';
 import { ensurePackingIndexes } from '../packing-verification/packingIndexes.js';
 import { canViewOrder, canIssueQr } from '../../../common/services/orderAccessService.js';
-import { uploadOrderQrImage, orderQrImageUrl, removeOrderQrImage } from '../../../common/services/orderQrImageStorage.js';
+import { qrDataUrl } from '../../../common/services/codeImageRenderer.js';
 
 const QR_PREFIX = 'PACK:v1:';
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
@@ -33,22 +33,11 @@ export const parseQrValue = (value) => {
 
 const embeddedQr = (orderId) => SalesOrder.findById(orderId).select('+qr.token').lean();
 
-/** Repairs QR records issued before image storage was introduced. */
-async function ensureQrImage(order, record) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (!record || record.revokedAt) return { error: 'QR_REVOKED' };
-    if (record.qrImagePublicId) return { qrValue: `${QR_PREFIX}${record.token}`,
-      qrImageUrl: orderQrImageUrl(record.qrImagePublicId) };
-    const publicId = await uploadOrderQrImage(order.orderCode, `${QR_PREFIX}${record.token}`, record.token);
-    const updated = await SalesOrder.findOneAndUpdate(
-      { _id: order._id, 'qr.token': record.token, 'qr.revokedAt': null,
-        $or: [{ 'qr.qrImagePublicId': null }, { 'qr.qrImagePublicId': { $exists: false } }] },
-      { $set: { 'qr.qrImagePublicId': publicId } }, { new: true, timestamps: false }).select('+qr.token');
-    if (updated) return { qrValue: `${QR_PREFIX}${record.token}`, qrImageUrl: orderQrImageUrl(publicId) };
-    record = (await embeddedQr(order._id))?.qr;
-  }
-  throw new Error('Không thể đồng bộ ảnh QR đơn hàng');
-}
+/** The QR image is rendered from the token stored in MongoDB on every request; nothing is uploaded. */
+const qrResponse = (token) => {
+  const qrValue = `${QR_PREFIX}${token}`;
+  return { qrValue, qrImageUrl: qrDataUrl(qrValue) };
+};
 
 /** Projects an order into customer-facing label and packing fields.
  * Resolves display values for SKU lines and omits internal cost and reservation details.
@@ -200,8 +189,7 @@ export const issueQr = async (order, userId) => {
   let record = (await embeddedQr(order._id))?.qr;
   if (!record?.token) {
     const legacy = await OrderQrToken.findOne({ orderId: order._id }).select('+token').lean();
-    const initial = legacy ? { token: legacy.token, revokedAt: legacy.revokedAt,
-      issuedBy: legacy.issuedBy, qrImagePublicId: legacy.qrImagePublicId } :
+    const initial = legacy ? { token: legacy.token, revokedAt: legacy.revokedAt, issuedBy: legacy.issuedBy } :
       { token, revokedAt: null, issuedBy: userId };
     await SalesOrder.updateOne({ _id: order._id, 'qr.token': { $exists: false } },
       { $set: { qr: initial } }, { timestamps: false });
@@ -209,7 +197,7 @@ export const issueQr = async (order, userId) => {
   }
   if (!record) return { error: 'QR_NOT_FOUND' };
   if (record.revokedAt) return { error: 'QR_REVOKED' };
-  return ensureQrImage(order, record);
+  return qrResponse(record.token);
 };
 
 /** Replaces an order token so previously printed QR labels stop resolving. */
@@ -219,28 +207,13 @@ export const replaceQr = async (order, userId) => {
   }
   const token = generateOrderQrValue().slice(QR_PREFIX.length);
   await ensurePackingIndexes();
-  const qrValue = `${QR_PREFIX}${token}`;
-  const publicId = await uploadOrderQrImage(order.orderCode, qrValue, token);
-  const legacyPrevious = await OrderQrToken.findOne({ orderId: order._id }).select('qrImagePublicId').lean();
-  let previous;
-  try {
-    previous = await SalesOrder.findOneAndUpdate(
-      { _id: order._id },
-      { $set: { qr: { token, revokedAt: null, issuedBy: userId, qrImagePublicId: publicId } } },
-      { new: false, timestamps: false }
-    ).select('+qr.token');
-    if (!previous) throw new Error('Order disappeared while replacing QR');
-  } catch (error) {
-    await removeOrderQrImage(publicId).catch((cleanupError) =>
-      console.error('[Order QR] Could not remove failed upload', cleanupError));
-    throw error;
-  }
-  const previousPublicId = previous?.qr?.qrImagePublicId || legacyPrevious?.qrImagePublicId;
-  if (previousPublicId && previousPublicId !== publicId) {
-    await removeOrderQrImage(previousPublicId).catch((error) =>
-      console.error('[Order QR] Could not remove replaced image', error));
-  }
-  return { qrValue, qrImageUrl: orderQrImageUrl(publicId) };
+  const replaced = await SalesOrder.updateOne(
+    { _id: order._id },
+    { $set: { qr: { token, revokedAt: null, issuedBy: userId } } },
+    { timestamps: false }
+  );
+  if (!replaced.matchedCount) throw new Error('Order disappeared while replacing QR');
+  return qrResponse(token);
 };
 
 /** Resolves a live token to its real order without exposing customer data in the QR.

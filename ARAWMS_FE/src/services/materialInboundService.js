@@ -26,7 +26,6 @@ export const materialInboundService = {
   confirm: (id, values) => api.post(`/raw-material-inbound/receipts/${id}/confirm`, values),
   cancel: (id, values) => api.post(`/raw-material-inbound/receipts/${id}/cancel`, values),
   labels: (id) => api.get(`/raw-material-inbound/receipts/${id}/labels`),
-  syncBarcodes: (id) => api.post(`/raw-material-inbound/receipts/${id}/barcodes/sync`),
   putaway: (id, values) => api.post(`/raw-material-inbound/receipts/${id}/putaway`, values),
   requestSupplierReturn: (id, values) => api.post(`/raw-material-inbound/receipts/${id}/supplier-returns`, values),
   confirmSupplierReturn: (id, values) => api.post(`/raw-material-inbound/receipts/${id}/supplier-returns/confirm`, values),

@@ -35,8 +35,7 @@ try {
   counts.orderQrTokens = qrTokens.length;
   for (const row of qrTokens) {
     const target = await SalesOrder.findById(row.orderId).select('+qr.token').lean();
-    check(target?.qr?.token === row.token && id(target.qr.issuedBy) === id(row.issuedBy) &&
-      id(target.qr.qrImagePublicId) === id(row.qrImagePublicId), `QR mismatch: ${row._id}`);
+    check(target?.qr?.token === row.token && id(target.qr.issuedBy) === id(row.issuedBy), `QR mismatch: ${row._id}`);
   }
   const allocations = await ProductUnitAllocation.find().lean();
   counts.productUnitAllocations = allocations.length;

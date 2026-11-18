@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, CameraOff, CheckCircle, PackageCheck, RefreshCw, ScanLine, Truck } from 'lucide-react';
 import { shippingService } from '../services/shippingService';
+import { useBarcodeCamera } from '../hooks/useBarcodeCamera';
 
 const money = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} ₫`;
 const dateTime = (value) => (value ? new Date(value).toLocaleString('vi-VN', {
@@ -52,12 +53,7 @@ export default function ShippingPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState(null);
   const [manualCode, setManualCode] = useState('');
-  const [cameraOn, setCameraOn] = useState(false);
-  const videoRef = useRef(null);
-  const controlsRef = useRef(null);
-  const cameraRequestRef = useRef(0);
   const scanningRef = useRef(false);
-  const lastScanRef = useRef({ value: '', at: 0 });
 
   const reload = useCallback(async () => {
     setBusy(true); setError('');
@@ -88,46 +84,11 @@ export default function ShippingPage() {
     }
   }, []);
 
-  const stopCamera = useCallback(() => {
-    cameraRequestRef.current += 1;
-    controlsRef.current?.stop();
-    controlsRef.current = null;
-    setCameraOn(false);
-  }, []);
-  useEffect(() => () => { cameraRequestRef.current += 1; controlsRef.current?.stop(); }, []);
-
-  const startCamera = async () => {
-    setError('');
-    if (!navigator.mediaDevices?.getUserMedia) { setError('Camera cần HTTPS hoặc localhost và quyền truy cập thiết bị.'); return; }
-    if (cameraOn) return;
-    const requestId = ++cameraRequestRef.current;
-    setCameraOn(true);
-    try {
-      const { BarcodeFormat, BrowserMultiFormatReader } = await import('@zxing/browser');
-      if (requestId !== cameraRequestRef.current) return;
-      const reader = new BrowserMultiFormatReader();
-      reader.possibleFormats = [BarcodeFormat.QR_CODE, BarcodeFormat.CODE_128];
-      const controls = await reader.decodeFromConstraints(
-        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
-        videoRef.current,
-        (result) => {
-          if (!result || requestId !== cameraRequestRef.current) return;
-          const value = result.getText();
-          const now = Date.now();
-          // Bỏ qua cùng một mã bị đọc lặp liên tục khi QR vẫn nằm trước camera.
-          if (lastScanRef.current.value === value && now - lastScanRef.current.at < 3000) return;
-          lastScanRef.current = { value, at: now };
-          submitCode(value);
-        },
-      );
-      if (requestId !== cameraRequestRef.current) controls.stop();
-      else controlsRef.current = controls;
-    } catch (err) {
-      if (requestId !== cameraRequestRef.current) return;
-      stopCamera();
-      setError(`Không mở được camera: ${err.message}`);
-    }
-  };
+  // Order QR and waybill barcodes; the same code read again within 3 seconds is ignored.
+  const { videoRef, cameraOn, startCamera: openCamera, stopCamera } = useBarcodeCamera({
+    onScan: (code) => submitCode(code), onError: setError, formats: ['QR_CODE', 'CODE_128'],
+    duplicateWindowMs: 3000, resolution: 'hd' });
+  const startCamera = () => { setError(''); openCamera(); };
 
   const submitManual = async (event) => {
     event.preventDefault();

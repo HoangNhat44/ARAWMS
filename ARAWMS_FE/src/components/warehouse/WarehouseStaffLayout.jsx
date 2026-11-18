@@ -13,6 +13,7 @@ import {
   Truck,
   Shirt,
   ArrowUpRight,
+  ScanBarcode,
   PanelLeftClose,
   PanelLeftOpen,
   X,
@@ -51,7 +52,14 @@ export default function WarehouseStaffLayout({ children }) {
       label: 'Kho thành phẩm',
       subLabel: 'Tra cứu tồn kho theo SKU',
       icon: Shirt,
-      match: (path) => path === '/warehouse/staff/finished-goods',
+      match: (path) => path === '/warehouse/staff/finished-goods' || path.startsWith('/warehouse/staff/finished-goods/'),
+    },
+    {
+      to: '/warehouse/staff/barcode-tracking',
+      label: 'Tra cứu barcode',
+      subLabel: 'Hành trình ra vào kho của sản phẩm',
+      icon: ScanBarcode,
+      match: (path) => path.startsWith('/warehouse/staff/barcode-tracking'),
     },
     {
       to: '/packing/qr',

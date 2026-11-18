@@ -4,6 +4,7 @@ import MaterialStockLot from '../../../models/MaterialStockLot.model.js';
 import MaterialTicket from '../../../models/MaterialTicket.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
+import { code128DataUrl } from '../../../common/services/codeImageRenderer.js';
 import { ReceiptError, confirmMaterialPutaway } from '../../raw-material-warehousing/inbound-execution/inboundExecution.service.js';
 
 const id = (value) => String(value || '');
@@ -20,10 +21,10 @@ export async function listMaterialPutawayTasks(user) {
   const [rolls, lots] = await Promise.all([
     FabricRoll.find({ $or: [{ status: 'QC_PASSED', inboundTicketId: { $ne: null } },
       { pendingReturnQty: { $gt: 0 }, pendingReturnReceiptId: { $ne: null } }] })
-      .select('rollBarcode barcodeImageUrl rawMaterialId inboundTicketId pendingReturnReceiptId pendingReturnQty locationId initialLengthMeters supplierRollCode supplierLotCode')
+      .select('rollBarcode rawMaterialId inboundTicketId pendingReturnReceiptId pendingReturnQty locationId initialLengthMeters supplierRollCode supplierLotCode')
       .lean(),
     MaterialStockLot.find({ status: 'PENDING_PUTAWAY', quality: 'ACCEPTED' })
-      .select('lotBarcode barcodeImageUrl rawMaterialId inboundTicketId allocations supplierLotCode')
+      .select('lotBarcode rawMaterialId inboundTicketId allocations supplierLotCode')
       .lean(),
   ]);
   const receiptIds = [...new Set([...rolls, ...lots].map((item) =>
@@ -56,7 +57,7 @@ export async function listMaterialPutawayTasks(user) {
     const material = materialById.get(id(object.rawMaterialId));
     tasks.push({ kind, receiptId: id(receipt._id), receiptCode: receipt.ticketCode,
       receivingZone: receivingZoneById.get(id(receipt.receivingLocationId)) || '',
-      objectBarcode: barcode, imageUrl: object.barcodeImageUrl || null,
+      objectBarcode: barcode, imageUrl: code128DataUrl(barcode),
       lotOrRollCode: object.supplierRollCode || object.supplierLotCode || barcode,
       materialCode: material?.materialCode || '', materialName: material?.materialName || '',
       color: material?.color || '', // Rolls are stocked in the material's own unit (e.g. KG), matching the shelf capacity check.

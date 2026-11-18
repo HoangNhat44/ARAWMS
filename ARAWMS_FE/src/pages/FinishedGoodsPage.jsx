@@ -493,6 +493,7 @@ export default function FinishedGoodsPage({ isStaffMode = false }) {
         loading={loading}
         canIssue={!isStaff}
         canConfigure={!isStaff}
+        detailBasePath={isStaff ? '/warehouse/staff/finished-goods' : '/warehouse/finished-goods'}
         onIssue={(product, sku) => {
           if (isStaff) return;
           setBulkDirection('');

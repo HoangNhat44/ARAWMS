@@ -26,6 +26,8 @@ import OrderQrPage from '../pages/OrderQrPage';
 import WarehousePackingPage from '../pages/WarehousePackingPage';
 import ProductConfigurationPage from '../pages/ProductConfigurationPage';
 import FinishedGoodsPage from '../pages/FinishedGoodsPage';
+import FinishedGoodsProductPage from '../pages/FinishedGoodsProductPage';
+import BarcodeTrackingPage from '../pages/BarcodeTrackingPage';
 import TechnicalInboundPage from '../pages/TechnicalInboundPage';
 import TechnicalOutboundPage from '../pages/TechnicalOutboundPage';
 import InboundProgressPage from '../pages/InboundProgressPage';
@@ -143,6 +145,8 @@ export default function AppRouter() {
           <Route path="/warehouse/raw-materials/inbound" element={<SupplierInboundPage />} />
           <Route path="/warehouse/raw-materials/outbound" element={<MaterialOutboundPage />} />
           <Route path="/warehouse/finished-goods" element={<FinishedGoodsPage />} />
+          <Route path="/warehouse/finished-goods/:productId" element={<FinishedGoodsProductPage />} />
+          <Route path="/warehouse/barcode-tracking" element={<BarcodeTrackingPage />} />
           <Route path="/warehouse/technical-inbound" element={<TechnicalInboundPage />} />
           <Route path="/warehouse/technical-outbound" element={<TechnicalOutboundPage />} />
           <Route path="/warehouse/inbound-progress" element={<InboundProgressPage />} />
@@ -157,6 +161,8 @@ export default function AppRouter() {
           <Route path="/warehouse/putaway" element={<WarehousePutawayPage />} />
           <Route path="/warehouse/staff/outbound" element={<MaterialOutboundPage isStaffMode />} />
           <Route path="/warehouse/staff/finished-goods" element={<FinishedGoodsPage isStaffMode />} />
+          <Route path="/warehouse/staff/finished-goods/:productId" element={<FinishedGoodsProductPage isStaffMode />} />
+          <Route path="/warehouse/staff/barcode-tracking" element={<BarcodeTrackingPage isStaffMode />} />
           {/* Trang tiến độ nhập kho đã bỏ khỏi nhân viên kho; link cũ chuyển về trang xếp hàng. */}
           <Route path="/warehouse/staff/inbound-progress" element={<Navigate to="/warehouse/putaway" replace />} />
           <Route path="/packing/qr" element={<WarehousePackingPage />} />

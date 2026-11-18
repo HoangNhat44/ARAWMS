@@ -24,6 +24,12 @@ export const code128Svg = (value) => {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${x + 24}" height="116" viewBox="0 0 ${x + 24} 116"><rect width="100%" height="100%" fill="#fff"/><g fill="#000">${bars}</g><text x="50%" y="108" text-anchor="middle" font-family="Arial" font-size="14">${value}</text></svg>`;
 };
 
+/** Uses the image rendered by the backend from the stored barcode; anything else (such as an old
+ * Cloudinary link in an offline cache) is ignored and the label is drawn locally from the barcode. */
+export const labelImage = (label) => (typeof label.imageUrl === 'string'
+  && /^data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+$/.test(label.imageUrl)
+  ? `<img src="${label.imageUrl}" alt=""/>` : code128Svg(label.barcode));
+
 /** Opens a print page containing one label for each received physical unit. */
 export const printBarcodes = (barcodes, tab = window.open('', '_blank'), title = 'Tem barcode thành phẩm') => {
   if (!tab) throw new Error('Trình duyệt đang chặn cửa sổ in tem');
