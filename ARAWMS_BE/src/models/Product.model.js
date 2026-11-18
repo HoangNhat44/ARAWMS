@@ -16,6 +16,9 @@ const productSchema = new Schema(
     description: { type: String, maxlength: 2000 },
     additionalImageUrls: [{ type: String }],
     configurationRequestId: { type: String, unique: true, sparse: true },
+    // DEPRECATED: productCode is the only product code. Never written by new code; legacy values are
+    // moved into productCode and removed by scripts/migrate-product-codes.mjs.
+    // TODO(xóa sampleCode): drop this field and the index below after the migration.
     sampleCode: { type: String, trim: true, uppercase: true },
     category: { type: String, required: true },
     season: { type: String },
@@ -27,6 +30,8 @@ const productSchema = new Schema(
     mediaOperations: [{ ownerUserId: Schema.Types.ObjectId, operationId: String,
       sha256: String, kind: String, url: String }],
     isActive: { type: Boolean, default: true },
+    // Set the first time the product becomes ACTIVE; productCode can no longer change afterwards.
+    codeLockedAt: { type: Date, default: null },
   },
   { collection: 'products', optimisticConcurrency: true, versionKey: 'version' }
 );

@@ -100,6 +100,7 @@ router.get('/', async (req, res, next) => {
       const variants = byProduct.get(String(product._id)) || [];
       return {
         id: String(product._id), productCode: product.productCode, productName: product.productName,
+        // TODO(xóa sampleCode): legacy field, remove together with FinishedGoodsOverview's search on it.
         sampleCode: product.sampleCode || '', category: product.category, isActive: product.isActive,
         thumbnailUrl: product.thumbnailUrl, videoUrl: product.videoUrl,
         onHandQty: variants.reduce((sum, sku) => sum + sku.onHandQty, 0),
@@ -171,27 +172,6 @@ router.post('/:id/stock', manageProducts, async (req, res, next) => {
     if (error.code === 11000) return sendError(res, 'Mã SKU đã tồn tại', { code: 'DUPLICATE_SKU' }, 409);
     next(error);
   } finally { if (session) await session.endSession(); }
-});
-
-/** Creates a basic product after checking its code, name, category, and price. */
-router.post('/', manageProducts, async (req, res, next) => {
-  const productCode = String(req.body?.productCode || '').trim().toUpperCase();
-  const productName = String(req.body?.productName || '').trim();
-  const sampleCode = String(req.body?.sampleCode || '').trim().toUpperCase();
-  const category = String(req.body?.category || '').trim();
-  const basePrice = Number(req.body?.basePrice);
-  if (!/^[A-Z0-9_-]{2,64}$/.test(productCode) || !productName || productName.length > 200 ||
-      !/^[A-Z0-9_-]{2,64}$/.test(sampleCode) || !category || category.length > 100 ||
-      req.body?.basePrice === '' || req.body?.basePrice == null || !Number.isFinite(basePrice) || basePrice < 0) {
-    return sendError(res, 'Thông tin sản phẩm không hợp lệ', { code: 'INVALID_PRODUCT' }, 400);
-  }
-  try {
-    const product = await Product.create({ productCode, productName, sampleCode, category, basePrice });
-    return sendSuccess(res, 'Đã tạo sản phẩm', { product }, 201);
-  } catch (error) {
-    if (error.code === 11000) return sendError(res, 'Mã sản phẩm đã tồn tại', { code: 'DUPLICATE_PRODUCT_CODE' }, 409);
-    next(error);
-  }
 });
 
 /**

@@ -18,6 +18,7 @@ import {
 } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
 import { Icon, formatVnd } from './SellerUi';
+import { WmsSelect } from '../ui/WmsControls';
 
 const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
   const [channels, setChannels] = useState([]);
@@ -27,7 +28,6 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
 
   const [parsing, setParsing] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [provisioning, setProvisioning] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [previewData, setPreviewData] = useState(null);
   const [error, setError] = useState('');
@@ -41,6 +41,10 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
   const [searchingSku, setSearchingSku] = useState(false);
   const [applyToAllSameName, setApplyToAllSameName] = useState(true);
 
+  // Chỉnh sửa inline thông tin người nhận bị che (***) ngay trên bảng Preview
+  const [editingRecipientIdx, setEditingRecipientIdx] = useState(null);
+  const [recipientDraft, setRecipientDraft] = useState({ customerName: '', phone: '', address: '' });
+
   // Tải danh sách cấu hình đa kênh từ Backend
   useEffect(() => {
     if (isOpen) {
@@ -51,6 +55,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
       setFile(null);
       setSkuModalOpen(false);
       setActiveItemTarget(null);
+      setEditingRecipientIdx(null);
     }
   }, [isOpen]);
 
@@ -249,97 +254,6 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
     setActiveItemTarget(null);
   };
 
-  // Tự động tạo sản phẩm & SKU kho cho tất cả sản phẩm chưa có trong hệ thống
-  const handleAutoProvisionAllMissing = async () => {
-    if (!previewData || !previewData.orders) return;
-
-    const missingMap = new Map();
-    for (const ord of previewData.orders) {
-      for (const it of ord.items) {
-        if (!it.isValidSku) {
-          const raw = it.rawProductName || it.skuCode;
-          if (raw && !missingMap.has(raw)) {
-            missingMap.set(raw, {
-              rawProductName: raw,
-              quantity: it.quantity || 1,
-              unitPrice: it.unitPrice || 0,
-            });
-          }
-        }
-      }
-    }
-
-    const missingList = Array.from(missingMap.values());
-    if (missingList.length === 0) return;
-
-    try {
-      setProvisioning(true);
-      setError('');
-      const res = await sellerService.autoProvisionSkus(missingList);
-      if (res.success && res.data) {
-        const createdMap = new Map();
-        for (const sk of res.data) {
-          if (sk.rawProductName) {
-            createdMap.set(sk.rawProductName, sk);
-          }
-        }
-
-        const updatedOrders = previewData.orders.map((ord) => {
-          const newItems = ord.items.map((it) => {
-            const raw = it.rawProductName || it.skuCode;
-            const newSku = createdMap.get(raw);
-            if (!newSku) return it;
-
-            const avail = newSku.availableQty ?? 100;
-            return {
-              ...it,
-              skuId: newSku._id,
-              skuCode: newSku.skuCode,
-              skuBarcode: newSku.skuBarcode,
-              productName: newSku.productName || newSku.skuCode,
-              color: newSku.color,
-              size: newSku.size,
-              availableQty: avail,
-              isValidSku: true,
-              isStockSufficient: avail >= it.quantity,
-              unitPrice: it.unitPrice > 0 ? it.unitPrice : newSku.retailPrice,
-            };
-          });
-
-          const isDup = ord.warningMessage && ord.warningMessage.includes('đã được import');
-          const allItemsValid = newItems.every((it) => it.isValidSku);
-
-          let warningMessage = isDup ? ord.warningMessage : '';
-          const stockShortage = newItems.find((it) => !it.isStockSufficient);
-          if (stockShortage && !isDup) {
-            warningMessage = `SKU [${stockShortage.skuCode}] tồn khả dụng thấp (còn ${stockShortage.availableQty})`;
-          }
-
-          return {
-            ...ord,
-            items: newItems,
-            isValid: !isDup && allItemsValid,
-            warningMessage,
-          };
-        });
-
-        const validCount = updatedOrders.filter((o) => o.isValid).length;
-        const invalidCount = updatedOrders.filter((o) => !o.isValid).length;
-
-        setPreviewData({
-          ...previewData,
-          orders: updatedOrders,
-          validOrdersCount: validCount,
-          invalidOrdersCount: invalidCount,
-        });
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Lỗi khi tự động tạo SKU kho');
-    } finally {
-      setProvisioning(false);
-    }
-  };
-
   // Seller bấm "Xử lý đơn" (Marketplace Order Processing)
   const handleProcessOrders = async () => {
     if (!previewData || !previewData.orders) return;
@@ -372,6 +286,49 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleStartEditRecipient = (idx, ord) => {
+    setError('');
+    setEditingRecipientIdx(idx);
+    setRecipientDraft({
+      customerName: ord.customerName || '',
+      phone: ord.phone || '',
+      address: ord.address || '',
+    });
+  };
+
+  const handleSaveRecipientEdit = (idx) => {
+    const cleanName = String(recipientDraft.customerName || '').trim();
+    const cleanPhone = String(recipientDraft.phone || '').trim();
+    const cleanAddress = String(recipientDraft.address || '').trim();
+
+    if (!cleanName || !cleanPhone || !cleanAddress) {
+      setError('Vui lòng nhập đầy đủ Tên khách hàng, Số điện thoại và Địa chỉ.');
+      return;
+    }
+
+    setError('');
+    setPreviewData((prev) => {
+      if (!prev) return prev;
+      const updatedOrders = prev.orders.map((ord, oIdx) => {
+        if (oIdx !== idx) return ord;
+        const hasMaskedInfo = [cleanName, cleanPhone, cleanAddress].some((v) => v.includes('*'));
+        return {
+          ...ord,
+          customerName: cleanName,
+          phone: cleanPhone,
+          address: cleanAddress,
+          hasMaskedInfo,
+        };
+      });
+      return {
+        ...prev,
+        orders: updatedOrders,
+        maskedOrdersCount: updatedOrders.filter((o) => o.hasMaskedInfo).length,
+      };
+    });
+    setEditingRecipientIdx(null);
   };
 
   return (
@@ -456,8 +413,9 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                 <Row className="g-3">
                   <Col md={4}>
                     <Form.Label className="small text-muted mb-1">Kênh bán hàng</Form.Label>
-                    <Form.Select
-                      size="sm"
+                    <WmsSelect
+                      size="small"
+                      className="ara-wms-select-sm"
                       value={selectedChannel}
                       onChange={(e) => {
                         const ch = e.target.value;
@@ -470,14 +428,16 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                       <option value="TIKTOK">TikTok Shop</option>
                       <option value="FACEBOOK">Facebook Fanpages</option>
                       <option value="EXCEL_IMPORT">File Excel Tổng Hợp</option>
-                    </Form.Select>
+                    </WmsSelect>
                   </Col>
 
                   <Col md={5}>
                     <Form.Label className="small text-muted mb-1">Cửa hàng / Gian hàng liên kết</Form.Label>
-                    <Form.Select
-                      size="sm"
-                      value={selectedSourceId}
+                    <WmsSelect
+                      size="small"
+                      className="ara-wms-select-sm"
+                      value={selectedSourceId || undefined}
+                      placeholder="Chọn gian hàng..."
                       onChange={(e) => setSelectedSourceId(e.target.value)}
                     >
                       {availableSources.map((s) => (
@@ -485,7 +445,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                           {s.sourceName}
                         </option>
                       ))}
-                    </Form.Select>
+                    </WmsSelect>
                   </Col>
 
                   <Col md={3} className="d-flex align-items-end">
@@ -542,24 +502,19 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
               {previewData && (
                 <>
                   {previewData.invalidOrdersCount > 0 && (
-                    <Alert variant="warning" className="d-flex align-items-center justify-content-between py-2 px-3 small border mb-0 flex-wrap gap-2">
+                    <Alert variant="warning" className="py-2 px-3 small border mb-0">
+                      <Icon name="exclamation-triangle-fill" className="text-warning me-2" />
+                      Có <strong>{previewData.invalidOrdersCount} đơn hàng</strong> không xử lý được (trùng đơn hoặc chứa sản phẩm chưa có trong danh mục kho ARAWMS).
+                      Hãy ghép với SKU có sẵn, hoặc nhờ kho tạo sản phẩm tại màn <strong>Cấu hình sản phẩm</strong> / import Excel sản phẩm rồi kiểm tra lại file.
+                    </Alert>
+                  )}
+
+                  {previewData.maskedOrdersCount > 0 && (
+                    <Alert variant="warning" className="py-2 px-3 small border mb-0 d-flex align-items-center gap-2">
+                      <Icon name="shield-exclamation" className="text-warning-emphasis flex-shrink-0" />
                       <div>
-                        <Icon name="exclamation-triangle-fill" className="text-warning me-2" />
-                        Có <strong>{previewData.invalidOrdersCount} đơn hàng</strong> chứa sản phẩm chưa có trong danh mục kho ARAWMS. <strong>Bạn không cần xóa file!</strong>
+                        Phát hiện <strong>{previewData.maskedOrdersCount} đơn hàng</strong> đang bị sàn che thông tin (<code>***</code>). Bạn có thể bấm <strong>Sửa</strong> ngay tại dòng tương ứng để nhập dữ liệu thật trước khi xử lý, hoặc cập nhật sau trong <em>Chi tiết đơn hàng</em>.
                       </div>
-                      <Button
-                        size="sm"
-                        variant="warning"
-                        className="fw-bold text-dark d-flex align-items-center gap-1 shadow-sm px-3"
-                        onClick={handleAutoProvisionAllMissing}
-                        disabled={provisioning}
-                      >
-                        {provisioning ? (
-                          <><Spinner animation="border" size="sm" /> Đang tạo SKU kho...</>
-                        ) : (
-                          <><Icon name="lightning-charge-fill" /> Tự động tạo SKU kho & Khớp tất cả</>
-                        )}
-                      </Button>
                     </Alert>
                   )}
 
@@ -608,11 +563,68 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                             <td>{idx + 1}</td>
                             <td className="font-monospace fw-bold text-nowrap">{ord.externalOrderCode}</td>
                             <td>
-                              <div className="fw-semibold">{ord.customerName}</div>
-                              <div className="text-muted">{ord.phone}</div>
+                              {editingRecipientIdx === idx ? (
+                                <div className="d-flex flex-column gap-1" style={{ minWidth: 190 }}>
+                                  <Form.Control
+                                    size="sm"
+                                    placeholder="Tên khách hàng thật"
+                                    value={recipientDraft.customerName}
+                                    onChange={(e) => setRecipientDraft((prev) => ({ ...prev, customerName: e.target.value }))}
+                                  />
+                                  <Form.Control
+                                    size="sm"
+                                    placeholder="SĐT thật (VD: 0912345678)"
+                                    value={recipientDraft.phone}
+                                    onChange={(e) => setRecipientDraft((prev) => ({ ...prev, phone: e.target.value }))}
+                                  />
+                                </div>
+                              ) : (
+                                <div>
+                                  <div className="fw-semibold d-flex align-items-center gap-1 flex-wrap">
+                                    <span>{ord.customerName}</span>
+                                    {ord.hasMaskedInfo && (
+                                      <Badge bg="warning" text="dark" style={{ fontSize: '0.65rem' }}>Bị che ***</Badge>
+                                    )}
+                                  </div>
+                                  <div className="text-muted">{ord.phone}</div>
+                                  <Button
+                                    variant="link"
+                                    size="sm"
+                                    className="p-0 text-decoration-none mt-1"
+                                    style={{ fontSize: '0.72rem' }}
+                                    onClick={() => handleStartEditRecipient(idx, ord)}
+                                  >
+                                    <Icon name="pencil-square" className="me-1" />
+                                    {ord.hasMaskedInfo ? 'Bổ sung thông tin thật' : 'Sửa người nhận'}
+                                  </Button>
+                                </div>
+                              )}
                             </td>
-                            <td className="text-truncate" style={{ maxWidth: 200 }} title={ord.address}>
-                              {ord.address}
+                            <td style={{ maxWidth: 230 }}>
+                              {editingRecipientIdx === idx ? (
+                                <div className="d-flex flex-column gap-1">
+                                  <Form.Control
+                                    as="textarea"
+                                    rows={2}
+                                    size="sm"
+                                    placeholder="Địa chỉ giao hàng chi tiết thật"
+                                    value={recipientDraft.address}
+                                    onChange={(e) => setRecipientDraft((prev) => ({ ...prev, address: e.target.value }))}
+                                  />
+                                  <div className="d-flex gap-1">
+                                    <Button size="sm" variant="success" className="py-0 px-2" onClick={() => handleSaveRecipientEdit(idx)}>
+                                      Lưu
+                                    </Button>
+                                    <Button size="sm" variant="outline-secondary" className="py-0 px-2" onClick={() => setEditingRecipientIdx(null)}>
+                                      Hủy
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-truncate" title={ord.address}>
+                                  {ord.address}
+                                </div>
+                              )}
                             </td>
                             <td>
                               {ord.items?.map((it, i) => (

@@ -3,7 +3,7 @@
  * @title        : Seller API Service Client
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-11-14
  * @description  : Module kết nối và đóng gói toàn bộ các cuộc gọi API từ Front-end
  *                 cho phân hệ Seller (UC-69 đến UC-83), tích hợp Axios client.
  * @module       : Conversational Commerce / Seller Service
@@ -46,12 +46,12 @@ export const sellerService = {
   createDirectOrder: (orderData) => api.post('/orders', orderData),
   createPosDirectOrder: (orderData) => api.post('/orders/pos-direct', orderData),
   updateOrderItems: (id, data) => api.put(`/orders/${id}/items`, data),
+  updateOrderRecipient: (id, data) => api.patch(`/orders/${id}/recipient`, data),
   confirmOrderReserve: (id) => api.post(`/orders/${id}/confirm`),
   sendOrderConfirmationReceipt: (id) => api.post(`/orders/${id}/send-confirmation`),
   simulateCustomerConfirm: (id) => api.post(`/orders/${id}/simulate-confirm`),
   syncOrderWithGhn: (id) => api.post(`/orders/${id}/sync-ghn`),
   switchOrderGhnStatus: (id, ghnStatus) => api.post(`/orders/${id}/ghn-status`, { ghnStatus }),
-  updateOrderStatus: (id, data) => api.patch(`/orders/${id}/status`, data),
   cancelOrder: (id, cancelReason) => api.post(`/orders/${id}/cancel`, { cancelReason }),
 
   // === REVERSE LOGISTICS RMA (UC-82, UC-83 - GBR-11, GBR-12, GBR-13, GBR-23) ===
@@ -72,7 +72,6 @@ export const sellerService = {
   previewExcelImport: (formData) => api.post('/orders/marketplace/preview-excel', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
-  autoProvisionSkus: (items) => api.post('/orders/marketplace/auto-provision-skus', { items }),
   processImportOrders: (data) => api.post('/orders/marketplace/process-orders', data),
   warehouseApproveOrder: (id) => api.post(`/orders/marketplace/${id}/warehouse-approve`),
   warehouseApproveOrdersBulk: (orderIds) => api.post('/orders/marketplace/warehouse-approve-bulk', { orderIds }),

@@ -10,6 +10,8 @@ import User from '../../../models/User.model.js';
 
 const fail = (ok, message, code = 'INVALID_INPUT', status = 400) => { if (!ok) throw Object.assign(new Error(message), { code, status }); };
 const id = (value) => String(value || '');
+// A SKU stopped from sale can still hold physical stock (e.g. restocked returns), so it must stay countable.
+const COUNTABLE_SKU = { isDeleted: { $ne: true }, $or: [{ isActive: true }, { onHandQty: { $gt: 0 } }] };
 const managers = (user) => [user?.roleCode, ...(user?.roles || [])].some((role) => ['OWNER', 'WAREHOUSE_MANAGER'].includes(role));
 const asDate = (value) => { const date = new Date(value); return Number.isNaN(date.getTime()) ? null : date; };
 const todayInBangkok = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(new Date());
@@ -50,7 +52,7 @@ async function resolveScope(input) {
     fail(mongoose.isValidObjectId(input.itemId), 'Chọn mặt hàng');
     const exists = input.warehouseType === 'RAW_MATERIAL'
       ? await RawMaterial.exists({ _id: input.itemId, isActive: true, isDeleted: { $ne: true } })
-      : await Sku.exists({ _id: input.itemId, isActive: true, isDeleted: { $ne: true } });
+      : await Sku.exists({ _id: input.itemId, ...COUNTABLE_SKU });
     fail(exists, 'Mặt hàng không hoạt động hoặc không tồn tại');
     return [];
   }
@@ -75,7 +77,7 @@ export async function stocktakeOptions() {
     WarehouseLocation.find({ warehouseType: { $in: ['RAW_MATERIAL', 'FINISHED_GOODS'] }, isDeleted: { $ne: true }, isSystemUnplaced: { $ne: true }, status: { $in: ['ACTIVE', 'FULL', 'MAINTENANCE', 'LOCKED'] } }).select('warehouseType zoneCode rackCode locationCode layoutBin status').sort({ warehouseType: 1, zoneCode: 1, rackCode: 1 }).lean(),
     peopleByRoles(['GARMENT_TECHNICIAN']), peopleByRoles(['WAREHOUSE_MANAGER', 'OWNER']),
     RawMaterial.find({ isActive: true, isDeleted: { $ne: true } }).select('materialCode materialName unit color').sort({ materialCode: 1 }).lean(),
-    Sku.find({ isActive: true, isDeleted: { $ne: true } }).select('skuCode productName color size').sort({ skuCode: 1 }).lean(),
+    Sku.find(COUNTABLE_SKU).select('skuCode productName color size isActive').sort({ skuCode: 1 }).lean(),
     WarehouseLayout.find({ warehouseType: 'FINISHED_GOODS' }).select('active.racks active.bins active.zones').lean(),
   ]);
   // Warehouse choices come from active physical locations; rack choices must also exist in the currently published layout.

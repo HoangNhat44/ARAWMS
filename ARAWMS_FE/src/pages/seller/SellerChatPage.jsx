@@ -3,7 +3,7 @@
  * @title        : Seller Chat Workspace Page (Bootstrap / React-Bootstrap)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-28
+ * @lastModified : 2026-11-14
  * @description  : Màn hình bán hàng đa kênh 3 cột co giãn linh hoạt (Resizable 3-Pane)
  *                 theo chuẩn trải nghiệm Pancake, bao gồm Danh sách hội thoại (Pane 1),
  *                 Khung chat kèm Quick Tag Bar (Pane 2) và Bảng tác nghiệp tạo đơn/CRM (Pane 3).
@@ -26,7 +26,7 @@ import OrderDetailModal from '../../components/seller/OrderDetailModal';
 import { sellerService } from '../../services/sellerService';
 import { getSocket } from '../../services/socketService';
 import { useToast } from '../../context/ToastContext';
-import { Icon } from '../../components/seller/SellerUi';
+import { Icon, Avatar } from '../../components/seller/SellerUi';
 
 // Bộ đệm in-memory lưu trữ danh sách hội thoại để chuyển trang tức thì (0ms) thay vì chờ tải lại từ đầu
 let memoryConversations = [];
@@ -68,13 +68,24 @@ const SellerChatPage = () => {
   // Responsive viewport states (International standard: Mobile < 768, Tablet 768-1199, Desktop >= 1200)
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1280);
   const [mobileView, setMobileView] = useState('list'); // 'list' | 'chat'
-  const [pane3Visible, setPane3Visible] = useState(true); // Desktop toggle
+  const [pane1Visible, setPane1Visible] = useState(true); // Desktop toggle danh sách hội thoại
+  const [pane3Visible, setPane3Visible] = useState(true); // Desktop toggle panel chốt đơn
   const [offcanvasOpen, setOffcanvasOpen] = useState(false); // Tablet & Mobile drawer
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Đảm bảo không bao giờ bị cuộn lệch viewport khi chuyển trang
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    if (containerRef.current) {
+      containerRef.current.scrollTop = 0;
+    }
   }, []);
 
   const isMobile = windowWidth < 768;
@@ -317,20 +328,15 @@ const SellerChatPage = () => {
       <div className="d-flex flex-column h-100 bg-white">
         {/* Customer Mini Summary Ribbon (Mentor 4.3.1: Thông tin chính dễ quan sát, không phải lật tab) */}
         {cust && (
-          <div className="p-2 border-bottom bg-light d-flex align-items-center justify-content-between flex-shrink-0">
+          <div className="px-3 py-2 border-bottom bg-white d-flex align-items-center justify-content-between flex-shrink-0" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
             <div className="d-flex align-items-center gap-2 overflow-hidden">
-              <div
-                className="rounded-circle bg-dark text-warning d-flex align-items-center justify-content-center fw-bold"
-                style={{ width: 32, height: 32, fontSize: 13, flexShrink: 0 }}
-              >
-                {(cust.fullName || 'K').charAt(0).toUpperCase()}
-              </div>
+              <Avatar name={cust.fullName} size={36} />
               <div className="text-truncate">
-                <div className="fw-bold text-dark text-truncate" style={{ fontSize: '0.82rem' }}>
+                <div className="fw-bold text-truncate" style={{ fontSize: '0.84rem', color: 'var(--wms-text-primary, #141210)' }}>
                   {cust.fullName || 'Khách hàng'}
                 </div>
-                <div className="text-muted" style={{ fontSize: '0.72rem' }}>
-                  {cust.phone || 'Chưa có SĐT'} {cust.tier ? `· ${cust.tier}` : ''}
+                <div className="small text-truncate" style={{ fontSize: '0.74rem', color: 'var(--wms-text-secondary, #574F46)' }}>
+                  {cust.phone || 'Chưa có SĐT'}{cust.tier ? ` · Hạng ${cust.tier}` : ''}
                 </div>
               </div>
             </div>
@@ -338,16 +344,15 @@ const SellerChatPage = () => {
             <div className="d-flex gap-1 flex-shrink-0">
               <Button
                 size="sm"
-                variant="outline-dark"
-                className="py-0 px-2 small d-flex align-items-center gap-1"
-                style={{ fontSize: '0.72rem' }}
+                className="py-1 px-2.5 small d-flex align-items-center gap-1 btn-wms-default rounded-pill"
+                style={{ fontSize: '0.74rem' }}
                 onClick={() => {
                   setSelectedOrderForRma(null);
                   setRmaModalOpen(true);
                 }}
                 title="Tạo phiếu Đổi / Trả hàng"
               >
-                <Icon name="arrow-counterclockwise" /> Đổi/Trả
+                <Icon name="arrow-counterclockwise" /> Đổi / Trả
               </Button>
             </div>
           </div>
@@ -401,20 +406,30 @@ const SellerChatPage = () => {
     <div
       ref={containerRef}
       className="d-flex flex-column h-100 w-100 seller-workspace"
-      style={{ height: 'calc(100vh - 52px)', overflow: 'hidden', backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}
+      style={{
+        height: '100%',
+        maxHeight: '100%',
+        overflow: 'hidden',
+        minHeight: 0,
+        flex: '1 1 0%',
+        backgroundColor: 'var(--wms-bg-app, #E8DFD3)',
+      }}
     >
-      {/* ===== Header Bar (Enterprise Solid Surface) ===== */}
-      <div className={`ara-seller-header px-3 py-2 ${isMobile && mobileView === 'chat' ? 'd-none' : 'd-flex'} align-items-center justify-content-between flex-shrink-0`}>
+      {/* ===== Header Bar (Standardized Enterprise Solid Surface) ===== */}
+      <div
+        className={`ara-seller-header px-3 py-2 ${isMobile && mobileView === 'chat' ? 'd-none' : 'd-flex'} align-items-center justify-content-between flex-shrink-0`}
+        style={{ minHeight: '44px', backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}
+      >
         <Stack direction="horizontal" gap={2} className="align-items-center">
-          <span className="fw-bold fs-6" style={{ color: 'var(--wms-text-primary, #141210)', letterSpacing: '0.01em' }}>
-            Hội Thoại & Bán Hàng
+          <span className="fw-bold fs-6" style={{ color: 'var(--wms-text-primary, #141210)' }}>
+            Hội thoại & CSKH
           </span>
         </Stack>
 
         <Stack direction="horizontal" gap={2}>
           <Button
             size="sm"
-            className="btn-wms-accent d-flex align-items-center gap-1"
+            className="btn-wms-accent d-flex align-items-center gap-1 rounded px-3"
             onClick={() => {
               setActiveTab('order');
               setQuickOrderModalOpen(true);
@@ -426,13 +441,16 @@ const SellerChatPage = () => {
       </div>
 
       {/* ===== Responsive Workspace Layout Container ===== */}
-      <div className="d-flex flex-grow-1 overflow-hidden p-0 p-md-2 gap-0" style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
+      <div
+        className="d-flex flex-grow-1 overflow-hidden p-0 p-md-2 gap-0"
+        style={{ minHeight: 0, flex: '1 1 0%', backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}
+      >
         <div
-          className="d-flex flex-grow-1 border-0 border-md rounded-0 rounded-md bg-white overflow-hidden"
-          style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
+          className="d-flex flex-grow-1 h-100 border-0 border-md rounded-0 rounded-3 bg-white overflow-hidden shadow-sm"
+          style={{ borderColor: 'var(--wms-border, #C8B9A6)', minHeight: 0, height: '100%' }}
         >
           {/* ===== PANE 1: Conversation List ===== */}
-          {(!isMobile || mobileView === 'list') && (
+          {(isMobile ? mobileView === 'list' : pane1Visible) && (
             <div
               className={`d-flex flex-column h-100 overflow-hidden bg-white ${isMobile ? 'w-100' : ''}`}
               style={!isMobile ? { width: isTablet ? 280 : pane1W, minWidth: 220, maxWidth: 420, flexShrink: 0 } : {}}
@@ -449,8 +467,8 @@ const SellerChatPage = () => {
             </div>
           )}
 
-          {/* Splitter Left (Desktop Only) */}
-          {isDesktop && (
+          {/* Splitter Left (Desktop Only when pane1 is visible) */}
+          {isDesktop && pane1Visible && (
             <div
               className="ara-pane-splitter border-start border-end"
               onMouseDown={(e) => startDrag('left', e)}
@@ -471,7 +489,11 @@ const SellerChatPage = () => {
                   if (!isDesktop) setOffcanvasOpen(true);
                   else setPane3Visible(true);
                 }}
-                onBackToList={() => setMobileView('list')}
+                onBackToList={() => {
+                  if (isMobile) setMobileView('list');
+                  else setPane1Visible((prev) => !prev);
+                }}
+                isLeftPanelOpen={isMobile ? mobileView === 'list' : pane1Visible}
                 onToggleRightPanel={handleToggleRightPanel}
                 isRightPanelOpen={isDesktop ? pane3Visible : offcanvasOpen}
               />

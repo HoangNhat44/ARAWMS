@@ -16,7 +16,7 @@ const isNetworkFailure = (error) => !error.status || error.status >= 500;
 const MAX_ATTEMPTS = 6;
 const operationDomain = (change) => {
   if (['UPDATE_SKU', 'UPDATE_SKU_PRICE'].includes(change.operationType)) return `sku:${change.payload?.skuId || ''}`;
-  if (['UPDATE_PRODUCT', 'ADD_VARIANTS'].includes(change.operationType)) return `product:${change.serverEntityId || ''}`;
+  if (['UPDATE_PRODUCT', 'ADD_VARIANTS', 'SET_COLOR_ACTIVE'].includes(change.operationType)) return `product:${change.serverEntityId || ''}`;
   return `${change.operationType}:${change.serverEntityId || change.localEntityId || ''}`;
 };
 const currentVersionFor = (operation, result) => ['UPDATE_SKU', 'UPDATE_SKU_PRICE'].includes(operation.operationType)
@@ -205,8 +205,11 @@ export const syncCatalogChanges = async (ownerId) => {
   }
 };
 
+/** Read-only. The legacy-queue migration runs inside syncCatalogChanges while holding the queue lock:
+ * running it here raced with an in-flight sync (it rewrote a live SYNCING operation from a stale read,
+ * turning a committed DONE back into QUEUED), so saved edits looked unsynced and the screen never refreshed.
+ */
 export const getPendingCatalogChanges = async (ownerId) => {
-  await migrateOfflineCatalogQueue(ownerId);
   return (await store.list('operations', ownerId))
     .filter((item) => item.operationType !== 'FINISHED_GOODS_CONFIRM');
 };

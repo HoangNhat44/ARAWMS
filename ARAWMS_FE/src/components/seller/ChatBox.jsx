@@ -3,7 +3,7 @@
  * @title        : ChatBox Component (Pancake-style Quick Tag Bar)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-28
+ * @lastModified : 2026-11-14
  * @description  : Khung chat nhắn tin trực tiếp với khách hàng Messenger (UC-72, UC-74),
  *                 tích hợp thanh nhãn màu gán tag 1 chạm (UC-73) và nút mở nhanh tạo đơn.
  *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
@@ -23,39 +23,15 @@ import { API_BASE_URL } from '../../utils/constants';
 import { useToast } from '../../context/ToastContext';
 import { Icon, Avatar, EmptyState, formatVnd } from './SellerUi';
 
-/**
- * Hàm lấy URL tuyệt đối của ảnh/tệp đính kèm.
- * Nếu là URL ngoài (Facebook CDN) thì dùng trực tiếp; nếu là /uploads thì ghép origin Backend.
- */
-const getMediaUrl = (url) => {
-  if (!url) return '';
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) {
-    return url;
-  }
-  const serverOrigin = (API_BASE_URL || '').replace(/\/api\/?$/, '');
-  return `${serverOrigin}${url}`;
-};
-
-/**
- * Làm sạch nội dung tin nhắn chat hiển thị:
- * - Loại bỏ các mã trạng thái kỹ thuật tiếng Anh trong ngoặc: (ready_to_pick), (picking), etc.
- * - Loại bỏ các mở ngoặc (GHN), (COD)
- */
-export const cleanChatMessageText = (rawText) => {
-  if (!rawText) return '';
-  let str = String(rawText);
-  str = str.replace(/\s*\((ready_to_pick|picking|money_collect_picking|picked|storing|transporting|sorting|delivering|money_collect_delivering|delivered|delivery_fail|waiting_to_return|return|returned|cancel|exception|GHN|COD|TMĐT)\)/gi, '');
-  str = str.replace(/\s*\(GHN\)/gi, '');
-  str = str.replace(/\s*\(COD\)/gi, '');
-  return str;
-};
+import { getMediaUrl, cleanChatMessageText, classifyOrderReceiptMessage, parseOrderReceiptDetails } from '../../utils/sellerChatUtils';
+export { getMediaUrl, cleanChatMessageText };
 
 /**
  * Component hiển thị thông báo chốt đơn / phiếu xác nhận theo dạng thẻ tương tác (Rich Interactive Receipt Card)
- * thay thế cho khối đen ASCII thô sơ theo tiêu chuẩn thiết kế eCommerce quốc tế (Shopify Polaris, Intercom, Pancake).
+ * chuẩn AraWMS Haute Logistics (khớp hoàn hảo mẫu thiết kế trong ảnh thực tế).
  */
 const OrderReceiptCard = ({ text, isSeller }) => {
-  const isConfirmSuccess = text.includes('XÁC NHẬN CHỐT ĐƠN THÀNH CÔNG');
+  const isConfirmSuccess = text.includes('XÁC NHẬN CHỐT ĐƠN THÀNH CÔNG') || text.includes('ĐÃ TẠO VẬN ĐƠN');
   const isConfirmationRequest = text.includes('THÔNG TIN XÁC NHẬN ĐƠN HÀNG') || text.includes('PHIẾU XÁC NHẬN');
   const isPackingNotice = text.includes('ĐÃ ĐƯỢC ĐÓNG GÓI XONG');
 
@@ -63,85 +39,76 @@ const OrderReceiptCard = ({ text, isSeller }) => {
     return <div style={{ whiteSpace: 'pre-wrap' }}>{cleanChatMessageText(text)}</div>;
   }
 
-  // Làm sạch các ký tự gạch nối ASCII thô và bỏ mã kỹ thuật trong ngoặc
-  const lines = cleanChatMessageText(text)
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith('━━━━') && !l.startsWith('----'));
+  const details = parseOrderReceiptDetails(text);
+  const orderCode = details.orderCode
+    ? (details.orderCode.startsWith('#') ? details.orderCode : `#${details.orderCode}`)
+    : '-';
+  const waybillCode = details.waybillCode || '-';
+  const codAmount = details.codAmount || '-';
 
-  const headerTitle = isConfirmSuccess
-    ? 'Xác Nhận Chốt Đơn Thành Công'
+  const title = isPackingNotice
+    ? 'ĐÃ ĐÓNG GÓI XONG KIỆN HÀNG'
     : isConfirmationRequest
-    ? 'Phiếu Xác Nhận Đơn Hàng'
-    : 'Thông Báo Đóng Gói Đơn Hàng';
+    ? 'PHIẾU XÁC NHẬN ĐƠN HÀNG'
+    : 'ĐÃ TẠO VẬN ĐƠN GIAO HÀNG NHANH';
 
-  const accentColor = isConfirmSuccess ? 'var(--wms-success, #1E6B47)' : isConfirmationRequest ? 'var(--wms-accent, #8A6A46)' : 'var(--wms-info, #6E5233)';
+  const badgeText = isPackingNotice ? 'ĐÃ ĐÓNG GÓI' : isConfirmationRequest ? 'CHỜ XÁC NHẬN' : 'CHỜ LẤY HÀNG';
 
   return (
-    <div
-      className="p-3 rounded bg-white text-dark shadow-sm text-start"
-      style={{
-        maxWidth: 380,
-        border: '1px solid var(--wms-border, #C8B9A6)',
-        borderLeft: `4px solid ${accentColor}`,
-        fontFamily: 'var(--wms-font)',
-      }}
-    >
-      {/* Header Card */}
-      <div className="d-flex align-items-center justify-content-between mb-2 pb-2 border-bottom" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
+    <div className="ara-order-receipt-card text-start my-1 shadow-sm">
+      {/* Header */}
+      <div className="receipt-header">
         <div className="d-flex align-items-center gap-2">
-          {isConfirmSuccess && <Icon name="check-circle-fill" className="fs-5" style={{ color: 'var(--wms-success, #1E6B47)' }} />}
-          {isConfirmationRequest && <Icon name="receipt" className="fs-5" style={{ color: 'var(--wms-accent, #8A6A46)' }} />}
-          {isPackingNotice && <Icon name="box-seam" className="fs-5" style={{ color: 'var(--wms-info, #6E5233)' }} />}
-          <div>
-            <div className="fw-bold small" style={{ color: 'var(--wms-text-primary, #141210)' }}>{headerTitle}</div>
-            <div className="text-secondary" style={{ fontSize: '11px' }}>AraStore WMS</div>
-          </div>
+          <Icon name="truck" className="fs-5" style={{ color: 'var(--wms-primary, #8A6A46)' }} />
+          <span className="fw-bold small" style={{ color: 'var(--wms-text-primary, #141210)', letterSpacing: '0.01em' }}>
+            {title}
+          </span>
         </div>
         <span
-          className="badge rounded px-2 py-1"
-          style={
-            isConfirmSuccess
-              ? { backgroundColor: '#E3F5EC', color: '#1E6B47', border: '1px solid #86CFA8', fontSize: '11px' }
-              : isConfirmationRequest
-              ? { backgroundColor: '#FEF0C7', color: '#9A5B06', border: '1px solid #F5B95F', fontSize: '11px' }
-              : { backgroundColor: '#EFE6DA', color: '#6E5233', border: '1px solid #C8B9A6', fontSize: '11px' }
-          }
+          className="badge rounded-pill px-2.5 py-1"
+          style={{
+            backgroundColor: isConfirmationRequest ? '#FFFBEB' : '#ECFDF5',
+            color: isConfirmationRequest ? '#D97706' : '#006C4A',
+            border: `1px solid ${isConfirmationRequest ? '#FDE68A' : '#A7F3D0'}`,
+            fontSize: '11px',
+            fontWeight: 600,
+          }}
         >
-          {isConfirmSuccess ? 'ĐÃ CHỐT' : isConfirmationRequest ? 'CHỜ XÁC NHẬN' : 'ĐÃ ĐÓNG GÓI'}
+          {badgeText}
         </span>
       </div>
 
-      {/* Body content parsed cleanly */}
-      <div className="small lh-base" style={{ color: '#2B2825' }}>
-        {lines.map((line, idx) => {
-          if (line.startsWith('🎉') || line.startsWith('📋') || line.startsWith('📦')) {
-            return null;
-          }
-          if (line.includes('Mã đơn hàng:') || line.includes('Mã vận đơn:')) {
-            return (
-              <div key={idx} className="my-1 p-2 rounded bg-body-tertiary font-monospace fw-semibold small text-primary d-flex align-items-center justify-content-between">
-                <span>{line}</span>
-                <Icon name="check2" className="text-success" />
-              </div>
-            );
-          }
-          if (line.includes('TỔNG THU HỘ') || line.includes('Tổng thanh toán') || line.includes('TỔNG TIỀN')) {
-            return (
-              <div key={idx} className="my-2 pt-2 border-top d-flex align-items-center justify-content-between fw-bold text-danger fs-6">
-                <span>{line}</span>
-              </div>
-            );
-          }
-          if (line.startsWith('👉') || line.startsWith('Chúng tôi sẽ gửi') || line.startsWith('Cảm ơn quý khách')) {
-            return (
-              <div key={idx} className="mt-2 pt-2 border-top text-secondary small fst-italic">
-                {line}
-              </div>
-            );
-          }
-          return <div key={idx} className="py-0.5">{line}</div>;
-        })}
+      {/* 4-Box Key Metrics Grid */}
+      <div className="receipt-metrics-grid">
+        <div>
+          <div className="metric-label">MÃ ĐƠN HÀNG</div>
+          <div className="metric-value">{orderCode}</div>
+        </div>
+        <div>
+          <div className="metric-label">MÃ VẬN ĐƠN GHN</div>
+          <div className="metric-value font-monospace">{waybillCode}</div>
+        </div>
+        <div>
+          <div className="metric-label">DỊCH VỤ CHUYỂN PHÁT</div>
+          <div className="metric-value" style={{ fontSize: '12.5px', fontWeight: 500 }}>GHN Tiết kiệm (Dưới 1kg)</div>
+        </div>
+        <div>
+          <div className="metric-label">TỔNG THU HỘ (COD)</div>
+          <div className="metric-value cod-highlight">{codAmount}</div>
+        </div>
+      </div>
+
+      {/* Note description */}
+      <div className="small lh-sm mb-2" style={{ color: 'var(--wms-text-secondary, #514536)', fontSize: '12px' }}>
+        Đơn hàng của quý khách đã được đẩy lên hệ thống GHN và có mã vận đơn tự động. AraStore đang đóng gói và chờ shipper bàn giao kiện hàng cho bưu tá.
+      </div>
+
+      {/* Footer line */}
+      <div className="d-flex align-items-center justify-content-between pt-2 border-top small" style={{ borderColor: 'var(--wms-border-subtle, #F0EDED)', fontSize: '11px', color: 'var(--wms-text-light, #837564)' }}>
+        <span>Hệ thống WMS</span>
+        <span className="d-flex align-items-center gap-1">
+          <Icon name="link-45deg" /> Tự động liên kết đơn
+        </span>
       </div>
     </div>
   );
@@ -169,6 +136,7 @@ const ChatBox = ({
   onTagsRefresh,
   onOpenQuickOrder,
   onBackToList,
+  isLeftPanelOpen = true,
   onToggleRightPanel,
   isRightPanelOpen = false,
 }) => {
@@ -418,69 +386,57 @@ const ChatBox = ({
   );
 
   return (
-    <div className="d-flex flex-column h-100 position-relative">
+    <div className="d-flex flex-column h-100 position-relative" style={{ minHeight: 0 }}>
       {/* ===== Chat Top Header ===== */}
+      {/* ===== Chat Header (Standardized Haute Surface) ===== */}
       <div
-        className="d-flex align-items-center justify-content-between gap-1 gap-sm-2 px-2 px-sm-3 py-2 border-bottom flex-shrink-0"
-        style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}
+        className="d-flex align-items-center justify-content-between gap-1 gap-sm-2 px-3 py-2 border-bottom flex-shrink-0 bg-white"
+        style={{ borderColor: 'var(--wms-border, #C8B9A6)', minHeight: '52px' }}
       >
         <Stack direction="horizontal" gap={2} className="align-items-center overflow-hidden flex-grow-1">
-          {/* Nút quay lại danh sách trên mobile */}
+          {/* Nút ẩn/hiện danh sách hội thoại (mobile quay lại danh sách, desktop đóng/mở pane trái) */}
           {onBackToList && (
             <Button
               size="sm"
               variant="light"
-              className="d-md-none border me-1 px-2 py-1 rounded d-flex align-items-center gap-1 text-secondary btn-wms-default flex-shrink-0"
+              className="border me-1 px-2 py-1 rounded d-flex align-items-center gap-1 text-secondary btn-wms-default flex-shrink-0"
               onClick={onBackToList}
-              title="Quay lại danh sách hội thoại"
+              title={isLeftPanelOpen ? 'Ẩn danh sách hội thoại' : 'Hiện danh sách hội thoại'}
             >
-              <Icon name="chevron-left" />
+              <Icon name={isLeftPanelOpen ? 'chevron-left' : 'chevron-right'} />
             </Button>
           )}
 
-          <Avatar name={customer?.fullName} size={32} />
+          <Avatar name={customer?.fullName} size={38} />
           <div className="overflow-hidden flex-grow-1" style={{ minWidth: 0 }}>
-            <div className="d-flex align-items-center gap-1 text-truncate">
-              <span className="fw-bold text-truncate" style={{ fontSize: '0.85rem', color: 'var(--wms-text-primary, #141210)', maxWidth: 140 }}>
+            <div className="d-flex align-items-center gap-1.5 text-truncate">
+              <span className="fw-bold text-truncate" style={{ fontSize: '0.92rem', color: 'var(--wms-text-primary, #141210)' }}>
                 {customer?.fullName || 'Khách hàng'}
               </span>
-              <span
-                className="badge rounded px-1.5 py-0.5 d-none d-sm-inline-block small"
-                style={{ backgroundColor: 'var(--wms-primary-subtle, #EFE6DA)', color: 'var(--wms-accent-hover, #6E5233)', border: '1px solid var(--wms-border, #C8B9A6)', fontSize: '10px' }}
-              >
-                Messenger
-              </span>
-              {conversation?.pageName && (
-                <span
-                  className="badge rounded px-1.5 py-0.5 small d-none d-md-inline-block"
-                  style={{ backgroundColor: '#F3EDE4', color: '#141210', border: '1px solid #C8B9A6', fontSize: '10px' }}
-                >
-                  {conversation.pageName}
-                </span>
+              {customer?.tier && (
+                <span className="ara-vip-badge">{customer.tier}</span>
               )}
             </div>
-            <div className="text-secondary small text-truncate" style={{ fontSize: '11px', color: 'var(--wms-secondary, #574F46)' }}>
-              Mã: <strong style={{ color: 'var(--wms-text-primary, #141210)' }}>{customer?.customerCode || 'N/A'}</strong>
-              {customer?.phone && (
-                <span className="d-none d-sm-inline"> • SĐT: <strong style={{ color: 'var(--wms-text-primary, #141210)' }}>{customer.phone}</strong></span>
-              )}
+            <div className="small text-truncate d-flex align-items-center gap-1.5" style={{ fontSize: '11px', color: 'var(--wms-text-secondary, #574F46)' }}>
+              {customer?.customerCode && <span>{customer.customerCode}</span>}
+              {customer?.customerCode && customer?.phone && <span>•</span>}
+              {customer?.phone && <span className="tabular-nums">{customer.phone}</span>}
             </div>
           </div>
         </Stack>
 
         {/* Action Buttons: Toggle Right Panel (Chốt đơn) */}
-        <div className="flex-shrink-0 ms-1">
+        <div className="flex-shrink-0 d-flex align-items-center gap-2 ms-1">
           {onToggleRightPanel && (
             <Button
               size="sm"
-              className={`d-flex align-items-center gap-1 text-nowrap px-2 px-sm-3 py-1 ${isRightPanelOpen ? 'btn-wms-primary' : 'btn-wms-default'}`}
+              className="d-flex align-items-center gap-1.5 text-nowrap px-3 py-1 btn-wms-default rounded-pill"
               onClick={onToggleRightPanel}
               title={isRightPanelOpen ? 'Ẩn bảng chốt đơn' : 'Hiện bảng chốt đơn'}
               style={{ fontSize: '0.78rem' }}
             >
               <Icon name="layout-sidebar-reverse" />
-              <span className="d-none d-sm-inline">{isRightPanelOpen ? 'Ẩn chốt đơn' : 'Chốt đơn'}</span>
-              <span className="d-sm-none">{isRightPanelOpen ? 'Ẩn' : 'Chốt đơn'}</span>
+              <span>{isRightPanelOpen ? 'Ẩn chốt đơn' : 'Chốt đơn'}</span>
             </Button>
           )}
         </div>
@@ -488,52 +444,42 @@ const ChatBox = ({
 
       {/* ===== Pancake-style Quick Tag Bar ===== */}
       <div
-        className="d-flex flex-wrap align-items-center flex-shrink-0"
+        className="d-flex flex-wrap align-items-center flex-shrink-0 bg-white"
         style={{
-          backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)',
           borderBottom: '1px solid var(--wms-border, #C8B9A6)',
-          padding: '6px 12px',
+          padding: '6px 14px',
           gap: '6px',
           maxHeight: '68px',
           overflowY: 'auto',
         }}
       >
+        <span className="small fw-bold me-1" style={{ fontSize: '11px', color: 'var(--wms-text-secondary, #574F46)', letterSpacing: '0.04em' }}>
+          THẺ:
+        </span>
         {allTags.map((tag) => {
           const isActive = activeTags.includes(tag.name);
           return (
-            <Button
+            <button
               key={tag._id}
-              size="sm"
-              variant="light"
-              className="rounded-pill text-nowrap border d-inline-flex align-items-center"
-              // Màu thẻ do người dùng cấu hình trong DB nên bắt buộc truyền qua style
+              type="button"
+              className={`ara-chat-quick-tag ${isActive ? 'active' : ''}`}
               style={isActive
                 ? {
-                    background: tag.color,
-                    color: tag.textColor || '#fff',
-                    borderColor: tag.color,
-                    padding: '3px 10px',
-                    fontSize: '12px',
-                    fontWeight: 500,
-                    lineHeight: 1.2,
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                    background: 'var(--wms-primary-subtle, #EFE6DA)',
+                    color: 'var(--wms-accent-hover, #6E5233)',
+                    borderColor: 'var(--wms-accent, #8A6A46)',
                   }
                 : {
-                    borderColor: tag.color,
-                    color: tag.color,
+                    borderColor: 'var(--wms-border, #C8B9A6)',
+                    color: 'var(--wms-text-secondary, #574F46)',
                     background: '#FFFFFF',
-                    padding: '3px 10px',
-                    fontSize: '12px',
-                    fontWeight: 500,
-                    lineHeight: 1.2,
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                   }}
               onClick={() => handleToggleTag(tag.name)}
               title={isActive ? `Bỏ thẻ "${tag.name}"` : `Gắn thẻ "${tag.name}"`}
             >
-              {isActive && <Icon name="check2" className="me-1" />}
+              {isActive && <Icon name="check2" className="me-0.5" />}
               {tag.name}
-            </Button>
+            </button>
           );
         })}
 
@@ -546,29 +492,25 @@ const ChatBox = ({
           onToggle={setShowNewTagForm}
           overlay={newTagPopover}
         >
-          <Button
-            size="sm"
-            variant="outline-secondary"
-            className="rounded-pill border d-inline-flex align-items-center justify-content-center"
+          <button
+            type="button"
+            className="ara-chat-quick-tag"
             style={{
-              padding: '3px 8px',
-              height: '24px',
-              minWidth: '26px',
               borderColor: 'var(--wms-border, #C8B9A6)',
+              borderStyle: 'dashed',
               backgroundColor: '#FFFFFF',
               color: 'var(--wms-text-secondary, #574F46)',
-              fontSize: '12px',
-              lineHeight: 1,
             }}
             title="Tạo thẻ mới"
           >
-            <Icon name="plus-lg" />
-          </Button>
+            <Icon name="plus-lg" className="me-0.5" />
+            <span>Thêm thẻ</span>
+          </button>
         </OverlayTrigger>
       </div>
 
       {/* ===== Messages Stream ===== */}
-      <div className="flex-grow-1 overflow-auto p-3 bg-body-tertiary">
+      <div className="flex-grow-1 overflow-auto p-3 ara-chat-stream-bg" style={{ minHeight: 0 }}>
         {loading ? (
           <div className="d-flex flex-column align-items-center justify-content-center h-100 py-5 text-secondary">
             <Spinner animation="border" variant="secondary" className="mb-2" />
@@ -595,7 +537,8 @@ const ChatBox = ({
               m.messageText.includes('XÁC NHẬN CHỐT ĐƠN THÀNH CÔNG') ||
               m.messageText.includes('THÔNG TIN XÁC NHẬN ĐƠN HÀNG') ||
               m.messageText.includes('PHIẾU XÁC NHẬN') ||
-              m.messageText.includes('ĐÃ ĐƯỢC ĐÓNG GÓI XONG')
+              m.messageText.includes('ĐÃ ĐƯỢC ĐÓNG GÓI XONG') ||
+              m.messageText.includes('ĐÃ TẠO VẬN ĐƠN')
             );
 
             // Khoảng cách: 4px nếu cùng cụm, 14px nếu khác cụm (chuẩn UX Messenger/Slack)
@@ -623,7 +566,7 @@ const ChatBox = ({
                     <OrderReceiptCard text={m.messageText} isSeller={isSeller} />
                     {isLastInCluster && (
                       <div className={`d-flex align-items-center gap-1 mt-1 small ${isSeller ? 'justify-content-end text-secondary' : 'text-secondary'}`} style={{ fontSize: '11px' }}>
-                        <span>{new Date(m.sentAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="tabular-nums">{new Date(m.sentAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
                         {isSeller && (
                           m.deliveryStatus === 'FAILED_24H_EXPIRED' ? (
                             <span
@@ -641,26 +584,17 @@ const ChatBox = ({
                     )}
                   </div>
                 ) : (
-                  <div
-                    className="px-3 py-2 shadow-sm small"
-                    style={{
-                      maxWidth: '75%',
-                      backgroundColor: isSeller ? 'var(--wms-primary, #141210)' : '#FFFFFF',
-                      color: isSeller ? '#FFFFFF' : 'var(--wms-text-body, #26221E)',
-                      border: isSeller ? 'none' : '1px solid var(--wms-border, #C8B9A6)',
-                      borderRadius: '6px',
-                    }}
-                  >
+                  <div className={isSeller ? 'chat-bubble-seller' : 'chat-bubble-customer'}>
                     {/* Hiển thị sản phẩm đính kèm nếu có */}
                     {m.referencedSkuId && (
-                      <Card body className="mb-2 text-body border" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
+                      <Card body className="mb-2 text-body border bg-white" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
                         <Stack direction="horizontal" gap={2}>
                           <Icon name="box-seam" className="fs-4" style={{ color: 'var(--wms-accent, #8A6A46)' }} />
                           <div>
                             <div className="fw-bold" style={{ color: 'var(--wms-text-primary, #141210)' }}>{m.referencedSkuId.styleName || m.referencedSkuId.skuCode}</div>
                             <div className="text-secondary small">
                               Màu: {m.referencedSkuId.color} | Size: <strong>{m.referencedSkuId.size}</strong> |{' '}
-                              <span className="fw-bold" style={{ color: 'var(--wms-text-primary, #141210)' }}>{formatVnd(m.referencedSkuId.retailPrice)}</span>
+                              <span className="fw-bold tabular-nums" style={{ color: 'var(--wms-accent, #8A6A46)' }}>{formatVnd(m.referencedSkuId.retailPrice)}</span>
                             </div>
                           </div>
                         </Stack>
@@ -748,7 +682,7 @@ const ChatBox = ({
       </div>
 
       {/* ===== Input Dock with File Attachment Tray ===== */}
-      <div className="border-top bg-white p-2" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
+      <div className="border-top bg-white p-2.5" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
         {/* Khay preview tệp đính kèm người bán đã chọn */}
         {selectedFiles.length > 0 && (
           <div className="d-flex flex-wrap gap-2 mb-2">
@@ -791,8 +725,8 @@ const ChatBox = ({
               as="textarea"
               rows={2}
               className="shadow-none"
-              style={{ resize: 'none', borderColor: 'var(--wms-border, #C8B9A6)' }}
-              placeholder={selectedFiles.length > 0 ? 'Nhập chú thích gửi kèm tệp...' : 'Nhập nội dung tư vấn gửi cho khách hàng...'}
+              style={{ resize: 'none', borderColor: 'var(--wms-border, #C8B9A6)', fontSize: '0.86rem' }}
+              placeholder={selectedFiles.length > 0 ? 'Nhập chú thích gửi kèm tệp...' : 'Nhập nội dung tư vấn cho khách hàng... (Enter để gửi · Shift+Enter xuống dòng)'}
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
@@ -805,14 +739,14 @@ const ChatBox = ({
 
             <Button
               type="submit"
-              className="btn-wms-primary"
+              className="btn-wms-accent px-3"
               disabled={(!text.trim() && selectedFiles.length === 0) || sending}
               title="Gửi tin nhắn (Enter)"
             >
               {sending ? <Spinner animation="border" size="sm" /> : <Icon name="send-fill" />}
             </Button>
           </InputGroup>
-          <Form.Text className="d-block mt-1" style={{ color: 'var(--wms-secondary, #574F46)' }}>
+          <Form.Text className="d-block mt-1 text-muted" style={{ fontSize: '11px' }}>
             Enter để gửi · Shift+Enter xuống dòng · Có thể gửi ảnh &amp; tệp trực tiếp cho khách
           </Form.Text>
         </Form>

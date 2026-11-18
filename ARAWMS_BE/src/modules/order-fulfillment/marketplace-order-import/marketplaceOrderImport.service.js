@@ -13,6 +13,8 @@
  */
 
 import ExcelJS from 'exceljs';
+import mongoose from 'mongoose';
+import { toColorCode } from '../../../common/utils/productCode.js';
 import SalesOrder from '../../../models/SalesOrder.model.js';
 import Sku from '../../../models/Sku.model.js';
 import Product from '../../../models/Product.model.js';
@@ -36,7 +38,6 @@ const normalizeHeader = (str) => {
     .replace(/\s+/g, ' ');
 };
 
-const escapeRegex = (str) => String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const matchesAny = (normalizedText, keywords) => {
   return keywords.some((kw) => normalizedText === kw || normalizedText.includes(kw));
@@ -71,11 +72,18 @@ export const splitOrderItemsFromCell = (rawCellText, defaultQty = 1, defaultPric
   });
 };
 
+/** Chỉ ghép với SKU đang bán: màu đã ngừng bán không được nhận đơn mới. */
+const SELLABLE_SKU = { isActive: true, isDeleted: { $ne: true } };
+
 /**
- * Thuật toán thông minh tự động tìm kiếm và ghép SKU trong kho từ tên sản phẩm hoặc mã SKU sàn
+ * Tìm SKU kho cho một dòng hàng sàn. Chỉ khớp CHÍNH XÁC, không đoán:
+ *   1. Cả chuỗi là mã SKU hoặc mã vạch (ví dụ "AL186-KEM-M").
+ *   2. Một cụm trong tên là mã SKU (ví dụ "AL186-KEM-M Áo len x 1").
+ *   3. Một cụm trong tên là mã sản phẩm (ví dụ "AL186"), rồi chọn SKU theo mã màu + size
+ *      bóc từ tên, chỉ nhận khi ra đúng MỘT SKU.
+ * Không chắc chắn thì trả về null để seller ghép tay, thay vì gán nhầm màu/size (trừ sai tồn).
  * Hỗ trợ các chuỗi tên từ Shopee/TikTok như:
  * "CV68 CHÂN VÁY XẾP LY BÊN ĐÍNH PHA LÊ CAO CẤP - KEM size: M x 1"
- * "SET AL186+AK001 KEM M BE M x 1"
  * "V178 VÁY XÒE 2 DÂY VIỀN REN XẾP LY CHÂN (KÈM ĐAI) - HỒNG SIZE: S x 1"
  */
 export const findMatchingSku = async (rawInput) => {
@@ -85,6 +93,7 @@ export const findMatchingSku = async (rawInput) => {
 
   // 1. Khớp chính xác skuCode (không phân biệt hoa thường) hoặc skuBarcode
   let sku = await Sku.findOne({
+    ...SELLABLE_SKU,
     $or: [
       { skuCode: cleaned.toUpperCase() },
       { skuBarcode: cleaned },
@@ -113,80 +122,29 @@ export const findMatchingSku = async (rawInput) => {
     }
   }
 
+  const colorCode = extractedColor ? toColorCode(extractedColor) : '';
+
   for (const token of codeTokens) {
-    const codePrefix = token.toUpperCase();
+    const upper = token.toUpperCase();
 
-    // Chiến lược A: Tìm SKU theo skuCode bắt đầu bằng codePrefix
-    const skuQuery = {
-      skuCode: new RegExp('^' + escapeRegex(codePrefix), 'i'),
-    };
-    if (extractedSize) skuQuery.size = extractedSize;
-    if (extractedColor) skuQuery.color = new RegExp(escapeRegex(extractedColor), 'i');
-
-    sku = await Sku.findOne(skuQuery).populate('productId').lean();
+    // 2. Cụm này chính là mã SKU nằm trong tên dài
+    sku = await Sku.findOne({ ...SELLABLE_SKU, skuCode: upper }).populate('productId').lean();
     if (sku) return sku;
 
-    if (extractedSize) {
-      sku = await Sku.findOne({
-        skuCode: new RegExp('^' + escapeRegex(codePrefix), 'i'),
-        size: extractedSize,
-      }).populate('productId').lean();
-      if (sku) return sku;
+    // 3. Cụm này là mã sản phẩm: khớp CHÍNH XÁC (không so tiền tố, để "AL18" không ăn nhầm "AL186").
+    // Thử nguyên cụm trước (mã cũ có dấu gạch), sau đó phần trước dấu gạch đầu tiên ("AL186-KEM" -> "AL186").
+    let product = null;
+    for (const code of [...new Set([upper, upper.split('-')[0]])]) {
+      // sampleCode only finds legacy products before the migration. TODO(xóa sampleCode): productCode only.
+      product = await Product.findOne({ isDeleted: { $ne: true }, $or: [{ productCode: code }, { sampleCode: code }] }).lean();
+      if (product) break;
     }
-
-    sku = await Sku.findOne({
-      skuCode: new RegExp('^' + escapeRegex(codePrefix), 'i'),
-    }).populate('productId').lean();
-    if (sku) return sku;
-
-    // Chiến lược B: Khớp sản phẩm qua Product model (productCode hoặc sampleCode)
-    const product = await Product.findOne({
-      $or: [
-        { productCode: new RegExp('^' + escapeRegex(codePrefix) + '$', 'i') },
-        { sampleCode: new RegExp('^' + escapeRegex(codePrefix) + '$', 'i') },
-      ],
-    }).lean();
-
-    if (product) {
-      const pSkuQuery = { productId: product._id };
-      if (extractedSize) pSkuQuery.size = extractedSize;
-      if (extractedColor) pSkuQuery.color = new RegExp(escapeRegex(extractedColor), 'i');
-      sku = await Sku.findOne(pSkuQuery).populate('productId').lean();
-      if (sku) return sku;
-
-      if (extractedSize) {
-        sku = await Sku.findOne({ productId: product._id, size: extractedSize }).populate('productId').lean();
-        if (sku) return sku;
-      }
-
-      sku = await Sku.findOne({ productId: product._id }).populate('productId').lean();
-      if (sku) return sku;
-    }
-
-    // Chiến lược C: Khớp styleName chứa codePrefix
-    const styleQuery = {
-      styleName: new RegExp(escapeRegex(codePrefix), 'i'),
-    };
-    if (extractedSize) styleQuery.size = extractedSize;
-    sku = await Sku.findOne(styleQuery).populate('productId').lean();
-    if (sku) return sku;
-  }
-
-  // Chiến lược D: Khớp từ ngữ trong tên sản phẩm
-  const titleWithoutAttrs = cleaned.split(/[-:]/)[0].trim();
-  if (titleWithoutAttrs.length >= 3) {
-    const words = titleWithoutAttrs.split(/\s+/).filter((w) => w.length >= 2 && !['SET', 'COMBO', 'BỘ'].includes(w.toUpperCase()));
-    if (words.length > 0) {
-      const regexStr = words.map((w) => escapeRegex(w)).join('.*');
-      sku = await Sku.findOne({
-        $or: [
-          { styleName: new RegExp(regexStr, 'i') },
-          { skuCode: new RegExp(regexStr, 'i') },
-        ],
-        ...(extractedSize ? { size: extractedSize } : {}),
-      }).populate('productId').lean();
-      if (sku) return sku;
-    }
+    if (!product) continue;
+    const candidates = (await Sku.find({ productId: product._id, ...SELLABLE_SKU }).populate('productId').lean())
+      .filter((item) => (!extractedSize || item.size === extractedSize)
+        && (!colorCode || toColorCode(item.color) === colorCode));
+    // Chỉ nhận khi xác định được đúng một biến thể; còn lại để seller ghép tay.
+    if (candidates.length === 1) return candidates[0];
   }
 
   return null;
@@ -529,106 +487,6 @@ export const parseExcelFile = async (fileBuffer, channel, sourceId) => {
 };
 
 /**
- * Tự động khởi tạo danh mục Product và SKU trong kho cho các sản phẩm chưa có trong hệ thống
- */
-export const autoProvisionSkus = async (items) => {
-  if (!Array.isArray(items) || items.length === 0) return [];
-
-  const createdSkus = [];
-
-  for (const it of items) {
-    const rawName = String(it.rawProductName || it.skuCode || '').trim();
-    if (!rawName) continue;
-
-    // Kiểm tra xem đã khớp SKU nào chưa
-    const matchedSku = await findMatchingSku(rawName);
-    if (matchedSku) {
-      createdSkus.push({
-        _id: matchedSku._id,
-        skuCode: matchedSku.skuCode,
-        skuBarcode: matchedSku.skuBarcode,
-        productName: matchedSku.styleName || matchedSku.skuCode,
-        color: matchedSku.color,
-        size: matchedSku.size,
-        availableQty: Math.max(0, (matchedSku.onHandQty || 0) - (matchedSku.reservedQty || 0)),
-        rawProductName: rawName,
-        retailPrice: matchedSku.retailPrice || 0,
-      });
-      continue;
-    }
-
-    // Trích xuất thuộc tính size
-    const sizeMatch = rawName.match(/size\s*[:=\-\s]\s*([A-Za-z0-9]+)/i)
-      || rawName.match(/\b(XS|S|M|L|XL|XXL|FREESIZE)\b/i);
-    const size = sizeMatch ? sizeMatch[1].toUpperCase() : 'FREESIZE';
-
-    // Trích xuất màu sắc
-    const colorMatch = rawName.match(/-\s*([^:;\-\n]+?)(?:\s+size|\s+x\d+|$)/i)
-      || rawName.match(/màu\s*[:=\-\s]\s*([^\s:;,]+)/i)
-      || rawName.match(/\b(KEM|HỒNG|TRẮNG|TRANG|ĐEN|DEN|BE|NÂU|NAU|ĐỎ|DO|XANH|GHI)\b/i);
-    const color = colorMatch ? colorMatch[1].trim().toUpperCase() : 'TIÊU CHUẨN';
-
-    // Trích xuất mã sản phẩm (chữ + số)
-    const codeTokens = rawName.match(/\b[A-Za-z]+[0-9]+[A-Za-z0-9_-]*\b/g) || [];
-    let code = codeTokens[0] ? codeTokens[0].toUpperCase() : null;
-    if (!code) {
-      const first = rawName.match(/^([A-Za-z0-9_-]{2,30})/);
-      code = first ? first[1].toUpperCase() : `SP-${Date.now().toString().slice(-4)}`;
-    }
-
-    const productCode = code;
-    const titleClean = rawName.replace(/x\s*\d+$/i, '').trim();
-
-    let product = await Product.findOne({ productCode });
-    if (!product) {
-      product = await Product.create({
-        productCode,
-        productName: titleClean,
-        sampleCode: productCode,
-        category: 'Thời Trang Thiết Kế',
-        basePrice: it.unitPrice || 350000,
-        isActive: true,
-      });
-    }
-
-    const normalizedColor = normalizeHeader(color).toUpperCase().replace(/\s+/g, '');
-    const skuCode = `${productCode}-${size}-${normalizedColor || 'STD'}`.toUpperCase();
-    const skuBarcode = skuCode;
-
-    let sku = await Sku.findOne({ skuCode });
-    if (!sku) {
-      sku = await Sku.create({
-        skuCode,
-        skuBarcode,
-        productId: product._id,
-        styleName: `${productCode}-${color}`,
-        color,
-        size,
-        retailPrice: it.unitPrice || product.basePrice || 350000,
-        unitCogs: Math.round((it.unitPrice || product.basePrice || 350000) * 0.5),
-        onHandQty: 100, // Khởi tạo tồn kho sẵn sàng phục vụ xuất bán
-        reservedQty: 0,
-        isActive: true,
-      });
-    }
-
-    createdSkus.push({
-      _id: sku._id,
-      skuCode: sku.skuCode,
-      skuBarcode: sku.skuBarcode,
-      productName: product.productName || sku.styleName,
-      color: sku.color,
-      size: sku.size,
-      availableQty: Math.max(0, (sku.onHandQty || 0) - (sku.reservedQty || 0)),
-      rawProductName: rawName,
-      retailPrice: sku.retailPrice,
-    });
-  }
-
-  return createdSkus;
-};
-
-/**
  * Seller thực hiện "Xử lý đơn" (Marketplace Order Processing)
  * Lưu các đơn hàng hợp lệ vào hệ thống với importStatus: 'PENDING_WAREHOUSE_APPROVAL'
  */
@@ -641,10 +499,29 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
 
   const batchCode = await CounterSequence.getNextSequence('IMPORT_BATCH', 'BATCH', 4);
   const createdOrders = [];
+  const rejectedOrders = [];
   let autoApprovedCount = 0;
   let pendingApprovalCount = 0;
 
   for (const ord of orders) {
+    // 0. Mọi dòng hàng phải khớp một SKU đang bán. Không tạo đơn thiếu dòng: có dòng chưa khớp
+    // (hoặc SKU đã ngừng bán) thì bỏ qua cả đơn và báo lại lý do cho seller.
+    const items = Array.isArray(ord.items) ? ord.items : [];
+    const skuDocs = [];
+    let rejectReason = items.length ? '' : 'Đơn không có sản phẩm';
+    for (const item of items) {
+      const skuDoc = item?.skuId && mongoose.isValidObjectId(item.skuId)
+        ? await Sku.findOne({ _id: item.skuId, isDeleted: { $ne: true } }) : null;
+      const label = item?.rawProductName || item?.skuCode || 'không rõ tên';
+      if (!skuDoc) { rejectReason = `Sản phẩm "${label}" chưa khớp SKU trong kho`; break; }
+      if (!skuDoc.isActive) { rejectReason = `SKU ${skuDoc.skuCode} đã ngừng bán`; break; }
+      skuDocs.push(skuDoc);
+    }
+    if (rejectReason) {
+      rejectedOrders.push({ externalOrderCode: ord.externalOrderCode, reason: rejectReason });
+      continue;
+    }
+
     // 1. Tạo hoặc lấy thông tin khách hàng (xử lý trường hợp số điện thoại bị ẩn sao từ sàn TMĐT)
     let customerDoc = null;
     const isMaskedPhone = ord.phone && ord.phone.includes('*');
@@ -674,11 +551,8 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
     const processedItems = [];
     let itemsSubtotal = 0;
 
-    for (const item of ord.items) {
-      if (!item.skuId) continue;
-      const skuDoc = await Sku.findById(item.skuId);
-      if (!skuDoc) continue;
-
+    for (const [index, item] of items.entries()) {
+      const skuDoc = skuDocs[index];
       const price = Number(item.unitPrice) || skuDoc.retailPrice || 0;
       const qty = Number(item.quantity) || 1;
       itemsSubtotal += price * qty;
@@ -697,8 +571,6 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
         packedScannedQty: 0,
       });
     }
-
-    if (processedItems.length === 0) continue;
 
     // Bỏ chờ kho duyệt: Tất cả đơn import hợp lệ đều được duyệt tự động và giữ chỗ tồn kho ngay
     const orderCode = await CounterSequence.getNextSequence('ORDER_CODE', 'ARA', 6);
@@ -797,6 +669,7 @@ export const processImportOrders = async (ordersData, sourceInfo, user, req) => 
     autoApprovedCount,
     pendingApprovalCount,
     orders: createdOrders,
+    rejectedOrders,
   };
 };
 

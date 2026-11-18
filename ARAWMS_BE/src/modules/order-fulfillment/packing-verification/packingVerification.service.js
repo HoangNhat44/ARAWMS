@@ -403,12 +403,13 @@ export const registerProductUnitBarcode = async ({ barcode, skuId, warehouseId, 
   const WarehouseLocation = (await import('../../../models/WarehouseLocation.model.js')).default;
   const ProductUnit = (await import('../../../models/ProductUnit.js')).default;
 
-  // Verify entities exist and are valid
+  // Verify entities exist and are valid.
+  // The SKU may be stopped from sale: labels only cover units already on hand in the batch
+  // (e.g. restocked returns), and receiving new stock into an inactive SKU is blocked elsewhere.
   const [sku, warehouse, batch] = await Promise.all([
-    Sku.findOne({ 
-      _id: skuId, 
-      isActive: true, 
-      isDeleted: { $ne: true } 
+    Sku.findOne({
+      _id: skuId,
+      isDeleted: { $ne: true }
     }).select('_id'),
     WarehouseLocation.findOne({ 
       _id: warehouseId, 

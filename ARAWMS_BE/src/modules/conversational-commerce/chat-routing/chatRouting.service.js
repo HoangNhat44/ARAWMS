@@ -3,7 +3,7 @@
  * @title        : Chat Routing Service
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-11-14
  * @description  : Thuật toán tự động phân bổ phiên chat từ khách hàng mới tới Seller
  *                 đang trực tuyến và có tải công việc thấp nhất (UC-69, Chat Routing).
  * @module       : Conversational Commerce / Chat Routing
@@ -99,6 +99,11 @@ export const processInboundWebhookMessage = async (messagingEvent, entryPageId =
     return null;
   }
 
+  // Bỏ qua nếu người gửi chính là Page (tránh vòng lặp sự kiện webhook)
+  if (senderPsid === recipientPageId || ENV.FB.PAGES[senderPsid]) {
+    return null;
+  }
+
   const messageText = messageData.text || '';
   const attachments = (messageData.attachments || []).map((att) => ({
     type: att.type,
@@ -106,6 +111,15 @@ export const processInboundWebhookMessage = async (messagingEvent, entryPageId =
   }));
   const fbMessageId = messageData.mid;
   const sentAt = messagingEvent.timestamp ? new Date(messagingEvent.timestamp) : new Date();
+
+  // Chống nhận trùng lặp tin nhắn từ Meta Webhook (Meta retries cùng fbMessageId / mid)
+  if (fbMessageId) {
+    const existingMsg = await ChatMessage.findOne({ fbMessageId });
+    if (existingMsg) {
+      console.log(`🛡️ [Deduplication Webhook] Bỏ qua tin nhắn trùng lặp từ Meta: mid ${fbMessageId}`);
+      return existingMsg;
+    }
+  }
 
   // 1. Tìm hoặc tạo Customer theo facebookPsid
   let customer = await Customer.findOne({ facebookPsid: senderPsid });

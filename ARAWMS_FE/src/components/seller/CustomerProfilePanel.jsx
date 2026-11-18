@@ -3,7 +3,7 @@
  * @title        : Customer Profile Panel (CRM, UC-75)
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-28
+ * @lastModified : 2026-11-14
  * @description  : Xem / chỉnh sửa hồ sơ khách hàng, thẻ phân loại và lịch sử tương tác.
  *                 (Refactor 2026-10-28: giao diện chỉ dùng Bootstrap / React-Bootstrap.)
  * @module       : Conversational Commerce / CRM
@@ -42,6 +42,54 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+
+  const QUICK_TAGS = ['Khách mới', 'Khách cũ', 'Khách VIP', 'Cần tư vấn'];
+
+  const handleToggleQuickTag = async (tag) => {
+    const custId = customer?._id || customer?.id;
+    if (!custId) return;
+    const currentTags = Array.isArray(customer.tags) ? [...customer.tags] : [];
+    let updatedTags;
+    if (currentTags.includes(tag)) {
+      updatedTags = currentTags.filter((t) => t !== tag);
+    } else {
+      if (tag === 'Khách mới') {
+        updatedTags = [...currentTags.filter((t) => t !== 'Khách cũ'), 'Khách mới'];
+      } else if (tag === 'Khách cũ') {
+        updatedTags = [...currentTags.filter((t) => t !== 'Khách mới'), 'Khách cũ'];
+      } else {
+        updatedTags = [...currentTags, tag];
+      }
+    }
+
+    try {
+      setSaving(true);
+      const res = await sellerService.updateCustomer(custId, { tags: updatedTags });
+      if (res.success && res.data) {
+        if (onCustomerUpdated) onCustomerUpdated(res.data);
+      }
+    } catch (err) {
+      console.warn('Lỗi gắn nhãn nhanh:', err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleFormQuickTag = (tag) => {
+    let updatedTags;
+    if (tags.includes(tag)) {
+      updatedTags = tags.filter((t) => t !== tag);
+    } else {
+      if (tag === 'Khách mới') {
+        updatedTags = [...tags.filter((t) => t !== 'Khách cũ'), 'Khách mới'];
+      } else if (tag === 'Khách cũ') {
+        updatedTags = [...tags.filter((t) => t !== 'Khách mới'), 'Khách cũ'];
+      } else {
+        updatedTags = [...tags, tag];
+      }
+    }
+    setTags(updatedTags);
+  };
 
   useEffect(() => {
     if (customer) {
@@ -134,20 +182,20 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
   return (
     <div className="d-flex flex-column h-100 small">
       {/* Customer Header Card */}
-      <Card className="mb-3" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', border: '1px solid var(--wms-border, #C8B9A6)' }}>
+      <Card className="mb-3 bg-white" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
         <Card.Body>
           <div className="d-flex align-items-center justify-content-between">
             <Stack direction="horizontal" gap={2}>
-              <Avatar name={customer.fullName} size={40} />
+              <Avatar name={customer.fullName} size={42} />
               <div>
-                <div className="fw-bold" style={{ color: 'var(--wms-text-primary, #141210)' }}>{customer.fullName}</div>
+                <div className="fw-bold" style={{ color: 'var(--wms-text-primary, #141210)', fontSize: '0.95rem' }}>{customer.fullName}</div>
                 <Stack direction="horizontal" gap={1}>
-                  <span className="badge rounded px-1.5 py-0.5" style={{ backgroundColor: '#FEF0C7', color: '#9A5B06', border: '1px solid #F5B95F', fontSize: '10px' }}>
+                  <span className="badge rounded-pill px-2 py-0.5" style={{ backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A', fontSize: '10.5px' }}>
                     {customer.customerCode || 'CHƯA_CÓ_MÃ'}
                   </span>
                   {customer.facebookPsid && (
-                    <span className="badge rounded px-1.5 py-0.5" style={{ backgroundColor: 'var(--wms-primary-subtle, #EFE6DA)', color: 'var(--wms-accent-hover, #6E5233)', border: '1px solid var(--wms-border, #C8B9A6)', fontSize: '10px' }}>
-                      Facebook Linked
+                    <span className="badge rounded-pill px-2 py-0.5" style={{ backgroundColor: 'var(--wms-primary-subtle, #EFE6DA)', color: 'var(--wms-secondary, #574F46)', border: '1px solid var(--wms-border, #C8B9A6)', fontSize: '10px' }}>
+                      Messenger Linked
                     </span>
                   )}
                 </Stack>
@@ -155,7 +203,7 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
             </Stack>
             <Button
               size="sm"
-              className="btn-wms-default"
+              className="btn-wms-default rounded-circle p-2"
               onClick={() => setIsEditing(!isEditing)}
               title={isEditing ? 'Hủy sửa' : 'Chỉnh sửa hồ sơ'}
             >
@@ -166,15 +214,15 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
           {/* Quick Customer Metrics */}
           <Row className="g-2 mt-2 text-center">
             <Col xs={6}>
-              <Card body className="py-2" style={{ backgroundColor: '#FFFFFF', border: '1px solid var(--wms-border, #C8B9A6)' }}>
-                <div style={{ color: 'var(--wms-secondary, #574F46)' }}>Tổng đơn hàng</div>
-                <div className="fw-bold fs-6" style={{ color: 'var(--wms-text-primary, #141210)' }}>{customer.totalOrders || 0} đơn</div>
+              <Card body className="py-2.5 bg-white" style={{ border: '1px solid var(--wms-border, #C8B9A6)', borderRadius: '8px' }}>
+                <div style={{ color: 'var(--wms-text-secondary, #574F46)', fontSize: '11px' }}>Tổng đơn hàng</div>
+                <div className="fw-bold fs-6 tabular-nums" style={{ color: 'var(--wms-text-primary, #141210)' }}>{customer.totalOrders || 0} đơn</div>
               </Card>
             </Col>
             <Col xs={6}>
-              <Card body className="py-2" style={{ backgroundColor: '#FFFFFF', border: '1px solid var(--wms-border, #C8B9A6)' }}>
-                <div style={{ color: 'var(--wms-secondary, #574F46)' }}>Tổng chi tiêu</div>
-                <div className="fw-bold fs-6" style={{ color: 'var(--wms-text-primary, #141210)' }}>{formatVnd(customer.totalSpent)}</div>
+              <Card body className="py-2.5 bg-white" style={{ border: '1px solid var(--wms-border, #C8B9A6)', borderRadius: '8px' }}>
+                <div style={{ color: 'var(--wms-text-secondary, #574F46)', fontSize: '11px' }}>Tổng chi tiêu</div>
+                <div className="fw-bold fs-6 tabular-nums" style={{ color: 'var(--wms-accent, #8A6A46)' }}>{formatVnd(customer.totalSpent)}</div>
               </Card>
             </Col>
           </Row>
@@ -213,8 +261,31 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
 
             <Form.Group controlId="crm-tag">
               <Form.Label className="small mb-1" style={{ color: 'var(--wms-text-primary, #141210)', fontWeight: 600 }}>Thẻ phân loại</Form.Label>
+              <div className="d-flex flex-wrap gap-1 mb-2">
+                {QUICK_TAGS.map((qTag) => {
+                  const isActive = tags.includes(qTag);
+                  return (
+                    <button
+                      key={qTag}
+                      type="button"
+                      onClick={() => handleToggleFormQuickTag(qTag)}
+                      className="btn btn-sm py-0 px-2 rounded"
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        backgroundColor: isActive ? '#FEF0C7' : '#FFFFFF',
+                        color: isActive ? '#9A5B06' : '#574F46',
+                        border: `1px solid ${isActive ? '#F5B95F' : '#C8B9A6'}`,
+                      }}
+                    >
+                      {isActive ? '✓ ' : '+ '}
+                      {qTag}
+                    </button>
+                  );
+                })}
+              </div>
               <InputGroup size="sm" className="mb-2">
-                <Form.Control placeholder="Thêm tag..." style={{ borderColor: 'var(--wms-border, #C8B9A6)' }} value={formData.tagInput} onChange={setField('tagInput')} />
+                <Form.Control placeholder="Thêm tag khác..." style={{ borderColor: 'var(--wms-border, #C8B9A6)' }} value={formData.tagInput} onChange={setField('tagInput')} />
                 <Button className="btn-wms-default" onClick={handleAddTag}><Icon name="plus-lg" /></Button>
               </InputGroup>
               <div className="d-flex flex-wrap gap-1">
@@ -246,20 +317,48 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
               {customer.addresses?.[0]?.fullAddress || 'Chưa cập nhật'}
             </InfoRow>
             <InfoRow icon="tag" label="Thẻ phân loại">
-              <div className="d-flex flex-wrap gap-1 mt-1">
-                {customer.tags && customer.tags.length > 0 ? (
-                  customer.tags.map((t) => (
-                    <span
-                      key={t}
-                      className="badge rounded px-2 py-0.5"
-                      style={{ backgroundColor: '#FEF0C7', color: '#9A5B06', border: '1px solid #F5B95F', fontSize: '11px' }}
-                    >
-                      {t}
-                    </span>
-                  ))
-                ) : (
-                  <span className="fst-italic fw-normal" style={{ color: 'var(--wms-secondary, #574F46)' }}>Chưa gắn thẻ</span>
-                )}
+              <div className="d-flex flex-column gap-1 mt-1">
+                <div className="d-flex flex-wrap gap-1">
+                  {QUICK_TAGS.map((qTag) => {
+                    const isActive = (customer.tags || []).includes(qTag);
+                    return (
+                      <button
+                        key={qTag}
+                        type="button"
+                        disabled={saving}
+                        onClick={() => handleToggleQuickTag(qTag)}
+                        className="btn btn-sm py-0 px-2 rounded"
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          backgroundColor: isActive ? '#FEF0C7' : '#FFFFFF',
+                          color: isActive ? '#9A5B06' : '#574F46',
+                          border: `1px solid ${isActive ? '#F5B95F' : '#C8B9A6'}`,
+                          cursor: 'pointer',
+                        }}
+                        title={`Bấm để ${isActive ? 'bỏ nhãn' : 'gắn nhãn'} ${qTag}`}
+                      >
+                        {isActive ? '✓ ' : '+ '}
+                        {qTag}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="d-flex flex-wrap gap-1 mt-1">
+                  {customer.tags && customer.tags.length > 0 ? (
+                    customer.tags.map((t) => (
+                      <span
+                        key={t}
+                        className="badge rounded px-2 py-0.5"
+                        style={{ backgroundColor: '#FEF0C7', color: '#9A5B06', border: '1px solid #F5B95F', fontSize: '11px' }}
+                      >
+                        {t}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="fst-italic fw-normal" style={{ color: 'var(--wms-secondary, #574F46)' }}>Chưa gắn thẻ</span>
+                  )}
+                </div>
               </div>
             </InfoRow>
 

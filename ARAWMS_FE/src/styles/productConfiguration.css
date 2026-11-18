@@ -587,8 +587,9 @@
   padding-bottom: 165px;
 }
 
-/* Buttons */
-.btn {
+/* Buttons scoped to product configuration workspace to avoid polluting global Bootstrap .btn */
+.product-workspace .btn,
+.ara-page .btn {
   min-height: 46px;
   padding: 10px 16px;
   border: 1px solid var(--ara-line);
@@ -608,26 +609,30 @@
   font-family: var(--ara-font);
 }
 
-.btn:hover:not(:disabled) {
+.product-workspace .btn:hover:not(:disabled),
+.ara-page .btn:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
-.btn.primary,
+.product-workspace .btn.primary,
+.ara-page .btn.primary,
 .btn-ara-gold {
   background: #b27718;
   border-color: #b27718;
   color: white;
 }
 
-.btn.soft,
+.product-workspace .btn.soft,
+.ara-page .btn.soft,
 .btn-ara-secondary {
   background: #f6f3f2;
   border-color: #f6f3f2;
   color: var(--ara-ink);
 }
 
-.btn.link {
+.product-workspace .btn.link,
+.ara-page .btn.link {
   border: 0;
   background: none;
   color: var(--ara-gold);
@@ -638,7 +643,8 @@
   min-height: auto;
 }
 
-.btn:disabled,
+.product-workspace .btn:disabled,
+.ara-page .btn:disabled,
 .btn-ara-gold:disabled,
 .btn-ara-secondary:disabled {
   opacity: 0.5;
@@ -1154,3 +1160,14 @@
 .catalog-sync-history { margin-top: 20px; }
 .catalog-conflict { position: fixed; inset: 5vh 4vw; z-index: 2; overflow: auto; padding: 22px; background: white; border: 1px solid #eee8e2; border-radius: 14px; box-shadow: 0 12px 50px #0003; }
 @media (max-width: 640px) { .catalog-sync-panel { padding: 16px; } .catalog-conflict { inset: 2vh 2vw; padding: 14px; } }
+/* SKU price rows: code | color / size | price | save. Color rows: color | sizes and stock | status | action. */
+.product-price-list.product-sku-prices > div { grid-template-columns: minmax(150px, 1.2fr) minmax(110px, 1fr) minmax(120px, 1fr) auto; }
+.product-price-list.product-color-list > div { grid-template-columns: minmax(120px, 1fr) minmax(160px, 2fr) auto minmax(110px, auto); }
+.product-price-list.product-color-list .ara-badge { justify-self: start; }
+@media (max-width: 900px) { .product-price-list.product-sku-prices > div, .product-price-list.product-color-list > div { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .product-price-list.product-sku-prices > div, .product-price-list.product-color-list > div { grid-template-columns: 1fr; } }
+/* Stopped SKUs that still hold stock: compact list whose SKU codes open the product. */
+.product-discontinued-list { margin: 8px 0 0; padding-left: 18px; }
+.product-discontinued-list li { margin: 2px 0; overflow-wrap: anywhere; }
+.product-link-button { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.product-link-button:disabled { cursor: default; opacity: .6; }
