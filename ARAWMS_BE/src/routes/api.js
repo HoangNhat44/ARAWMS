@@ -12,6 +12,7 @@ import codReconciliationRoutes from '../modules/financial-intelligence/cod-recon
 import debtManagementRoutes from '../modules/financial-intelligence/debt-management/debtManagement.routes.js';
 import productValuationRoutes from '../modules/financial-intelligence/product-inventory-valuation/productValuation.routes.js';
 import rawMaterialValuationRoutes from '../modules/financial-intelligence/raw-material-valuation/rawMaterialValuation.routes.js';
+import accountantDashboardRoutes from '../modules/financial-intelligence/accountant-dashboard/accountantDashboard.routes.js';
 import authRoutes from '../modules/system-administration/authentication/auth.routes.js';
 import accountRoutes from '../modules/system-administration/account-governance/accountGovernance.routes.js';
 import employeeRoutes from '../modules/user-management/employee-management/employeeManagement.routes.js';
@@ -103,6 +104,9 @@ router.use('/financial/inventory-valuation', productValuationRoutes);
 
 // Raw Material Inventory Valuation routes (Accountant UC 11 - View Total Raw Material Inventory Value)
 router.use('/financial/raw-material-valuation', rawMaterialValuationRoutes);
+
+// Accountant Dashboard Summary & Period Comparison API
+router.use('/financial/dashboard', authenticate, authorizeRole('ACCOUNTANT', 'OWNER'), accountantDashboardRoutes);
 
 // ====================================================================
 // MAJOR FEATURE 1: CONVERSATIONAL COMMERCE
