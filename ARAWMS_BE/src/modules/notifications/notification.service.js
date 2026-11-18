@@ -86,6 +86,43 @@ export const syncMissingDeviationNotifications = async () => {
           createdAt: plan.technicianVerification?.verifiedAt || plan.updatedAt || new Date(),
         });
       }
+
+      // Nếu kế hoạch đã được kế toán trình báo Owner, đảm bảo Owner có thông báo
+      if (plan.reportedToOwner?.isReported) {
+        const existingOwnerNotif = await Notification.findOne({
+          recipientRole: 'OWNER',
+          'metadata.planId': plan._id,
+        });
+
+        if (!existingOwnerNotif) {
+          const contractCodeStr = plan.contractId?.contractCode || '—';
+          const supplierNameStr = plan.supplierId?.supplierName || 'Nhà cung ứng';
+          const summary =
+            plan.technicianVerification?.deviationSummary ||
+            'Phát hiện sai lệch kiểm định KCS cần Owner phê duyệt.';
+          const targetContractId = plan.contractId?._id || plan.contractId;
+
+          await Notification.create({
+            title: `🚨 Trình báo sai lệch KCS: ${plan.planCode}`,
+            message: `Kế hoạch [${plan.planCode}] thuộc hợp đồng [${contractCodeStr}] - NCC "${supplierNameStr}" có sai lệch kiểm định KCS cần Owner xem xét phê duyệt.`,
+            type: 'CONTRACT_DEVIATION',
+            priority: 'URGENT',
+            recipientRole: 'OWNER',
+            senderRole: 'ACCOUNTANT',
+            targetUrl: `/owner/deviations/${plan._id}`,
+            metadata: {
+              planId: plan._id,
+              planCode: plan.planCode,
+              contractId: targetContractId,
+              contractCode: contractCodeStr,
+              supplierName: supplierNameStr,
+              deviationSummary: summary,
+            },
+            isRead: false,
+            createdAt: plan.reportedToOwner.reportedAt || new Date(),
+          });
+        }
+      }
     }
   } catch (err) {
     console.warn('⚠️ [Notification Sync] Lỗi khi đồng bộ sai lệch cũ:', err.message);

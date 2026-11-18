@@ -41,6 +41,11 @@ router.post(
   validatePlanIdParam,
   inboundPlanningController.verifyInboundPlanDelivery
 );
+router.post(
+  '/inbound-plans/:id/report-to-owner',
+  validatePlanIdParam,
+  inboundPlanningController.reportDeviationToOwner
+);
 router.patch(
   '/inbound-plans/:id',
   validatePlanIdParam,

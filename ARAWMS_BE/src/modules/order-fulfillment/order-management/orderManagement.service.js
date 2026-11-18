@@ -693,7 +693,7 @@ export const cancelOrder = async (orderId, cancelReason, user, req) => {
   const ghnStatus = String(order.warehouseFulfillment?.ghnStatus || '').toLowerCase().trim();
   const isPickedByCarrier =
     GHN_PICKED_UP_STATUSES.includes(ghnStatus) ||
-    ['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'COMPLETED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED'].includes(order.status);
+    ['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'COMPLETED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED', 'PARTIALLY_RETURNED', 'RETURN_FAILED'].includes(order.status);
 
   if (isPickedByCarrier) {
     throw new Error('Không thể hủy đơn hàng vì shipper đã lấy kiện hàng đi giao. Chức năng hủy đơn chỉ có thể thực hiện khi hàng chưa rời kho (trước khi shipper lấy hàng). Nếu muốn thu hồi đơn này, vui lòng liên hệ trực tiếp với bộ phận vận chuyển để hỗ trợ.');

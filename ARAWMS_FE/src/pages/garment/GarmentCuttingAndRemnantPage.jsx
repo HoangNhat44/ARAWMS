@@ -26,6 +26,7 @@ import {
 import { garmentTechnicalService } from '../../services/garmentTechnicalService';
 import RemnantReturnEntry from '../../components/RemnantReturnEntry';
 import { useAuth } from '../../hooks/useAuth';
+import { translateColorVi } from '../../utils/garmentDisplayVi';
 
 export default function GarmentCuttingAndRemnantPage() {
   const { user } = useAuth();
@@ -245,15 +246,15 @@ export default function GarmentCuttingAndRemnantPage() {
           </div>
           <div>
             <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--ara-gold)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              CẤU HÌNH HỆ THỐNG TỪ CƠ SỞ DỮ LIỆU (DATABASE)
+              CẤU HÌNH HỆ THỐNG TỪ CƠ SỞ DỮ LIỆU
             </div>
             <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--ara-noir)' }}>
               Ngưỡng thu hồi vải thừa tối thiểu: <span style={{ color: '#006c4a', fontSize: '1.3rem' }}>{threshold} mét</span>
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--ara-text-muted)', marginTop: '0.15rem' }}>
-              • Phần vải thừa <strong>≥ {threshold}m</strong>: Gửi yêu cầu nhập lại; kho xác nhận rồi mới cộng tồn và cấp mã riêng cho khúc rời.
+              • Phần vải thừa <strong>≥ {threshold} mét</strong>: Gửi yêu cầu nhập lại; kho xác nhận rồi mới cộng tồn và cấp mã riêng cho khúc rời.
               <br />
-              • Phần vải thừa <strong>&lt; {threshold}m</strong>: Ghi nhận là phế liệu/vụn vải cắt bỏ, không nhập kho.
+              • Phần vải thừa <strong>&lt; {threshold} mét</strong>: Ghi nhận là phế liệu/vụn vải cắt bỏ, không nhập kho.
             </div>
           </div>
         </div>
@@ -267,7 +268,7 @@ export default function GarmentCuttingAndRemnantPage() {
           fontWeight: 600,
           color: 'var(--ara-noir)',
         }}>
-          Nguồn dữ liệu: <code>SystemSetting.defaultFabricLeftoverThresholdMeters</code>
+          Áp dụng tự động theo cấu hình định mức xưởng
         </div>
       </div>
 
@@ -333,7 +334,7 @@ export default function GarmentCuttingAndRemnantPage() {
           <Search size={16} color="var(--ara-text-muted)" />
           <input
             type="text"
-            placeholder="Tìm theo barcode cuộn vải, phiếu xuất..."
+            placeholder="Tìm theo mã vạch cuộn vải, phiếu xuất..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{ border: 'none', outline: 'none', width: '100%', fontSize: '0.88rem' }}
@@ -347,12 +348,12 @@ export default function GarmentCuttingAndRemnantPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
             <thead>
               <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)', color: 'var(--ara-text-muted)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                <th style={{ padding: '0.85rem 1rem' }}>Mã Barcode cuộn</th>
+                <th style={{ padding: '0.85rem 1rem' }}>Mã vạch cuộn vải</th>
                 <th style={{ padding: '0.85rem 1rem' }}>Phiếu xuất gốc</th>
                 <th style={{ padding: '0.85rem 1rem' }}>Loại vải & Màu sắc</th>
                 <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Chiều dài xuất kho</th>
                 <th style={{ padding: '0.85rem 1rem' }}>Trạng thái cắt</th>
-                <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Thao tác Garment</th>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -371,7 +372,7 @@ export default function GarmentCuttingAndRemnantPage() {
                     <td style={{ padding: '1rem' }}>
                       <div style={{ fontWeight: 600, color: 'var(--ara-noir)' }}>{roll.materialName}</div>
                       <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)' }}>
-                        Mã: {roll.materialCode} · Màu: {roll.color || '—'}
+                        Mã: {roll.materialCode} · Màu: {translateColorVi(roll.color) || '—'}
                       </div>
                     </td>
                     <td style={{ padding: '1rem', textAlign: 'center', fontWeight: 700, color: 'var(--ara-gold)', fontSize: '1rem' }}>
@@ -427,8 +428,8 @@ export default function GarmentCuttingAndRemnantPage() {
                 <th style={{ padding: '0.85rem 1rem' }}>Cuộn vải & Phiếu xuất gốc</th>
                 <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Chiều dài xuất → Đã cắt</th>
                 <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Vải thừa đo được</th>
-                <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Ngưỡng áp dụng (từ DB)</th>
-                <th style={{ padding: '0.85rem 1rem' }}>Kết quả & Phiếu gửi QL kho</th>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Ngưỡng áp dụng</th>
+                <th style={{ padding: '0.85rem 1rem' }}>Kết quả & Phiếu gửi Quản lý kho</th>
                 <th style={{ padding: '0.85rem 1rem' }}>Người thực hiện</th>
               </tr>
             </thead>
@@ -448,7 +449,7 @@ export default function GarmentCuttingAndRemnantPage() {
                         </div>
                       </td>
                       <td style={{ padding: '1rem', textAlign: 'center' }}>
-                        <strong>{h.issuedLengthMeters}m</strong> → Đã cắt: <strong>{h.consumedCuttingLengthMeters}m</strong>
+                        <strong>{h.issuedLengthMeters} mét</strong> → Đã cắt: <strong>{h.consumedCuttingLengthMeters} mét</strong>
                       </td>
                       <td style={{ padding: '1rem', textAlign: 'center', fontWeight: 700, color: isRestocked ? '#006c4a' : '#5f6368', fontSize: '0.95rem' }}>
                         {h.measuredRemnantLengthMeters} mét
@@ -543,7 +544,7 @@ export default function GarmentCuttingAndRemnantPage() {
           >
             <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--ara-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--ara-gold)', textTransform: 'uppercase' }}>GARMENT TRỰC TIẾP CẮT MAY</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--ara-gold)', textTransform: 'uppercase' }}>KỸ THUẬT VIÊN CẮT MAY</span>
                 <h3 style={{ margin: '0.15rem 0 0', fontSize: '1.25rem', fontWeight: 700, color: 'var(--ara-noir)' }}>
                   Ghi nhận cắt vải & đo đạc phần thừa
                 </h3>
@@ -565,13 +566,13 @@ export default function GarmentCuttingAndRemnantPage() {
               {/* Form Inputs */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                  1. Chiều dài thực tế Garment đã cắt may (mét) *
+                  1. Chiều dài thực tế đã cắt may (mét) *
                 </label>
                 <input
                   type="number"
                   min="0"
                   step="0.1"
-                  placeholder="VD: 42.5"
+                  placeholder="Ví dụ: 42.5"
                   value={consumedCuttingLengthMeters}
                   onChange={(e) => setConsumedCuttingLengthMeters(e.target.value)}
                   style={{ width: '100%', padding: '0.65rem 0.8rem', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-sm)', fontSize: '1rem' }}
@@ -587,7 +588,7 @@ export default function GarmentCuttingAndRemnantPage() {
                   type="number"
                   min="0"
                   step="0.1"
-                  placeholder="VD: 7.5"
+                  placeholder="Ví dụ: 7.5"
                   value={measuredRemnantLengthMeters}
                   onChange={(e) => setMeasuredRemnantLengthMeters(e.target.value)}
                   style={{ width: '100%', padding: '0.65rem 0.8rem', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-sm)', fontSize: '1rem' }}
@@ -603,7 +604,7 @@ export default function GarmentCuttingAndRemnantPage() {
                   type="number"
                   min="0"
                   step="0.1"
-                  placeholder="VD: 1.8"
+                  placeholder="Ví dụ: 1.8"
                   value={measuredRemnantWeightKg}
                   onChange={(e) => setMeasuredRemnantWeightKg(e.target.value)}
                   style={{ width: '100%', padding: '0.65rem 0.8rem', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-sm)', fontSize: '0.9rem' }}
@@ -622,8 +623,8 @@ export default function GarmentCuttingAndRemnantPage() {
                     {isAboveThreshold ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
                     <span>
                       {isAboveThreshold
-                        ? `✓ ĐẠT NGƯỠNG QUY ĐỊNH (${remnantValue}m ≥ ${threshold}m)`
-                        : `⚠ DƯỚI NGƯỠNG QUY ĐỊNH (${remnantValue}m < ${threshold}m)`}
+                        ? `✓ ĐẠT NGƯỠNG QUY ĐỊNH (${remnantValue} mét ≥ ${threshold} mét)`
+                        : `⚠ DƯỚI NGƯỠNG QUY ĐỊNH (${remnantValue} mét < ${threshold} mét)`}
                     </span>
                   </div>
                   <div style={{ fontSize: '0.85rem', color: isAboveThreshold ? '#137333' : '#92400e', marginTop: '0.35rem' }}>

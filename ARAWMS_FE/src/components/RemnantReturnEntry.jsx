@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { garmentTechnicalService } from '../services/garmentTechnicalService';
+import { translateColorVi, formatStatusVi } from '../utils/garmentDisplayVi';
 
 const amount = (value) => Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 3 });
 const inputStyle = { width: '100%', padding: '.65rem', border: '1px solid var(--ara-border)', borderRadius: 8 };
@@ -84,7 +85,7 @@ export default function RemnantReturnEntry({ prefill, onChanged, currentUserId }
       setError('Nhập số mét hợp lệ, tối đa ba chữ số thập phân.'); return;
     }
     if (measured > selected.availableLengthMeters) {
-      setError(`Chỉ còn ${amount(selected.availableLengthMeters)} m có thể trả.`); return;
+      setError(`Chỉ còn ${amount(selected.availableLengthMeters)} mét có thể trả.`); return;
     }
     setBusy(true); setError('');
     try {
@@ -133,12 +134,12 @@ export default function RemnantReturnEntry({ prefill, onChanged, currentUserId }
   return <section style={{ padding: '1.2rem', marginBottom: '1.25rem', borderRadius: 12,
     border: '1px solid var(--ara-border)', background: '#fff' }} aria-label="Tạo yêu cầu nhập lại vải thừa">
     <h2 style={{ marginTop: 0 }}>Tạo yêu cầu nhập lại vải thừa</h2>
-    <p>Quét tem cây vải gốc hoặc nhập barcode. Nếu tem hỏng, chọn cây từ chi tiết phiếu xuất; nếu không xác định được nguồn, báo sai lệch cho kho.</p>
+    <p>Quét tem cây vải gốc hoặc nhập mã vạch. Nếu tem hỏng, chọn cây từ chi tiết phiếu xuất; nếu không xác định được nguồn, báo sai lệch cho kho.</p>
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-      <input aria-label="Barcode cây vải gốc" style={{ ...inputStyle, flex: '1 1 260px' }} value={barcode}
+      <input aria-label="Mã vạch cây vải gốc" style={{ ...inputStyle, flex: '1 1 260px' }} value={barcode}
         onChange={(event) => { setBarcode(event.target.value.toUpperCase()); setSource(null); setSelectedKey(''); }}
         onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); find(); } }}
-        placeholder="Quét hoặc nhập barcode cây vải" />
+        placeholder="Quét hoặc nhập mã vạch cây vải" />
       <button type="button" className="btn-ara-secondary" disabled={busy || !barcode.trim()} onClick={() => find()}>Tra nguồn</button>
       <button type="button" className="btn-ara-secondary" onClick={() => setCamera((value) => !value)}>
         {camera ? 'Tắt camera' : 'Quét bằng camera'}</button>
@@ -163,8 +164,8 @@ export default function RemnantReturnEntry({ prefill, onChanged, currentUserId }
     </div>}
     {source && <div style={{ display: 'grid', gap: 14, marginTop: 16 }}>
       <div><strong>{source.roll.barcode} · {source.roll.materialCode} {source.roll.materialName}</strong>
-        <p>Quy cách: {source.roll.color || '—'} · khổ {source.roll.widthCm || '—'} cm ·
-          {' '}GSM {source.roll.gsm || '—'} · Nhà cung cấp: {source.roll.supplierName || 'Chưa lưu'} ·
+        <p>Quy cách: {translateColorVi(source.roll.color) || '—'} · khổ {source.roll.widthCm || '—'} cm ·
+          {' '}định lượng {source.roll.gsm ? `${source.roll.gsm} g/m²` : '—'} · Nhà cung cấp: {source.roll.supplierName || 'Chưa lưu'} ·
           {' '}Lô nhập: {source.roll.supplierLotCode || source.roll.originalInboundCode || 'Chưa lưu'}</p></div>
       <div><strong>Chọn đúng lần xuất</strong><div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
         {source.issues.map((issue) => {
@@ -173,15 +174,15 @@ export default function RemnantReturnEntry({ prefill, onChanged, currentUserId }
             <input type="radio" name="return-issue" checked={selectedKey === key} onChange={() => choose(issue)} />
             {' '}<strong>{issue.outboundTicketCode}</strong> · {issue.issueDate ? new Date(issue.issueDate).toLocaleString('vi-VN') : '—'}
             {' '}· {issue.productionOrder || 'Chưa có lệnh sản xuất'} · dòng {issue.outboundLineIndex + 1}, cây {issue.outboundSourceIndex + 1}
-            <br />Đã xuất {amount(issue.issuedLengthMeters)} m · Đã nhận lại {amount(issue.returnedLengthMeters)} m
-            {' '}· Chờ xử lý {amount(issue.pendingLengthMeters)} m · Còn có thể trả {amount(issue.availableLengthMeters)} m
+            <br />Đã xuất {amount(issue.issuedLengthMeters)} mét · Đã nhận lại {amount(issue.returnedLengthMeters)} mét
+            {' '}· Chờ xử lý {amount(issue.pendingLengthMeters)} mét · Còn có thể trả {amount(issue.availableLengthMeters)} mét
             {issue.scrapped && <strong> · Phế liệu đã chốt</strong>}
           </label>;
         })}
       </div></div>
       {selected && <form onSubmit={submit} style={{ display: 'grid', gap: 12, maxWidth: 650 }}>
-        <p style={{ margin: 0 }}>Ngưỡng thu hồi hiện tại: <strong>{amount(threshold)} m</strong>.</p>
-        <label>Chiều dài vải thừa thực tế (m)<input style={inputStyle} type="number" min="0" step="0.001"
+        <p style={{ margin: 0 }}>Ngưỡng thu hồi hiện tại: <strong>{amount(threshold)} mét</strong>.</p>
+        <label>Chiều dài vải thừa thực tế (mét)<input style={inputStyle} type="number" min="0" step="0.001"
           value={length} onChange={(event) => setLength(event.target.value)} required /></label>
         {qualifies && <><label>Vải trả là
           <select style={inputStyle} value={returnKind} onChange={(event) => setReturnKind(event.target.value)}>
@@ -199,7 +200,7 @@ export default function RemnantReturnEntry({ prefill, onChanged, currentUserId }
           </div>}</>}
         <label>Ghi chú tình trạng vải<input style={inputStyle} maxLength={500} value={conditionNote}
           onChange={(event) => setConditionNote(event.target.value)} /></label>
-        {!qualifies && length !== '' && <p style={{ color: '#9a5b06' }}>Dưới ngưỡng {amount(threshold)} m: ghi nhận phế liệu, không tạo yêu cầu nhập.</p>}
+        {!qualifies && length !== '' && <p style={{ color: '#9a5b06' }}>Dưới ngưỡng {amount(threshold)} mét: ghi nhận phế liệu, không tạo yêu cầu nhập.</p>}
         <button type="submit" className="btn-ara-primary" disabled={busy || selected.availableLengthMeters <= 0}>
           {busy ? 'Đang gửi...' : qualifies ? 'Gửi yêu cầu nhập lại' : 'Chốt phế liệu'}</button>
       </form>}
@@ -210,12 +211,12 @@ export default function RemnantReturnEntry({ prefill, onChanged, currentUserId }
         borderBottom: '1px solid var(--ara-border)', display: 'flex', flexWrap: 'wrap', gap: 8,
         justifyContent: 'space-between' }}>
         <span>{request.requestCode} · {request.sourceBarcode || request.originalRollId?.rollBarcode} ·
-          {' '}{amount(request.measuredRemnantLengthMeters)} m · {request.status === 'WAITING_WAREHOUSE_CONFIRMATION'
+          {' '}{amount(request.measuredRemnantLengthMeters)} mét · {request.status === 'WAITING_WAREHOUSE_CONFIRMATION'
             ? 'Chờ kho xác nhận' : request.status === 'DISCREPANCY_REPORTED'
               ? `Sai lệch: ${request.discrepancyReason || 'Cần kiểm tra'}` : request.status === 'RESTOCKED'
                 ? 'Đã xếp kệ' : request.status === 'WAITING_PUTAWAY_SCAN'
                   ? 'Chờ xếp kệ' : request.status === 'SCRAPPED_BELOW_THRESHOLD'
-                    ? 'Phế liệu' : request.status}</span>
+                    ? 'Phế liệu' : formatStatusVi(request.status)}</span>
         {['WAITING_WAREHOUSE_CONFIRMATION', 'DISCREPANCY_REPORTED'].includes(request.status) &&
           <button type="button" disabled={busy} onClick={() => cancel(request)}>Hủy để gửi lại</button>}
       </div>)}

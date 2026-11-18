@@ -28,7 +28,7 @@ export const getSupplierDebtOverview = async () => {
       supplierId: { $ne: null },
     }).lean(),
     MaterialInboundPlan.find({
-      status: { $in: ['VERIFIED_MATCHED', 'DEVIATION_RESOLVED', 'SCHEDULED', 'IN_INSPECTION'] },
+      status: { $in: ['VERIFIED_MATCHED', 'SCHEDULED', 'IN_INSPECTION'] },
     }).lean(),
   ]);
 
@@ -197,7 +197,7 @@ export const getSupplierDebtLedger = async (supplierId) => {
     }).lean(),
     MaterialInboundPlan.find({
       supplierId,
-      status: { $in: ['VERIFIED_MATCHED', 'DEVIATION_RESOLVED'] },
+      status: { $in: ['VERIFIED_MATCHED'] },
     }).lean(),
   ]);
 

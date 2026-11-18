@@ -74,6 +74,26 @@ export const validateSupplierForm = (formData) => {
   };
 };
 
+export const isRollFabricLine = (item) => {
+  if (!item) return false;
+  if (item.category === 'FABRIC_ROLL' || item.materialType === 'FABRIC') return true;
+  if (item.rawMaterialId?.category === 'FABRIC_ROLL' || item.rawMaterialId?.materialType === 'FABRIC') return true;
+  if (Array.isArray(item.rollDetails) && item.rollDetails.length > 0) return true;
+  const unit = String(
+    item.unitSnapshot || item.unit || item.rawMaterialId?.unit || ''
+  ).toUpperCase();
+  if (['METER', 'MET', 'M', 'ROLL', 'CUON', 'CAY', 'YARD', 'YD', 'CAY_VAI', 'CUON_VAI', 'KG', 'KILOGRAM'].includes(unit)) return true;
+  const name = String(
+    item.materialNameSnapshot || item.materialName || item.rawMaterialId?.materialName || ''
+  ).toLowerCase().normalize('NFC');
+  const code = String(
+    item.materialCodeSnapshot || item.materialCode || item.rawMaterialId?.materialCode || ''
+  ).toLowerCase();
+  const fabricKeywords = ['vải', 'vai', 'thun', 'cotton', 'kaki', 'chiffon', 'silk', 'denim', 'linen', 'spandex', 'viscose', 'modal', 'poly', 'kate', 'jean', 'dệt'];
+  if (fabricKeywords.some((kw) => name.includes(kw) || code.includes(kw))) return true;
+  return false;
+};
+
 export const validateContractForm = (contractForm) => {
   const errors = {};
   const materialErrors = {};
@@ -134,7 +154,7 @@ export const validateContractForm = (contractForm) => {
       if (!Number.isFinite(qty) || qty <= 0) {
         lineErr.contractedQty = 'Số lượng ký phải > 0.';
       }
-      const isFabric = item.category === 'FABRIC_ROLL' || item.materialType === 'FABRIC' || ['METER', 'MET', 'M'].includes(item.unitSnapshot);
+      const isFabric = isRollFabricLine(item);
       if (isFabric && Array.isArray(item.rollDetails) && item.rollDetails.length > 0) {
         const hasInvalidRoll = item.rollDetails.some(
           (r) =>

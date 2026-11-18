@@ -1,7 +1,7 @@
 export const ROLE_HOME = new Map([
   ['OWNER', '/owner/dashboard'],
   ['WAREHOUSE_MANAGER', '/warehouse/raw-materials/inbound'],
-  ['GARMENT_TECHNICIAN', '/garment/material-inbound-verification'],
+  ['GARMENT_TECHNICIAN', '/garment/dashboard'],
   ['WAREHOUSE_STAFF', '/warehouse/putaway'],
   ['SELLER', '/seller/chat'],
   ['ACCOUNTANT', '/accountant'],

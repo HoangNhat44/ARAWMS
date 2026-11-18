@@ -41,6 +41,7 @@ import {
   Boxes,
 } from 'lucide-react';
 import garmentTechnicalService from '../../services/garmentTechnicalService';
+import { formatUnitVi, translateColorVi } from '../../utils/garmentDisplayVi';
 
 export default function GarmentRawMaterialsPage() {
   // Tab: 'MATERIALS' | 'CATEGORIES'
@@ -178,7 +179,7 @@ export default function GarmentRawMaterialsPage() {
         setCategoriesList(res.data);
       }
     } catch (err) {
-      showAlert('error', err.message || 'Lỗi khi tải danh mục NPL');
+      showAlert('error', err.message || 'Lỗi khi tải danh mục nguyên phụ liệu');
     } finally {
       setCategoryLoading(false);
     }
@@ -243,7 +244,7 @@ export default function GarmentRawMaterialsPage() {
     }
 
     if (form.materialType === 'FABRIC' && form.unit !== 'METER') {
-      setFormError('Nguyên phụ liệu loại Vải bắt buộc có đơn vị tính là Mét (METER)');
+      setFormError('Nguyên phụ liệu loại Vải bắt buộc có đơn vị tính là Mét');
       return;
     }
 
@@ -472,7 +473,7 @@ export default function GarmentRawMaterialsPage() {
             Kho & Danh Mục Nguyên Phụ Liệu
           </h1>
           <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.92rem', margin: '0.35rem 0 0', maxWidth: '880px' }}>
-            Quản lý danh mục phân loại và hồ sơ nguyên vật liệu, cấu hình khổ vải, GSM, màu sắc, đơn giá vốn tham chiếu và dọn dẹp đồng bộ cấu hình kho khi xóa nguyên phụ liệu.
+            Quản lý danh mục phân loại và hồ sơ nguyên vật liệu, cấu hình khổ vải, định lượng (g/m²), màu sắc, đơn giá vốn tham chiếu và dọn dẹp đồng bộ cấu hình kho khi xóa nguyên phụ liệu.
           </p>
         </div>
 
@@ -576,7 +577,7 @@ export default function GarmentRawMaterialsPage() {
                 {stats.totalMaterials}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-light)', marginTop: '0.2rem' }}>
-                Trong danh mục kho NPL
+                Trong danh mục kho nguyên phụ liệu
               </div>
             </div>
 
@@ -588,7 +589,7 @@ export default function GarmentRawMaterialsPage() {
                 {stats.fabricMaterials}
               </div>
               <div style={{ fontSize: '0.75rem', color: '#3B82F6', marginTop: '0.2rem' }}>
-                Quản lý theo cuộn, mét, khổ, GSM
+                Quản lý theo cuộn, mét, khổ vải, định lượng
               </div>
             </div>
 
@@ -653,7 +654,7 @@ export default function GarmentRawMaterialsPage() {
               <Search size={17} color="var(--ara-text-muted)" />
               <input
                 type="text"
-                placeholder="Tìm theo mã NPL, tên vật tư, màu sắc..."
+                placeholder="Tìm theo mã nguyên phụ liệu, tên vật tư, màu sắc..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && fetchMaterials()}
@@ -671,9 +672,9 @@ export default function GarmentRawMaterialsPage() {
                 }}
                 style={{ padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.86rem', background: '#FFFFFF' }}
               >
-                <option value="ALL">Tất cả loại NPL</option>
-                <option value="FABRIC">Chỉ xem Vải (FABRIC)</option>
-                <option value="AUXILIARY">Chỉ xem Phụ liệu (AUXILIARY)</option>
+                <option value="ALL">Tất cả loại nguyên phụ liệu</option>
+                <option value="FABRIC">Chỉ xem Vải</option>
+                <option value="AUXILIARY">Chỉ xem Phụ liệu</option>
               </select>
 
               <select
@@ -737,9 +738,9 @@ export default function GarmentRawMaterialsPage() {
               <table className="table-ara" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)', color: 'var(--ara-text-muted)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    <th style={{ padding: '0.85rem 1rem' }}>Mã NPL</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Mã Nguyên Phụ Liệu</th>
                     <th style={{ padding: '0.85rem 1rem' }}>Tên Nguyên Phụ Liệu</th>
-                    <th style={{ padding: '0.85rem 1rem' }}>Phân Loại & ĐVT</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Phân Loại & Đơn Vị</th>
                     <th style={{ padding: '0.85rem 1rem' }}>Quy Cách Kỹ Thuật</th>
                     <th style={{ padding: '0.85rem 1rem' }}>Nhà Cung Cấp</th>
                     <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Tồn Kho Thực Tế</th>
@@ -810,14 +811,14 @@ export default function GarmentRawMaterialsPage() {
                             {item.materialType === 'FABRIC' ? 'Vải' : 'Phụ liệu'}
                           </span>
                           <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)' }}>
-                            ĐVT: <strong>{item.unit}</strong>
+                            Đơn vị: <strong>{formatUnitVi(item.unit)}</strong>
                           </div>
                         </td>
 
                         <td style={{ padding: '0.85rem 1rem', fontSize: '0.82rem' }}>
-                          {item.color && <div>Màu: <strong>{item.color}</strong></div>}
+                          {item.color && <div>Màu: <strong>{translateColorVi(item.color)}</strong></div>}
                           {item.widthCm && <div>Khổ: {item.widthCm} cm</div>}
-                          {item.gsm && <div>GSM: {item.gsm} g/m²</div>}
+                          {item.gsm && <div>Định lượng: {item.gsm} g/m²</div>}
                           {!item.color && !item.widthCm && !item.gsm && (
                             <span style={{ color: 'var(--ara-text-light)' }}>Tiêu chuẩn</span>
                           )}
@@ -837,7 +838,7 @@ export default function GarmentRawMaterialsPage() {
                         </td>
 
                         <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 600 }}>
-                          {item.onHandQty || 0} {item.unit}
+                          {item.onHandQty || 0} {formatUnitVi(item.unit)}
                           {Number(item.pendingPutawayQty) > 0 && (
                             <div style={{ fontSize: '0.72rem', color: '#B45309' }}>
                               (+{item.pendingPutawayQty} chờ cất)
@@ -855,7 +856,7 @@ export default function GarmentRawMaterialsPage() {
                             gap: '0.3rem',
                           }}>
                             {item.isLowStock && <AlertTriangle size={13} />}
-                            {item.availableQty} {item.unit}
+                            {item.availableQty} {formatUnitVi(item.unit)}
                           </div>
                           <div style={{ fontSize: '0.72rem', color: 'var(--ara-text-muted)' }}>
                             Định mức: {item.safetyStockThreshold}
@@ -893,7 +894,7 @@ export default function GarmentRawMaterialsPage() {
                               type="button"
                               className="btn-icon"
                               onClick={() => handleOpenEdit(item)}
-                              title="Chỉnh sửa thông số NPL"
+                              title="Chỉnh sửa thông số nguyên phụ liệu"
                               style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid var(--ara-border)', background: '#FFFFFF', cursor: 'pointer' }}
                             >
                               <Edit3 size={15} color="var(--ara-gold)" />
@@ -902,7 +903,7 @@ export default function GarmentRawMaterialsPage() {
                               type="button"
                               className="btn-icon"
                               onClick={() => handleToggleStatus(item)}
-                              title={item.isActive ? "Chuyển sang Ngừng sử dụng" : "Kích hoạt lại NPL"}
+                              title={item.isActive ? "Chuyển sang Ngừng sử dụng" : "Kích hoạt lại nguyên phụ liệu"}
                               style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid var(--ara-border)', background: '#FFFFFF', cursor: 'pointer' }}
                             >
                               {item.isActive ? <ToggleRight size={16} color="#059669" /> : <ToggleLeft size={16} color="#9CA3AF" />}
@@ -911,7 +912,7 @@ export default function GarmentRawMaterialsPage() {
                               type="button"
                               className="btn-icon"
                               onClick={() => setDeletingMaterial(item)}
-                              title="Xóa triệt để NPL (dọn dẹp cấu hình kho & lệnh xuất)"
+                              title="Xóa nguyên phụ liệu (dọn dẹp cấu hình kho & lệnh xuất)"
                               style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid #FECACA', background: '#FEF2F2', cursor: 'pointer' }}
                             >
                               <Trash2 size={15} color="#DC2626" />
@@ -1002,7 +1003,7 @@ export default function GarmentRawMaterialsPage() {
                     <th style={{ padding: '0.85rem 1.1rem' }}>Mã Danh Mục</th>
                     <th style={{ padding: '0.85rem 1.1rem' }}>Tên Danh Mục</th>
                     <th style={{ padding: '0.85rem 1.1rem' }}>Phân Loại</th>
-                    <th style={{ padding: '0.85rem 1.1rem', textAlign: 'center' }}>Số Lượng NPL Chứa</th>
+                    <th style={{ padding: '0.85rem 1.1rem', textAlign: 'center' }}>Số Lượng Nguyên Phụ Liệu</th>
                     <th style={{ padding: '0.85rem 1.1rem' }}>Mô Tả Danh Mục</th>
                     <th style={{ padding: '0.85rem 1.1rem', textAlign: 'right' }}>Thao Tác</th>
                   </tr>
@@ -1067,9 +1068,9 @@ export default function GarmentRawMaterialsPage() {
                                   alignItems: 'center',
                                   gap: '0.3rem',
                                 }}
-                                title="Bấm để xem danh sách các NPL của danh mục này"
+                                title="Bấm để xem danh sách các nguyên phụ liệu của danh mục này"
                               >
-                                {cat.itemCount} NPL <ArrowRight size={12} />
+                                {cat.itemCount} mặt hàng <ArrowRight size={12} />
                               </button>
                             ) : (
                               <span style={{
@@ -1080,7 +1081,7 @@ export default function GarmentRawMaterialsPage() {
                                 fontSize: '0.78rem',
                                 fontWeight: 700,
                               }}>
-                                0 NPL (Trống)
+                                0 mặt hàng (Trống)
                               </span>
                             )}
                           </td>
@@ -1105,7 +1106,7 @@ export default function GarmentRawMaterialsPage() {
                                 type="button"
                                 className="btn-icon"
                                 onClick={() => setDeletingCategory(cat)}
-                                title={hasItems ? `Còn ${cat.itemCount} NPL. Phải xóa hết NPL trước khi xóa danh mục!` : "Xóa danh mục"}
+                                title={hasItems ? `Còn ${cat.itemCount} mặt hàng. Phải xóa hết nguyên phụ liệu trước khi xóa danh mục!` : "Xóa danh mục"}
                                 style={{
                                   padding: '0.35rem',
                                   borderRadius: '4px',
@@ -1218,7 +1219,7 @@ export default function GarmentRawMaterialsPage() {
                             checked={form.materialType === 'FABRIC'}
                             onChange={() => handleTypeChange('FABRIC')}
                           />
-                          Vải (FABRIC)
+                          Vải
                         </label>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.9rem' }}>
                           <input
@@ -1227,7 +1228,7 @@ export default function GarmentRawMaterialsPage() {
                             checked={form.materialType === 'AUXILIARY'}
                             onChange={() => handleTypeChange('AUXILIARY')}
                           />
-                          Phụ liệu (AUXILIARY)
+                          Phụ liệu
                         </label>
                       </div>
                     </div>
@@ -1255,7 +1256,7 @@ export default function GarmentRawMaterialsPage() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                        Mã NPL (để trống tự sinh mã):
+                        Mã nguyên phụ liệu (để trống tự sinh mã):
                       </label>
                       <input
                         type="text"
@@ -1295,7 +1296,7 @@ export default function GarmentRawMaterialsPage() {
                         <div>
                           <input
                             type="text"
-                            value="METER (Mét)"
+                            value="Mét"
                             disabled
                             style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', background: '#F3F4F6', color: '#6B7280', fontSize: '0.9rem', fontWeight: 600 }}
                           />
@@ -1344,7 +1345,7 @@ export default function GarmentRawMaterialsPage() {
 
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                        Định lượng GSM (g/m²):
+                        Định lượng vải (g/m²):
                       </label>
                       <input
                         type="number"
@@ -1396,7 +1397,7 @@ export default function GarmentRawMaterialsPage() {
                     gap: '0.45rem',
                   }}>
                     <Info size={15} color="#94A3B8" />
-                    <span>Lưu ý: Định mức tồn kho, đơn giá vốn tham chiếu và nhà cung cấp do Chủ xưởng (Owner) trực tiếp cấu hình.</span>
+                    <span>Lưu ý: Định mức tồn kho, đơn giá vốn tham chiếu và nhà cung cấp do Chủ doanh nghiệp trực tiếp cấu hình.</span>
                   </div>
                 </div>
               </div>
@@ -1424,7 +1425,7 @@ export default function GarmentRawMaterialsPage() {
                   style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
                 >
                   {actionLoading ? <RefreshCw size={15} className="spinning" /> : <CheckCircle2 size={15} />}
-                  {editingMaterial ? 'Lưu cập nhật NPL' : 'Tạo mới NPL'}
+                  {editingMaterial ? 'Lưu cập nhật nguyên phụ liệu' : 'Tạo mới nguyên phụ liệu'}
                 </button>
               </div>
             </form>
@@ -1501,7 +1502,7 @@ export default function GarmentRawMaterialsPage() {
                 <div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', textTransform: 'uppercase' }}>Khả dụng cho may</div>
                   <div style={{ fontSize: '1.45rem', fontWeight: 700, color: viewingMaterial.isLowStock ? '#DC2626' : '#047857' }}>
-                    {viewingMaterial.availableQty} {viewingMaterial.unit}
+                    {viewingMaterial.availableQty} {formatUnitVi(viewingMaterial.unit)}
                   </div>
                   {viewingMaterial.isLowStock && (
                     <div style={{ fontSize: '0.72rem', color: '#B91C1C', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '2px' }}>
@@ -1513,21 +1514,21 @@ export default function GarmentRawMaterialsPage() {
                 <div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', textTransform: 'uppercase' }}>Tồn thực tế trong kho</div>
                   <div style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--ara-noir)' }}>
-                    {viewingMaterial.onHandQty || 0} {viewingMaterial.unit}
+                    {viewingMaterial.onHandQty || 0} {formatUnitVi(viewingMaterial.unit)}
                   </div>
                 </div>
 
                 <div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', textTransform: 'uppercase' }}>Chờ cất vào kệ</div>
                   <div style={{ fontSize: '1.45rem', fontWeight: 700, color: '#B45309' }}>
-                    {viewingMaterial.pendingPutawayQty || 0} {viewingMaterial.unit}
+                    {viewingMaterial.pendingPutawayQty || 0} {formatUnitVi(viewingMaterial.unit)}
                   </div>
                 </div>
 
                 <div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--ara-text-muted)', textTransform: 'uppercase' }}>Đang giữ chỗ lệnh xuất</div>
                   <div style={{ fontSize: '1.45rem', fontWeight: 700, color: '#4B5563' }}>
-                    {viewingMaterial.reservedQty || 0} {viewingMaterial.unit}
+                    {viewingMaterial.reservedQty || 0} {formatUnitVi(viewingMaterial.unit)}
                   </div>
                 </div>
               </div>
@@ -1541,29 +1542,29 @@ export default function GarmentRawMaterialsPage() {
               }}>
                 <div style={{ background: '#F9FAFB', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)' }}>
                   <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.75rem' }}>Phân loại & Danh mục</span>
-                  <strong>{viewingMaterial.materialType === 'FABRIC' ? 'Vải (FABRIC)' : 'Phụ liệu (AUXILIARY)'}</strong>
+                  <strong>{viewingMaterial.materialType === 'FABRIC' ? 'Vải' : 'Phụ liệu'}</strong>
                   <div style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)' }}>{getCategoryLabel(viewingMaterial.category)}</div>
                 </div>
 
                 <div style={{ background: '#F9FAFB', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)' }}>
                   <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.75rem' }}>Quy cách kỹ thuật</span>
-                  <div>Màu: <strong>{viewingMaterial.color || 'Tiêu chuẩn'}</strong></div>
+                  <div>Màu: <strong>{translateColorVi(viewingMaterial.color) || 'Tiêu chuẩn'}</strong></div>
                   <div>Khổ: <strong>{viewingMaterial.widthCm ? `${viewingMaterial.widthCm} cm` : '—'}</strong></div>
-                  <div>GSM: <strong>{viewingMaterial.gsm ? `${viewingMaterial.gsm} g/m²` : '—'}</strong></div>
+                  <div>Định lượng: <strong>{viewingMaterial.gsm ? `${viewingMaterial.gsm} g/m²` : '—'}</strong></div>
                 </div>
 
                 <div style={{ background: '#F9FAFB', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)' }}>
                   <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.75rem' }}>Định mức & Giá vốn</span>
                   <div>Đơn giá vốn: <strong>{formatCurrency(viewingMaterial.unitCost)}</strong></div>
-                  <div>Tồn an toàn: <strong>{viewingMaterial.safetyStockThreshold} {viewingMaterial.unit}</strong></div>
-                  <div>Ngưỡng FIFO: <strong>{viewingMaterial.fifoAgingThresholdDays} ngày</strong></div>
+                  <div>Tồn an toàn: <strong>{viewingMaterial.safetyStockThreshold} {formatUnitVi(viewingMaterial.unit)}</strong></div>
+                  <div>Ngưỡng lưu kho (nhập trước - xuất trước): <strong>{viewingMaterial.fifoAgingThresholdDays} ngày</strong></div>
                 </div>
 
                 <div style={{ background: '#F9FAFB', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)' }}>
                   <span style={{ color: 'var(--ara-text-muted)', display: 'block', fontSize: '0.75rem' }}>Nhà cung cấp</span>
                   <strong>{viewingMaterial.supplierId?.supplierName || 'Chưa liên kết'}</strong>
                   {viewingMaterial.supplierId?.phone && (
-                    <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)' }}>SĐT: {viewingMaterial.supplierId.phone}</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)' }}>Số điện thoại: {viewingMaterial.supplierId.phone}</div>
                   )}
                 </div>
               </div>
@@ -1580,7 +1581,7 @@ export default function GarmentRawMaterialsPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
                   <Info size={16} color="var(--ara-gold)" />
                   <span>
-                    Mặt hàng này đang liên kết với <strong>{viewingMaterial.activeLotsCount || 0}</strong> lô kho (Lots) và <strong>{viewingMaterial.activeRollsCount || 0}</strong> cuộn vải trong hệ thống WMS.
+                    Mặt hàng này đang liên kết với <strong>{viewingMaterial.activeLotsCount || 0}</strong> lô kho và <strong>{viewingMaterial.activeRollsCount || 0}</strong> cuộn vải trong hệ thống quản lý kho.
                   </span>
                 </div>
               </div>
@@ -1616,7 +1617,7 @@ export default function GarmentRawMaterialsPage() {
                   cursor: 'pointer',
                   marginRight: 'auto',
                 }}
-                title="Xóa triệt để NPL"
+                title="Xóa nguyên phụ liệu"
               >
                 <Trash2 size={15} /> Xóa nguyên phụ liệu
               </button>
@@ -1694,10 +1695,10 @@ export default function GarmentRawMaterialsPage() {
               }}>
                 <div style={{ fontWeight: 700, color: 'var(--ara-noir)' }}>{deletingMaterial.materialName}</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)', marginTop: '2px' }}>
-                  Mã NPL: <strong>{deletingMaterial.materialCode}</strong> · Danh mục: {getCategoryLabel(deletingMaterial.category)}
+                  Mã nguyên phụ liệu: <strong>{deletingMaterial.materialCode}</strong> · Danh mục: {getCategoryLabel(deletingMaterial.category)}
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)' }}>
-                  Tồn kho hiện tại: <strong>{deletingMaterial.onHandQty || 0} {deletingMaterial.unit}</strong>
+                  Tồn kho hiện tại: <strong>{deletingMaterial.onHandQty || 0} {formatUnitVi(deletingMaterial.unit)}</strong>
                 </div>
               </div>
 
@@ -1713,7 +1714,7 @@ export default function GarmentRawMaterialsPage() {
                 <ul style={{ margin: '0.35rem 0 0', paddingLeft: '1.2rem' }}>
                   <li>Mặt hàng này sẽ <strong>mất hoàn toàn</strong> khỏi kho nguyên phụ liệu.</li>
                   <li>Cấu hình kho (lô tồn kho, cuộn vải) của mặt hàng này sẽ được <strong>xóa và giải phóng ô kệ</strong>.</li>
-                  <li>Các dòng vật tư tương ứng trong các <strong>lệnh xuất NPL (DRAFT)</strong> cũng sẽ được tự động dọn dẹp sạch sẽ.</li>
+                  <li>Các dòng vật tư tương ứng trong các <strong>lệnh xuất nguyên phụ liệu (nháp)</strong> cũng sẽ được tự động dọn dẹp sạch sẽ.</li>
                 </ul>
               </div>
             </div>
@@ -1844,7 +1845,7 @@ export default function GarmentRawMaterialsPage() {
                           checked={categoryForm.materialType === 'FABRIC'}
                           onChange={() => setCategoryForm({ ...categoryForm, materialType: 'FABRIC' })}
                         />
-                        Nhóm Vải (FABRIC)
+                        Nhóm Vải
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.9rem' }}>
                         <input
@@ -1853,7 +1854,7 @@ export default function GarmentRawMaterialsPage() {
                           checked={categoryForm.materialType === 'AUXILIARY'}
                           onChange={() => setCategoryForm({ ...categoryForm, materialType: 'AUXILIARY' })}
                         />
-                        Nhóm Phụ liệu (AUXILIARY)
+                        Nhóm Phụ liệu
                       </label>
                     </div>
                   </div>
@@ -1950,7 +1951,7 @@ export default function GarmentRawMaterialsPage() {
             }}>
               <AlertTriangle size={22} color={(deletingCategory.itemCount || 0) > 0 ? '#DC2626' : '#B45309'} />
               <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0 }}>
-                {(deletingCategory.itemCount || 0) > 0 ? 'Chặn Xóa Danh Mục NPL' : 'Xác Nhận Xóa Danh Mục NPL'}
+                {(deletingCategory.itemCount || 0) > 0 ? 'Chặn Xóa Danh Mục Nguyên Phụ Liệu' : 'Xác Nhận Xóa Danh Mục Nguyên Phụ Liệu'}
               </h3>
             </div>
 
@@ -1982,7 +1983,7 @@ export default function GarmentRawMaterialsPage() {
                 }}>
                   <strong>* Quy định an toàn hệ thống:</strong>
                   <p style={{ margin: '0.35rem 0 0' }}>
-                    Danh mục này vẫn còn <strong>{deletingCategory.itemCount} nguyên phụ liệu</strong>. Bạn phải <strong>xóa hết tất cả {deletingCategory.itemCount} nguyên phụ liệu này</strong> trong tab "Kho & Danh sách NPL" trước khi được phép xóa danh mục!
+                    Danh mục này vẫn còn <strong>{deletingCategory.itemCount} nguyên phụ liệu</strong>. Bạn phải <strong>xóa hết tất cả {deletingCategory.itemCount} nguyên phụ liệu này</strong> trong mục "Danh sách Nguyên Phụ Liệu" trước khi được phép xóa danh mục!
                   </p>
                 </div>
               ) : (
@@ -2019,7 +2020,7 @@ export default function GarmentRawMaterialsPage() {
                   }}
                   style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                 >
-                  <ArrowRight size={15} /> Đi tới xóa NPL trong danh mục này
+                  <ArrowRight size={15} /> Đi tới xóa nguyên phụ liệu trong danh mục này
                 </button>
               ) : (
                 <button

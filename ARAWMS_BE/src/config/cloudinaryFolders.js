@@ -12,4 +12,6 @@ export const ARASTORE_CLOUDINARY_FOLDERS = Object.freeze({
   productVideos: `${ARASTORE_CLOUDINARY_ROOT}/video-mau-san-pham`,
   packingVideos: `${ARASTORE_CLOUDINARY_ROOT}/video-dong-hang`,
   packingVideoAssetFolder: 'Arastore/video-dong-hang',
+  returnInspectionVideos: `${ARASTORE_CLOUDINARY_ROOT}/video-hang-hoan`,
+  returnInspectionVideoAssetFolder: 'Arastore/video-hang-hoan',
 });

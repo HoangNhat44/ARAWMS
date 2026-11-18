@@ -182,10 +182,14 @@ export async function verifyShelfLocation(sessionId, shelfBarcode) {
     const newRecords = [];
 
     // Snapshot Finished Goods
-    if (location.warehouseType === 'FINISHED_GOODS' || session.warehouseType === 'ALL') {
+    if (
+      location.warehouseType === 'FINISHED_GOODS' ||
+      location.warehouseType === 'DEFECT_QUARANTINE' ||
+      session.warehouseType === 'ALL'
+    ) {
       const productUnits = await ProductUnit.find({
         warehouseId: location._id,
-        inventoryStatus: { $in: ['AVAILABLE', 'UNAVAILABLE'] },
+        inventoryStatus: { $in: ['AVAILABLE', 'UNAVAILABLE', 'DEFECTIVE'] },
       }).lean();
 
       for (const unit of productUnits) {

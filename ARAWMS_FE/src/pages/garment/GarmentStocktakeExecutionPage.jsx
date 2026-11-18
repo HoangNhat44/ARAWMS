@@ -30,6 +30,7 @@ import {
   X,
 } from 'lucide-react';
 import { garmentTechnicalService } from '../../services/garmentTechnicalService';
+import { translateProductNameVi, translateColorVi, formatUnitVi } from '../../utils/garmentDisplayVi';
 import '../../styles/warehousePutaway.css';
 
 // Audio feedback helper for scanner beeps
@@ -203,7 +204,7 @@ export default function GarmentStocktakeExecutionPage() {
       setSessionRecords(shelfRecs);
 
       playBeep(true);
-      setNotice(`✓ Đã xác nhận Kệ: ${data.location.locationCode} (${data.location.zoneCode} · Kệ ${data.location.rackCode} · Tầng ${data.location.shelfCode}). Hãy quét barcode sản phẩm trên kệ.`);
+      setNotice(`✓ Đã xác nhận Kệ: ${data.location.locationCode} (${data.location.zoneCode} · Kệ ${data.location.rackCode} · Tầng ${data.location.shelfCode}). Hãy quét mã vạch sản phẩm trên kệ.`);
       setManualCode('');
       setTimeout(() => manualInputRef.current?.focus(), 200);
     } catch (err) {
@@ -225,7 +226,7 @@ export default function GarmentStocktakeExecutionPage() {
     lockedRef.current = true;
     setBusy(true);
     setError('');
-    setNotice(`Đang ghi nhận barcode "${trimmed}"…`);
+    setNotice(`Đang ghi nhận mã vạch "${trimmed}"…`);
 
     try {
       const res = await garmentTechnicalService.stocktake.scanItem(selectedSession._id, {
@@ -364,15 +365,17 @@ export default function GarmentStocktakeExecutionPage() {
     if (!record) return 'Mặt hàng';
     if (record.skuId) {
       const sku = record.skuId;
-      return `${sku.productName || sku.skuCode} (${[sku.color, sku.size].filter(Boolean).join(' · ') || sku.skuCode})`;
+      const details = [sku.color && `Màu ${translateColorVi(sku.color)}`, sku.size && `Cỡ ${sku.size}`].filter(Boolean).join(' · ');
+      return `${translateProductNameVi(sku.productName || sku.skuCode)} (${details || sku.skuCode})`;
     }
     if (record.rawMaterialId) {
       const mat = record.rawMaterialId;
-      return `${mat.materialName || mat.materialCode} (${mat.color || ''} · ${mat.unit || ''})`;
+      const details = [translateColorVi(mat.color), formatUnitVi(mat.unit)].filter(Boolean).join(' · ');
+      return `${mat.materialName || mat.materialCode}${details ? ` (${details})` : ''}`;
     }
     if (record.fabricRollId) {
       const roll = record.fabricRollId;
-      return `Cuộn vải ${roll.rollBarcode} (${roll.currentLengthMeters || 0}m)`;
+      return `Cuộn vải ${roll.rollBarcode} (${roll.currentLengthMeters || 0} mét)`;
     }
     return record.barcode || 'Sản phẩm chưa gán thông tin';
   };
@@ -421,7 +424,7 @@ export default function GarmentStocktakeExecutionPage() {
                 Lệnh kiểm kê từ Quản lý kho
               </h1>
               <p style={{ color: 'var(--ara-text-muted)', fontSize: '0.9rem', margin: 0 }}>
-                Tiếp nhận yêu cầu kiểm kê, quét barcode kệ kho và đếm số lượng thực tế tại vị trí chỉ định.
+                Tiếp nhận yêu cầu kiểm kê, quét mã vạch kệ kho và đếm số lượng thực tế tại vị trí chỉ định.
               </p>
             </div>
             <button
@@ -716,7 +719,7 @@ export default function GarmentStocktakeExecutionPage() {
                   {verifiedLocation ? 'BƯỚC 1: ĐÃ XÁC NHẬN KỆ' : 'BƯỚC 1: QUÉT MÃ KỆ KHO'}
                 </div>
                 <div style={{ fontWeight: 700, color: 'var(--ara-noir)', fontSize: '1rem' }}>
-                  {verifiedLocation ? `Kệ ${verifiedLocation.locationCode} (${verifiedLocation.zoneCode})` : 'Quét barcode hoặc QR trên kệ'}
+                  {verifiedLocation ? `Kệ ${verifiedLocation.locationCode} (${verifiedLocation.zoneCode})` : 'Quét mã vạch hoặc mã QR trên kệ'}
                 </div>
                 {verifiedLocation && (
                   <div style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)' }}>
@@ -774,7 +777,7 @@ export default function GarmentStocktakeExecutionPage() {
                   BƯỚC 2: QUÉT SẢN PHẨM TRÊN KỆ
                 </div>
                 <div style={{ fontWeight: 700, color: 'var(--ara-noir)', fontSize: '1rem' }}>
-                  {verifiedLocation ? 'Đang chờ quét barcode từng mặt hàng' : 'Cần hoàn thành Bước 1 trước'}
+                  {verifiedLocation ? 'Đang chờ quét mã vạch từng mặt hàng' : 'Cần hoàn thành Bước 1 trước'}
                 </div>
                 {verifiedLocation && (
                   <div style={{ fontSize: '0.8rem', color: 'var(--ara-text-muted)' }}>
@@ -834,7 +837,7 @@ export default function GarmentStocktakeExecutionPage() {
                     </span>
                   ) : (
                     <span style={{ color: '#006c4a', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <ScanBarcode size={16} /> BƯỚC 2: Quét barcode SẢN PHẨM trên kệ {verifiedLocation.locationCode}
+                      <ScanBarcode size={16} /> BƯỚC 2: Quét mã vạch SẢN PHẨM trên kệ {verifiedLocation.locationCode}
                     </span>
                   )}
                 </label>
@@ -844,7 +847,7 @@ export default function GarmentStocktakeExecutionPage() {
                     type="text"
                     value={manualCode}
                     onChange={(e) => setManualCode(e.target.value)}
-                    placeholder={!verifiedLocation ? 'Quét hoặc nhập mã vạch kệ (VD: LOC-A1-01)...' : 'Quét barcode sản phẩm / cuộn vải trên kệ này...'}
+                    placeholder={!verifiedLocation ? 'Quét hoặc nhập mã vạch kệ (Ví dụ: LOC-A1-01)...' : 'Quét mã vạch sản phẩm / cuộn vải trên kệ này...'}
                     disabled={busy}
                     autoFocus
                     style={{
@@ -974,9 +977,9 @@ export default function GarmentStocktakeExecutionPage() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
                     <thead>
                       <tr style={{ background: 'var(--ara-bg-surface)', borderBottom: '1px solid var(--ara-border)', color: 'var(--ara-text-muted)', fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                        <th style={{ padding: '0.65rem 0.75rem' }}>Mã Barcode</th>
+                        <th style={{ padding: '0.65rem 0.75rem' }}>Mã vạch</th>
                         <th style={{ padding: '0.65rem 0.75rem' }}>Tên mặt hàng / Quy cách</th>
-                        <th style={{ padding: '0.65rem 0.75rem', textAlign: 'center' }}>Snapshot hệ thống</th>
+                        <th style={{ padding: '0.65rem 0.75rem', textAlign: 'center' }}>Tồn kho hệ thống</th>
                         <th style={{ padding: '0.65rem 0.75rem', textAlign: 'center' }}>Thực tế đã quét</th>
                         <th style={{ padding: '0.65rem 0.75rem', textAlign: 'center' }}>Chênh lệch</th>
                         <th style={{ padding: '0.65rem 0.75rem', textAlign: 'center' }}>Chỉnh sửa</th>
@@ -1058,7 +1061,7 @@ export default function GarmentStocktakeExecutionPage() {
                 <p style={{ fontSize: '0.85rem', color: 'var(--ara-text-muted)' }}>
                   Mặt hàng: <strong>{getItemName(editingRecord)}</strong>
                   <br />
-                  Mã barcode: <code>{editingRecord.barcode}</code>
+                  Mã vạch: <code>{editingRecord.barcode}</code>
                 </p>
                 <div style={{ margin: '1.25rem 0' }}>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem' }}>
@@ -1073,7 +1076,7 @@ export default function GarmentStocktakeExecutionPage() {
                     style={{ width: '100%', padding: '0.6rem', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-sm)', fontSize: '1rem' }}
                   />
                   <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)', marginTop: '0.35rem' }}>
-                    Snapshot hệ thống: {editingRecord.systemSnapshotQty} · Chênh lệch mới sẽ là: {Number(editQtyValue || 0) - editingRecord.systemSnapshotQty}
+                    Tồn kho hệ thống: {editingRecord.systemSnapshotQty} · Chênh lệch mới sẽ là: {Number(editQtyValue || 0) - editingRecord.systemSnapshotQty}
                   </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>

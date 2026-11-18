@@ -44,6 +44,8 @@ import FinishedGoodsInspectionPage from '../pages/garment/FinishedGoodsInspectio
 import GarmentStocktakeExecutionPage from '../pages/garment/GarmentStocktakeExecutionPage';
 import GarmentMaterialOutboundPage from '../pages/garment/GarmentMaterialOutboundPage';
 import GarmentCuttingAndRemnantPage from '../pages/garment/GarmentCuttingAndRemnantPage';
+import GarmentLotManagementPage from '../pages/garment/GarmentLotManagementPage';
+import GarmentDashboardPage from '../pages/garment/GarmentDashboardPage';
 import GarmentLayout from '../components/garment/GarmentLayout';
 import WarehouseManagerLayout from '../components/warehouse/WarehouseManagerLayout';
 import WarehouseStaffLayout from '../components/warehouse/WarehouseStaffLayout';
@@ -56,6 +58,7 @@ import { getRoleHome } from './roleHome';
 const OwnerLayout = lazy(() => import('../pages/Owner/OwnerLayout'));
 const InboundPlanDetailPage = lazy(() => import('../pages/Owner/InboundPlanDetailPage'));
 const ContractDetailPage = lazy(() => import('../pages/Owner/ContractDetailPage'));
+const ContractMaterialPage = lazy(() => import('../pages/Owner/ContractDetailPage').then(({ ContractMaterialPage }) => ({ default: ContractMaterialPage })));
 const ProductCatalogPage = lazy(() => import('../pages/Owner/ProductCatalogPage'));
 const OperationsPage = lazy(() => import('../pages/Owner/OperationsPage'));
 const EmployeesPage = lazy(() => import('../pages/Owner/EmployeesPage'));
@@ -67,6 +70,8 @@ const StockAdjustmentPage = lazy(() => import('../pages/Owner/StockAdjustmentPag
 const EmployeeCreatePage = lazy(() => import('../pages/Owner/EmployeeCreatePage'));
 const OwnerRecordDetailPage = lazy(() => import('../pages/Owner/OwnerRecordDetailPage'));
 const StockAdjustmentDetailPage = lazy(() => import('../pages/Owner/StockAdjustmentDetailPage'));
+const OwnerDeviationDetailPage = lazy(() => import('../pages/Owner/OwnerDeviationDetailPage'));
+const OwnerPlanDeviationsPage = lazy(() => import('../pages/Owner/OwnerPlanDeviationsPage'));
 
 const SessionError = ({ message, retry }) => (
   <div className="ara-account-page" style={{ padding: '2rem', textAlign: 'center' }}>
@@ -172,7 +177,9 @@ export default function AppRouter() {
 
         {/* Phân hệ Kỹ thuật may */}
         <Route element={<ProtectedRoute role="GARMENT_TECHNICIAN"><GarmentLayout><Outlet /></GarmentLayout></ProtectedRoute>}>
+          <Route path="/garment/dashboard" element={<GarmentDashboardPage />} />
           <Route path="/garment/raw-materials" element={<GarmentRawMaterialsPage />} />
+          <Route path="/garment/lots" element={<GarmentLotManagementPage />} />
           <Route path="/garment/material-inbound-verification" element={<MaterialInboundVerificationPage />} />
           <Route path="/garment/finished-goods-inspection" element={<FinishedGoodsInspectionPage />} />
           <Route path="/garment/return-inspection" element={<GarmentReturnInspectionPage />} />
@@ -187,7 +194,16 @@ export default function AppRouter() {
           <Route path="dashboard" element={<OperationsPage key="dashboard" />} />
           <Route path="bi" element={<OperationsPage key="bi" mode="bi" />} />
           <Route path="profit" element={<Navigate to="/owner/bi" replace />} />
+          <Route path="plan-deviations" element={<OwnerPlanDeviationsPage />} />
+          <Route path="plan-deviations/:planId" element={<OwnerDeviationDetailPage />} />
+          <Route path="deviations" element={<OwnerDeviationDetailPage />} />
+          <Route path="deviations/:planId" element={<OwnerDeviationDetailPage />} />
+          <Route path="inbound-plans" element={<OwnerPlanDeviationsPage />} />
+          <Route path="inbound-plans/:planId" element={<OwnerDeviationDetailPage />} />
+          <Route path="plans/:planId" element={<OwnerDeviationDetailPage />} />
+          <Route path="contracts/:id/plans/:planId" element={<OwnerDeviationDetailPage />} />
           <Route path="contracts/:id/plans/:planId" element={<InboundPlanDetailPage />} />
+          <Route path="contracts/:id/materials/:line" element={<ContractMaterialPage />} />
           <Route path="contracts/:id" element={<ContractDetailPage />} />
           <Route path="purchases" element={<OperationsPage key="purchases" mode="purchases" />} />
           <Route path="tasks" element={<Navigate to="/owner/dashboard" replace />} />

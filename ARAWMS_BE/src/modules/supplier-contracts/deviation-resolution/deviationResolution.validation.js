@@ -25,6 +25,8 @@ export const validateResolveDeviation = (req, res, next) => {
   }
 
   const validActions = [
+    'TERMINATE_CONTRACT',
+    'AMEND_NEW_VERSION',
     'SUPPLIER_RE_DELIVERY',
     'CONTRACT_PENALTY',
     'DEBT_DEDUCTION',

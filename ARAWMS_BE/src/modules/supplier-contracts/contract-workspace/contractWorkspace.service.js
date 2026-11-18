@@ -223,7 +223,7 @@ export const createRawMaterialQuick = async (payload) => {
 export const checkAndAutoTerminateExpiredContracts = async () => {
   const now = new Date();
   const expiredContracts = await SupplierContract.find({
-    status: { $in: ['ACTIVE', 'DEVIATION_FLAGGED', 'PENDING_OWNER_APPROVAL'] },
+    status: { $in: ['ACTIVE', 'DEVIATION_FLAGGED'] },
     effectiveTo: { $lt: now },
   });
 
@@ -485,7 +485,7 @@ export async function normalizeContractMaterialsAndTotals(payload) {
     vatAmount += lineVat;
 
     return {
-      rawMaterialId: item.rawMaterialId,
+      rawMaterialId: item.rawMaterialId?._id || item.rawMaterialId?.id || item.rawMaterialId,
       materialCodeSnapshot: item.materialCodeSnapshot || dbMat?.materialCode || '',
       materialNameSnapshot: item.materialNameSnapshot || dbMat?.materialName || '',
       unitSnapshot: item.unitSnapshot || dbMat?.unit || 'METER',
@@ -740,7 +740,11 @@ export const draftContractFramework = async (payload, currentUserId) => {
       status: 'SCHEDULED',
       notes: b.notes || '',
       expectedItems: (b.expectedItems || []).map((item, itemIdx) => {
+        const itemLineIdx = item.itemIndex !== undefined && item.itemIndex !== null
+          ? Number(item.itemIndex)
+          : itemIdx;
         const cMat =
+          normalizedMaterials[itemLineIdx] ||
           normalizedMaterials[itemIdx] ||
           normalizedMaterials.find(
             (cm) => String(cm.rawMaterialId?._id || cm.rawMaterialId) === String(item.rawMaterialId)
@@ -761,6 +765,7 @@ export const draftContractFramework = async (payload, currentUserId) => {
         }));
         const sumBatchRolls = rolls.reduce((sum, r) => sum + (Number(r.rollQty ?? 1) || 1), 0);
         return {
+          itemIndex: itemLineIdx,
           rawMaterialId: cMat?.rawMaterialId || item.rawMaterialId,
           plannedQty: Number(item.plannedQty || 0),
           unitSnapshot: item.unitSnapshot || item.unit || cMat?.unitSnapshot || 'METER',
@@ -774,32 +779,33 @@ export const draftContractFramework = async (payload, currentUserId) => {
     };
   });
 
-  const aggregatedItemsMap = new Map();
-  normalizedBatches.forEach((batch) => {
-    batch.expectedItems.forEach((it) => {
-      const idStr = String(it.rawMaterialId);
-      if (!aggregatedItemsMap.has(idStr)) {
-        aggregatedItemsMap.set(idStr, {
-          rawMaterialId: it.rawMaterialId,
-          plannedQty: it.plannedQty,
-          unitSnapshot: it.unitSnapshot,
-          rollCount: it.rollCount || 0,
-          rollDetails: it.rollDetails || it.selectedRolls || [],
-          selectedRolls: it.selectedRolls || it.rollDetails || [],
-          actualVerifiedPassedQty: 0,
-          actualDefectiveOrShortQty: 0,
-        });
-      } else {
-        const cur = aggregatedItemsMap.get(idStr);
-        cur.plannedQty += it.plannedQty;
-        cur.rollCount = (cur.rollCount || 0) + (it.rollCount || 0);
-        const newRolls = it.rollDetails || it.selectedRolls || [];
-        if (Array.isArray(newRolls) && newRolls.length > 0) {
-          cur.rollDetails = [...(cur.rollDetails || []), ...newRolls];
-          cur.selectedRolls = [...(cur.selectedRolls || []), ...newRolls];
+  // Xây dựng expectedItems cho root plan theo từng dòng của normalizedMaterials
+  const planExpectedItems = normalizedMaterials.map((cMat, cIdx) => {
+    let totalPlannedQty = 0;
+    let allRolls = [];
+    normalizedBatches.forEach((batch) => {
+      const it =
+        batch.expectedItems?.find((x) => x.itemIndex === cIdx) ||
+        batch.expectedItems?.[cIdx];
+      if (it) {
+        totalPlannedQty += Number(it.plannedQty || 0);
+        const rolls = it.rollDetails || it.selectedRolls || [];
+        if (Array.isArray(rolls) && rolls.length > 0) {
+          allRolls.push(...rolls);
         }
       }
     });
+    return {
+      itemIndex: cIdx,
+      rawMaterialId: cMat.rawMaterialId,
+      plannedQty: totalPlannedQty || cMat.contractedQty,
+      unitSnapshot: cMat.unitSnapshot || 'METER',
+      rollCount: allRolls.length || cMat.rollCount || 0,
+      rollDetails: allRolls.length > 0 ? allRolls : (cMat.rollDetails || []),
+      selectedRolls: allRolls.length > 0 ? allRolls : (cMat.rollDetails || []),
+      actualVerifiedPassedQty: 0,
+      actualDefectiveOrShortQty: 0,
+    };
   });
 
   const totalPlansCount = await MaterialInboundPlan.countDocuments();
@@ -816,7 +822,7 @@ export const draftContractFramework = async (payload, currentUserId) => {
     status: 'SCHEDULED',
     createdByAccountantId: accountantId,
     notes: payload.inboundPlanNotes || `Kế hoạch tiếp nhận nguyên liệu được thiết lập theo hợp đồng ${contract.contractCode}`,
-    expectedItems: Array.from(aggregatedItemsMap.values()),
+    expectedItems: planExpectedItems,
     batchNumber: 1,
     batchTitle: normalizedBatches.length > 1 ? `Kế hoạch ${normalizedBatches.length} đợt giao` : 'Tiếp nhận nguyên vật liệu',
     batchPercentage: 100,
@@ -897,7 +903,9 @@ export const amendContractVersion = async (contractId, payload, currentUserId) =
     amendmentReason:
       payload.amendmentReason ||
       'Điều chỉnh phụ lục hợp đồng nguyên tắc / Cập nhật điều khoản',
-    status: 'DRAFT_FRAMEWORK',
+    status: 'ACTIVE',
+    finalizedAt: new Date(),
+    finalizedByOwnerId: accountantId,
     draftedByAccountantId: accountantId,
     buyerInfo: {
       companyName:
@@ -990,11 +998,20 @@ export const amendContractVersion = async (contractId, payload, currentUserId) =
     contractedMaterials: normalizedMaterials,
   });
 
-  // Ensure root contract has rootContractId set if it was null
+  // Cập nhật hợp đồng gốc sang trạng thái SUPERSEDED (Đã thay thế)
+  origContract.status = 'SUPERSEDED';
   if (!origContract.rootContractId) {
     origContract.rootContractId = rootId;
-    if (!origContract.versionNumber) origContract.versionNumber = 1;
-    await origContract.save();
+  }
+  if (!origContract.versionNumber) origContract.versionNumber = 1;
+  await origContract.save();
+
+  try {
+    await Supplier.findByIdAndUpdate(origContract.supplierId, {
+      $inc: { totalPayableDebt: Math.max(0, totalContractAmount - newVersion.totalPaidAmount) },
+    });
+  } catch (syncErr) {
+    console.error('Lỗi cập nhật công nợ khi tạo version mới:', syncErr);
   }
 
   // Kế thừa hoặc tạo mới kế hoạch tiếp nhận cho phiên bản hợp đồng mới
@@ -1002,6 +1019,29 @@ export const amendContractVersion = async (contractId, payload, currentUserId) =
     contractId: origContract._id,
     status: { $ne: 'CANCELLED' },
   }).sort({ versionNumber: -1, createdAt: -1 });
+
+  // Cập nhật tất cả kế hoạch tiếp nhận cũ của hợp đồng sang trạng thái RESOLVED_SUPERSEDED và đánh dấu ĐÃ XỬ LÝ (RESOLVED)
+  await MaterialInboundPlan.updateMany(
+    {
+      $or: [
+        { contractId: origContract._id },
+        { contractId: rootId },
+      ],
+      _id: { $ne: newVersion._id },
+    },
+    {
+      $set: {
+        status: 'RESOLVED_SUPERSEDED',
+        'deviationResolution.status': 'RESOLVED',
+        'deviationResolution.actionTaken': 'AMEND_NEW_VERSION',
+        'deviationResolution.resolutionNotes':
+          payload.amendmentReason ||
+          `Đã xử lý sai lệch bằng việc lập Phụ lục & tạo Phiên bản mới (${nextCode}).`,
+        'deviationResolution.resolvedAt': new Date(),
+        'deviationResolution.resolvedByAccountantId': accountantId,
+      },
+    }
+  );
 
   let batchesForNewVersion = [];
   if (Array.isArray(payload.inboundBatches) && payload.inboundBatches.length > 0) {
@@ -1011,9 +1051,18 @@ export const amendContractVersion = async (contractId, payload, currentUserId) =
   }
 
   if (batchesForNewVersion.length > 0) {
-    const totalPlansCount = await MaterialInboundPlan.countDocuments();
-    const newPlanCode = `KH-NHAP-${String(totalPlansCount + 1).padStart(3, '0')}`;
-    const nextPlanVersion = (existingOrigPlan?.versionNumber || 1) + 1;
+    const nextPlanVersion = nextVersion;
+    const basePlanCode = (
+      existingOrigPlan?.planCode ||
+      origContract.contractCode?.replace(/^HDK?|^HD/i, 'KH-NHAP') ||
+      `KH-NHAP-${baseCode.replace(/\D/g, '').slice(-3) || '001'}`
+    ).replace(/-V\d+$/i, '');
+
+    let newPlanCode = `${basePlanCode}-V${nextPlanVersion}`;
+    const duplicatePlan = await MaterialInboundPlan.findOne({ planCode: newPlanCode });
+    if (duplicatePlan) {
+      newPlanCode = `${basePlanCode}-V${nextPlanVersion}-${Date.now().toString().slice(-4)}`;
+    }
 
     const normBatches = batchesForNewVersion.map((b, idx) => ({
       batchNumber: Number(b.batchNumber || idx + 1),
@@ -1023,7 +1072,11 @@ export const amendContractVersion = async (contractId, payload, currentUserId) =
       status: 'SCHEDULED',
       notes: b.notes || '',
       expectedItems: (b.expectedItems || []).map((it, itIdx) => {
+        const itemLineIdx = it.itemIndex !== undefined && it.itemIndex !== null
+          ? Number(it.itemIndex)
+          : itIdx;
         const cMat =
+          normalizedMaterials[itemLineIdx] ||
           normalizedMaterials[itIdx] ||
           normalizedMaterials.find(
             (cm) => String(cm.rawMaterialId?._id || cm.rawMaterialId) === String(it.rawMaterialId)
@@ -1031,15 +1084,64 @@ export const amendContractVersion = async (contractId, payload, currentUserId) =
           normalizedMaterials.find(
             (cm) => cm.materialCodeSnapshot && cm.materialCodeSnapshot === (it.materialCodeSnapshot || it.materialCode)
           );
+        const rawRolls = (Array.isArray(it.rollDetails) && it.rollDetails.length > 0)
+          ? it.rollDetails
+          : (Array.isArray(it.selectedRolls) ? it.selectedRolls : []);
+        const rolls = rawRolls.map((r, rIdx) => ({
+          rollIndex: Number(r.rollIndex || rIdx + 1),
+          rollCode: r.rollCode || `C-${String(rIdx + 1).padStart(2, '0')}`,
+          rollQty: Math.max(1, Math.floor(Number(r.rollQty ?? 1) || 1)),
+          lengthMeters: Number(r.lengthMeters || 0),
+          weightKg: Number(r.weightKg || 0),
+          note: r.note || '',
+        }));
+        const sumBatchRolls = rolls.reduce((sum, r) => sum + (Number(r.rollQty ?? 1) || 1), 0);
+        const matId = cMat?.rawMaterialId || it.rawMaterialId;
+        const plannedQty = Number(it.plannedQty || 0);
+        const unitSnapshot = it.unitSnapshot || it.unit || cMat?.unitSnapshot || 'METER';
+
         return {
-          rawMaterialId: cMat?.rawMaterialId || it.rawMaterialId,
-          plannedQty: Number(it.plannedQty || 0),
-          unitSnapshot: it.unitSnapshot || it.unit || cMat?.unitSnapshot || 'METER',
+          itemIndex: itemLineIdx,
+          rawMaterialId: matId,
+          plannedQty: plannedQty,
+          unitSnapshot: unitSnapshot,
+          rollCount: sumBatchRolls || Number(it.rollCount || 0),
+          rollDetails: rolls,
+          selectedRolls: rolls,
           actualVerifiedPassedQty: 0,
           actualDefectiveOrShortQty: 0,
         };
       }),
     }));
+
+    // Xây dựng expectedItems cho root plan theo từng dòng của normalizedMaterials
+    const planExpectedItems = normalizedMaterials.map((cMat, cIdx) => {
+      let totalPlannedQty = 0;
+      let allRolls = [];
+      normBatches.forEach((batch) => {
+        const it =
+          batch.expectedItems?.find((x) => x.itemIndex === cIdx) ||
+          batch.expectedItems?.[cIdx];
+        if (it) {
+          totalPlannedQty += Number(it.plannedQty || 0);
+          const rolls = it.rollDetails || it.selectedRolls || [];
+          if (Array.isArray(rolls) && rolls.length > 0) {
+            allRolls.push(...rolls);
+          }
+        }
+      });
+      return {
+        itemIndex: cIdx,
+        rawMaterialId: cMat.rawMaterialId,
+        plannedQty: totalPlannedQty || cMat.contractedQty,
+        unitSnapshot: cMat.unitSnapshot || 'METER',
+        rollCount: allRolls.length || cMat.rollCount || 0,
+        rollDetails: allRolls.length > 0 ? allRolls : (cMat.rollDetails || []),
+        selectedRolls: allRolls.length > 0 ? allRolls : (cMat.rollDetails || []),
+        actualVerifiedPassedQty: 0,
+        actualDefectiveOrShortQty: 0,
+      };
+    });
 
     await MaterialInboundPlan.create({
       planCode: newPlanCode,
@@ -1054,7 +1156,7 @@ export const amendContractVersion = async (contractId, payload, currentUserId) =
       parentSupersededPlanId: existingOrigPlan?._id || null,
       rootPlanId: existingOrigPlan?.rootPlanId || existingOrigPlan?._id || null,
       notes: `Kế hoạch tiếp nhận theo hợp đồng ${newVersion.contractCode} (phiên bản v${nextVersion})`,
-      expectedItems: existingOrigPlan?.expectedItems || [],
+      expectedItems: planExpectedItems,
       batchNumber: 1,
       batchTitle: normBatches.length > 1 ? `Kế hoạch ${normBatches.length} đợt giao` : 'Tiếp nhận nguyên vật liệu',
       batchPercentage: 100,
@@ -1075,14 +1177,22 @@ export const updateContractFramework = async (contractId, payload, currentUserId
     throw err;
   }
 
-  // Business Rule: Hợp đồng đã có trạng thái ACTIVE thì KHÔNG cho phép chỉnh sửa thông thường trực tiếp.
-  // Nếu muốn chỉnh sửa, phải lưu thành phiên bản tiếp theo (Version mới).
-  if (contract.status === 'ACTIVE') {
-    if (payload.createVersion === true || payload.isNewVersion === true) {
+  // Business Rule: Hợp đồng đã có trạng thái ACTIVE, DEVIATION_FLAGGED hoặc SUPERSEDED thì KHÔNG cho phép chỉnh sửa thông thường trực tiếp.
+  // Mọi sửa đổi phải lưu thành phiên bản tiếp theo (Version mới).
+  if (
+    contract.status === 'ACTIVE' ||
+    contract.status === 'DEVIATION_FLAGGED' ||
+    contract.status === 'SUPERSEDED'
+  ) {
+    if (
+      payload.createVersion === true ||
+      payload.isNewVersion === true ||
+      Number(payload.versionNumber) > (Number(contract.versionNumber) || 1)
+    ) {
       return amendContractVersion(contractId, payload, currentUserId);
     }
     const err = new Error(
-      'Hợp đồng đang ở trạng thái Hiệu lực (ACTIVE) không thể ghi đè trực tiếp. Vui lòng chọn "Lưu thành Phiên bản mới" để tạo version tiếp theo và bảo lưu bản hợp đồng hiện tại.'
+      `Hợp đồng đang ở trạng thái "${contract.status}" không thể ghi đè trực tiếp. Vui lòng chọn "Lưu thành Phiên bản mới" để tạo version tiếp theo và bảo lưu bản hợp đồng hiện tại.`
     );
     err.statusCode = 400;
     throw err;
@@ -1312,7 +1422,28 @@ export async function contractDetail(id) {
     frameworkDocumentUrl: safeUrl(contract.frameworkDocumentUrl), signedContractDocumentUrl: safeUrl(contract.signedContractDocumentUrl),
     supplier: supplier ? { code: supplier.supplierCode, name: supplier.supplierName, taxCode: supplier.taxCode, contact: supplier.contactName || supplier.representativeName, phone: supplier.phone, email: supplier.email, address: supplier.address } : null,
     items: (contract.contractedMaterials || []).map(line => ({ ...item(line), quantity: line.contractedQty, rollCount: line.rollCount || (line.rollDetails?.length || 0), rollDetails: line.rollDetails || [], unitPrice: line.unitPrice, vatRatePct: line.vatRatePct, composition: line.composition, colorSpec: line.colorSpec, widthCm: line.widthCm, gsm: line.gsm, shrinkageTolerancePct: line.shrinkageTolerancePct, colorFastnessGrade: line.colorFastnessGrade, qtyTolerancePct: line.qtyTolerancePct, moq: line.moq, leadTimeDays: line.leadTimeDays, packagingSpec: line.packagingSpec, technicalNote: line.technicalNote })),
-    plans: plans.sort((a,b) => new Date(a.scheduledDeliveryDate) - new Date(b.scheduledDeliveryDate)).map(p => ({ id: String(p._id), code: p.planCode, status: p.status, scheduledDeliveryDate: p.scheduledDeliveryDate, notes: p.notes, items: planItems(p.expectedItems), batches: (p.batches || []).map(b => ({ number: b.batchNumber, title: b.batchTitle, percentage: b.batchPercentage, scheduledDeliveryDate: b.scheduledDeliveryDate, status: b.status, notes: b.notes, items: planItems(b.expectedItems) })) })),
+    plans: plans.sort((a,b) => new Date(a.scheduledDeliveryDate) - new Date(b.scheduledDeliveryDate)).map(p => ({
+      id: String(p._id),
+      code: p.planCode,
+      status: p.status,
+      scheduledDeliveryDate: p.scheduledDeliveryDate,
+      notes: p.notes,
+      technicianVerification: p.technicianVerification || null,
+      deviationResolution: p.deviationResolution || null,
+      reportedToOwner: p.reportedToOwner || null,
+      deliveryComplianceStatus: p.deliveryComplianceStatus || null,
+      items: planItems(p.expectedItems),
+      batches: (p.batches || []).map(b => ({
+        number: b.batchNumber,
+        title: b.batchTitle,
+        percentage: b.batchPercentage,
+        scheduledDeliveryDate: b.scheduledDeliveryDate,
+        status: b.status,
+        notes: b.notes,
+        technicianVerification: b.technicianVerification || null,
+        items: planItems(b.expectedItems)
+      }))
+    })),
     payments: payments.sort((a,b) => new Date(b.voucherDate) - new Date(a.voucherDate)).map(v => ({ id: String(v._id), code: v.voucherCode, date: v.voucherDate, category: v.category, amount: v.amount, method: v.paymentMethod, status: v.status, paidAt: v.paidAt, note: v.note, attachmentUrl: safeUrl(v.attachmentUrl) })),
     basis: 'Giá trị và số đã trả lấy từ hợp đồng; lịch sử phiếu chi hiển thị riêng, không tự cộng phiếu nháp hoặc phiếu hủy vào số đã thanh toán. Đơn vị và tên nguyên liệu ưu tiên thông tin chốt trên hợp đồng.',
   };

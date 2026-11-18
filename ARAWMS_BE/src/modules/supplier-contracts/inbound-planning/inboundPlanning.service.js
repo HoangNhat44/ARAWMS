@@ -1,5 +1,6 @@
 import { MaterialInboundPlan, SupplierContract, User } from '../../../models/index.js';
 import { checkAndAutoTerminateExpiredContracts } from '../contract-workspace/contractWorkspace.service.js';
+import { createNotification } from '../../notifications/notification.service.js';
 
 async function resolveAccountantUserId(explicitUserId) {
   if (explicitUserId) return explicitUserId;
@@ -48,6 +49,7 @@ export const getInboundPlanById = async (planId) => {
     .populate('expectedItems.rawMaterialId')
     .populate('batches.expectedItems.rawMaterialId')
     .populate('technicianVerification.verifiedByTechId', 'fullName email employeeCode')
+    .populate('reportedToOwner.reportedByUserId', 'fullName email employeeCode')
     .populate('parentSupersededPlanId', 'planCode versionNumber status scheduledDeliveryDate amendmentReason')
     .populate('rootPlanId', 'planCode versionNumber');
 
@@ -531,8 +533,29 @@ export const getInboundPlanVersions = async (planId) => {
     throw err;
   }
   const rootId = plan.rootPlanId || plan._id;
+  const baseCode = (plan.planCode || '').replace(/-V\d+$/i, '').trim();
+
+  const queryOr = [
+    { _id: rootId },
+    { rootPlanId: rootId },
+  ];
+  if (baseCode) {
+    queryOr.push({ planCode: new RegExp(`^${baseCode}(-V\\d+)?$`, 'i') });
+  }
+
+  if (plan.contractId) {
+    const contract = await SupplierContract.findById(plan.contractId).select('rootContractId');
+    const contractRootId = contract?.rootContractId || plan.contractId;
+    const siblingContracts = await SupplierContract.find({
+      $or: [{ _id: contractRootId }, { rootContractId: contractRootId }]
+    }).select('_id');
+    if (siblingContracts.length > 0) {
+      queryOr.push({ contractId: { $in: siblingContracts.map(c => c._id) } });
+    }
+  }
+
   return MaterialInboundPlan.find({
-    $or: [{ _id: rootId }, { rootPlanId: rootId }],
+    $or: queryOr,
   })
     .sort({ versionNumber: -1, createdAt: -1 })
     .populate('contractId')
@@ -633,6 +656,63 @@ export const recordTechnicianVerification = async (planId, payload, currentUserI
     .populate('deviationResolution.resolvedByAccountantId', 'fullName email employeeCode');
 };
 
+/**
+ * UC 06: Báo cáo / Trình báo sai lệch KCS lên Chủ sở hữu (Owner)
+ */
+export const reportDeviationToOwner = async (planId, currentUserId, notes = '') => {
+  const plan = await MaterialInboundPlan.findById(planId)
+    .populate('contractId')
+    .populate('supplierId');
+  if (!plan) {
+    const err = new Error('Không tìm thấy kế hoạch tiếp nhận nguyên liệu');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const contractCode = plan.contractId?.contractCode || '—';
+  const supplierName = plan.supplierId?.supplierName || '—';
+  const deviationSummary =
+    plan.technicianVerification?.deviationSummary ||
+    (plan.batches || []).find((b) => b.technicianVerification?.deviationSummary)?.technicianVerification?.deviationSummary ||
+    'Phát hiện sai lệch kiểm định chất lượng/số lượng nguyên vật liệu giao nhận.';
+
+  plan.reportedToOwner = {
+    isReported: true,
+    reportedAt: new Date(),
+    reportedByUserId: currentUserId || null,
+    reportNotes: String(notes || '').trim(),
+  };
+  await plan.save();
+
+  // Tạo thông báo khẩn gửi tới Owner
+  try {
+    const targetContractId = plan.contractId?._id || plan.contractId;
+    await createNotification({
+      title: `🚨 Trình báo sai lệch KCS: ${plan.planCode}`,
+      message: `Kế hoạch [${plan.planCode}] thuộc hợp đồng [${contractCode}] - NCC "${supplierName}" có sai lệch kiểm định KCS cần Owner phê duyệt hướng xử lý.`,
+      type: 'CONTRACT_DEVIATION',
+      priority: 'URGENT',
+      recipientRole: 'OWNER',
+      senderUserId: currentUserId || null,
+      senderRole: 'ACCOUNTANT',
+      targetUrl: `/owner/deviations/${plan._id}`,
+      metadata: {
+        planId: plan._id,
+        planCode: plan.planCode,
+        contractId: targetContractId,
+        contractCode,
+        supplierName,
+        deviationSummary,
+        evidenceImages: plan.technicianVerification?.evidenceImages || [],
+      },
+    });
+  } catch (notifErr) {
+    console.error('Lỗi gửi thông báo cho Owner:', notifErr.message);
+  }
+
+  return plan;
+};
+
 export default {
   listInboundPlans,
   getInboundPlanById,
@@ -642,4 +722,5 @@ export default {
   amendInboundPlanVersion,
   getInboundPlanVersions,
   recordTechnicianVerification,
+  reportDeviationToOwner,
 };

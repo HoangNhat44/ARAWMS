@@ -14,12 +14,15 @@ import {
   Scissors,
   Package,
   RotateCcw,
+  Layers,
+  LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import WmsHeader from '../common/WmsHeader';
+import { formatRoleVi } from '../../utils/garmentDisplayVi';
 
 export default function GarmentLayout({ children }) {
   const { user } = useAuth();
@@ -34,27 +37,39 @@ export default function GarmentLayout({ children }) {
 
   const menuItems = [
     {
+      to: '/garment/dashboard',
+      label: 'Tổng quan Kỹ thuật',
+      subLabel: 'Thống kê chất lượng, hàng lỗi & lô hàng',
+      icon: LayoutDashboard,
+    },
+    {
       to: '/garment/raw-materials',
       label: 'Kho nguyên phụ liệu',
-      subLabel: 'Danh mục, định mức & thông số NPL',
+      subLabel: 'Danh mục, định mức & thông số nguyên phụ liệu',
       icon: Package,
     },
     {
+      to: '/garment/lots',
+      label: 'Quản lý Lô hàng',
+      subLabel: 'Tạo lô thành phẩm, nguyên phụ liệu & gửi kho sinh mã QR',
+      icon: Layers,
+    },
+    {
       to: '/garment/material-inbound-verification',
-      label: 'Kế hoạch & Nhập NPL',
+      label: 'Kế hoạch & Nhập nguyên phụ liệu',
       subLabel: 'Đối soát & nhập kho nguyên phụ liệu',
       icon: ClipboardCheck,
     },
     {
       to: '/garment/finished-goods-inspection',
-      label: 'KCS & Nhập thành phẩm',
-      subLabel: 'Kiểm định may & nhập thành phẩm',
+      label: 'Kiểm định & Nhập thành phẩm',
+      subLabel: 'Kiểm định chất lượng & nhập thành phẩm',
       icon: Shirt,
     },
     {
       to: '/garment/return-inspection',
       label: 'Kiểm tra hàng hoàn/trả',
-      subLabel: 'Quét đơn, kiểm định KCS & nhập kho hoàn',
+      subLabel: 'Quét đơn, kiểm định chất lượng & nhập kho hoàn',
       icon: RotateCcw,
     },
     {
@@ -65,7 +80,7 @@ export default function GarmentLayout({ children }) {
     },
     {
       to: '/garment/material-outbound-request',
-      label: 'Yêu cầu xuất NPL',
+      label: 'Yêu cầu xuất nguyên phụ liệu',
       subLabel: 'Gửi yêu cầu xuất kho cho xưởng',
       icon: ArrowUpRight,
     },
@@ -105,7 +120,7 @@ export default function GarmentLayout({ children }) {
         {/* Brand Header */}
         <div className="wms-sidebar-brand">
           <Link
-            to="/garment/raw-materials"
+            to="/garment/dashboard"
             className="wms-brand-link"
             title="AraStore WMS – Kỹ thuật may"
             onClick={() => setMobileOpen(false)}
@@ -114,7 +129,7 @@ export default function GarmentLayout({ children }) {
             {(!collapsed || mobileOpen) && (
               <div className="wms-brand-meta">
                 <span className="wms-brand-title">AraStore WMS</span>
-                <span className="wms-brand-subtitle">Kỹ thuật may & KCS</span>
+                <span className="wms-brand-subtitle">Kỹ thuật may & Kiểm định</span>
               </div>
             )}
           </Link>
@@ -146,7 +161,7 @@ export default function GarmentLayout({ children }) {
         {/* Navigation Links */}
         <nav className="wms-sidebar-nav" aria-label="Danh mục nghiệp vụ kỹ thuật may">
           {(!collapsed || mobileOpen) && (
-            <div className="wms-nav-group-title">KCS & Cắt may xưởng</div>
+            <div className="wms-nav-group-title">Kiểm định & Cắt may xưởng</div>
           )}
 
           {menuItems.map((item) => {
@@ -183,13 +198,13 @@ export default function GarmentLayout({ children }) {
         {(!collapsed || mobileOpen) && (
           <div className="wms-sidebar-footer">
             <div className="wms-sidebar-footer-label">
-              Kỹ thuật viên KCS
+              Kỹ thuật viên kiểm định
             </div>
             <div className="wms-sidebar-footer-name">
               {user?.fullName || user?.username || 'Kỹ thuật may'}
             </div>
             <div className="wms-sidebar-footer-role">
-              {user?.roleCode || 'GARMENT_TECHNICIAN'}
+              {formatRoleVi(user?.roleCode)}
             </div>
           </div>
         )}

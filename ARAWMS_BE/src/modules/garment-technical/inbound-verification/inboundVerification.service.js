@@ -15,10 +15,78 @@ import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
 import { createNotification } from '../../notifications/notification.service.js';
+import GarmentLot from '../../../models/GarmentLot.model.js';
+import { buildLotQrValue, generateNextLotCode } from '../lot-management/lotManagement.service.js';
 
 // Tells the Warehouse Manager's request list to reload when a technician sends a new request.
 const notifyInboundRequestChanged = (ticket) => publishRealtime('material-inbound-request:changed',
   { requestId: String(ticket._id), status: ticket.status });
+
+/**
+ * Generates sequential RAW_MATERIAL GarmentLots (LOT-NL-xxxxxx + LOT:RM:...) for accepted receipt lines
+ * and links lotId/lotCode/qrValue back onto the MaterialTicket for Warehouse Manager QR generation.
+ */
+const attachLotsToMaterialTicket = async (ticket, user) => {
+  const acceptedLines = (ticket.receiptLines || []).filter((line) => Number(line.acceptedQty) > 0);
+  if (acceptedLines.length === 0) return [];
+
+  const materialIds = [...new Set(acceptedLines.map((line) => String(line.rawMaterialId)))];
+  const [materials, supplier] = await Promise.all([
+    RawMaterial.find({ _id: { $in: materialIds } })
+      .select('materialCode materialName materialType unit color')
+      .lean(),
+    ticket.supplierId
+      ? Supplier.findById(ticket.supplierId).select('supplierName').lean()
+      : null,
+  ]);
+  const materialMap = new Map(materials.map((m) => [String(m._id), m]));
+  const now = new Date();
+  const lotPayloads = [];
+
+  for (const line of acceptedLines) {
+    const lotCode = await generateNextLotCode('RAW_MATERIAL');
+    const qrValue = buildLotQrValue('RAW_MATERIAL', lotCode);
+    const mat = materialMap.get(String(line.rawMaterialId));
+    line.lotCode = lotCode;
+    line.qrValue = qrValue;
+    lotPayloads.push({
+      line,
+      doc: {
+        lotCode,
+        lotType: 'RAW_MATERIAL',
+        qrValue,
+        status: 'REQUESTED',
+        rawMaterialId: line.rawMaterialId,
+        materialCode: mat?.materialCode || '',
+        materialName: mat?.materialName || '',
+        materialType: mat?.materialType || null,
+        unit: mat?.unit || '',
+        color: mat?.color || '',
+        quantity: Number(line.acceptedQty),
+        supplierId: ticket.supplierId || undefined,
+        supplierNameSnapshot: supplier?.supplierName || '',
+        inboundPlanId: ticket.inboundPlanId || null,
+        contractId: ticket.contractId || null,
+        note: line.inspectionNote || ticket.receiptNote || '',
+        linkedTicketModel: 'MaterialTicket',
+        linkedTicketId: ticket._id,
+        linkedTicketCode: ticket.ticketCode,
+        requestedAt: now,
+        createdByTechId: user?._id,
+      },
+    });
+  }
+
+  const createdLots = await GarmentLot.insertMany(lotPayloads.map((p) => p.doc));
+  const lotByCode = new Map(createdLots.map((l) => [l.lotCode, l._id]));
+  for (const { line } of lotPayloads) {
+    if (line.lotCode && lotByCode.has(line.lotCode)) {
+      line.lotId = lotByCode.get(line.lotCode);
+    }
+  }
+  await ticket.save();
+  return createdLots;
+};
 
 /**
  * Returns options for dropdowns (suppliers, materials, contracts, locations)
@@ -68,7 +136,7 @@ export const listInboundPlans = async (query = {}, user) => {
 
   const rawPlans = await MaterialInboundPlan.find(dbFilter)
     .populate('supplierId', 'supplierCode supplierName phone contactName')
-    .populate('contractId', 'contractCode title status')
+    .populate('contractId', 'contractCode title status versionNumber isLatestVersion amendmentReason')
     .populate('expectedItems.rawMaterialId', 'materialCode materialName category unit color gsm widthCm unitCost')
     .populate('batches.expectedItems.rawMaterialId', 'materialCode materialName category unit color gsm widthCm unitCost')
     .populate('createdByAccountantId', 'fullName username email')
@@ -126,7 +194,7 @@ export const getInboundPlanDetails = async (planId) => {
 
   const plan = await MaterialInboundPlan.findById(actualPlanId)
     .populate('supplierId', 'supplierCode supplierName phone contactName address')
-    .populate('contractId', 'contractCode title status signedAt')
+    .populate('contractId', 'contractCode title status signedAt versionNumber isLatestVersion amendmentReason')
     .populate('expectedItems.rawMaterialId', 'materialCode materialName materialType category unit color gsm widthCm unitCost')
     .populate('batches.expectedItems.rawMaterialId', 'materialCode materialName materialType category unit color gsm widthCm unitCost')
     .populate('deliveryBatches.items.rawMaterialId', 'materialCode materialName unit')
@@ -186,6 +254,27 @@ export const verifyInboundPlan = async (planId, payload = {}, user) => {
     throw err;
   }
 
+  // 1. Kiểm tra trạng thái Kế hoạch: chỉ xem nếu đã thay thế hoặc hủy
+  if (['RESOLVED_SUPERSEDED', 'CANCELLED'].includes(plan.status) || plan.supersededByPlanId) {
+    const statusText = plan.status === 'RESOLVED_SUPERSEDED' ? 'đã có phiên bản mới thay thế' : 'đã bị hủy';
+    const err = new Error(`Kế hoạch [${plan.planCode}] ${statusText}. Kỹ thuật viên chỉ có quyền xem dữ liệu, không thể thực hiện nghiệm thu KCS.`);
+    err.status = 400;
+    throw err;
+  }
+
+  // 2. Kiểm tra trạng thái Hợp đồng: chỉ xem nếu hợp đồng đã có phiên bản mới hoặc đã hủy / chấm dứt
+  if (plan.contractId) {
+    const contract = await SupplierContract.findById(plan.contractId).select('status contractCode versionNumber isLatestVersion');
+    if (contract && ['SUPERSEDED', 'CANCELLED', 'TERMINATED'].includes(contract.status)) {
+      let cMsg = 'đã có phiên bản mới thay thế';
+      if (contract.status === 'CANCELLED') cMsg = 'đã bị hủy';
+      if (contract.status === 'TERMINATED') cMsg = 'đã chấm dứt hiệu lực';
+      const err = new Error(`Hợp đồng kinh tế [${contract.contractCode}] ${cMsg}. Kỹ thuật viên chỉ có quyền xem dữ liệu, không thể thực hiện nghiệm thu KCS.`);
+      err.status = 400;
+      throw err;
+    }
+  }
+
   const {
     verifiedItems = [],
     isMatchedWithPlan = true,
@@ -218,6 +307,27 @@ export const verifyInboundPlan = async (planId, payload = {}, user) => {
   const targetBatch = (batchNum && Array.isArray(plan.batches) && plan.batches.length > 0)
     ? plan.batches.find((b) => Number(b.batchNumber) === batchNum || (payload.batchId && String(b._id) === String(payload.batchId)))
     : null;
+
+  // Validation ràng buộc toàn vẹn: thực đạt + lỗi/thiếu phải bằng đúng kế hoạch
+  const itemsToVerify = targetBatch ? targetBatch.expectedItems : plan.expectedItems;
+  for (const item of itemsToVerify) {
+    const key = String(item.rawMaterialId?._id || item.rawMaterialId);
+    if (verifiedMap.has(key)) {
+      const v = verifiedMap.get(key);
+      const planned = Number(item.plannedQty || 0);
+      const passed = Number(v.actualVerifiedPassedQty || 0);
+      const defective = Number(v.actualDefectiveOrShortQty || 0);
+      const total = passed + defective;
+      if (total !== planned) {
+        const matName = item.materialCodeSnapshot || item.rawMaterialId?.materialName || 'nguyên phụ liệu';
+        const err = new Error(
+          `Mặt hàng [${matName}]: Tổng số lượng thực nhận đạt chuẩn (${passed}) cộng với số lượng lỗi/thiếu (${defective}) bằng ${total}, không khớp với số lượng kế hoạch (${planned}). Vui lòng điều chỉnh để tổng đúng bằng số lượng kế hoạch.`
+        );
+        err.status = 400;
+        throw err;
+      }
+    }
+  }
 
   const now = new Date();
   const complianceStatus = isMatchedWithPlan ? 'MATCHED' : 'MISMATCHED';
@@ -411,6 +521,7 @@ export const verifyInboundPlan = async (planId, payload = {}, user) => {
     });
 
     await createdTicket.save();
+    await attachLotsToMaterialTicket(createdTicket, user);
     notifyInboundRequestChanged(createdTicket);
   }
 
@@ -424,7 +535,7 @@ export const verifyInboundPlan = async (planId, payload = {}, user) => {
  * List all Inbound Requests (MaterialTickets) created by or routed to Warehouse Manager
  */
 export const listInboundRequests = async (query = {}, user) => {
-  const filter = { ticketType: 'INBOUND_FROM_PLAN' };
+  const filter = { ticketType: { $in: ['INBOUND_FROM_PLAN', 'INBOUND_REQUEST'] } };
 
   if (query.status && query.status !== 'ALL') {
     filter.status = query.status;
@@ -436,6 +547,7 @@ export const listInboundRequests = async (query = {}, user) => {
       { ticketCode: { $regex: s, $options: 'i' } },
       { supplierDeliveryCode: { $regex: s, $options: 'i' } },
       { receiptNote: { $regex: s, $options: 'i' } },
+      { requestNote: { $regex: s, $options: 'i' } },
     ];
   }
 
@@ -444,6 +556,7 @@ export const listInboundRequests = async (query = {}, user) => {
     .populate('contractId', 'contractCode title')
     .populate('inboundPlanId', 'planCode scheduledDeliveryDate status')
     .populate('receiptLines.rawMaterialId', 'materialCode materialName unit category color')
+    .populate('requestLines.rawMaterialId', 'materialCode materialName unit category color')
     .populate('createdByUserId', 'fullName username')
     .sort({ createdAt: -1 })
     .lean();
@@ -512,6 +625,7 @@ export const createDirectInboundRequest = async (payload = {}, user) => {
   });
 
   await ticket.save();
+  await attachLotsToMaterialTicket(ticket, user);
   notifyInboundRequestChanged(ticket);
 
   return ticket;

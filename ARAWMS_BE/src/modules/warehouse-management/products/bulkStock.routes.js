@@ -107,6 +107,27 @@ async function ensureUnplacedLocation() {
   }
 }
 
+/** Tạo/lấy khu cách ly hàng lỗi mặc định cho lệnh DEFECT_QUARANTINE_INBOUND */
+async function ensureDefectQuarantineLocation() {
+  const existing = await WarehouseLocation.findOne({
+    warehouseType: 'DEFECT_QUARANTINE',
+    status: 'ACTIVE',
+    isDeleted: { $ne: true },
+  });
+  if (existing) return existing;
+  const code = 'KHU-HANG-LOI-01';
+  try {
+    return await WarehouseLocation.findOneAndUpdate({ locationCode: code }, { $setOnInsert: {
+      barcode: 'LOC-DEFECT-QUARANTINE-01', warehouseType: 'DEFECT_QUARANTINE', zoneCode: 'DEFECT',
+      rackCode: 'Q', shelfCode: '01', maxCapacity: 1_000_000_000,
+      layoutBin: false, isQuarantine: true, status: 'ACTIVE',
+    } }, { upsert: true, new: true });
+  } catch (error) {
+    if (error.code !== 11000) throw error;
+    return WarehouseLocation.findOne({ locationCode: code });
+  }
+}
+
 /** GET /bin-options - Lấy danh sách ô kệ còn chỗ trống */
 router.get('/bin-options', async (req, res, next) => {
   try {
@@ -163,7 +184,7 @@ router.get('/bin-options', async (req, res, next) => {
 router.get('/technical-requests', async (req, res, next) => {
   try {
     const tickets = await FinishedGoodsTicket.find({
-      ticketType: { $in: ['INBOUND_FROM_SEWING', 'INBOUND_FROM_RETURN'] },
+      ticketType: { $in: ['INBOUND_FROM_SEWING', 'INBOUND_FROM_RETURN', 'DEFECT_QUARANTINE_INBOUND'] },
       isDeleted: { $ne: true },
     }).sort({ createdAt: -1 })
       .populate({ path: 'items.skuId', select: 'skuCode productId color size',
@@ -182,8 +203,33 @@ router.get('/technical-requests', async (req, res, next) => {
         const current = lines.get(skuId) || { skuId, skuCode: sku?.skuCode || '',
           productId: String(sku?.productId?._id || ''), productCode: sku?.productId?.productCode || '',
           productName: sku?.productId?.productName || '', color: sku?.color || '', size: sku?.size || '',
-          expectedQty: 0 };
+          totalQty: 0, expectedQty: 0, failedQty: 0, defectCategory: item.defectCategory || 'NONE',
+          defectNote: item.defectNote || '', batchCode: item.batchCode || '', qrValue: item.qrValue || '',
+          lots: [], unitBarcodes: [] };
+        current.totalQty += Number(item.totalQty || ((Number(item.expectedQty) || 0) + (Number(item.failedQty) || 0)));
         current.expectedQty += Number(item.expectedQty) || 0;
+        current.failedQty += Number(item.failedQty) || 0;
+        if (item.batchCode) {
+          current.lots.push({
+            lotId: item.lotId ? String(item.lotId) : null,
+            batchCode: item.batchCode,
+            qrValue: item.qrValue || `LOT:FG:${item.batchCode}`,
+            expectedQty: Number(item.expectedQty) || 0,
+            failedQty: Number(item.failedQty) || 0,
+            productionDate: item.productionDate || null,
+            workshopName: item.workshopName || '',
+            productionOrderCode: item.productionOrderCode || '',
+            batchNote: item.batchNote || '',
+          });
+          if (!current.batchCode) current.batchCode = item.batchCode;
+          if (!current.qrValue) current.qrValue = item.qrValue || `LOT:FG:${item.batchCode}`;
+        }
+        if (item.defectNote && !current.defectNote.includes(item.defectNote)) {
+          current.defectNote = current.defectNote ? `${current.defectNote}; ${item.defectNote}` : item.defectNote;
+        }
+        if (Array.isArray(item.unitBarcodes) && item.unitBarcodes.length) {
+          current.unitBarcodes.push(...item.unitBarcodes);
+        }
         lines.set(skuId, current);
       }
       return { id: String(ticket._id), code: ticket.ticketCode, ticketType: ticket.ticketType, status: ticket.status,
@@ -924,12 +970,13 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
       : sendError(res, 'Khóa xác nhận đã dùng cho nội dung khác', { code: 'CONFIRMATION_REUSED' }, 409);
   }
   let sourceTicket = null;
+  const ticketUnitBarcodesBySku = new Map();
   if (direction === 'IN') {
     if (!mongoose.isValidObjectId(req.body?.sourceTicketId))
       return sendError(res, 'Chỉ nhập kho từ lệnh của nhân viên kỹ thuật', { code: 'TECHNICAL_REQUEST_REQUIRED' }, 400);
     sourceTicket = await FinishedGoodsTicket.findOne({
       _id: req.body.sourceTicketId,
-      ticketType: { $in: ['INBOUND_FROM_SEWING', 'INBOUND_FROM_RETURN'] },
+      ticketType: { $in: ['INBOUND_FROM_SEWING', 'INBOUND_FROM_RETURN', 'DEFECT_QUARANTINE_INBOUND'] },
       status: 'READY_TO_CONFIRM',
       isDeleted: { $ne: true },
     }).lean();
@@ -942,6 +989,11 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
       if (!(Number(line.expectedQty) > 0)) continue;
       const skuId = String(line.skuId);
       expected.set(skuId, (expected.get(skuId) || 0) + Number(line.expectedQty));
+      if (Array.isArray(line.unitBarcodes) && line.unitBarcodes.length) {
+        const list = ticketUnitBarcodesBySku.get(skuId) || [];
+        list.push(...line.unitBarcodes);
+        ticketUnitBarcodesBySku.set(skuId, list);
+      }
     }
     const submitted = Array.isArray(items) ? items : [];
     if (new Set(submitted.map((item) => String(item.skuId))).size !== submitted.length)
@@ -978,22 +1030,36 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
   }
 
   let session;
+  const isDefectInbound = direction === 'IN' && sourceTicket?.ticketType === 'DEFECT_QUARANTINE_INBOUND';
   try {
-    const unplaced = direction === 'IN' && !locationId ? await ensureUnplacedLocation() : null;
-    if (direction === 'IN' && !locationId && (!unplaced || unplaced.warehouseType !== 'FINISHED_GOODS' ||
+    const unplaced = direction === 'IN' && !locationId
+      ? (isDefectInbound ? await ensureDefectQuarantineLocation() : await ensureUnplacedLocation())
+      : null;
+    if (direction === 'IN' && !locationId && !isDefectInbound && (!unplaced || unplaced.warehouseType !== 'FINISHED_GOODS' ||
       unplaced.status !== 'ACTIVE' || !unplaced.isSystemUnplaced))
       throw createBulkStockRequestError('Nguồn hàng chưa xếp không khả dụng', 'UNPLACED_SOURCE_UNAVAILABLE', 409);
+    if (direction === 'IN' && !locationId && isDefectInbound && (!unplaced || unplaced.warehouseType !== 'DEFECT_QUARANTINE' ||
+      unplaced.status !== 'ACTIVE'))
+      throw createBulkStockRequestError('Khu cách ly hàng lỗi không khả dụng', 'DEFECT_LOCATION_UNAVAILABLE', 409);
     session = await mongoose.startSession();
     let saved;
     await session.withTransaction(async () => {
       const documentId = new mongoose.Types.ObjectId();
       const lines = [];
       const resolvedSkus = new Set();
+      const expectedWarehouseType = isDefectInbound ? 'DEFECT_QUARANTINE' : 'FINISHED_GOODS';
       const location = direction === 'IN' ? await WarehouseLocation.findOne({
-        _id: locationId || unplaced._id, warehouseType: 'FINISHED_GOODS', layoutBin: { $ne: true },
-        status: 'ACTIVE', isDeleted: { $ne: true },
+        _id: locationId || unplaced._id,
+        warehouseType: expectedWarehouseType,
+        ...(isDefectInbound ? {} : { layoutBin: { $ne: true } }),
+        status: 'ACTIVE',
+        isDeleted: { $ne: true },
       }).session(session) : null;
-      if (direction === 'IN' && !location) throw createBulkStockRequestError('Vị trí kho thành phẩm không hợp lệ', 'LOCATION_NOT_FOUND', 404);
+      if (direction === 'IN' && !location) throw createBulkStockRequestError(
+        isDefectInbound ? 'Vị trí kho cách ly hàng lỗi không hợp lệ' : 'Vị trí kho thành phẩm không hợp lệ',
+        'LOCATION_NOT_FOUND',
+        404
+      );
       for (const item of items) {
         const product = await Product.findOne({ _id: item.productId, isDeleted: { $ne: true } }).session(session);
         if (!product) throw createBulkStockRequestError('Không tìm thấy sản phẩm trong phiếu', 'PRODUCT_NOT_FOUND', 404);
@@ -1017,34 +1083,114 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
           throw createBulkStockRequestError(`Tồn kho của ${sku.skuCode} không đủ (hiện có ${before}, yêu cầu ${quantity})`, 'INSUFFICIENT_STOCK', 409);
         }
         if (direction === 'IN') {
-          const delta = quantity;
-          const updated = delta === 0 ? sku : await Sku.findOneAndUpdate(
-            { _id: sku._id },
-            { $inc: { onHandQty: delta } }, { new: true, session }
-          );
-          if (!updated) throw createBulkStockRequestError('Tồn kho đã thay đổi, hãy thử lại', 'STOCK_CHANGED', 409);
-          if (delta !== 0) await InventoryTransaction.create([{
-            transactionCode: `FGM-${randomUUID()}`, warehouseType: 'FINISHED_GOODS', itemType: 'FINISHED_SKU',
-            skuId: sku._id, transactionType: 'MANUAL_INBOUND',
-            referenceModel: 'FinishedGoodsBulkDocument', referenceId: documentId,
-            locationId: location._id,
-            quantityChange: delta, onHandBefore: before, onHandAfter: updated.onHandQty,
-            unitCostSnapshot: sku.unitCogs || 0, totalValueSnapshot: quantity * (sku.unitCogs || 0), performedByUserId: req.user?._id, note,
-          }], { session });
-
+          const ticketBarcodes = [...new Set(ticketUnitBarcodesBySku.get(resolvedKey) || [])];
           let barcodes = [];
-          if (quantity > 0) {
-            barcodes = Array.from({ length: quantity }, () => `ARA${randomUUID().replace(/-/g, '').slice(0, 20).toUpperCase()}`);
-            const [batch] = await FinishedGoodsBatch.create([{
-              batchCode: `FGB-${randomUUID()}`, skuId: sku._id, skuBarcode: sku.skuBarcode,
-              locationId: location._id, initialQty: quantity, labeledQty: quantity, currentOnHandQty: quantity,
-              fifoInboundTimestamp: new Date(),
+
+          if (isDefectInbound) {
+            // Hàng lỗi nhập vào khu DEFECT_QUARANTINE: KHÔNG cộng tồn bán Sku.onHandQty, giữ trạng thái DEFECTIVE.
+            if (quantity > 0) {
+              await InventoryTransaction.create([{
+                transactionCode: `FGD-${randomUUID()}`, warehouseType: 'DEFECT_QUARANTINE', itemType: 'FINISHED_SKU',
+                skuId: sku._id, transactionType: 'DEFECT_QUARANTINE',
+                referenceModel: 'FinishedGoodsBulkDocument', referenceId: documentId,
+                locationId: location._id,
+                quantityChange: quantity, onHandBefore: before, onHandAfter: before,
+                unitCostSnapshot: sku.unitCogs || 0, totalValueSnapshot: quantity * (sku.unitCogs || 0), performedByUserId: req.user?._id, note,
+              }], { session });
+
+              const candidateBarcodes = ticketBarcodes.slice(0, quantity);
+              const existingUnits = candidateBarcodes.length
+                ? await ProductUnit.find({ barcode: { $in: candidateBarcodes }, skuId: sku._id }).session(session)
+                : [];
+              const existingSet = new Set(existingUnits.map((u) => u.barcode));
+              if (existingUnits.length) {
+                await ProductUnit.updateMany(
+                  { _id: { $in: existingUnits.map((u) => u._id) } },
+                  {
+                    $set: {
+                      warehouseId: location._id,
+                      receivingDocumentId: documentId,
+                      inventoryStatus: 'DEFECTIVE',
+                      packedOrderId: null,
+                    },
+                  },
+                  { session }
+                );
+              }
+              const missingCount = Math.max(0, quantity - existingUnits.length);
+              const newBarcodes = Array.from({ length: missingCount }, () => `DEF${randomUUID().replace(/-/g, '').slice(0, 20).toUpperCase()}`);
+              if (newBarcodes.length) {
+                await ProductUnit.insertMany(newBarcodes.map((barcode) => ({
+                  barcode, barcodeFormat: 'CODE_128', skuId: sku._id,
+                  warehouseId: location._id, receivingDocumentId: documentId,
+                  inventoryStatus: 'DEFECTIVE',
+                })), { session });
+              }
+              barcodes = [...existingSet, ...newBarcodes];
+            }
+          } else {
+            const delta = quantity;
+            const updated = delta === 0 ? sku : await Sku.findOneAndUpdate(
+              { _id: sku._id },
+              { $inc: { onHandQty: delta } }, { new: true, session }
+            );
+            if (!updated) throw createBulkStockRequestError('Tồn kho đã thay đổi, hãy thử lại', 'STOCK_CHANGED', 409);
+            if (delta !== 0) await InventoryTransaction.create([{
+              transactionCode: `FGM-${randomUUID()}`, warehouseType: 'FINISHED_GOODS', itemType: 'FINISHED_SKU',
+              skuId: sku._id, transactionType: 'MANUAL_INBOUND',
+              referenceModel: 'FinishedGoodsBulkDocument', referenceId: documentId,
+              locationId: location._id,
+              quantityChange: delta, onHandBefore: before, onHandAfter: updated.onHandQty,
+              unitCostSnapshot: sku.unitCogs || 0, totalValueSnapshot: quantity * (sku.unitCogs || 0), performedByUserId: req.user?._id, note,
             }], { session });
-            await ProductUnit.insertMany(barcodes.map((barcode) => ({
-              barcode, barcodeFormat: 'CODE_128', skuId: sku._id,
-              warehouseId: location._id, batchId: batch._id,
-              receivingDocumentId: documentId, inventoryStatus: 'AVAILABLE',
-            })), { session });
+
+            if (quantity > 0) {
+              const [batch] = await FinishedGoodsBatch.create([{
+                batchCode: `FGB-${randomUUID()}`, skuId: sku._id, skuBarcode: sku.skuBarcode,
+                locationId: location._id, initialQty: quantity, labeledQty: quantity, currentOnHandQty: quantity,
+                fifoInboundTimestamp: new Date(),
+              }], { session });
+
+              // Với INBOUND_FROM_RETURN: ưu tiên khôi phục đúng ProductUnit gốc đã quét (giữ nguyên barcode cũ)
+              const candidateBarcodes = sourceTicket?.ticketType === 'INBOUND_FROM_RETURN'
+                ? ticketBarcodes.slice(0, quantity)
+                : [];
+              const restorableUnits = candidateBarcodes.length
+                ? await ProductUnit.find({
+                  barcode: { $in: candidateBarcodes },
+                  skuId: sku._id,
+                  inventoryStatus: { $in: ['UNAVAILABLE', 'DEFECTIVE'] },
+                }).session(session)
+                : [];
+
+              if (restorableUnits.length) {
+                await ProductUnit.updateMany(
+                  { _id: { $in: restorableUnits.map((u) => u._id) } },
+                  {
+                    $set: {
+                      warehouseId: location._id,
+                      batchId: batch._id,
+                      receivingDocumentId: documentId,
+                      inventoryStatus: 'AVAILABLE',
+                      packedOrderId: null,
+                    },
+                    $unset: { defectReason: 1, packedAt: 1 },
+                  },
+                  { session }
+                );
+              }
+
+              const newCount = Math.max(0, quantity - restorableUnits.length);
+              const newBarcodes = Array.from({ length: newCount }, () => `ARA${randomUUID().replace(/-/g, '').slice(0, 20).toUpperCase()}`);
+              if (newBarcodes.length) {
+                await ProductUnit.insertMany(newBarcodes.map((barcode) => ({
+                  barcode, barcodeFormat: 'CODE_128', skuId: sku._id,
+                  warehouseId: location._id, batchId: batch._id,
+                  receivingDocumentId: documentId, inventoryStatus: 'AVAILABLE',
+                })), { session });
+              }
+              barcodes = [...restorableUnits.map((u) => u.barcode), ...newBarcodes];
+            }
           }
           lines.push({ productId: product._id, skuId: sku._id, quantity,
             expectedQty: Number(item.expectedQty),
@@ -1074,13 +1220,15 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
         note, createdByUserId: req.user?._id || new mongoose.Types.ObjectId(),
       }], { session });
       if (direction === 'IN') {
-        const allocationError = receiptAllocationError(lines, allocations);
-        if (allocationError) throw createBulkStockRequestError(allocationError.message, allocationError.code);
-        if (allocations.length) await confirmReceiptAllocation(req.user, documentId, allocations, session);
+        if (!isDefectInbound) {
+          const allocationError = receiptAllocationError(lines, allocations);
+          if (allocationError) throw createBulkStockRequestError(allocationError.message, allocationError.code);
+          if (allocations.length) await confirmReceiptAllocation(req.user, documentId, allocations, session);
+        }
         const claimed = await FinishedGoodsTicket.updateOne(
           {
             _id: sourceTicket._id,
-            ticketType: { $in: ['INBOUND_FROM_SEWING', 'INBOUND_FROM_RETURN'] },
+            ticketType: { $in: ['INBOUND_FROM_SEWING', 'INBOUND_FROM_RETURN', 'DEFECT_QUARANTINE_INBOUND'] },
             status: 'READY_TO_CONFIRM',
           },
           { $set: { status: 'COMPLETED' } },

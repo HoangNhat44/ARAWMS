@@ -129,6 +129,12 @@ export const accountantProcurementApi = {
     return res.data;
   },
 
+  // Trình báo biên bản sai lệch KCS lên Chủ sở hữu (Owner)
+  reportDeviationToOwner: async (planId, payload = {}) => {
+    const res = await apiClient.post(`/supplier-contracts/inbound-plans/${planId}/report-to-owner`, payload);
+    return res.data;
+  },
+
   // UC 06: Execute Contract Deviation Resolution (Xử lý sai lệch hợp đồng)
   getContractDeviations: async (params = {}) => {
     const res = await apiClient.get('/supplier-contracts/deviations', { params });

@@ -1,4 +1,4 @@
-import { MaterialInboundPlan, User } from '../../../models/index.js';
+import { MaterialInboundPlan, SupplierContract, Supplier, User } from '../../../models/index.js';
 
 async function resolveAccountantUserId(explicitUserId) {
   if (explicitUserId) return explicitUserId;
@@ -16,11 +16,10 @@ export const listContractDeviations = async (filters = {}) => {
     $or: [
       { deliveryComplianceStatus: 'MISMATCHED' },
       { status: 'DEVIATION_REPORTED' },
-      { status: 'DEVIATION_RESOLVED' },
       { 'technicianVerification.isMatchedWithPlan': false },
       { 'deviationResolution.status': { $in: ['UNRESOLVED', 'RESOLVED'] } },
       { 'batches.deliveryComplianceStatus': 'MISMATCHED' },
-      { 'batches.status': { $in: ['DEVIATION_REPORTED', 'DEVIATION_RESOLVED'] } },
+      { 'batches.status': 'DEVIATION_REPORTED' },
     ],
   };
 
@@ -30,21 +29,16 @@ export const listContractDeviations = async (filters = {}) => {
         {
           $or: [
             { 'deviationResolution.status': 'RESOLVED' },
-            { status: 'DEVIATION_RESOLVED' },
+            { status: 'CANCELLED' },
+            { status: 'RESOLVED_SUPERSEDED' },
           ],
         },
       ];
     } else if (filters.status === 'UNRESOLVED') {
       query.$and = [
         {
-          $or: [
-            { 'deviationResolution.status': 'UNRESOLVED' },
-            { status: 'DEVIATION_REPORTED' },
-            {
-              'deviationResolution.status': { $ne: 'RESOLVED' },
-              deliveryComplianceStatus: 'MISMATCHED',
-            },
-          ],
+          status: { $nin: ['CANCELLED', 'RESOLVED_SUPERSEDED'] },
+          'deviationResolution.status': { $ne: 'RESOLVED' },
         },
       ];
     }
@@ -86,7 +80,64 @@ export const resolveContractDeviation = async (planId, payload, currentUserId) =
 
   const accountantId = await resolveAccountantUserId(currentUserId);
   const now = new Date();
-  const actionTaken = payload.actionTaken || 'SUPPLIER_RE_DELIVERY';
+  const actionTaken = payload.actionTaken || (payload.action === 'TERMINATE_CONTRACT' ? 'TERMINATE_CONTRACT' : 'SUPPLIER_RE_DELIVERY');
+
+  // Nếu Kế toán chọn Option 1: Chấm dứt hợp đồng
+  if (actionTaken === 'TERMINATE_CONTRACT' || payload.action === 'TERMINATE_CONTRACT') {
+    const contractId = plan.contractId?._id || plan.contractId;
+    if (contractId) {
+      const contract = await SupplierContract.findById(contractId);
+      if (contract) {
+        contract.status = 'TERMINATED';
+        contract.terminatedAt = now;
+        contract.terminatedByUserId = accountantId;
+        contract.terminationReason = notes;
+        await contract.save();
+
+        try {
+          // Tính lại công nợ
+          const otherContracts = await SupplierContract.find({
+            supplierId: contract.supplierId,
+            status: 'ACTIVE',
+            _id: { $ne: contract._id },
+          }).select('totalContractAmount');
+          const newDebt = otherContracts.reduce((sum, c) => sum + (Number(c.totalContractAmount) || 0), 0);
+          await Supplier.findByIdAndUpdate(contract.supplierId, { totalPayableDebt: newDebt });
+        } catch (debtErr) {
+          console.error('Lỗi tính công nợ khi chấm dứt HĐ từ sai lệch:', debtErr);
+        }
+      }
+    }
+
+    // Kế hoạch chuyển sang trạng thái CANCELLED
+    plan.status = 'CANCELLED';
+    plan.deviationResolution = {
+      status: 'RESOLVED',
+      resolutionNotes: notes,
+      actionTaken: 'TERMINATE_CONTRACT',
+      resolvedAt: now,
+      resolvedByAccountantId: accountantId,
+    };
+    (plan.batches || []).forEach((b) => {
+      b.status = 'CANCELLED';
+      b.deviationResolution = {
+        status: 'RESOLVED',
+        resolutionNotes: notes,
+        actionTaken: 'TERMINATE_CONTRACT',
+        resolvedAt: now,
+        resolvedByAccountantId: accountantId,
+      };
+    });
+
+    await plan.save();
+
+    return MaterialInboundPlan.findById(plan._id)
+      .populate('contractId')
+      .populate('supplierId')
+      .populate('createdByAccountantId', 'fullName email employeeCode')
+      .populate('technicianVerification.verifiedByTechId', 'fullName email employeeCode')
+      .populate('deviationResolution.resolvedByAccountantId', 'fullName email employeeCode');
+  }
 
   // Cập nhật đợt giao nếu có batchNumber
   const batchNum = Number(payload.batchNumber);
@@ -100,7 +151,6 @@ export const resolveContractDeviation = async (planId, payload, currentUserId) =
         resolvedAt: now,
         resolvedByAccountantId: accountantId,
       };
-      batch.status = 'DEVIATION_RESOLVED';
     }
   }
 
@@ -113,7 +163,6 @@ export const resolveContractDeviation = async (planId, payload, currentUserId) =
     resolvedAt: now,
     resolvedByAccountantId: accountantId,
   };
-  plan.status = 'DEVIATION_RESOLVED';
 
   await plan.save();
 

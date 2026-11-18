@@ -20,6 +20,15 @@ import {
   listInspections,
   requestInboundTicket,
   getRecentOrders,
+  openSession,
+  scanUnit,
+  removeUnit,
+  finishRecording,
+  cancelSession,
+  uploadVideo,
+  syncVideo,
+  getVideo,
+  finalizeAndRequestInbound,
 } from './returnInspection.controller.js';
 
 const router = express.Router();
@@ -34,13 +43,26 @@ router.get('/recent-orders', getRecentOrders);
 router.get('/lookup/:code', lookupOrder);
 router.get('/lookup', lookupOrder);
 
-// 2. Ghi nhận biên bản kiểm tra KCS hàng hoàn (Đạt / Không đạt kèm video)
+// 2. Phiên quét QR đơn hàng hoàn + quay video liên tục + quét barcode từng sản phẩm
+router.post('/sessions/open', openSession);
+router.post('/sessions/:id/scan-unit', scanUnit);
+router.post('/sessions/:id/remove-unit', removeUnit);
+router.post('/sessions/:id/finish-recording', finishRecording);
+router.post('/sessions/:id/cancel', cancelSession);
+router.post('/sessions/:id/video', uploadVideo);
+router.post('/sessions/:id/video/:recordingId/sync', syncVideo);
+router.get('/sessions/:id/video', getVideo);
+
+// 3. Phân loại từng sản phẩm (đạt / hàng lỗi) & đồng thời tạo phiếu nhập kho (PNHH + PNHL)
+router.post('/finalize-and-request-inbound', finalizeAndRequestInbound);
+
+// 4. Ghi nhận biên bản kiểm tra KCS hàng hoàn (luồng cũ tương thích ngược)
 router.post('/submit', submitInspection);
 
-// 3. Lấy danh sách kết quả kiểm tra (có bộ lọc Đạt / Không đạt)
+// 5. Lấy danh sách kết quả kiểm tra (hỗ trợ lọc sessionStatus & result)
 router.get('/', listInspections);
 
-// 4. Tạo phiếu yêu cầu nhập kho hàng hoàn (FinishedGoodsTicket)
+// 6. Tạo phiếu yêu cầu nhập kho hàng hoàn (FinishedGoodsTicket)
 router.post('/inbound-ticket', requestInboundTicket);
 
 export default router;

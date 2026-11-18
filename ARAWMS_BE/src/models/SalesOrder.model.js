@@ -168,6 +168,8 @@ const salesOrderSchema = new Schema(
       packedByStaffId: { type: Schema.Types.ObjectId, ref: 'User' },
       packedAt: Date,
       packagingVideoUrl: { type: String },
+      returnUnboxingVideoUrl: { type: String },
+      returnInspectionId: { type: Schema.Types.ObjectId, ref: 'ReturnInspection' },
       carrierId: { type: Schema.Types.ObjectId, ref: 'ShippingCarrier', index: true },
       carrierName: { type: String, default: 'GHN' },
       waybillCode: { type: String, index: true },

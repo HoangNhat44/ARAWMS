@@ -7,6 +7,11 @@
 import api from './api';
 
 export const garmentTechnicalService = {
+  // 0. Garment Technician Analytics Dashboard
+  dashboard: {
+    getSummary: (params = {}) => api.get('/garment-technical/dashboard', { params }),
+  },
+
   // 1. Material Inbound Verification & Requests
   inbound: {
     getOptions: () => api.get('/garment-technical/inbound-verification/options'),
@@ -72,9 +77,42 @@ export const garmentTechnicalService = {
   returnInspection: {
     getRecentOrders: () => api.get('/garment-technical/return-inspection/recent-orders'),
     lookupOrder: (code) => api.get(`/garment-technical/return-inspection/lookup/${encodeURIComponent(code)}`),
+    openSession: (code) => api.post('/garment-technical/return-inspection/sessions/open', { code }),
+    scanUnit: (sessionId, barcode) => api.post(`/garment-technical/return-inspection/sessions/${sessionId}/scan-unit`, { barcode }),
+    removeUnit: (sessionId, barcode) => api.post(`/garment-technical/return-inspection/sessions/${sessionId}/remove-unit`, { barcode }),
+    finishRecording: (sessionId) => api.post(`/garment-technical/return-inspection/sessions/${sessionId}/finish-recording`),
+    cancelSession: (sessionId) => api.post(`/garment-technical/return-inspection/sessions/${sessionId}/cancel`),
+    uploadVideo: (job, blob, onUploadProgress) =>
+      api.post(`/garment-technical/return-inspection/sessions/${job.sessionId}/video`, blob, {
+        headers: {
+          'Content-Type': job.mimeType || 'video/webm',
+          'X-Recording-Id': job.recordingId,
+          'X-Video-Duration-Ms': String(job.durationMs || 1),
+        },
+        onUploadProgress,
+      }),
+    syncVideo: (job) =>
+      api.post(`/garment-technical/return-inspection/sessions/${job.sessionId}/video/${job.recordingId}/sync`, {
+        durationMs: job.durationMs || 1,
+      }),
+    getSavedVideo: (sessionId) =>
+      api.get(`/garment-technical/return-inspection/sessions/${sessionId}/video`, { responseType: 'blob' }),
+    finalizeAndRequestInbound: (payload) =>
+      api.post('/garment-technical/return-inspection/finalize-and-request-inbound', payload),
     submitInspection: (payload) => api.post('/garment-technical/return-inspection/submit', payload),
     getInspections: (params = {}) => api.get('/garment-technical/return-inspection', { params }),
     requestInboundTicket: (payload) => api.post('/garment-technical/return-inspection/inbound-ticket', payload),
+  },
+
+  // 7. Garment Lot Management (Quản lý Lô Thành phẩm & Nguyên phụ liệu -> Gửi Quản lý kho gen QR lô)
+  lots: {
+    getOptions: () => api.get('/garment-technical/lots/options'),
+    getLots: (params = {}) => api.get('/garment-technical/lots', { params }),
+    getLot: (id) => api.get(`/garment-technical/lots/${id}`),
+    createLot: (payload) => api.post('/garment-technical/lots', payload),
+    updateLot: (id, payload) => api.put(`/garment-technical/lots/${id}`, payload),
+    deleteLot: (id) => api.delete(`/garment-technical/lots/${id}`),
+    sendInboundRequest: (payload) => api.post('/garment-technical/lots/send-inbound-request', payload),
   },
 };
 

@@ -10,6 +10,8 @@ import Sku from '../../../models/Sku.model.js';
 import Product from '../../../models/Product.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
+import GarmentLot from '../../../models/GarmentLot.model.js';
+import { buildLotQrValue, generateNextLotCode } from '../lot-management/lotManagement.service.js';
 
 /**
  * Returns options for finished goods inspection (SKUs, Products, Finished Goods Shelves)
@@ -173,8 +175,21 @@ export const createFinishedGoodsInboundTicket = async (payload = {}, user) => {
     defaultLocation = await WarehouseLocation.findOne({ status: 'ACTIVE' });
   }
 
-  // Build items array with valid barcodes & designated locations
+  const validDefectCategories = new Set([
+    'NONE',
+    'SEWING_DEFECT',
+    'FABRIC_DEFECT',
+    'SIZE_SPEC_ERROR',
+    'ACCESSORY_LABEL_ERROR',
+    'STAIN_DAMAGE',
+    'OTHER',
+  ]);
+
+  // Build items array with valid barcodes, per-SKU defect stats/reasons & designated locations
   const resolvedItems = [];
+  let rowFailedSum = 0;
+  let hasPerRowFailedField = false;
+
   for (const item of items) {
     if (!item.skuId || !mongoose.Types.ObjectId.isValid(item.skuId)) {
       const err = new Error('Mã SKU không hợp lệ');
@@ -199,40 +214,137 @@ export const createFinishedGoodsInboundTicket = async (payload = {}, user) => {
       locationId = defaultLocation._id;
     }
 
+    const itemExpected = Number(item.expectedQty) || 0;
+    const itemFailed = item.failedQty !== undefined && item.failedQty !== '' ? Number(item.failedQty) : 0;
+    if (item.failedQty !== undefined && item.failedQty !== '') hasPerRowFailedField = true;
+    if (!Number.isSafeInteger(itemFailed) || itemFailed < 0) {
+      const err = new Error('Số lượng lỗi theo từng SKU phải là số nguyên không âm');
+      err.status = 400;
+      throw err;
+    }
+    const itemTotal =
+      item.totalQty !== undefined && item.totalQty !== '' ? Number(item.totalQty) : itemExpected + itemFailed;
+    if (itemExpected + itemFailed !== itemTotal) {
+      const err = new Error(
+        `SKU ${sku.skuCode}: Tổng may (${itemTotal}) phải bằng số đạt (${itemExpected}) + số lỗi (${itemFailed})`
+      );
+      err.status = 400;
+      throw err;
+    }
+
+    const rawCategory = String(item.defectCategory || '').trim().toUpperCase();
+    const resolvedCategory =
+      itemFailed > 0
+        ? validDefectCategories.has(rawCategory) && rawCategory !== 'NONE'
+          ? rawCategory
+          : 'OTHER'
+        : 'NONE';
+    const resolvedNote = itemFailed > 0 ? String(item.defectNote || '').trim() : '';
+
+    rowFailedSum += itemFailed;
+
+    const batchCode = String(item.batchCode || '').trim().toUpperCase() || (await generateNextLotCode('FINISHED_GOODS'));
+    const qrValue = buildLotQrValue('FINISHED_GOODS', batchCode);
+
     resolvedItems.push({
       skuId: sku._id,
       skuBarcode: sku.skuBarcode || sku.skuCode,
+      skuCodeSnapshot: sku.skuCode,
+      productNameSnapshot: sku.styleName || sku.skuCode,
+      colorSnapshot: sku.color || '',
+      sizeSnapshot: sku.size || '',
       designatedFifoLocationId: locationId,
-      expectedQty: Number(item.expectedQty) || 0,
+      totalQty: itemTotal,
+      expectedQty: itemExpected,
+      failedQty: itemFailed,
+      defectCategory: resolvedCategory,
+      defectNote: resolvedNote,
+      batchCode,
+      qrValue,
+      productionDate: item.productionDate ? new Date(item.productionDate) : new Date(),
+      workshopName: String(item.workshopName || '').trim(),
+      productionOrderCode: String(item.productionOrderCode || '').trim(),
+      batchNote: String(item.batchNote || '').trim(),
       scannedQty: 0,
     });
   }
 
-  if (failed > 0 && !qcNote?.trim()) {
-    const err = new Error('Vui lòng nhập ghi chú biên bản KCS khi phát hiện có hàng lỗi');
+  if (hasPerRowFailedField && rowFailedSum !== failed) {
+    const err = new Error(`Tổng số lỗi các dòng SKU (${rowFailedSum}) không khớp tổng số lỗi cả phiếu (${failed})`);
+    err.status = 400;
+    throw err;
+  }
+
+  const rowDefectNotes = resolvedItems
+    .filter((it) => it.failedQty > 0 && it.defectNote)
+    .map((it) => `${it.skuBarcode}: ${it.defectNote}`);
+  const finalQcNote = qcNote?.trim() || rowDefectNotes.join(' | ');
+
+  if (failed > 0 && !finalQcNote) {
+    const err = new Error('Vui lòng nhập lý do / ghi chú lỗi (ở từng dòng hoặc biên bản KCS) khi có hàng lỗi');
     err.status = 400;
     throw err;
   }
 
   const ticketCode = await CounterSequence.getNextSequence('FINISHED_GOODS_TICKET', 'PNTP', 6);
+  const now = new Date();
 
   const ticket = new FinishedGoodsTicket({
     ticketCode,
     ticketType: 'INBOUND_FROM_SEWING',
     garmentInspection: {
       inspectedByTechId: user?._id,
-      inspectedAt: new Date(),
+      inspectedAt: now,
       totalBatchQty: total,
       passedQty: passed,
       failedDefectQty: failed,
-      qcNote: qcNote?.trim() || '',
+      qcNote: finalQcNote,
     },
     createdByManagerId: user?._id,
     status: 'READY_TO_CONFIRM', // Ready for Warehouse Manager confirmation & putaway
     defectAction: failed > 0 ? (defectAction !== 'NONE' ? defectAction : 'REPAIR_AT_WORKSHOP') : 'NONE',
-    items: resolvedItems,
+    items: resolvedItems.map(({ skuCodeSnapshot, productNameSnapshot, colorSnapshot, sizeSnapshot, ...doc }) => doc),
   });
 
+  await ticket.save();
+
+  // Đồng bộ tạo GarmentLot ở trạng thái REQUESTED cho từng dòng để Quản lý Lô & Quản lý kho cùng truy vết
+  const createdLots = await GarmentLot.insertMany(
+    resolvedItems.map((it) => ({
+      lotCode: it.batchCode,
+      lotType: 'FINISHED_GOODS',
+      qrValue: it.qrValue,
+      status: 'REQUESTED',
+      skuId: it.skuId,
+      skuCode: it.skuCodeSnapshot,
+      skuBarcode: it.skuBarcode,
+      productName: it.productNameSnapshot,
+      color: it.colorSnapshot,
+      size: it.sizeSnapshot,
+      totalQty: it.totalQty,
+      quantity: it.expectedQty,
+      failedQty: it.failedQty,
+      defectCategory: it.defectCategory,
+      defectNote: it.defectNote,
+      productionDate: it.productionDate,
+      workshopName: it.workshopName,
+      productionOrderCode: it.productionOrderCode,
+      note: it.batchNote,
+      linkedTicketModel: 'FinishedGoodsTicket',
+      linkedTicketId: ticket._id,
+      linkedTicketCode: ticket.ticketCode,
+      requestedAt: now,
+      createdByTechId: user?._id,
+    }))
+  );
+
+  // Gắn lotId ngược lại lên items[] của FinishedGoodsTicket
+  const lotIdByCode = new Map(createdLots.map((l) => [l.lotCode, l._id]));
+  ticket.items.forEach((item) => {
+    if (item.batchCode && lotIdByCode.has(item.batchCode)) {
+      item.lotId = lotIdByCode.get(item.batchCode);
+    }
+  });
   await ticket.save();
 
   const savedTicket = await FinishedGoodsTicket.findById(ticket._id)

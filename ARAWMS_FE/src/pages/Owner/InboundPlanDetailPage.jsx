@@ -56,6 +56,48 @@ export default function InboundPlanDetailPage() {
         <div className="owner-page-heading"><div><h2>{plan.code}</h2><p>Hợp đồng: {contract.code}</p></div><Status value={plan.status} /></div>
         <dl className="owner-detail"><dt>Nhà cung cấp</dt><dd>{contract.supplier?.name || 'Chưa ghi nhận'}</dd><dt>Dự kiến giao hàng</dt><dd>{datetime(plan.scheduledDeliveryDate)}</dd><dt>Số đợt giao</dt><dd>{plan.batches.length ? quantity(plan.batches.length) : 'Chưa chia đợt'}</dd><dt>Ghi chú</dt><dd>{plan.notes || 'Chưa ghi nhận'}</dd></dl>
       </section>
+
+      {/* Banner Cảnh báo Sai lệch KCS & Trình báo lên Ban Quản trị */}
+      {(plan.status === 'DEVIATION_REPORTED' || plan.reportedToOwner?.isReported || plan.technicianVerification) && (
+        <section
+          className="owner-content-panel"
+          style={{
+            border: '2px solid #FECDD3',
+            backgroundColor: '#FFF1F2',
+            borderRadius: '8px',
+            padding: '16px 20px',
+            marginBottom: '16px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', color: '#9F1239' }}>
+            <span style={{ fontSize: '18px' }}>⚠️</span>
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#9F1239' }}>
+              Cảnh báo Sai lệch Kiểm định KCS & Trình báo Kế toán
+            </h3>
+          </div>
+          <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#881337', lineHeight: 1.5 }}>
+            <strong>Nội dung sai lệch KCS ghi nhận:</strong>{' '}
+            {plan.technicianVerification?.deviationSummary || 'Giao nhận sai lệch số lượng hoặc tiêu chuẩn kỹ thuật cam kết theo kế hoạch.'}
+          </p>
+          <dl className="owner-detail" style={{ background: '#FFE4E6', padding: '10px 14px', borderRadius: '6px' }}>
+            <dt>Thời gian kiểm KCS</dt>
+            <dd>{datetime(plan.technicianVerification?.verifiedAt) || 'Chưa ghi nhận'}</dd>
+            <dt>Kỹ thuật viên may</dt>
+            <dd>{plan.technicianVerification?.verifiedByTechId?.fullName || 'KTV Kiểm định KCS'}</dd>
+            {plan.reportedToOwner?.isReported && (
+              <>
+                <dt>Kế toán trình báo</dt>
+                <dd>Đã gửi trình Ban Quản trị lúc {datetime(plan.reportedToOwner.reportedAt)}</dd>
+                <dt>Ghi chú của Kế toán</dt>
+                <dd>{plan.reportedToOwner.reportNotes || 'Đề nghị xem xét điều chỉnh phiên bản hoặc chấm dứt hợp đồng'}</dd>
+              </>
+            )}
+          </dl>
+          <div style={{ marginTop: '12px', fontSize: '12.5px', color: '#9F1239' }}>
+            💡 Hợp đồng liên quan: <strong>{contract.code}</strong> ({contract.supplier?.name || 'NCC'}) hiện đang được phân loại <strong>{contract.status === 'DEVIATION_FLAGGED' ? 'Cảnh báo sai lệch (DEVIATION_FLAGGED)' : contract.status}</strong> để Kế toán và Ban Quản lý xử lý theo 2 phương án: <strong>Chấm dứt Hợp đồng</strong> hoặc <strong>Tạo Phiên bản mới (v2)</strong>.
+          </div>
+        </section>
+      )}
       <section className="owner-content-panel"><h2>Nguyên liệu dự kiến nhập</h2><PlanItems items={plan.items} /></section>
       {/* Các đợt giao hiển thị thành từng khối trên trang chi tiết, không mở chen vào bảng hợp đồng. */}
       {plan.batches.length > 0 && <section className="owner-content-panel owner-inbound-batches"><h2>Lịch giao từng đợt</h2>{plan.batches.map((batch, index) => <section className="owner-content-panel" key={`${batch.number}-${index}`}>
