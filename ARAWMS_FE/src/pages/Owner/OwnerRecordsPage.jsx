@@ -11,6 +11,7 @@ import { useOwnerQuery } from '../../hooks/useOwnerQuery';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
 import { ownerService } from '../../services/ownerService';
 import { ResourceState, Table, Pagination, Notice, Status, labels, money, quantity, datetime } from './OwnerUI';
+import WarehouseReportView, { isWarehouseReportContent } from '../../components/reports/WarehouseReportView';
 // UC-18/19/20: Mỗi chế độ có API, tiêu đề và trạng thái riêng; chỉ dùng chung cách tìm/xem bản ghi.
 export const recordConfig = {
   reports: { resource: 'manager-reports', title: 'Báo cáo từ quản lý kho', feature: 'Tài chính điều hành', statuses: ['SUBMITTED', 'REVIEWED'] },
@@ -44,7 +45,11 @@ function ManagerDetail({ data, setBusy, onDone }) {
     try { const response = await ownerService.reviewReport(data.id, comment); onDone(response.message); }
     catch (err) { setError(err.message); } finally { setSaving(false); setBusy(false); } };
   return <div className="owner-detail-body"><h2>{data.code} · {data.title}</h2><p><Status value={data.status} /> · {labels[data.reportType] || data.reportType}</p><p>Người gửi: {data.submittedBy?.fullName || 'Chưa có'} · {datetime(data.submittedAt)}</p>
-    <p>Kỳ báo cáo: {datetime(data.periodStart)} – {datetime(data.periodEnd)}</p><p>{data.summary}</p><pre className="owner-json">{typeof data.content === 'string' ? data.content : JSON.stringify(data.content ?? {}, null, 2)}</pre>
+    {isWarehouseReportContent(data.content)
+      // Warehouse statistics report: periodEnd is stored exclusive, so the last day is shown.
+      ? <><p>Kỳ báo cáo: {new Date(data.periodStart).toLocaleDateString('vi-VN')} – {new Date(new Date(data.periodEnd) - 1).toLocaleDateString('vi-VN')}</p>
+        <p>{data.summary}</p><WarehouseReportView content={data.content} /></>
+      : <><p>Kỳ báo cáo: {datetime(data.periodStart)} – {datetime(data.periodEnd)}</p><p>{data.summary}</p><pre className="owner-json">{typeof data.content === 'string' ? data.content : JSON.stringify(data.content ?? {}, null, 2)}</pre></>}
     {data.fileUrl && <a href={data.fileUrl} target="_blank" rel="noopener noreferrer">Mở tệp đính kèm</a>}
     {data.status === 'SUBMITTED' ? <form className="owner-form" onSubmit={review}><Notice error={error} /><WmsField>Ghi chú khi xem<WmsTextArea maxLength={2000} value={comment} disabled={saving} onChange={(e) => setComment(e.target.value)} /></WmsField><WmsButton className="btn-ara-primary" disabled={saving}>{saving ? 'Đang lưu…' : 'Xác nhận đã xem báo cáo'}</WmsButton></form>
       : <p>Đã xem bởi {data.reviewedBy?.fullName || 'Chủ cửa hàng'} · {datetime(data.reviewedAt)}<br />{data.ownerComment}</p>}</div>;

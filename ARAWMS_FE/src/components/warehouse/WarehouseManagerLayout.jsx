@@ -18,6 +18,7 @@ import {
   TrendingUp,
   ScanBarcode,
   PackageX,
+  FileBarChart,
   PanelLeftClose,
   PanelLeftOpen,
   X,
@@ -113,6 +114,13 @@ export default function WarehouseManagerLayout({ children }) {
       subLabel: 'Lập đợt kiểm kê & đối soát',
       icon: ClipboardCheck,
       match: (path) => path.startsWith('/warehouse/stocktake'),
+    },
+    {
+      to: '/warehouse/reports',
+      label: 'Báo cáo thống kê',
+      subLabel: 'Tổng hợp kho & gửi Owner',
+      icon: FileBarChart,
+      match: (path) => path.startsWith('/warehouse/reports'),
     },
   ];
 

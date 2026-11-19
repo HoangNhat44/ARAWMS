@@ -15,6 +15,7 @@ import layoutRoutes from '../modules/warehouse-management/location-layout/layout
 import putawayRoutes from '../modules/warehouse-management/location-layout/putaway.routes.js';
 import authRoutes from '../modules/system-administration/authentication/auth.routes.js';
 import stocktakeRoutes from '../modules/inventory-auditing/stocktake-session/stocktakeSession.routes.js';
+import warehouseReportRoutes from '../modules/warehouse-management/reports/warehouseReport.routes.js';
 import shippingRoutes from '../modules/shipping/shipping.routes.js';
 import garmentInboundVerificationRoutes from '../modules/garment-technical/inbound-verification/inboundVerification.routes.js';
 import garmentFinishedInspectionRoutes from '../modules/garment-technical/finished-inspection/finishedInspection.routes.js';
@@ -44,6 +45,7 @@ router.use('/raw-material-outbound', materialOutboundRoutes);
 router.use('/warehouse-layout', layoutRoutes);
 router.use('/warehouse-putaway', putawayRoutes);
 router.use('/stocktake', stocktakeRoutes);
+router.use('/warehouse-reports', warehouseReportRoutes);
 router.use('/shipping', shippingRoutes);
 router.use('/auth', authRoutes);
 

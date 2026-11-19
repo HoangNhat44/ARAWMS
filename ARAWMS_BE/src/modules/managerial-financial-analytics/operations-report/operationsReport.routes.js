@@ -8,6 +8,8 @@ import { objectId, textField, numberField } from '../../../common/utils/ownerVal
 import { operationsReport, period } from './operationsReport.service.js';
 import { bestSellersReport } from './bestSellers.service.js';
 import { annualReport, trendReport } from './annualReport.service.js';
+import { businessActivity } from './businessActivity.service.js';
+import { returnTrendDemo } from './returnTrendDemo.service.js';
 import ProductionOrder from '../../../models/ProductionOrder.model.js';
 import User from '../../../models/User.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
@@ -16,6 +18,14 @@ import Supplier from '../../../models/Supplier.model.js';
 import CashFlowVoucher from '../../../models/CashFlowVoucher.model.js';
 import MaterialInboundPlan from '../../../models/MaterialInboundPlan.model.js';
 const router = ownerRouter();
+// Chế độ trình diễn đọc riêng các mốc mẫu đã nạp cho Tổng quan.
+router.get('/return-trend-demo', asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: await returnTrendDemo() });
+}));
+// Báo cáo đọc dữ liệu điều hành và xử lý hàng hoàn của chủ cửa hàng.
+router.get('/business-activity', asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await businessActivity(req.query) });
+}));
 // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13 - Biểu đồ 12 tháng độc lập khoảng ngày của báo cáo tổng hợp.
 router.get('/best-sellers', asyncHandler(async (req, res) => res.json({ success: true, data: await bestSellersReport(req.query) })));
 router.get('/trend', asyncHandler(async (req, res) => res.json({ success: true, data: await trendReport(req.query) })));

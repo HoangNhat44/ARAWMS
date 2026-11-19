@@ -9,8 +9,23 @@ const colors = ['#315d48', '#a66c28', '#466c9b', '#8c4d78', '#59652a', '#80544a'
 const valueOf = (v) => Number.isFinite(v) ? v : 0;
 const display = (v, currency) => currency ? money(v) : quantity(v);
 const short = (text, n = 24) => text.length > n ? `${text.slice(0, n - 1)}…` : text;
+// Tách nét tại mốc thiếu số liệu để không nối qua ngày không có mẫu số.
+function lineSegments(rows, key, x, y) {
+  const segments = [];
+  let segment = [];
+  rows.forEach((row, index) => {
+    if (Number.isFinite(row[key])) {
+      segment.push(`${x(index)},${y(row[key])}`);
+    } else if (segment.length) {
+      segments.push(segment.join(' '));
+      segment = [];
+    }
+  });
+  if (segment.length) segments.push(segment.join(' '));
+  return segments;
+}
 // UC-13: Cùng thang đo, cột bắt đầu từ 0; hỗ trợ số âm, không dùng hai trục gây nhầm đơn vị.
-export function SeriesPlot({ rows, series, kind = 'column', currency = false, title, categoryLabel = 'Nhóm so sánh', unitLabel = 'số lượng', compactAxis = false }) {
+export function SeriesPlot({ rows, series, kind = 'column', currency = false, title, categoryLabel = 'Nhóm so sánh', unitLabel = 'số lượng', compactAxis = false, valueSuffix = '', reference }) {
   const plot = useRef(null);
   const [availableWidth, setAvailableWidth] = useState(360);
   useEffect(() => {
@@ -28,7 +43,7 @@ export function SeriesPlot({ rows, series, kind = 'column', currency = false, ti
   const left = 64, top = 36, bottom = 216, right = width - 24, plotHeight = bottom - top;
   // Dùng cùng một thang đo cho tất cả chuỗi, giữ mốc 0 và mở rộng xuống dưới khi có số âm.
   const values = rows.flatMap((r) => series.map((s) => valueOf(r[s.key])));
-  const maxValue = Math.max(0, ...values), minValue = Math.min(0, ...values);
+  const maxValue = Math.max(reference?.value ?? 0, ...values), minValue = Math.min(0, ...values);
   // Làm tròn bước trục theo 1/2/5/10 để nhãn dễ đọc; dữ liệu đếm nguyên có bước tối thiểu là 1.
   const rough = (maxValue - minValue || 1) / 4, magnitude = 10 ** Math.floor(Math.log10(rough));
   const rawStep = [1, 2, 5, 10].find((v) => v * magnitude >= rough) * magnitude;
@@ -48,19 +63,36 @@ export function SeriesPlot({ rows, series, kind = 'column', currency = false, ti
   const unit = currency && largest >= 1e6 ? 1e6 : currency && largest >= 1000 ? 1000 : 1;
   const unitName = currency ? unit === 1e6 ? 'triệu đồng' : unit === 1000 ? 'nghìn đồng' : 'đồng' : unitLabel;
   const ticks = Array.from({ length: Math.round((max - min) / step) + 1 }, (_, i) => min + i * step);
-  const pointTitle = (row, item) => row.tooltip || `${row.label} · ${item.label}: ${display(row[item.key], currency)}`;
+  const chartValue = value => Number.isFinite(value) ? `${display(value, currency)}${valueSuffix}` : 'Chưa có dữ liệu';
+  const pointTitle = (row, item) => row.tooltip || `${row.label} · ${item.label}: ${chartValue(row[item.key])}`;
   return <><div ref={plot} className="owner-chart-scroll" tabIndex={compactAxis ? undefined : 0} role={compactAxis ? undefined : 'region'} aria-label={compactAxis ? undefined : `Cuộn ngang ${title}`}>
-    <svg className="owner-series-svg" style={compactAxis ? { width: '100%' } : { width, minWidth: width * 0.9 }} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={compactAxis ? `${title}. ${categoryLabel}. ${unitName}.` : `${title}: ${rows.map((r) => `${r.label}: ${series.map((s) => `${s.label} ${display(r[s.key], currency)}`).join(', ')}`).join('; ')}`}>
+    <svg className="owner-series-svg" style={compactAxis ? { width: '100%' } : { width, minWidth: width * 0.9 }} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={compactAxis ? `${title}. ${categoryLabel}. ${unitName}.` : `${title}: ${rows.map((r) => `${r.label}: ${series.map((s) => `${s.label} ${chartValue(r[s.key])}`).join(', ')}`).join('; ')}`}>
       <title>{title}</title><text className="owner-axis-title" x={left} y={18}>{unitName.charAt(0).toUpperCase() + unitName.slice(1)}</text>
       {!compactAxis && <text className="owner-axis-title" x={(left + right) / 2} y={height - 8} textAnchor="middle">{categoryLabel}</text>}
       {ticks.map((tick) => <g key={tick}><line x1={left} x2={right} y1={y(tick)} y2={y(tick)} stroke={tick === 0 ? '#707b75' : '#d8e0db'} /><text x={left - 10} y={y(tick) + 4} textAnchor="end">{quantity(tick / unit)}</text></g>)}
+      {reference && <line x1={left} x2={right} y1={y(reference.value)} y2={y(reference.value)} stroke="#a22d34" strokeWidth="2" strokeDasharray="5 4"><title>{reference.label}</title></line>}
       {compactAxis
         ? indexTicks.map(i => <text key={i} className="owner-axis-index" x={x(i)} y={bottom + 22} textAnchor="middle">{i + 1}</text>)
         : rows.map((r, i) => { const words = r.label.split(' '); const lines = []; let line = ''; const chars = Math.max(9, Math.floor(group / 8)); words.forEach((word) => { if ((line + ' ' + word).trim().length > chars && line) { lines.push(line); line = word; } else line = (line + ' ' + word).trim(); }); if (line) lines.push(line); return <text key={i} x={x(i)} y={bottom + 24} textAnchor="middle"><title>{r.label}</title>{lines.slice(0, 3).map((part, j) => <tspan key={j} x={x(i)} dy={j ? 15 : 0}>{short(part, chars + 6)}{j === 2 && lines.length > 3 ? '…' : ''}</tspan>)}</text>; })}
-      {series.map((s, si) => kind === 'line' ? <g key={s.key}><polyline fill="none" stroke={colors[si]} strokeWidth="3" strokeDasharray={si ? '7 4' : undefined} points={rows.filter((r) => Number.isFinite(r[s.key])).map((r) => { const i = rows.indexOf(r); return `${x(i)},${y(r[s.key])}`; }).join(' ')} />{rows.map((r, i) => Number.isFinite(r[s.key]) && <circle key={i} cx={x(i)} cy={y(valueOf(r[s.key]))} r={compactAxis ? Math.min(4, group / 3) : 4} fill={colors[si]}><title>{pointTitle(r, s)}</title></circle>)}</g> : <g key={s.key}>{rows.map((r, i) => { const value = valueOf(r[s.key]); const bar = group * 0.72 / series.length; return <rect key={i} x={x(i) - group * 0.36 + si * bar} y={Math.min(y(value), y(0))} width={Math.max(2, bar - 3)} height={Math.max(value ? 1 : 0, Math.abs(y(value) - y(0)))} fill={colors[si]}><title>{r.label} · {s.label}: {display(value, currency)}</title></rect>; })}</g>)}
+      {series.map((s, si) => kind === 'line' ? <g key={s.key}>
+        {lineSegments(rows, s.key, x, y).map(points => <polyline key={points} fill="none" stroke={colors[si]}
+          strokeWidth="3" strokeDasharray={si ? '7 4' : undefined} points={points} />)}
+        {rows.map((r, i) => Number.isFinite(r[s.key]) && <circle key={i} cx={x(i)} cy={y(valueOf(r[s.key]))}
+          r={compactAxis ? Math.min(4, group / 3) : 4} fill={colors[si]}><title>{pointTitle(r, s)}</title></circle>)}
+      </g> : <g key={s.key}>{rows.map((r, i) => {
+        if (!Number.isFinite(r[s.key])) return null;
+        const value = r[s.key];
+        const bar = group * 0.72 / series.length;
+        const start = x(i) - group * 0.36 + si * bar;
+        const width = Math.max(2, bar - 3);
+        // Với tỷ lệ, đánh dấu 0% ngay trên trục để phân biệt với mốc thiếu dữ liệu.
+        if (value === 0 && valueSuffix === '%') return <circle key={i} cx={start + width / 2} cy={y(0)} r="4" fill={colors[si]}><title>{pointTitle(r, s)}</title></circle>;
+        return <rect key={i} x={start} y={Math.min(y(value), y(0))} width={width}
+          height={value === 0 ? 0 : Math.max(1, Math.abs(y(value) - y(0)))} fill={colors[si]}><title>{pointTitle(r, s)}</title></rect>;
+      })}</g>)}
     </svg></div>
     {compactAxis && <p className="owner-chart-axis-caption">{categoryLabel}</p>}
-    <div className="owner-chart-legend">{series.map((s, i) => <span key={s.key}><i style={{ background: colors[i] }} />{s.label}{kind === 'line' && i > 0 ? ' (nét đứt)' : ''}</span>)}</div>
+    <div className="owner-chart-legend">{series.map((s, i) => <span key={s.key}><i style={{ background: colors[i] }} />{s.label}{kind === 'line' && i > 0 ? ' (nét đứt)' : ''}</span>)}{reference && <span><i style={{ background: '#a22d34' }} />{reference.label} (nét đứt)</span>}</div>
   </>;
 }
 /**
