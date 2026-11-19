@@ -324,3 +324,12 @@ export async function binOccupancy(binId) {
     units: actualReliable ? units : [], planned,
     calculatedAt: new Date() };
 }
+
+/** The last 50 logged changes of a putaway allocation. */
+export async function getAllocationHistory(allocationId) {
+  const allocation = await PutawayAllocation.findById(allocationId).select('_id').lean();
+  if (!allocation) throw Object.assign(new Error('Không tìm thấy phân bổ'), { code: 'ALLOCATION_NOT_FOUND', status: 404 });
+  const history = await SystemLog.find({ targetId: allocation._id })
+    .select('action actorId createdAt beforeSnapshot afterSnapshot').sort({ createdAt: -1 }).limit(50).lean();
+  return { history };
+}

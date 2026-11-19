@@ -5,10 +5,8 @@
  * Description: Prints persisted supplier material roll and lot barcodes with the physical identification details needed at the shelf.
  */
 import { labelImage } from './barcodePrint';
+import { escapeHtml } from './warehouseFormat';
 
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-})[character]);
 
 /** Prints the receipt's calendar date in the viewer's time zone rather than the UTC date. */
 const receivedDate = (value) => {

@@ -2,276 +2,40 @@
  * File: product.routes.js
  * Author: Duy Anh
  * Date: 2026-10-22
- * Description: Defines warehouse product, stock, location, and media endpoints. Restricts these operations to warehouse managers and records stock changes.
+ * Description: Finished-goods warehouse endpoints under /api/products. Owners, warehouse managers and warehouse
+ * staff may read; writes are limited to owners and warehouse managers. Handlers are in product.controller.js.
  */
 import express from 'express';
-import mongoose from 'mongoose';
-import { Transform } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
-import { v2 as cloudinary } from 'cloudinary';
-import Product from '../../../models/Product.model.js';
-import Sku from '../../../models/Sku.model.js';
-import InventoryTransaction from '../../../models/InventoryTransaction.model.js';
-import { randomUUID } from 'node:crypto';
-import { createHash } from 'node:crypto';
-import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
-import { configureProductCloudinary, productMediaOptions } from '../../../common/services/productMediaStorage.js';
-import bulkStockRoutes from './bulkStock.routes.js';
-import productConfigurationRoutes from './productConfiguration.routes.js';
-import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
-import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
 import { authenticate } from '../../../common/middlewares/authenticate.js';
 import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
-import { pickableQtyBySku, getProductDetail, getShelfStock, listProductReceipts,
-  getReceiptUnits, renderProductLabels } from './productDetail.service.js';
-import { getBarcodeTimeline } from './barcodeTracking.service.js';
+import bulkStockRoutes from './bulkStock.routes.js';
+import productConfigurationRoutes from './productConfiguration.routes.js';
+import {
+  locations, createLocation, products, issueStock, uploadMedia, barcodeTimeline, productDetail, shelfStock,
+  productReceipts, receiptUnits, productLabels,
+} from './product.controller.js';
 
 const router = express.Router();
-const media = {
-  image: { types: ['image/jpeg', 'image/png', 'image/webp'], limit: 10 * 1024 * 1024, field: 'thumbnailUrl', publicIdField: 'imagePublicId' },
-  video: { types: ['video/mp4', 'video/webm'], limit: 100 * 1024 * 1024, field: 'videoUrl', publicIdField: 'videoPublicId' },
-  'additional-image': { types: ['image/jpeg', 'image/png', 'image/webp'], limit: 10 * 1024 * 1024, field: 'additionalImageUrls' },
-};
+const manageProducts = authorizeRole('OWNER', 'WAREHOUSE_MANAGER');
 
 router.use(authenticate, authorizeRole('OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'));
-const manageProducts = authorizeRole('OWNER', 'WAREHOUSE_MANAGER');
 router.use('/bulk', bulkStockRoutes);
 router.use('/configuration', manageProducts, productConfigurationRoutes);
 
-/** Lists usable finished goods locations and their current capacity. */
-router.get('/locations', async (req, res, next) => {
-  try {
-    const locations = await WarehouseLocation.find({ warehouseType: 'FINISHED_GOODS',
-      layoutBin: { $ne: true }, isSystemUnplaced: { $ne: true },
-      isDeleted: { $ne: true } }).sort({ locationCode: 1 }).lean();
-    return sendSuccess(res, 'Vị trí kho thành phẩm', { locations: locations.map((item) => ({
-      id: String(item._id), locationCode: item.locationCode, status: item.status,
-      maxCapacity: item.maxCapacity, currentOccupancy: item.currentOccupancy || 0,
-    })) });
-  } catch (error) { next(error); }
-});
+router.get('/locations', locations);
+router.post('/locations', manageProducts, createLocation);
+router.get('/', products);
 
-/** Creates a uniquely coded finished goods location for receiving stock. */
-router.post('/locations', manageProducts, async (req, res, next) => {
-  const locationCode = String(req.body?.locationCode || '').trim().toUpperCase();
-  const maxCapacity = Number(req.body?.maxCapacity);
-  if (!/^[A-Z0-9_-]{2,40}$/.test(locationCode) || !Number.isSafeInteger(maxCapacity) || maxCapacity < 1) {
-    return sendError(res, 'Vị trí kho không hợp lệ', { code: 'INVALID_LOCATION' }, 400);
-  }
-  try {
-    const location = await WarehouseLocation.create({
-      locationCode, barcode: `LOC-${locationCode}`, warehouseType: 'FINISHED_GOODS',
-      zoneCode: 'THANH-PHAM', rackCode: 'CHUNG', shelfCode: 'CHUNG', maxCapacity,
-    });
-    return sendSuccess(res, 'Đã tạo vị trí kho', { location: { id: location.id, locationCode: location.locationCode, maxCapacity, currentOccupancy: 0, status: location.status } }, 201);
-  } catch (error) {
-    if (error.code === 11000) return sendError(res, 'Mã vị trí đã tồn tại', { code: 'DUPLICATE_LOCATION' }, 409);
-    next(error);
-  }
-});
+// Product detail page and barcode tracking (read-only; labels are rendered on demand for printing).
+router.get('/units/:barcode/timeline', barcodeTimeline);
+router.get('/:id/detail', productDetail);
+router.get('/:id/shelf-stock', shelfStock);
+router.get('/:id/receipts', productReceipts);
+router.get('/:id/receipts/:documentId/units', receiptUnits);
+router.post('/:id/labels', productLabels);
 
-/** Lists products with SKU stock totals for receiving and stock lookup. */
-router.get('/', async (req, res, next) => {
-  try {
-    const products = await Product.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean();
-    const skus = await Sku.find({ productId: { $in: products.map((item) => item._id) }, isDeleted: { $ne: true } }).lean();
-    const pickableBySku = await pickableQtyBySku(skus.map((sku) => sku._id));
-    const byProduct = new Map();
-    for (const sku of skus) {
-      const key = String(sku.productId);
-      if (!byProduct.has(key)) byProduct.set(key, []);
-      byProduct.get(key).push({
-        id: String(sku._id), skuCode: sku.skuCode, color: sku.color, size: sku.size,
-        isActive: sku.isActive, retailPrice: sku.retailPrice, unitCogs: sku.unitCogs || 0,
-        onHandQty: sku.onHandQty || 0, reservedQty: sku.reservedQty || 0,
-        availableQty: (sku.onHandQty || 0) - (sku.reservedQty || 0),
-        pickableQty: pickableBySku.get(String(sku._id)) || 0,
-      });
-    }
-    return sendSuccess(res, 'Danh sách kho thành phẩm', { products: products.map((product) => {
-      const variants = byProduct.get(String(product._id)) || [];
-      return {
-        id: String(product._id), productCode: product.productCode, productName: product.productName,
-        // TODO(xóa sampleCode): legacy field, remove together with FinishedGoodsOverview's search on it.
-        sampleCode: product.sampleCode || '', category: product.category, isActive: product.isActive,
-        thumbnailUrl: product.thumbnailUrl, videoUrl: product.videoUrl,
-        onHandQty: variants.reduce((sum, sku) => sum + sku.onHandQty, 0),
-        reservedQty: variants.reduce((sum, sku) => sum + sku.reservedQty, 0),
-        skus: variants,
-      };
-    }) });
-  } catch (error) { next(error); }
-});
-
-/** Read-only product detail endpoints. Warehouse staff may view; editing goes through /configuration. */
-const respondWith = (message, load) => async (req, res, next) => {
-  try { return sendSuccess(res, message, await load(req)); } catch (error) {
-    if (error.status) return sendError(res, error.message, { code: error.code }, error.status);
-    next(error);
-  }
-};
-router.get('/units/:barcode/timeline', respondWith('Hành trình barcode', (req) => getBarcodeTimeline(req.params.barcode)));
-router.get('/:id/detail', respondWith('Chi tiết sản phẩm', (req) => getProductDetail(req.params.id)));
-router.get('/:id/shelf-stock', respondWith('Hàng đang trên kệ', (req) => getShelfStock(req.params.id)));
-router.get('/:id/receipts', respondWith('Phiếu nhập đã xác nhận', (req) =>
-  listProductReceipts(req.params.id, { page: req.query.page, limit: req.query.limit })));
-router.get('/:id/receipts/:documentId/units', respondWith('Barcode của sản phẩm trong phiếu', (req) =>
-  getReceiptUnits(req.params.id, req.params.documentId)));
-router.post('/:id/labels', respondWith('Tem barcode', (req) => renderProductLabels(req.params.id, req.body?.barcodes)));
-
-/** Issues unreserved stock for one active SKU and records the movement.
- * Receiving requires a separate barcode issuing flow; tracked batch stock cannot
- * leave through this aggregate endpoint because each physical unit must be scanned.
- */
-router.post('/:id/stock', manageProducts, async (req, res, next) => {
-  const { id } = req.params;
-  const { direction, skuId, note } = req.body || {};
-  const quantity = Number(req.body?.quantity);
-  if (!mongoose.isValidObjectId(id) || !['IN', 'OUT'].includes(direction) ||
-      !Number.isSafeInteger(quantity) || quantity <= 0 || quantity > 100000 ||
-      (skuId && !mongoose.isValidObjectId(skuId)) || String(note || '').length > 500) {
-    return sendError(res, 'Thông tin nhập/xuất không hợp lệ', { code: 'INVALID_STOCK_MOVEMENT' }, 400);
-  }
-  if (direction === 'IN') return sendError(res, 'Nhập kho cần phiếu kiểm nhận và cấp barcode', { code: 'RECEIVING_REQUIRED' }, 400);
-  let session;
-  try {
-    session = await mongoose.startSession();
-    let result;
-    await session.withTransaction(async () => {
-      const product = await Product.findOne({ _id: id, isDeleted: { $ne: true } }).session(session);
-      if (!product) throw Object.assign(new Error('Không tìm thấy sản phẩm'), { status: 404, code: 'PRODUCT_NOT_FOUND' });
-      if (!product.isActive) throw Object.assign(new Error('Sản phẩm đang ở trạng thái nháp'), { status: 409, code: 'PRODUCT_INACTIVE' });
-      let sku;
-      if (skuId) {
-        sku = await Sku.findOne({ _id: skuId, productId: id, isDeleted: { $ne: true } }).session(session);
-      }
-      if (!sku) throw Object.assign(new Error('Không tìm thấy SKU của sản phẩm'), { status: 404, code: 'SKU_NOT_FOUND' });
-      if (!sku.isActive) throw Object.assign(new Error('SKU đã ngừng sử dụng'), { status: 409, code: 'SKU_INACTIVE' });
-      const hasTrackedBatch = await FinishedGoodsBatch.exists({ skuId: sku._id,
-        currentOnHandQty: { $gt: 0 }, isDeleted: { $ne: true } }).session(session);
-      if (hasTrackedBatch) throw Object.assign(new Error('Hàng theo lô cần xuất bằng barcode từng chiếc'),
-        { status: 409, code: 'BARCODE_OUTBOUND_REQUIRED' });
-      const before = sku.onHandQty || 0;
-      const reserved = sku.reservedQty || 0;
-      if (direction === 'OUT' && before - reserved < quantity) {
-        throw Object.assign(new Error('Số lượng khả dụng không đủ để xuất kho'), { status: 409, code: 'INSUFFICIENT_STOCK' });
-      }
-      const delta = direction === 'IN' ? quantity : -quantity;
-      const updated = await Sku.findOneAndUpdate(
-        { _id: sku._id, ...(direction === 'OUT' ? { $expr: { $gte: [{ $subtract: [{ $ifNull: ['$onHandQty', 0] }, { $ifNull: ['$reservedQty', 0] }] }, quantity] } } : {}) },
-        { $inc: { onHandQty: delta } }, { new: true, session }
-      );
-      if (!updated) throw Object.assign(new Error('Tồn kho đã thay đổi, hãy thử lại'), { status: 409, code: 'STOCK_CHANGED' });
-      await InventoryTransaction.create([{
-        transactionCode: `FGM-${randomUUID()}`, warehouseType: 'FINISHED_GOODS',
-        itemType: 'FINISHED_SKU', skuId: sku._id,
-        transactionType: direction === 'IN' ? 'MANUAL_INBOUND' : 'MANUAL_OUTBOUND',
-        referenceModel: 'Sku', referenceId: sku._id,
-        quantityChange: delta, onHandBefore: before, onHandAfter: updated.onHandQty,
-        unitCostSnapshot: sku.unitCogs || 0, totalValueSnapshot: quantity * (sku.unitCogs || 0), performedByUserId: req.user._id,
-        note: String(note || '').trim(),
-      }], { session });
-      result = { skuId: String(sku._id), skuCode: sku.skuCode, onHandQty: updated.onHandQty,
-        unitCostSnapshot: sku.unitCogs || 0, outboundValueSnapshot: quantity * (sku.unitCogs || 0) };
-    });
-    return sendSuccess(res, direction === 'IN' ? 'Đã nhập kho' : 'Đã xuất kho', result);
-  } catch (error) {
-    if (error.status) return sendError(res, error.message, { code: error.code }, error.status);
-    if (error.code === 11000) return sendError(res, 'Mã SKU đã tồn tại', { code: 'DUPLICATE_SKU' }, 409);
-    next(error);
-  } finally { if (session) await session.endSession(); }
-});
-
-/**
- * Accepts a product image, video, or additional image as a raw request stream.
- * Enforces MIME type and byte limits during transfer, places the asset in the
- * product-code Cloudinary folder, and saves the returned URL only after upload
- * completion. Main image and video uploads replace their prior named asset;
- * additional images get unique names and append to the product gallery.
- */
-const uploadProductMedia = async (req, res, next) => {
-  const config = media[req.params.kind];
-  const mimeType = (req.headers['content-type'] || '').split(';')[0].toLowerCase();
-  if (!config.types.includes(mimeType)) return sendError(res, 'Định dạng tệp không được hỗ trợ', { code: 'UNSUPPORTED_MEDIA_TYPE' }, 415);
-  if (!mongoose.isValidObjectId(req.params.id)) return sendError(res, 'Mã sản phẩm không hợp lệ', { code: 'INVALID_PRODUCT_ID' }, 400);
-  if (Number(req.headers['content-length']) > config.limit) return sendError(res, 'Tệp vượt quá dung lượng cho phép', { code: 'FILE_TOO_LARGE' }, 413);
-  const mediaOperationId = String(req.headers['x-catalog-file-id'] || '');
-  const expectedHash = String(req.headers['x-content-sha256'] || '');
-  if (mediaOperationId && (!/^[a-zA-Z0-9_-]{16,100}$/.test(mediaOperationId) || !/^[a-f0-9]{64}$/.test(expectedHash))) {
-    return sendError(res, 'Mã tệp đồng bộ không hợp lệ', { code: 'INVALID_MEDIA_OPERATION' }, 400);
-  }
-
-  try {
-    const product = await Product.findById(req.params.id);
-    if (!product) return sendError(res, 'Không tìm thấy sản phẩm', { code: 'PRODUCT_NOT_FOUND' }, 404);
-    const existingMedia = product.mediaOperations?.find((item) => item.operationId === mediaOperationId &&
-      String(item.ownerUserId) === String(req.user._id));
-    if (mediaOperationId && existingMedia) {
-      if (existingMedia.sha256 !== expectedHash || existingMedia.kind !== req.params.kind) {
-        return sendError(res, 'Mã tệp đã dùng cho nội dung khác', { code: 'MEDIA_OPERATION_CONFLICT' }, 409);
-      }
-      return sendSuccess(res, 'Tệp đã được lưu', { product });
-    }
-    configureProductCloudinary();
-    let bytes = 0;
-    const fileHash = mediaOperationId ? createHash('sha256') : null;
-    const limiter = new Transform({
-      transform(chunk, encoding, callback) {
-        bytes += chunk.length;
-        fileHash?.update(chunk);
-        callback(bytes > config.limit ? Object.assign(new Error('FILE_TOO_LARGE'), { status: 413 }) : null, chunk);
-      },
-    });
-    let settle;
-    const uploaded = new Promise((resolve, reject) => { settle = { resolve, reject }; });
-    uploaded.catch(() => {});
-    const options = {
-      ...productMediaOptions(product.productCode, req.params.kind,
-        mediaOperationId ? `catalog_${req.user._id}_${mediaOperationId}_${expectedHash.slice(0, 16)}`
-          : req.params.kind === 'additional-image' ? `extra_${randomUUID()}` : ''),
-      overwrite: !mediaOperationId && req.params.kind !== 'additional-image',
-      ...(req.params.kind === 'video' ? { chunk_size: 6 * 1024 * 1024 } : {}),
-    };
-    // Chunked uploads emit intermediate callbacks; save metadata only after the final result.
-    const onUploaded = (error, result) => {
-      if (error) settle.reject(error);
-      else if (result?.done !== false) settle.resolve(result);
-    };
-    const upload = req.params.kind === 'video'
-      ? cloudinary.uploader.upload_chunked_stream(options, onUploaded)
-      : cloudinary.uploader.upload_stream(options, onUploaded);
-    await pipeline(req, limiter, upload);
-    if (!bytes) return sendError(res, 'Tệp rỗng', { code: 'EMPTY_FILE' }, 400);
-    if (fileHash && fileHash.digest('hex') !== expectedHash) {
-      return sendError(res, 'Nội dung tệp không khớp thao tác đồng bộ', { code: 'MEDIA_HASH_MISMATCH' }, 409);
-    }
-    const result = await uploaded;
-    if (!result?.secure_url || !result?.public_id) throw new Error('Cloudinary không trả về URL tệp');
-    if (req.params.kind === 'additional-image') product.additionalImageUrls.push(result.secure_url);
-    else {
-      product[config.field] = result.secure_url;
-      product[config.publicIdField] = result.public_id;
-    }
-    if (mediaOperationId) product.mediaOperations.push({ ownerUserId: req.user._id, operationId: mediaOperationId,
-      sha256: expectedHash, kind: req.params.kind, url: result.secure_url });
-    await product.save();
-    return sendSuccess(res, 'Đã lưu tệp sản phẩm', { product });
-  } catch (error) {
-    if (mediaOperationId && error.name === 'VersionError') {
-      const current = await Product.findById(req.params.id);
-      const prior = current?.mediaOperations?.find((item) => item.operationId === mediaOperationId &&
-        String(item.ownerUserId) === String(req.user._id));
-      if (prior && prior.sha256 === expectedHash && prior.kind === req.params.kind) {
-        return sendSuccess(res, 'Tệp đã được lưu', { product: current });
-      }
-      if (prior) return sendError(res, 'Mã tệp đã dùng cho nội dung khác', { code: 'MEDIA_OPERATION_CONFLICT' }, 409);
-    }
-    if (error.status === 413) return sendError(res, 'Tệp vượt quá dung lượng cho phép', { code: 'FILE_TOO_LARGE' }, 413);
-    if (error.status === 503) return sendError(res, error.message, { code: error.code }, 503);
-    next(error);
-  }
-};
-router.put('/:id/:kind(image|video)', manageProducts, uploadProductMedia);
-router.post('/:id/:kind(additional-image)', manageProducts, uploadProductMedia);
+router.post('/:id/stock', manageProducts, issueStock);
+router.put('/:id/:kind(image|video)', manageProducts, uploadMedia);
+router.post('/:id/:kind(additional-image)', manageProducts, uploadMedia);
 
 export default router;

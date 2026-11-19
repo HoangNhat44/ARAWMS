@@ -22,8 +22,10 @@ import InventoryTransaction from '../../src/models/InventoryTransaction.model.js
 import PutawayAllocation from '../../src/models/PutawayAllocation.model.js';
 import { parseLines } from '../../src/modules/warehouse-management/location-layout/allocation.service.js';
 
-const { default: bulkRoutes, receivingQuantityError, receiptAllocationError } =
+const { default: bulkRoutes } =
   await import('../../src/modules/warehouse-management/products/bulkStock.routes.js');
+const { receivingQuantityError, receiptAllocationError } =
+  await import('../../src/modules/warehouse-management/products/bulkStock.validation.js');
 
 const skuA = '507f1f77bcf86cd799439011';
 const skuB = '507f1f77bcf86cd799439012';

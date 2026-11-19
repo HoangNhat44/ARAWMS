@@ -5,10 +5,8 @@
  * Description: Prints one stable product-unit barcode per accepted finished product, using the image the backend renders from the stored barcode.
  */
 import { labelImage } from './barcodePrint';
+import { escapeHtml } from './warehouseFormat';
 
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-})[character]);
 
 /** Each accepted physical unit produces exactly one printable label. */
 export const printProductLabels = (labels, tab = window.open('', '_blank')) => {

@@ -15,6 +15,7 @@ import FabricRoll from "../../../models/FabricRoll.model.js";
 import MaterialStockLot from "../../../models/MaterialStockLot.model.js";
 import PutawayAllocation from "../../../models/PutawayAllocation.model.js";
 import SystemLog from "../../../models/SystemLog.model.js";
+import Sku from "../../../models/Sku.model.js";
 import { isValidMaterialUnit, normalizeMaterialUnit } from "../../../common/constants/materialUnits.js";
 
 const id = (value) => String(value || "");
@@ -815,4 +816,19 @@ export async function publishDraft(user, version) {
   } finally {
     await session.endSession();
   }
+}
+
+/** The layout with every shelf bin of both warehouses and its current fill, for the layout page. */
+export async function getLayoutOverview() {
+  return {
+    layout: await getLayout(),
+    locations: await WarehouseLocation.find({ warehouseType: { $in: ["RAW_MATERIAL", "FINISHED_GOODS"] },
+      layoutBin: true, isDeleted: { $ne: true } })
+      .select("locationCode maxCapacity currentOccupancy plannedReservedQty capacityUnit status").lean(),
+  };
+}
+
+/** Active SKU codes for configuring bins. */
+export async function listLayoutSkus() {
+  return { skus: await Sku.find({ isActive: true, isDeleted: { $ne: true } }).select("skuCode").sort({ skuCode: 1 }).lean() };
 }

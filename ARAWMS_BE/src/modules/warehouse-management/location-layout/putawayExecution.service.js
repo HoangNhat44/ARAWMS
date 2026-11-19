@@ -21,6 +21,7 @@ import RawMaterial from '../../../models/RawMaterial.model.js';
 import '../../../models/User.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
+import { code128DataUrl } from '../../../common/services/codeImageRenderer.js';
 import { remainingQuantity } from './allocation.service.js';
 
 const id = (value) => String(value || '');
@@ -531,4 +532,24 @@ export async function reviewPutawayIncident(user, incidentId, note) {
     targetCollection: 'putaway_incidents', targetId: incident._id,
     afterSnapshot: { reviewNote } });
   return incident;
+}
+
+/** Existing labels of units still waiting in the unplaced area for a receipt that has assigned putaway work.
+ * Printing never issues new barcodes or changes inventory. */
+export async function listUnplacedReceiptLabels(receiptId) {
+  const confirmed = await PutawayAllocation.exists({ sourceReceiptId: receiptId, status: 'CONFIRMED' });
+  if (!confirmed) throw Object.assign(new Error('Phiếu chưa có hàng được giao xếp'), { code: 'RECEIPT_NOT_ASSIGNED', status: 404 });
+  const source = await WarehouseLocation.findOne({ warehouseType: 'FINISHED_GOODS',
+    isSystemUnplaced: true, isDeleted: { $ne: true } }).select('_id').lean();
+  const units = source ? await ProductUnit.find({ receivingDocumentId: receiptId,
+    warehouseId: source._id, inventoryStatus: 'AVAILABLE' })
+    .select('barcode skuId').sort({ barcode: 1 })
+    .populate({ path: 'skuId', select: 'skuCode color size productId',
+      populate: { path: 'productId', select: 'productName' } }).lean() : [];
+  return { labels: units.map((unit) => ({
+    barcode: unit.barcode, imageUrl: code128DataUrl(unit.barcode),
+    skuId: String(unit.skuId?._id || ''), skuCode: unit.skuId?.skuCode || '',
+    productName: unit.skuId?.productId?.productName || '',
+    color: unit.skuId?.color || '', size: unit.skuId?.size || '',
+  })), total: units.length };
 }
