@@ -40,7 +40,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
         exact: true,
         icon: LayoutDashboard,
         ucCode: 'Overview',
-        description: 'Tổng quan chỉ số tài chính, công nợ, dòng tiền và cảnh báo đối soát',
+        description: 'Tổng quan chỉ số tài chính, công nợ, dòng tiền và so sánh kỳ cũ',
       },
     ],
   },

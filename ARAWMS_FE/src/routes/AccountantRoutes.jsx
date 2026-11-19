@@ -1,7 +1,7 @@
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import AccountantLayout from '../components/accountant/AccountantLayout';
-import AccountantOverviewPage from '../pages/accountant/AccountantOverviewPage';
+import AccountantDashboardPage from '../pages/accountant/AccountantDashboardPage';
 import SupplierManagementPage from '../pages/accountant/SupplierManagementPage';
 import ContractFrameworkPage from '../pages/accountant/ContractFrameworkPage';
 import InboundPlanningPage from '../pages/accountant/InboundPlanningPage';
@@ -20,7 +20,7 @@ const AccountantRoutes = () => {
   return (
     <Routes>
       <Route element={<AccountantLayout />}>
-        <Route index element={<AccountantOverviewPage />} />
+        <Route index element={<AccountantDashboardPage />} />
         <Route path="suppliers" element={<SupplierManagementPage />} />
         <Route path="contracts" element={<ContractFrameworkPage />} />
         <Route path="inbound-plans" element={<InboundPlanningPage />} />
@@ -41,7 +41,7 @@ const AccountantRoutes = () => {
         {/* Định giá tồn kho nguyên vật liệu (UC 11 - View Total Raw Material Inventory Value) */}
         <Route path="raw-material-valuation" element={<RawMaterialInventoryValuationPage />} />
         <Route path="raw-materials-valuation" element={<RawMaterialInventoryValuationPage />} />
-        <Route path="*" element={<AccountantOverviewPage />} />
+        <Route path="*" element={<AccountantDashboardPage />} />
       </Route>
     </Routes>
   );
