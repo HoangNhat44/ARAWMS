@@ -241,7 +241,7 @@ export default function ProductInventoryValuationPage() {
           item.size,
           item.onHandQty,
           item.reservedQty,
-          item.defectQuarantineQty,
+          item.defectQty,
           item.availableQty,
           item.unitCogs,
           item.totalAssetValue,
@@ -686,7 +686,7 @@ export default function ProductInventoryValuationPage() {
                 products.map((item, idx) => {
                   const isLow = item.onHandQty > 0 && item.onHandQty <= item.safetyStockThreshold;
                   const isOut = item.onHandQty === 0;
-                  const hasQuarantine = item.defectQuarantineQty > 0;
+                  const hasQuarantine = item.defectQty > 0;
 
                   return (
                     <tr key={item._id}>
@@ -750,7 +750,7 @@ export default function ProductInventoryValuationPage() {
                           fontWeight: hasQuarantine ? 700 : 'normal',
                         }}
                       >
-                        {formatNumber(item.defectQuarantineQty)}
+                        {formatNumber(item.defectQty)}
                       </td>
 
                       {/* Khả dụng bán */}
@@ -973,7 +973,7 @@ export default function ProductInventoryValuationPage() {
                   <div style={{ background: '#fee2e2', padding: 8, borderRadius: 6 }}>
                     <div style={{ fontSize: 11, color: '#b91c1c' }}>Cách ly / Lỗi KCS</div>
                     <div style={{ fontSize: 18, fontWeight: 700, color: '#b91c1c' }}>
-                      {formatNumber(selectedSku.defectQuarantineQty)}
+                      {formatNumber(selectedSku.defectQty)}
                     </div>
                   </div>
                   <div style={{ background: '#dcfce7', padding: 8, borderRadius: 6 }}>

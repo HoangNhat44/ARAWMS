@@ -17,6 +17,7 @@ import {
   ArrowUpFromLine,
   TrendingUp,
   ScanBarcode,
+  PackageX,
   PanelLeftClose,
   PanelLeftOpen,
   X,
@@ -56,6 +57,13 @@ export default function WarehouseManagerLayout({ children }) {
       subLabel: 'Tồn kho theo SKU & định giá',
       icon: Shirt,
       match: (path) => path === '/warehouse/finished-goods' || path.startsWith('/warehouse/finished-goods/'),
+    },
+    {
+      to: '/warehouse/defects',
+      label: 'Kho hàng lỗi',
+      subLabel: 'Hàng hoàn lỗi: xem & xuất kho',
+      icon: PackageX,
+      match: (path) => path.startsWith('/warehouse/defects'),
     },
     {
       to: '/warehouse/barcode-tracking',

@@ -1063,7 +1063,11 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
       for (const item of items) {
         const product = await Product.findOne({ _id: item.productId, isDeleted: { $ne: true } }).session(session);
         if (!product) throw createBulkStockRequestError('Không tìm thấy sản phẩm trong phiếu', 'PRODUCT_NOT_FOUND', 404);
-        if (!product.isActive) throw createBulkStockRequestError(`Sản phẩm ${product.productCode} đang ở trạng thái nháp`, 'PRODUCT_INACTIVE', 409);
+        // Returned goods (good or defective) of a product/color that has stopped selling must still be
+        // received; only new stock (from sewing / manual inbound) and outbound require an active SKU.
+        const isReturnInbound = direction === 'IN' &&
+          ['INBOUND_FROM_RETURN', 'DEFECT_QUARANTINE_INBOUND'].includes(sourceTicket?.ticketType);
+        if (!product.isActive && !isReturnInbound) throw createBulkStockRequestError(`Sản phẩm ${product.productCode} đã ngừng bán`, 'PRODUCT_INACTIVE', 409);
         let sku;
         if (item.skuId) {
           sku = await Sku.findOne({ _id: item.skuId, productId: product._id, isDeleted: { $ne: true } }).session(session);
@@ -1073,7 +1077,7 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
           if (existing.length === 1) sku = existing[0];
         }
         if (!sku) throw createBulkStockRequestError(`Không tìm thấy SKU cho ${product.productCode}`, 'SKU_NOT_FOUND', 404);
-        if (!sku.isActive) throw createBulkStockRequestError(`SKU ${sku.skuCode} đã ngừng sử dụng`, 'SKU_INACTIVE', 409);
+        if (!sku.isActive && !isReturnInbound) throw createBulkStockRequestError(`SKU ${sku.skuCode} đã ngừng sử dụng`, 'SKU_INACTIVE', 409);
         const resolvedKey = String(sku._id);
         if (resolvedSkus.has(resolvedKey)) throw createBulkStockRequestError(`SKU ${sku.skuCode} bị lặp trong phiếu`, 'DUPLICATE_LINE');
         resolvedSkus.add(resolvedKey);
@@ -1087,7 +1091,9 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
           let barcodes = [];
 
           if (isDefectInbound) {
-            // Hàng lỗi nhập vào khu DEFECT_QUARANTINE: KHÔNG cộng tồn bán Sku.onHandQty, giữ trạng thái DEFECTIVE.
+            // Hàng lỗi nhập vào khu DEFECT_QUARANTINE: KHÔNG cộng tồn bán Sku.onHandQty.
+            // Kho xác nhận nhận hàng: DEFECT_PENDING (kỹ thuật vừa chốt lỗi) -> DEFECTIVE (đang trong kho hàng lỗi).
+            const receivedAt = new Date();
             if (quantity > 0) {
               await InventoryTransaction.create([{
                 transactionCode: `FGD-${randomUUID()}`, warehouseType: 'DEFECT_QUARANTINE', itemType: 'FINISHED_SKU',
@@ -1111,6 +1117,7 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
                       warehouseId: location._id,
                       receivingDocumentId: documentId,
                       inventoryStatus: 'DEFECTIVE',
+                      defectReceivedAt: receivedAt,
                       packedOrderId: null,
                     },
                   },
@@ -1123,7 +1130,7 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
                 await ProductUnit.insertMany(newBarcodes.map((barcode) => ({
                   barcode, barcodeFormat: 'CODE_128', skuId: sku._id,
                   warehouseId: location._id, receivingDocumentId: documentId,
-                  inventoryStatus: 'DEFECTIVE',
+                  inventoryStatus: 'DEFECTIVE', defectReceivedAt: receivedAt,
                 })), { session });
               }
               barcodes = [...existingSet, ...newBarcodes];

@@ -18,6 +18,8 @@
 .bt-current.on_shelf strong { color: #006c4a; }
 .bt-current.unplaced, .bt-current.reentered_unknown { background: #fff0df; }
 .bt-current.unplaced strong, .bt-current.reentered_unknown strong { color: #904d00; }
+.bt-current.defect_pending, .bt-current.defective { background: #fdecec; }
+.bt-current.defect_pending strong, .bt-current.defective strong { color: #a32121; }
 
 .bt-note { margin: 0 0 1.25rem; padding: .75rem 1rem; border-radius: 8px; background: #fff7ed; color: #7a5312; font-size: .82rem; }
 

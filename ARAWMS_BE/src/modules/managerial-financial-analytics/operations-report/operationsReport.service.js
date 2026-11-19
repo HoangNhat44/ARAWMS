@@ -4,6 +4,7 @@
  */
 import mongoose from 'mongoose';
 import { httpError } from '../../../common/utils/httpError.js';
+import { defectQtyBySku } from '../../../common/services/defectStock.js';
 
 export const num = (v) => Number(v) || 0;
 export const sum = (rows, fn) => rows.reduce((a, r) => a + num(fn(r)), 0);
@@ -83,6 +84,8 @@ export async function operationsReport(query) {
     read('production_orders', { plannedStart: range }), read('stocktake_sessions', { createdAt: range }), read('inventory_transactions', { createdAt: range }),
     read('users', { status: 'ACTIVE', roleCode: { $ne: 'OWNER' } }, { fullName: 1, employeeCode: 1 }), read('work_assignments', { dueDate: range }), read('owner_targets', { year: Number(query.from.slice(0, 4)) }),
   ]);
+  // Defective finished goods are counted per unit (ProductUnit), not stored on the SKU.
+  const defectBySku = await defectQtyBySku();
   const sales = salesSummary(orders, returns); const previous = salesSummary(oldOrders, oldReturns);
   // Tạo bảng tra theo ObjectId để ghép tên nhà cung cấp/nguyên liệu mà không truy vấn riêng từng dòng.
   const supplierMap = new Map(suppliers.map((r) => [String(r._id), r])); const contractMap = new Map(contracts.map((r) => [String(r._id), r]));
@@ -109,7 +112,7 @@ export async function operationsReport(query) {
   const debts = contracts.filter((c) => query.scope !== 'period' || (c.createdAt >= range.$gte && c.createdAt < range.$lt) || plans.some((p) => String(p.contractId) === String(c._id))).map((c) => ({ id: String(c._id), code: c.contractCode, status: c.status, planCount: plans.filter((p) => String(p.contractId) === String(c._id)).length, supplier: supplierMap.get(String(c.supplierId))?.supplierName || 'Chưa rõ nhà cung cấp', total: num(c.totalContractAmount), paid: num(c.totalPaidAmount), debt: Math.max(0, num(c.totalContractAmount) - num(c.totalPaidAmount)) }));
   // Tồn khả dụng = tồn thực tế - giữ chỗ. Thành phẩm cách ly được trả riêng, không cộng vào tồn bán được.
   const inventory = [...materials.map((r) => ({ id: String(r._id), code: r.materialCode, name: r.materialName, type: 'RAW_MATERIAL', unit: r.unit, onHand: num(r.onHandQty), reserved: num(r.reservedQty), available: num(r.onHandQty) - num(r.reservedQty), quarantine: 0, price: r.unitCost })),
-    ...skus.map((r) => ({ id: String(r._id), code: r.skuCode, name: r.styleName, type: 'FINISHED_GOODS', unit: 'PIECE', onHand: num(r.onHandQty), reserved: num(r.reservedQty), available: num(r.onHandQty) - num(r.reservedQty), quarantine: num(r.defectQuarantineQty), price: r.unitCogs ?? null }))];
+    ...skus.map((r) => ({ id: String(r._id), code: r.skuCode, name: r.styleName, type: 'FINISHED_GOODS', unit: 'PIECE', onHand: num(r.onHandQty), reserved: num(r.reservedQty), available: num(r.onHandQty) - num(r.reservedQty), quarantine: num(defectBySku.get(String(r._id))), price: r.unitCogs ?? null }))];
   // Phân loại theo ngưỡng riêng của từng mã: hết hàng, dưới ngưỡng an toàn hoặc còn đủ hàng.
   inventory.forEach((r) => { const source = r.type === 'RAW_MATERIAL' ? materials.find((m) => String(m._id) === r.id) : skus.find((s) => String(s._id) === r.id); r.status = r.available <= 0 ? 'OUT_OF_STOCK' : r.available < num(source.safetyStockThreshold) ? 'LOW_STOCK' : 'AVAILABLE'; });
   const sewingTickets = await read('finished_goods_tickets', { _id: { $in: movements.filter((m) => m.referenceModel === 'FinishedGoodsTicket').map((m) => m.referenceId) }, ticketType: 'INBOUND_FROM_SEWING' });

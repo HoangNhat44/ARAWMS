@@ -31,6 +31,9 @@ export const productService = {
   productReceiptUnits: (id, documentId) => api.get(`/products/${id}/receipts/${documentId}/units`),
   productLabels: (id, barcodes) => api.post(`/products/${id}/labels`, { barcodes }),
   barcodeTimeline: (barcode) => api.get(`/products/units/${encodeURIComponent(barcode)}/timeline`),
+  // Defect warehouse: units waiting for / inside the defect warehouse, and taking them out with a reason.
+  defectUnits: () => api.get('/products/defects'),
+  defectOutbound: (values) => api.post('/products/defects/outbound', values),
   locations: () => api.get('/products/locations'),
   createLocation: (values) => api.post('/products/locations', values),
   // Group product setup calls used by the configuration form.

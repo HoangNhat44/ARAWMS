@@ -18,7 +18,7 @@ import GarmentLot from '../../../models/GarmentLot.model.js';
 import MaterialInboundPlan from '../../../models/MaterialInboundPlan.model.js';
 import StocktakeSession from '../../../models/StocktakeSession.model.js';
 import RemnantRecoveryRequest from '../../../models/RemnantRecoveryRequest.model.js';
-import ProductUnit from '../../../models/ProductUnit.js';
+import ProductUnit, { DEFECT_HELD_STATUSES } from '../../../models/ProductUnit.js';
 
 const RANGE_DAYS = {
   '7d': 7,
@@ -119,7 +119,8 @@ export const getGarmentDashboardSummary = async (query = {}, user) => {
       .select('requestCode measuredRemnantLengthMeters status createdAt')
       .lean(),
 
-    ProductUnit.countDocuments({ inventoryStatus: 'DEFECTIVE' }),
+    // Hàng lỗi còn giữ: chờ kho nhận (DEFECT_PENDING) + đang trong kho hàng lỗi (DEFECTIVE).
+    ProductUnit.countDocuments({ inventoryStatus: { $in: DEFECT_HELD_STATUSES } }),
   ]);
 
   // -------------------------------------------------------------------------

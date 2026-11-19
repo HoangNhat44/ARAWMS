@@ -989,9 +989,9 @@ export const cancelReturnInspectionSession = async (sessionId) => {
 };
 
 /**
- * Chốt phân loại sản phẩm (đạt nhập kho vs hàng lỗi DEFECTIVE) cho 1 hoặc nhiều đơn đã quay,
+ * Chốt phân loại sản phẩm (đạt nhập kho vs hàng lỗi) cho 1 hoặc nhiều đơn đã quay,
  * tự động đổi trạng thái từng đơn (RETURNED / PARTIALLY_RETURNED / RETURN_FAILED),
- * đánh dấu ProductUnit.inventoryStatus = 'DEFECTIVE' cho sản phẩm lỗi,
+ * đánh dấu ProductUnit.inventoryStatus = 'DEFECT_PENDING' (lỗi, chờ kho nhận) cho sản phẩm lỗi,
  * và tạo đồng thời phiếu nhập kho hàng đạt (INBOUND_FROM_RETURN) + phiếu nhập hàng lỗi (DEFECT_QUARANTINE_INBOUND).
  */
 export const finalizeReturnInspectionsAndRequestInbound = async (payload = {}, user) => {
@@ -1090,7 +1090,9 @@ export const finalizeReturnInspectionsAndRequestInbound = async (payload = {}, u
         const expectedTotalQty = (order.items || []).reduce((sum, item) => sum + (Number(item.orderedQty) || 0), 0);
         const outcome = computeOrderReturnOutcome(expectedTotalQty, insp.scannedUnits);
 
-        // Cập nhật trạng thái DEFECTIVE ngay trên từng ProductUnit không đạt
+        // Đánh dấu từng ProductUnit không đạt là DEFECT_PENDING (lỗi, chờ kho nhận vào kho hàng lỗi).
+        // Trạng thái DEFECTIVE (đang trong kho hàng lỗi) chỉ được đặt khi Quản lý kho xác nhận phiếu
+        // DEFECT_QUARANTINE_INBOUND. Thao tác của kỹ thuật viên không đổi.
         for (const unit of insp.scannedUnits) {
           if (unit.disposition === 'QUARANTINE_DEFECT') {
             addToSkuMap(defectMap, unit);
@@ -1099,7 +1101,7 @@ export const finalizeReturnInspectionsAndRequestInbound = async (payload = {}, u
                 { _id: unit.productUnitId },
                 {
                   $set: {
-                    inventoryStatus: 'DEFECTIVE',
+                    inventoryStatus: 'DEFECT_PENDING',
                     defectReason: unit.note || unit.condition || entry.rejectReason || 'Hàng hoàn không đạt KCS',
                     returnInspectionId: insp._id,
                     returnedFromOrderId: order._id,

@@ -25,9 +25,13 @@ const catalogFromProduct = (product) => ({ productName: product.productName, pro
  * TODO(xóa sampleCode): remove once no device holds such drafts. */
 const withProductCode = ({ sampleCode, ...values } = {}) => ({ ...blank, ...values, productCode: values.productCode ?? sampleCode ?? '' });
 /** The code is frozen once the product has ever been ACTIVE. */
-const isCodeLocked = (product) => Boolean(product?.codeLockedAt || product?.isActive);
+/** A draft saved by an older version (no draft products any more): inactive and never locked. */
+const isLegacyDraft = (product) => Boolean(product) && !product.isActive && !product.codeLockedAt;
+/** A product sells from the moment it is added and stops by itself when every color is stopped. */
+const productStatus = (product) => product?.isActive ? ['Đang bán', 'ara-badge-active']
+  : isLegacyDraft(product) ? ['Nháp (bản cũ)', 'ara-badge-draft'] : ['Ngừng bán', 'ara-badge-inactive'];
 const skuStatus = (sku) => sku.discontinuedAt ? ['Ngừng bán', 'ara-badge-inactive']
-  : sku.isActive ? ['Đang sử dụng', 'ara-badge-active'] : ['Nháp', 'ara-badge-draft'];
+  : sku.isActive ? ['Đang bán', 'ara-badge-active'] : ['Nháp (bản cũ)', 'ara-badge-draft'];
 
 /** Creates or edits a product and its size variants, including Excel import.
  * Carries selected SKUs into the finished-goods receiving step. */
@@ -227,7 +231,8 @@ export default function ProductConfigurationPage() {
   const matchingVariant = selected?.skus.find((sku) => variantKey(sku.color, sku.size) === variantKey(newVariant.color, newVariant.size));
   // A stopped variant may be added again: the server re-enables the same SKU and code.
   const blockingVariant = matchingVariant && !matchingVariant.discontinuedAt ? matchingVariant : null;
-  const codeLocked = mode === 'existing' && isCodeLocked(selected?.product);
+  // The code can only be typed while creating; once the product is added it never changes.
+  const codeLocked = mode === 'existing' && Boolean(selected);
   /** Colors of the selected product with stock totals, for stop/resume selling. */
   const colorGroups = useMemo(() => [...(selected?.skus || []).reduce((groups, sku) => {
     const key = sku.color.trim().toLocaleLowerCase('vi-VN');
@@ -345,8 +350,9 @@ export default function ProductConfigurationPage() {
     setConflictView(null);
   };
 
-  /** Creates a product and its color and size SKUs before uploading media. */
-  const createProductConfiguration = async (status) => {
+  /** Creates a product (selling at once, code locked) and its color and size SKUs before uploading media.
+   * Offline, the operation waits in the device queue and is sent when the connection returns. */
+  const createProductConfiguration = async () => {
     if (busy) return;
     const variants = combinations.filter((item) => !excluded.includes(item.key)).map((item) => ({
       color: item.color, size: item.size, retailPrice: prices[item.key] === undefined || prices[item.key] === '' ? Number(catalog.basePrice) : Number(prices[item.key]),
@@ -361,16 +367,16 @@ export default function ProductConfigurationPage() {
       const media = [files.image && { kind: 'image', file: files.image }, files.video && { kind: 'video', file: files.video },
         ...files.additional.map((file) => ({ kind: 'additional', file }))].filter(Boolean);
       const saved = await submitCatalogChange({ operationType: 'CREATE', localEntityId: requestId.current,
-        payload: { ...catalog, basePrice: Number(catalog.basePrice), status, variants }, label: catalog.productName }, media);
+        payload: { ...catalog, basePrice: Number(catalog.basePrice), variants }, label: catalog.productName }, media);
       await offlineCatalogStore.remove('drafts', ownerId, 'new-product');
       if (saved?.status === 'DONE') {
         const product = saved.serverResult.product;
         const productId = product.id || product._id;
         await loadProductConfiguration(productId);
         productService.list().then((result) => setProducts(result.data.products)).catch(() => {});
-        if (status === 'ACTIVE') setSelectedSkuIds(saved.serverResult.skus.map((sku) => sku.id || sku._id));
+        setSelectedSkuIds(saved.serverResult.skus.map((sku) => sku.id || sku._id));
         setMode('existing');
-        if (status === 'ACTIVE') navigate('/warehouse/finished-goods', {
+        navigate('/warehouse/finished-goods', {
           state: { configuredSkuIds: saved.serverResult.skus.map((sku) => sku.id || sku._id) } });
       } else {
         startNewProduct();
@@ -380,28 +386,25 @@ export default function ProductConfigurationPage() {
     finally { setBusy(false); }
   };
 
-  /** Saves an existing product's details and any new media. */
-  const updateProductCatalog = async (status) => {
+  /** Saves an existing product's details (never its code) and any new media.
+   * activate is only used for a draft saved by an older version. */
+  const updateProductCatalog = async ({ activate = false } = {}) => {
     if (!selected || busy) return;
     setBusy(true); setError(''); setMessage('');
     try {
-      const changed = Object.fromEntries(Object.entries({ ...catalog, basePrice: Number(catalog.basePrice), status }).filter(([key, value]) => {
-        if (key === 'status') return value !== (selected.product.isActive ? 'ACTIVE' : 'DRAFT');
-        if (key === 'productCode') return !isCodeLocked(selected.product) && value !== selected.product.productCode;
-        return value !== selected.product[key];
-      }));
-      if ('productCode' in changed && !isValidProductCode(changed.productCode)) {
-        setShowFieldErrors(true); setError(PRODUCT_CODE_HINT); return;
-      }
+      const changed = Object.fromEntries(Object.entries({ ...catalog, basePrice: Number(catalog.basePrice) })
+        .filter(([key, value]) => key !== 'productCode' && value !== selected.product[key]));
+      if (activate) changed.status = 'ACTIVE';
       if (!Object.keys(changed).length && !files.image && !files.video && !files.additional.length) {
         setMessage('Không có thay đổi để lưu.'); return;
       }
       const media = [files.image && { kind: 'image', file: files.image }, files.video && { kind: 'video', file: files.video },
         ...files.additional.map((file) => ({ kind: 'additional', file }))].filter(Boolean);
-      const baseline = Object.fromEntries(Object.keys(changed).map((key) => [key, selected.product[key] ?? (key === 'status' ? (selected.product.isActive ? 'ACTIVE' : 'DRAFT') : '')]));
+      const baseline = Object.fromEntries(Object.keys(changed).map((key) => [key, selected.product[key] ?? '']));
+      // A media-only change still needs one field so the operation carries the product version.
       const saved = await submitCatalogChange({ operationType: 'UPDATE_PRODUCT', baseline,
         serverEntityId: selected.product.id || selected.product._id, baseVersion: selected.product.version ?? 0,
-        payload: Object.keys(changed).length ? changed : { status: selected.product.isActive ? 'ACTIVE' : 'DRAFT' },
+        payload: Object.keys(changed).length ? changed : { productName: selected.product.productName },
         label: selected.product.productName }, media);
       await offlineCatalogStore.remove('drafts', ownerId, `product:${selected.product.id || selected.product._id}`);
       if (saved?.status === 'DONE') {
@@ -555,7 +558,7 @@ export default function ProductConfigurationPage() {
 
   const catalogFields = <div className="product-fields">
     <label className="product-field product-field-wide">Tên sản phẩm <b>*</b><input value={catalog.productName} maxLength={200} placeholder="Ví dụ: Áo thun cổ tròn basic" onChange={(event) => setCatalog({ ...catalog, productName: event.target.value })} />{showFieldErrors && !catalog.productName.trim() && <small className="product-field-error">Vui lòng nhập tên sản phẩm.</small>}</label>
-    <label className="product-field">Mã sản phẩm <b>*</b><input value={catalog.productCode} maxLength={20} placeholder="Ví dụ: AL186" disabled={codeLocked} title={codeLocked ? 'Mã đã khóa vì sản phẩm đã được đưa vào sử dụng' : undefined} onChange={(event) => setCatalog({ ...catalog, productCode: normalizeProductCode(event.target.value) })} />{codeLocked ? <small>Mã đã khóa vì sản phẩm đã được đưa vào sử dụng.</small> : <small>Sửa được khi còn nháp; khóa vĩnh viễn khi đưa vào sử dụng.</small>}{showFieldErrors && !codeLocked && !isValidProductCode(catalog.productCode) && <small className="product-field-error">{PRODUCT_CODE_HINT}</small>}</label>
+    <label className="product-field">Mã sản phẩm <b>*</b><input value={catalog.productCode} maxLength={20} placeholder="Ví dụ: AL186" disabled={codeLocked} title={codeLocked ? 'Mã sản phẩm không sửa được sau khi đã thêm' : undefined} onChange={(event) => setCatalog({ ...catalog, productCode: normalizeProductCode(event.target.value) })} />{codeLocked ? <small>Mã sản phẩm không sửa được sau khi đã thêm.</small> : <small>Kiểm tra kỹ: sau khi thêm sản phẩm, mã sẽ khóa và không sửa được nữa.</small>}{showFieldErrors && !codeLocked && !isValidProductCode(catalog.productCode) && <small className="product-field-error">{PRODUCT_CODE_HINT}</small>}</label>
     <label className="product-field">Danh mục <b>*</b><input list="product-categories" value={catalog.category} maxLength={100} placeholder="Chọn hoặc nhập danh mục" onChange={(event) => setCatalog({ ...catalog, category: event.target.value })} /><datalist id="product-categories">{[...new Set(products.map((item) => item.category).filter(Boolean))].map((category) => <option key={category} value={category} />)}</datalist>{showFieldErrors && !catalog.category.trim() && <small className="product-field-error">Vui lòng chọn danh mục.</small>}</label>
     <label className="product-field">Giá bán cơ bản (₫) <b>*</b><input type="number" min="0" step="1" value={catalog.basePrice} placeholder="0" onChange={(event) => setCatalog({ ...catalog, basePrice: event.target.value })} />{showFieldErrors && (catalog.basePrice === '' || Number(catalog.basePrice) < 0) && <small className="product-field-error">Nhập giá bán từ 0 ₫.</small>}</label>
     <label className="product-field product-field-wide">Mô tả<textarea rows={3} maxLength={2000} value={catalog.description} placeholder="Thông tin nhận diện sản phẩm" onChange={(event) => setCatalog({ ...catalog, description: event.target.value })} /></label>
@@ -641,13 +644,13 @@ export default function ProductConfigurationPage() {
           </section>
         </div>
         <aside className="product-side-column"><section className="product-card"><h2>Hình ảnh sản phẩm</h2><div className="product-image-placeholder">{imagePreview ? <img src={imagePreview} alt="Ảnh sản phẩm sẽ tải lên" /> : <span>Chưa chọn ảnh đại diện</span>}</div>{mediaFields}</section><section className="product-card product-summary"><h2>Tóm tắt cấu hình</h2><dl><div><dt>Sản phẩm</dt><dd>{catalog.productName || 'Chưa nhập tên'}</dd></div><div><dt>Biến thể đã chọn</dt><dd>{activeCombinations.length}</dd></div></dl><p>Barcode từng chiếc được tạo sau khi xác nhận nhập kho.</p></section></aside>
-        <div className="product-action-bar"><span>{busy ? 'Đang lưu cấu hình...' : 'Cấu hình chưa được lưu'}</span><div><Link className="ara-btn ara-btn-secondary" to="/warehouse/finished-goods">Hủy</Link><button className="ara-btn ara-btn-secondary" type="button" disabled={busy} onClick={() => createProductConfiguration('DRAFT')}>Lưu nháp</button><button className="ara-btn ara-btn-gold" type="button" disabled={busy} onClick={() => createProductConfiguration('ACTIVE')}>Lưu và tiếp tục kiểm nhận →</button></div></div>
+        <div className="product-action-bar"><span>{busy ? 'Đang lưu cấu hình...' : 'Cấu hình chưa được lưu'}</span><div><Link className="ara-btn ara-btn-secondary" to="/warehouse/finished-goods">Hủy</Link><button className="ara-btn ara-btn-gold" type="button" disabled={busy} onClick={() => createProductConfiguration()}>Lưu và tiếp tục kiểm nhận →</button></div></div>
       </div>
     </>}
 
     {mode === 'existing' && !selected && discontinuedStock.length > 0 && <div className="ara-alert ara-alert-info" role="status">
       <strong>{discontinuedStock.length} SKU ngừng bán vẫn còn hàng trong kho</strong> (thường là hàng hoàn đã nhập lại). Mở sản phẩm để <strong>Bán lại</strong> màu đó, hoặc xuất thanh lý / hủy qua phiếu xuất kho.
-      <ul className="product-discontinued-list">{discontinuedStock.slice(0, 10).map((item) => <li key={item.skuId}><button type="button" className="product-link-button" disabled={busy} onClick={() => loadProductConfiguration(item.productId)}>{item.skuCode}</button> · {item.productName} · tồn {item.onHandQty}{item.reservedQty ? ` · giữ ${item.reservedQty}` : ''}{item.defectQuarantineQty ? ` · lỗi ${item.defectQuarantineQty}` : ''}</li>)}</ul>
+      <ul className="product-discontinued-list">{discontinuedStock.slice(0, 10).map((item) => <li key={item.skuId}><button type="button" className="product-link-button" disabled={busy} onClick={() => loadProductConfiguration(item.productId)}>{item.skuCode}</button> · {item.productName} · tồn {item.onHandQty}{item.reservedQty ? ` · giữ ${item.reservedQty}` : ''}{item.defectQty ? ` · lỗi ${item.defectQty}` : ''}</li>)}</ul>
       {discontinuedStock.length > 10 && <small>… và {discontinuedStock.length - 10} SKU khác.</small>}
     </div>}
     {mode === 'existing' && !selected && <div className="ara-search-section">
@@ -665,7 +668,7 @@ export default function ProductConfigurationPage() {
             <strong className="ara-product-name">{product.productName}</strong>
             <small className="ara-product-meta">{product.productCode} · {product.category} · {product.skus.length} SKU</small>
           </div>
-          <span className={`ara-badge ${product.isActive ? 'ara-badge-active' : 'ara-badge-draft'}`}>{product.isActive ? 'Đang sử dụng' : 'Nháp'}</span>
+          <span className={`ara-badge ${productStatus(product)[1]}`}>{productStatus(product)[0]}</span>
           <span className="ara-product-action">Chọn →</span>
         </button>) : <div className="ara-empty-state">
           <strong>Không tìm thấy sản phẩm</strong>
@@ -718,7 +721,7 @@ export default function ProductConfigurationPage() {
         <div className="ara-chosen-product-info">
           <p className="ara-chosen-product-code">{selected.product.productCode} · {selected.product.category}</p>
           <h2 className="ara-chosen-product-name">{selected.product.productName}</h2>
-          <span className={`ara-badge ${selected.product.isActive ? 'ara-badge-active' : 'ara-badge-draft'}`}>{selected.product.isActive ? 'Đang sử dụng' : 'Nháp'}</span>
+          <span className={`ara-badge ${productStatus(selected.product)[1]}`}>{productStatus(selected.product)[0]}</span>
         </div>
         <div className="ara-chosen-product-actions">
           <button type="button" className="ara-btn ara-btn-secondary" onClick={() => setShowVariantPanel(true)}>+ Thêm biến thể</button>
@@ -726,10 +729,10 @@ export default function ProductConfigurationPage() {
         </div>
       </div>
 
-      <section className="product-card"><div className="product-card-head"><h2>Chỉnh sửa sản phẩm</h2><button className="ara-btn ara-btn-secondary" type="button" onClick={() => setEditingCatalog((value) => !value)}>{editingCatalog ? 'Đóng chỉnh sửa' : 'Chỉnh sửa thông tin'}</button></div>{editingCatalog && <>{catalogFields}{mediaFields}<div className="product-inline-actions"><button className="ara-btn ara-btn-secondary" type="button" disabled={busy} onClick={() => updateProductCatalog('DRAFT')}>Lưu nháp</button><button className="ara-btn ara-btn-gold" type="button" disabled={busy} onClick={() => updateProductCatalog('ACTIVE')}>Lưu thay đổi</button></div><h3>Giá từng SKU</h3><p className="product-muted">Màu và size là một phần của mã SKU nên không sửa được. Cần màu khác thì thêm biến thể mới và ngừng bán màu cũ.</p><div className="product-price-list product-sku-prices">{selected.skus.map((sku) => { const skuId = sku.id || sku._id; return <div key={skuId}><strong>{sku.skuCode}</strong><span>{sku.color} / {sku.size}</span><input aria-label={`Giá ${sku.skuCode}`} type="number" min="0" value={skuEdits[skuId]?.retailPrice ?? ''} onChange={(event) => setSkuEdits((current) => ({ ...current, [skuId]: { ...current[skuId], retailPrice: event.target.value } }))} /><button className="ara-btn ara-btn-secondary" type="button" disabled={busy} onClick={() => updateSkuDetails(sku)}>Lưu giá</button></div>; })}</div></>}</section>
+      <section className="product-card"><div className="product-card-head"><h2>Chỉnh sửa sản phẩm</h2><button className="ara-btn ara-btn-secondary" type="button" onClick={() => setEditingCatalog((value) => !value)}>{editingCatalog ? 'Đóng chỉnh sửa' : 'Chỉnh sửa thông tin'}</button></div>{editingCatalog && <>{catalogFields}{mediaFields}<div className="product-inline-actions">{isLegacyDraft(selected.product) && <button className="ara-btn ara-btn-secondary" type="button" disabled={busy} onClick={() => updateProductCatalog({ activate: true })}>Lưu và đưa vào bán</button>}<button className="ara-btn ara-btn-gold" type="button" disabled={busy} onClick={() => updateProductCatalog()}>Lưu thay đổi</button></div><h3>Giá từng SKU</h3><p className="product-muted">Màu và size là một phần của mã SKU nên không sửa được. Cần màu khác thì thêm biến thể mới và ngừng bán màu cũ.</p><div className="product-price-list product-sku-prices">{selected.skus.map((sku) => { const skuId = sku.id || sku._id; return <div key={skuId}><strong>{sku.skuCode}</strong><span>{sku.color} / {sku.size}</span><input aria-label={`Giá ${sku.skuCode}`} type="number" min="0" value={skuEdits[skuId]?.retailPrice ?? ''} onChange={(event) => setSkuEdits((current) => ({ ...current, [skuId]: { ...current[skuId], retailPrice: event.target.value } }))} /><button className="ara-btn ara-btn-secondary" type="button" disabled={busy} onClick={() => updateSkuDetails(sku)}>Lưu giá</button></div>; })}</div></>}</section>
 
       <section className="product-card"><div className="product-card-head"><div><h2>Màu sắc</h2><p>Ngừng bán một màu khi không kinh doanh nữa. Hàng hoàn của màu đã ngừng vẫn kiểm tra và nhập kho bình thường.</p></div></div>
-        <div className="product-price-list product-color-list">{colorGroups.map((group) => <div key={group.color}><strong>{group.color}</strong><span>{group.skus.map((sku) => sku.size).join(', ')} · tồn {group.onHand}{group.reserved ? ` · giữ ${group.reserved}` : ''}</span><span className={`ara-badge ${group.stopped ? 'ara-badge-inactive' : selected.product.isActive ? 'ara-badge-active' : 'ara-badge-draft'}`}>{group.stopped ? 'Ngừng bán' : selected.product.isActive ? 'Đang bán' : 'Nháp'}</span><button className="ara-btn ara-btn-secondary" type="button" disabled={busy} onClick={() => setColorActive(group, group.stopped)}>{group.stopped ? 'Bán lại' : 'Ngừng bán'}</button></div>)}</div>
+        <div className="product-price-list product-color-list">{colorGroups.map((group) => <div key={group.color}><strong>{group.color}</strong><span>{group.skus.map((sku) => sku.size).join(', ')} · tồn {group.onHand}{group.reserved ? ` · giữ ${group.reserved}` : ''}</span><span className={`ara-badge ${group.stopped ? 'ara-badge-inactive' : isLegacyDraft(selected.product) ? 'ara-badge-draft' : 'ara-badge-active'}`}>{group.stopped ? 'Ngừng bán' : isLegacyDraft(selected.product) ? 'Nháp (bản cũ)' : 'Đang bán'}</span><button className="ara-btn ara-btn-secondary" type="button" disabled={busy} onClick={() => setColorActive(group, group.stopped)}>{group.stopped ? 'Bán lại' : 'Ngừng bán'}</button></div>)}</div>
       </section>
 
       <div className="ara-searchbox">

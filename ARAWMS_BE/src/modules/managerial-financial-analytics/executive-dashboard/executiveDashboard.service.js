@@ -5,6 +5,7 @@
  */
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import Sku from '../../../models/Sku.model.js';
+import { withDefectQty } from '../../../common/services/defectStock.js';
 import User from '../../../models/User.model.js';
 import SalesOrder from '../../../models/SalesOrder.model.js';
 import ManagerReport from '../../../models/ManagerReport.model.js';
@@ -22,8 +23,8 @@ export const getDashboard = async (query) => {
     RawMaterial.aggregate([{ $match: active }, { $group: { _id: null, value: { $sum: { $multiply: ['$onHandQty', '$unitCost'] } },
       lowStock: { $sum: { $cond: [{ $and: [{ $eq: ['$isActive', true] }, { $lt: [{ $subtract: ['$onHandQty', '$reservedQty'] }, '$safetyStockThreshold'] }] }, 1, 0] } } } }]),
     // GBR-05/13: Thành phẩm bán được và hàng cách ly được thống kê riêng.
-    Sku.aggregate([{ $match: active }, { $group: { _id: null, value: { $sum: { $multiply: ['$onHandQty', '$unitCogs'] } },
-      quarantineValue: { $sum: { $multiply: ['$defectQuarantineQty', '$unitCogs'] } },
+    Sku.aggregate([{ $match: active }, ...withDefectQty(), { $group: { _id: null, value: { $sum: { $multiply: ['$onHandQty', '$unitCogs'] } },
+      quarantineValue: { $sum: { $multiply: ['$defectQty', '$unitCogs'] } },
       lowStock: { $sum: { $cond: [{ $and: [{ $eq: ['$isActive', true] }, { $lt: [{ $subtract: ['$onHandQty', '$reservedQty'] }, '$safetyStockThreshold'] }] }, 1, 0] } } } }]),
     // Đếm nhân viên, báo cáo chưa xem, sản xuất đang chạy và cảnh báo COD hiện hành.
     User.countDocuments({ ...active, roleCode: { $ne: 'OWNER' }, status: 'ACTIVE' }),

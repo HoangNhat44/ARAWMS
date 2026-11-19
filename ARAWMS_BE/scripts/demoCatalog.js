@@ -36,7 +36,7 @@ export function catalogRecords(id, staffId, ownerId) {
     add(Product, { _id: productId, productCode: `DEMO-SP-BS-${i + 1}`, productName: name, category: name, basePrice: price, thumbnailUrl: `/demo/${image}.svg` });
     ['M', 'L'].forEach((size, j) => {
       const skuId = id(2100 + i * 10 + j), skuCode = `DEMO-TP-${i + 1}-${size}`, onHandQty = i === 2 ? 0 : 100 + i * 30 + j * 20;
-      add(Sku, { _id: skuId, skuCode, skuBarcode: skuCode, productId, styleName: `${name} ${size}`, color: i % 2 ? 'Xanh' : 'Be', size, retailPrice: price, onHandQty, reservedQty: onHandQty ? 20 : 0, defectQuarantineQty: j ? 3 : 0, safetyStockThreshold: 30 });
+      add(Sku, { _id: skuId, skuCode, skuBarcode: skuCode, productId, styleName: `${name} ${size}`, color: i % 2 ? 'Xanh' : 'Be', size, retailPrice: price, onHandQty, reservedQty: onHandQty ? 20 : 0, safetyStockThreshold: 30 });
       add(Bom, { _id: id(2200 + i * 10 + j), bomCode: `DEMO-DM-${i + 1}-${size}`, skuId, skuCode, versionNo: 1, status: 'STANDARD', lines: [{ materialId, materialName: name.includes('linen') || i === 3 ? 'Vải linen' : i === 4 ? 'Vải nỉ' : i === 5 ? 'Vải cotton' : 'Vải kaki', qtyPerUnit: perUnit, unitCode: unit, wastageRate: 0.03 }] });
       if (onHandQty) {
         const ticketId = id(2400 + i * 10 + j);

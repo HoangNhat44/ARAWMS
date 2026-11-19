@@ -39,8 +39,12 @@ async function receiptOf(unit) {
   if (!document) return null;
   const ticket = document.sourceTicketId
     ? await FinishedGoodsTicket.findById(document.sourceTicketId).select('ticketCode ticketType').lean() : null;
-  return { document, ticket, isReturn: ticket?.ticketType === 'INBOUND_FROM_RETURN' };
+  return { document, ticket, isReturn: ticket?.ticketType === 'INBOUND_FROM_RETURN',
+    isDefect: ticket?.ticketType === 'DEFECT_QUARANTINE_INBOUND' };
 }
+
+/** Units the garment technician judged defective, and what happened to them in the defect warehouse. */
+const DEFECT_STATUSES = ['DEFECT_PENDING', 'DEFECTIVE', 'DEFECT_OUT'];
 
 /** Old units (already shipped in an order) that a unit from a return receipt may have replaced. */
 async function previousCandidates(unit, receipt) {
@@ -70,7 +74,7 @@ async function unitEvents(unit, receipt) {
   const events = [];
   if (receipt) {
     events.push({ type: receipt.isReturn ? 'REENTRY' : 'IN', at: receipt.document.createdAt,
-      title: receipt.isReturn ? 'Vào lại kho (hàng hoàn)' : 'Vào kho',
+      title: receipt.isReturn ? 'Vào lại kho (hàng hoàn)' : receipt.isDefect ? 'Vào kho hàng lỗi' : 'Vào kho',
       details: [`Phiếu nhập ${receipt.document.documentCode}`,
         receipt.ticket ? `Lệnh nhập ${receipt.ticket.ticketCode}` : null,
         `Quản lý kho duyệt: ${await userName(receipt.document.createdByUserId) || '—'}`].filter(Boolean) });
@@ -82,16 +86,19 @@ async function unitEvents(unit, receipt) {
     events.push({ type: 'PUTAWAY', at: scan.createdAt, title: 'Xếp lên kệ',
       details: [`Kệ ${await locationCode(scan.targetLocationId) || '—'}`, `Nhân viên kho: ${await userName(scan.actorId) || '—'}`] });
   }
+  const isDefect = DEFECT_STATUSES.includes(unit.inventoryStatus);
   if (unit.inventoryStatus !== 'AVAILABLE') {
-    if (unit.packedOrderId) {
-      const order = await SalesOrder.findById(unit.packedOrderId).select('orderCode').lean();
+    // Receiving a defective unit into the defect warehouse clears packedOrderId; its order stays in returnedFromOrderId.
+    const orderId = unit.packedOrderId || (isDefect ? unit.returnedFromOrderId : null);
+    if (orderId) {
+      const order = await SalesOrder.findById(orderId).select('orderCode').lean();
       events.push({ type: 'OUT', at: unit.packedAt, title: 'Ra kho · Đóng vào đơn',
         details: [`Đơn ${order?.orderCode || '—'}`], orderCode: order?.orderCode || '' });
-      const handover = await CarrierHandover.findOne({ orderId: unit.packedOrderId, 'packedUnitsSnapshot.barcode': unit.barcode })
+      const handover = await CarrierHandover.findOne({ orderId, 'packedUnitsSnapshot.barcode': unit.barcode })
         .select('waybillCode scannedAt scannedByName').lean();
       if (handover) events.push({ type: 'HANDOVER', at: handover.scannedAt, title: 'Bàn giao vận chuyển',
         details: [`Vận đơn ${handover.waybillCode}`, handover.scannedByName ? `Người bàn giao: ${handover.scannedByName}` : null].filter(Boolean) });
-    } else {
+    } else if (!isDefect) {
       const outbound = await FinishedGoodsBulkDocument.findOne({ direction: 'OUT', 'items.scannedBarcodes': unit.barcode })
         .select('documentCode recipient').lean();
       events.push({ type: 'OUT', at: unit.packedAt, title: 'Ra kho · Xuất kho theo phiếu',
@@ -99,10 +106,24 @@ async function unitEvents(unit, receipt) {
           outbound?.recipient ? `Người nhận: ${outbound.recipient}` : null].filter(Boolean) });
     }
   }
-  return events;
+  if (isDefect) {
+    if (unit.inspectedAt) events.push({ type: 'REENTRY', at: unit.inspectedAt, title: 'Hàng hoàn · Kỹ thuật đánh giá lỗi',
+      details: [unit.defectReason ? `Lý do: ${unit.defectReason}` : 'Không ghi lý do'] });
+    // Units that already existed keep the defect receipt as receivingDocumentId (shown above); this covers the rest.
+    if (unit.defectReceivedAt && !receipt?.isDefect) events.push({ type: 'IN', at: unit.defectReceivedAt, title: 'Vào kho hàng lỗi',
+      details: [`Vị trí ${await locationCode(unit.warehouseId) || '—'}`] });
+    if (unit.defectOutAt) events.push({ type: 'OUT', at: unit.defectOutAt, title: 'Xuất kho hàng lỗi',
+      details: [`Lý do: ${unit.defectOutReason || '—'}`, `Người xuất: ${await userName(unit.defectOutBy) || '—'}`] });
+  }
+  return events.sort((a, b) => new Date(a.at || 0) - new Date(b.at || 0));
 }
 
 async function currentState(unit) {
+  if (unit.inventoryStatus === 'DEFECT_PENDING') return { code: 'DEFECT_PENDING', label: 'Hàng lỗi · chờ nhập kho hàng lỗi' };
+  if (unit.inventoryStatus === 'DEFECTIVE') {
+    return { code: 'DEFECTIVE', label: `Trong kho hàng lỗi${await locationCode(unit.warehouseId).then((code) => (code ? ` (${code})` : ''))}` };
+  }
+  if (unit.inventoryStatus === 'DEFECT_OUT') return { code: 'DEFECT_OUT', label: 'Đã xuất khỏi kho hàng lỗi' };
   if (unit.inventoryStatus !== 'AVAILABLE') return { code: 'OUT', label: 'Đã ra kho' };
   const location = await WarehouseLocation.findById(unit.warehouseId).select('locationCode layoutBin').lean();
   return location?.layoutBin ? { code: 'ON_SHELF', label: `Trên kệ ${location.locationCode}` }

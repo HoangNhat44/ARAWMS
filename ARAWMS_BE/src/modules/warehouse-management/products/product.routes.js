@@ -14,6 +14,7 @@ import {
   locations, createLocation, products, issueStock, uploadMedia, barcodeTimeline, productDetail, shelfStock,
   productReceipts, receiptUnits, productLabels,
 } from './product.controller.js';
+import { defectUnits, defectOutbound } from './defectWarehouse.controller.js';
 
 const router = express.Router();
 const manageProducts = authorizeRole('OWNER', 'WAREHOUSE_MANAGER');
@@ -25,6 +26,10 @@ router.use('/configuration', manageProducts, productConfigurationRoutes);
 router.get('/locations', locations);
 router.post('/locations', manageProducts, createLocation);
 router.get('/', products);
+
+// Defect warehouse: everyone in the warehouse can view; taking defective units out is a manager action.
+router.get('/defects', defectUnits);
+router.post('/defects/outbound', manageProducts, defectOutbound);
 
 // Product detail page and barcode tracking (read-only; labels are rendered on demand for printing).
 router.get('/units/:barcode/timeline', barcodeTimeline);

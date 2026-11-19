@@ -35,7 +35,7 @@ export function demoRecords(year = 2026, staffId = id(900), ownerId = id(901)) {
   add(Supplier, { _id: id(20), supplierCode: 'DEMO-NCC-01', supplierName: 'Công ty Vải An Phú (mẫu)', phone: '0900000001', address: 'Hà Nội', totalPayableDebt: 0 });
   add(Product, { _id: id(30), productCode: 'DEMO-SP-01', productName: 'Áo thun mẫu', category: 'Áo thun', basePrice: 150000 });
   add(Customer, { _id: id(31), customerCode: 'DEMO-KH-01', fullName: 'Khách mua mẫu', phone: '0900000002' });
-  add(Sku, { _id: id(32), skuCode: 'DEMO-AO-M', skuBarcode: 'DEMO-AO-M', productId: id(30), styleName: 'Áo thun mẫu', color: 'Trắng', size: 'M', retailPrice: 150000, onHandQty: 200, reservedQty: 20, defectQuarantineQty: 5 });
+  add(Sku, { _id: id(32), skuCode: 'DEMO-AO-M', skuBarcode: 'DEMO-AO-M', productId: id(30), styleName: 'Áo thun mẫu', color: 'Trắng', size: 'M', retailPrice: 150000, onHandQty: 200, reservedQty: 20 });
   add(WarehouseLocation, { _id: id(40), locationCode: 'DEMO-KHO-NL', barcode: 'DEMO-KHO-NL', warehouseType: 'RAW_MATERIAL', zoneCode: 'A', rackCode: '01', shelfCode: '01', maxCapacity: 10000 });
   add(WarehouseLocation, { _id: id(41), locationCode: 'DEMO-KHO-TP', barcode: 'DEMO-KHO-TP', warehouseType: 'FINISHED_GOODS', zoneCode: 'B', rackCode: '01', shelfCode: '01', maxCapacity: 10000 });
   add(Bom, { _id: id(42), bomCode: 'DEMO-DM-01', skuId: id(32), skuCode: 'DEMO-AO-M', versionNo: 1, status: 'STANDARD', lines: [{ materialId: id(1), materialCode: 'DEMO-NL-1', materialName: 'Vải cotton', qtyPerUnit: 2, unitCode: 'METER', wastageRate: 0 }] });

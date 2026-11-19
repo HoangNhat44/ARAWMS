@@ -5,6 +5,7 @@
  */
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import Sku from '../../../models/Sku.model.js';
+import { withDefectQty, defectQtyBySku } from '../../../common/services/defectStock.js';
 import { readQuery } from '../../../common/utils/ownerReadQuery.js';
 import { httpError } from '../../../common/utils/httpError.js';
 
@@ -19,18 +20,21 @@ export const valuationReport = async (query) => {
     // Bảng chỉ lấy một trang, nhưng số tổng bên dưới được tính trên toàn bộ kết quả lọc.
     Model.find(filter).sort({ _id: 1 }).skip((page - 1) * limit).limit(limit),
     // GBR-13: Định giá tồn chính và hàng cách ly riêng; không trộn số lượng khác đơn vị.
-    Model.aggregate([{ $match: filter }, { $group: { _id: null, onHandValue: { $sum: { $multiply: ['$onHandQty', type === 'materials' ? '$unitCost' : '$unitCogs'] } },
-      quarantineValue: type === 'materials' ? { $sum: 0 } : { $sum: { $multiply: ['$defectQuarantineQty', '$unitCogs'] } } } }]), Model.countDocuments(filter),
+    Model.aggregate([{ $match: filter }, ...(type === 'skus' ? withDefectQty() : []), { $group: { _id: null, onHandValue: { $sum: { $multiply: ['$onHandQty', type === 'materials' ? '$unitCost' : '$unitCogs'] } },
+      quarantineValue: type === 'materials' ? { $sum: 0 } : { $sum: { $multiply: ['$defectQty', '$unitCogs'] } } } }]), Model.countDocuments(filter),
   ]);
+  // Hàng lỗi thành phẩm được đếm theo từng chiếc (ProductUnit), không lưu trên SKU.
+  const defectBySku = type === 'skus' ? await defectQtyBySku(items.map((item) => item._id)) : new Map();
   // Khi chưa có dữ liệu, tổng giá trị bằng 0; vẫn giữ trạng thái bảng trống ở FE.
   const values = totals[0] || { onHandValue: 0, quarantineValue: 0 };
   // Mỗi dòng giữ rõ số tồn, giữ chỗ, cách ly và đơn giá để kiểm tra phép tính.
   return { items: items.map((item) => { const cost = type === 'materials' ? item.unitCost : item.unitCogs;
+    const defectQty = defectBySku.get(String(item._id)) || 0;
     return { id: String(item._id), code: item.materialCode || item.skuCode, name: item.materialName || item.styleName,
       unit: item.unit || 'PIECE', onHandQty: item.onHandQty, reservedQty: item.reservedQty,
-      availableQty: item.onHandQty - item.reservedQty, quarantineQty: item.defectQuarantineQty || 0,
-      unitCost: cost, onHandValue: item.onHandQty * cost, quarantineValue: (item.defectQuarantineQty || 0) * cost,
-      totalValue: (item.onHandQty + (item.defectQuarantineQty || 0)) * cost }; }),
+      availableQty: item.onHandQty - item.reservedQty, quarantineQty: defectQty,
+      unitCost: cost, onHandValue: item.onHandQty * cost, quarantineValue: defectQty * cost,
+      totalValue: (item.onHandQty + defectQty) * cost }; }),
     totals: { onHandValue: values.onHandValue, quarantineValue: values.quarantineValue, totalValue: values.onHandValue + values.quarantineValue },
     type, total, page, limit, asOf: new Date(),
     basis: 'Định giá hiện tại = số lượng tồn × đơn giá danh mục đã ghi nhận. Hàng cách ly tính riêng; tồn giữ chỗ vẫn thuộc tài sản. Không phải bảng chốt giá FIFO theo lô hay báo cáo tại ngày quá khứ.' };

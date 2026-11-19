@@ -39,6 +39,8 @@
 .fg-unit-status.on_shelf { background: #dcfaed; color: #006c4a; }
 .fg-unit-status.unplaced { background: #fff0df; color: #904d00; }
 .fg-unit-status.packed { background: #f0eded; color: #665a4e; }
+.fg-unit-status.defect_pending, .fg-unit-status.defective { background: #fdecec; color: #a32121; }
+.fg-unit-status.defect_out { background: #f0eded; color: #665a4e; }
 
 .fg-product-overview { display: flex; gap: 1.25rem; align-items: flex-start; }
 .fg-product-overview > img, .fg-product-overview > .fg-product-placeholder { flex: 0 0 112px; width: 112px; height: 112px; border-radius: 10px; object-fit: cover; }

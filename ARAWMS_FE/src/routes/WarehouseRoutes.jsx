@@ -14,6 +14,7 @@ import MaterialOutboundPage from '../pages/warehouse/MaterialOutboundPage';
 import FinishedGoodsPage from '../pages/warehouse/FinishedGoodsPage';
 import FinishedGoodsProductPage from '../pages/warehouse/FinishedGoodsProductPage';
 import BarcodeTrackingPage from '../pages/warehouse/BarcodeTrackingPage';
+import DefectWarehousePage from '../pages/warehouse/DefectWarehousePage';
 import TechnicalInboundPage from '../pages/warehouse/TechnicalInboundPage';
 import TechnicalOutboundPage from '../pages/warehouse/TechnicalOutboundPage';
 import InboundProgressPage from '../pages/warehouse/InboundProgressPage';
@@ -36,6 +37,7 @@ export const warehouseManagerRoutes = (ProtectedRoute) => (
     <Route path="/warehouse/finished-goods" element={<FinishedGoodsPage />} />
     <Route path="/warehouse/finished-goods/:productId" element={<FinishedGoodsProductPage />} />
     <Route path="/warehouse/barcode-tracking" element={<BarcodeTrackingPage />} />
+    <Route path="/warehouse/defects" element={<DefectWarehousePage />} />
     <Route path="/warehouse/technical-inbound" element={<TechnicalInboundPage />} />
     <Route path="/warehouse/technical-outbound" element={<TechnicalOutboundPage />} />
     <Route path="/warehouse/inbound-progress" element={<InboundProgressPage />} />

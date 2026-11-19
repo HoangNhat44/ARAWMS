@@ -21,7 +21,10 @@ export const PRODUCT_CODE_MESSAGE = 'Mã sản phẩm cần 2–20 chữ in hoa 
  */
 export const readProductCode = (body) => normalizeProductCode(body?.productCode ?? body?.sampleCode);
 
-/** Validates product name, category, description, base price, and draft/active status (not the code). */
+/** Validates product name, category, description and base price (not the code).
+ * There is no draft product any more: a product is selling from the moment it is added, and stops
+ * selling by itself when all its colors are stopped. A `status` sent by older clients is ignored.
+ */
 export const parseProductDetails = (body) => {
   const productName = String(body?.productName || '').trim();
   const category = String(body?.category || '').trim();
@@ -29,9 +32,10 @@ export const parseProductDetails = (body) => {
   const basePrice = Number(body?.basePrice);
   if (!productName || productName.length > 200 ||
       !category || category.length > 100 || description.length > 2000 ||
-      body?.basePrice === '' || body?.basePrice == null || !Number.isFinite(basePrice) || basePrice < 0 ||
-      !['DRAFT', 'ACTIVE'].includes(body?.status)) throw requestError('Thông tin sản phẩm không hợp lệ', 'INVALID_PRODUCT');
-  return { productName, category, description, basePrice, isActive: body.status === 'ACTIVE' };
+      body?.basePrice === '' || body?.basePrice == null || !Number.isFinite(basePrice) || basePrice < 0) {
+    throw requestError('Thông tin sản phẩm không hợp lệ', 'INVALID_PRODUCT');
+  }
+  return { productName, category, description, basePrice };
 };
 
 /** Requires a product code that follows the shared code rule. */

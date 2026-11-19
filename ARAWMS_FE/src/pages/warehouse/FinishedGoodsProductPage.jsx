@@ -25,7 +25,12 @@ const UNIT_STATUS = {
   ON_SHELF: (unit) => `Trên kệ ${unit.locationCode}`,
   UNPLACED: () => 'Chờ xếp kệ',
   PACKED: (unit) => `Đã đóng đơn${unit.orderCode ? ` ${unit.orderCode}` : ''}`,
+  DEFECT_PENDING: () => 'Hàng lỗi · chờ nhập kho lỗi',
+  DEFECTIVE: () => 'Trong kho hàng lỗi',
+  DEFECT_OUT: () => 'Đã xuất khỏi kho hàng lỗi',
 };
+/** Units no longer in sellable stock: packed into an order, or defective. */
+const NOT_IN_STOCK = new Set(['PACKED', 'DEFECT_PENDING', 'DEFECTIVE', 'DEFECT_OUT']);
 const MAX_LABELS_PER_PRINT = 500;
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'FREESIZE'];
 const catalogFrom = (product) => ({ productName: product.productName, productCode: product.productCode,
@@ -201,12 +206,12 @@ function ExpandableRow({ cells, colSpan, highlight, loadUnits, onPrint, printing
       const loaded = await loadUnits();
       setUnits(loaded);
       // Units already packed into an order have left the warehouse; only units still in stock are preselected.
-      setSelected(loaded.filter((unit) => unit.status !== 'PACKED').map((unit) => unit.barcode));
+      setSelected(loaded.filter((unit) => !NOT_IN_STOCK.has(unit.status)).map((unit) => unit.barcode));
     } catch (requestError) { onError(requestError.message); setOpen(false); }
     finally { setLoading(false); }
   };
 
-  const inStock = (units || []).filter((unit) => unit.status !== 'PACKED');
+  const inStock = (units || []).filter((unit) => !NOT_IN_STOCK.has(unit.status));
   const allChecked = units?.length > 0 && units.every((unit) => selected.includes(unit.barcode));
 
   return <Fragment>
@@ -343,7 +348,7 @@ function ProductInfo({ detail, editing, setEditing, ownerId, highlightedSkuId, o
     <div className="fg-stock-heading">
       <div><h2 id="fg-info-title">Thông tin sản phẩm</h2>
         <p>{editing ? 'Đang chỉnh sửa — thay đổi được lưu qua hàng đợi đồng bộ của danh mục.' : 'Mô tả, giá và tồn kho theo biến thể.'}</p></div>
-      <span className={`fg-status ${product.isActive ? 'ready' : 'muted'}`}>{product.isActive ? 'Đang sử dụng' : 'Nháp'}</span>
+      <span className={`fg-status ${product.isActive ? 'ready' : 'muted'}`}>{product.isActive ? 'Đang bán' : product.codeLockedAt ? 'Ngừng bán' : 'Nháp (bản cũ)'}</span>
     </div>
 
     <div className="fg-product-overview">
@@ -394,7 +399,7 @@ function ProductInfo({ detail, editing, setEditing, ownerId, highlightedSkuId, o
           <td className="fg-number">{number(sku.onHandQty)}</td><td className="fg-number">{number(sku.reservedQty)}</td>
           <td className="fg-number fg-available-number">{number(sku.pickableQty)}</td>
           <td><span className={`fg-status ${sku.discontinuedAt ? 'muted' : sku.isActive ? 'ready' : 'empty'}`}>
-            {sku.discontinuedAt ? 'Ngừng bán' : sku.isActive ? 'Đang bán' : 'Nháp'}</span></td>
+            {sku.discontinuedAt ? 'Ngừng bán' : sku.isActive ? 'Đang bán' : 'Nháp (bản cũ)'}</span></td>
         </tr>)}</tbody>
       </table>
     </div>

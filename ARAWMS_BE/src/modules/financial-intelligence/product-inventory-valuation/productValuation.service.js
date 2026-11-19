@@ -8,6 +8,7 @@
 import Sku from '../../../models/Sku.model.js';
 import Product from '../../../models/Product.model.js';
 import mongoose from 'mongoose';
+import { withDefectQty } from '../../../common/services/defectStock.js';
 
 /**
  * 1. Lấy báo cáo tổng hợp KPI định giá tồn kho thành phẩm
@@ -16,6 +17,8 @@ export const getValuationSummary = async () => {
   const [skuStats, categoryStats] = await Promise.all([
     Sku.aggregate([
       { $match: { isDeleted: false } },
+      // Defective units are counted per unit (ProductUnit), not stored on the SKU.
+      ...withDefectQty(),
       {
         $group: {
           _id: null,
@@ -23,12 +26,12 @@ export const getValuationSummary = async () => {
           activeSkuCount: { $sum: { $cond: [{ $eq: ['$isActive', true] }, 1, 0] } },
           totalOnHandQty: { $sum: '$onHandQty' },
           totalReservedQty: { $sum: '$reservedQty' },
-          totalQuarantineQty: { $sum: '$defectQuarantineQty' },
+          totalQuarantineQty: { $sum: '$defectQty' },
           totalOnHandValue: {
             $sum: { $multiply: ['$onHandQty', '$unitCogs'] },
           },
           totalQuarantineValue: {
-            $sum: { $multiply: ['$defectQuarantineQty', '$unitCogs'] },
+            $sum: { $multiply: ['$defectQty', '$unitCogs'] },
           },
           totalReservedValue: {
             $sum: { $multiply: ['$reservedQty', '$unitCogs'] },
@@ -57,7 +60,7 @@ export const getValuationSummary = async () => {
           },
           quarantineItemCount: {
             $sum: {
-              $cond: [{ $gt: ['$defectQuarantineQty', 0] }, 1, 0],
+              $cond: [{ $gt: ['$defectQty', 0] }, 1, 0],
             },
           },
         },
@@ -67,6 +70,8 @@ export const getValuationSummary = async () => {
     // Phân tích giá trị tồn kho theo danh mục sản phẩm
     Sku.aggregate([
       { $match: { isDeleted: false } },
+      // Defective units are counted per unit (ProductUnit), not stored on the SKU.
+      ...withDefectQty(),
       {
         $lookup: {
           from: 'products',
@@ -84,7 +89,7 @@ export const getValuationSummary = async () => {
           totalValue: {
             $sum: {
               $multiply: [
-                { $add: ['$onHandQty', '$defectQuarantineQty'] },
+                { $add: ['$onHandQty', '$defectQty'] },
                 '$unitCogs',
               ],
             },
@@ -167,6 +172,7 @@ export const getValuationList = async (query = {}) => {
   const skip = (page - 1) * limit;
 
   const matchFilter = { isDeleted: false };
+  let onlyDefective = false;
 
   // 1. Lọc theo trạng thái tồn kho (stockStatus)
   if (query.stockStatus === 'IN_STOCK') {
@@ -181,7 +187,7 @@ export const getValuationList = async (query = {}) => {
       ],
     };
   } else if (query.stockStatus === 'QUARANTINE') {
-    matchFilter.defectQuarantineQty = { $gt: 0 };
+    onlyDefective = true;
   }
 
   // 2. Lọc theo Size
@@ -192,6 +198,9 @@ export const getValuationList = async (query = {}) => {
   // Pipeline tìm kiếm & liên kết Product
   const pipeline = [
     { $match: matchFilter },
+    // Defective units are counted per unit (ProductUnit), not stored on the SKU.
+    ...withDefectQty(),
+    ...(onlyDefective ? [{ $match: { defectQty: { $gt: 0 } } }] : []),
     {
       $lookup: {
         from: 'products',
@@ -242,11 +251,11 @@ export const getValuationList = async (query = {}) => {
         $multiply: ['$onHandQty', '$unitCogs'],
       },
       quarantineValue: {
-        $multiply: ['$defectQuarantineQty', '$unitCogs'],
+        $multiply: ['$defectQty', '$unitCogs'],
       },
       totalAssetValue: {
         $multiply: [
-          { $add: ['$onHandQty', '$defectQuarantineQty'] },
+          { $add: ['$onHandQty', '$defectQty'] },
           '$unitCogs',
         ],
       },
@@ -293,7 +302,7 @@ export const getValuationList = async (query = {}) => {
       unitCogs: 1,
       onHandQty: 1,
       reservedQty: 1,
-      defectQuarantineQty: 1,
+      defectQty: 1,
       availableQty: 1,
       safetyStockThreshold: 1,
       fifoAgingThresholdDays: 1,
