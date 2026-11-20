@@ -201,6 +201,20 @@ export const updateOrderRecipient = async (req, res) => {
   }
 };
 
+/**
+ * Gửi tin nhắn hỏi xác nhận khách hàng trước khi hủy đơn hàng
+ * POST /api/orders/:id/send-cancel-inquiry
+ */
+export const sendCancelConfirmationInquiry = async (req, res) => {
+  try {
+    const { reason } = req.body || {};
+    const result = await orderManagementService.sendCancelConfirmationInquiry(req.params.id, reason, req.user, req);
+    return successResponse(res, result, result.message);
+  } catch (error) {
+    return errorResponse(res, error.message, 400);
+  }
+};
+
 export default {
   createDirectOrder,
   updateOrderItems,
@@ -211,6 +225,7 @@ export default {
   cancelOrder,
   createPosDirectOrder,
   sendOrderConfirmationReceipt,
+  sendCancelConfirmationInquiry,
   simulateCustomerConfirm,
   getOrderList,
   getOrderById,

@@ -211,19 +211,35 @@ export const processInboundWebhookMessage = async (messagingEvent, entryPageId =
     console.warn('⚠️ Lỗi phát socket chatRouting:', err.message);
   }
 
-  // 5. [Phase 2: Two-way Order Confirmation] Nhận diện tin nhắn xác nhận chốt đơn từ khách
+  // 5. [Phase 2: Two-way Order Confirmation & Inquiry Replies]
   try {
-    const isConfirmPayload = messagingEvent.postback?.payload?.startsWith('CONFIRM_ORDER_')
-      || messageData.quick_reply?.payload?.startsWith('CONFIRM_ORDER_');
+    const rawPayload = messagingEvent.postback?.payload || messageData.quick_reply?.payload || '';
+    const isConfirmPayload = rawPayload.startsWith('CONFIRM_ORDER_');
+    const isEditPayload = rawPayload.startsWith('EDIT_ORDER_');
+    const isCancelConfirmPayload = rawPayload.startsWith('CANCEL_ORDER_');
+    const isKeepOrderPayload = rawPayload.startsWith('KEEP_ORDER_');
 
-    const confirmKeywordsRegex = /\b(ok|oke|oki|okie|chốt|chot|chốt đơn|chot don|xác nhận|xac nhan|confirm|đồng ý|dong y|đúng rồi|dung roi|giao đi|giao di)\b/i;
-    const isConfirmKeyword = messageText && confirmKeywordsRegex.test(messageText.trim());
+    // Chuẩn hóa tiếng Việt không dấu để tránh lỗi \b với ký tự Unicode có dấu trong JS RegExp
+    const normalizedText = String(messageText || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[đĐ]/g, 'd')
+      .toLowerCase()
+      .trim();
+
+    const confirmKeywordsRegex = /(?:^|[\s.,!?:;👍✅❤️])(ok|oke|oki|okie|chot|chot don|xac nhan|confirm|dong y|dung roi|giao di)(?=$|[\s.,!?:;👍✅❤️])/i;
+    const cancelNegationRegex = /(?:^|[\s.,!?:;❌])(huy|huy don|khong lay|khong mua|bo don|cancel)(?=$|[\s.,!?:;❌])/i;
+    const isConfirmKeyword =
+      Boolean(normalizedText) &&
+      !isCancelConfirmPayload &&
+      !isEditPayload &&
+      !cancelNegationRegex.test(normalizedText) &&
+      confirmKeywordsRegex.test(normalizedText);
 
     if (isConfirmPayload || isConfirmKeyword) {
       let targetOrder = null;
       if (isConfirmPayload) {
-        const payloadStr = messagingEvent.postback?.payload || messageData.quick_reply?.payload;
-        const targetOrderId = payloadStr.replace('CONFIRM_ORDER_', '').trim();
+        const targetOrderId = rawPayload.replace('CONFIRM_ORDER_', '').trim();
         targetOrder = await SalesOrder.findOne({ _id: targetOrderId, status: 'PENDING' });
       }
 
@@ -241,6 +257,23 @@ export const processInboundWebhookMessage = async (messagingEvent, entryPageId =
           assignedSeller || { _id: targetOrder.sellerId }
         );
       }
+    } else if (isEditPayload) {
+      const updatedTags = Array.from(new Set([...(conversation.tags || []), 'Cần sửa đơn']));
+      conversation.tags = updatedTags;
+      await conversation.save();
+      const populatedConv = await ChatConversation.findById(conversation._id).populate('customerId').lean();
+      emitConversationUpdated(populatedConv || conversation);
+    } else if (isCancelConfirmPayload) {
+      const updatedTags = Array.from(new Set([...(conversation.tags || []), 'Khách xác nhận hủy']));
+      conversation.tags = updatedTags;
+      await conversation.save();
+      const populatedConv = await ChatConversation.findById(conversation._id).populate('customerId').lean();
+      emitConversationUpdated(populatedConv || conversation);
+    } else if (isKeepOrderPayload) {
+      conversation.tags = (conversation.tags || []).filter((t) => t !== 'Khách xác nhận hủy');
+      await conversation.save();
+      const populatedConv = await ChatConversation.findById(conversation._id).populate('customerId').lean();
+      emitConversationUpdated(populatedConv || conversation);
     }
   } catch (confirmErr) {
     console.error('⚠️ [Auto-Confirm Error]:', confirmErr.message);

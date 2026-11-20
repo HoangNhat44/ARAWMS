@@ -68,31 +68,83 @@ export const buildOrderConfirmationText = (order) => {
 /**
  * Tạo mẫu tin nhắn thông báo đã chốt đơn thành công
  * @param {Object} order - Bản ghi SalesOrder
+ * @param {string} [waybillCode] - Mã vận đơn GHN nếu đã tạo
  * @returns {string}
  */
-export const buildOrderConfirmedSuccessText = (order) => {
+export const buildOrderConfirmedSuccessText = (order, waybillCode) => {
+  const code = waybillCode || order?.warehouseFulfillment?.waybillCode || '';
+  const cod = formatMoney(order?.financialSummary?.expectedCodAmount || order?.financialSummary?.totalOrderAmount || 0);
   return (
     `🎉 XÁC NHẬN CHỐT ĐƠN THÀNH CÔNG!\n` +
     `━━━━━━━━━━━━━━━━━━━━━\n` +
-    `AraStore đã nhận được xác nhận chốt đơn #${order.orderCode} từ quý khách.\n` +
-    `Đơn hàng đã được chuyển sang bộ phận kho để chuẩn bị và đóng gói cẩn thận.\n` +
-    `Chúng tôi sẽ gửi thông báo kèm mã vận đơn ngay khi kiện hàng được bàn giao cho đơn vị vận chuyển. Cảm ơn quý khách đã tin chọn AraStore! 🌸`
+    `Mã đơn hàng: #${order.orderCode}\n` +
+    (code ? `Mã vận đơn GHN: ${code}\n` : '') +
+    `Tổng thu hộ: ${cod}\n` +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `AraStore đã xác nhận chốt đơn #${order.orderCode} và giữ hàng trong kho cho quý khách.\n` +
+    `Đơn hàng đã được chuyển sang bộ phận kho để chuẩn bị và đóng gói cẩn thận. Cảm ơn quý khách đã tin chọn AraStore! 🌸`
+  );
+};
+
+/**
+ * Tạo mẫu tin nhắn hỏi xác nhận lại khách hàng trước khi hủy đơn
+ * @param {Object} order - Bản ghi SalesOrder
+ * @param {string} [reason] - Lý do dự kiến hủy
+ * @returns {string}
+ */
+export const buildOrderCancelInquiryText = (order, reason = '') => {
+  const cod = formatMoney(order?.financialSummary?.expectedCodAmount || order?.financialSummary?.totalOrderAmount || 0);
+  return (
+    `❓ XÁC NHẬN TRƯỚC KHI HỦY ĐƠN HÀNG\n` +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `Mã đơn hàng: #${order.orderCode}\n` +
+    `Tổng tiền: ${cod}\n` +
+    (reason ? `Lý do dự kiến: ${reason}\n` : '') +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `Quý khách có chắc chắn muốn HỦY đơn hàng #${order.orderCode} không ạ? Vui lòng phản hồi xác nhận hoặc chọn nút bên dưới để AraStore hỗ trợ ngay nhé!`
+  );
+};
+
+/**
+ * Tạo mẫu tin nhắn thông báo đơn hàng đã được hủy
+ * @param {Object} order - Bản ghi SalesOrder
+ * @param {string} [cancelReason] - Lý do hủy đơn
+ * @returns {string}
+ */
+export const buildOrderCancelledText = (order, cancelReason = '') => {
+  const code = order?.warehouseFulfillment?.waybillCode || '';
+  const cod = formatMoney(order?.financialSummary?.expectedCodAmount || order?.financialSummary?.totalOrderAmount || 0);
+  return (
+    `❌ THÔNG BÁO HỦY ĐƠN HÀNG #${order.orderCode}\n` +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `Mã đơn hàng: #${order.orderCode}\n` +
+    (code ? `Mã vận đơn GHN: ${code}\n` : '') +
+    `Tổng tiền: ${cod}\n` +
+    `Trạng thái: Đã hủy\n` +
+    (cancelReason ? `Lý do: ${cancelReason}\n` : '') +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `Đơn hàng #${order.orderCode} của quý khách đã được hủy thành công. Nếu cần đặt lại hoặc đổi sản phẩm khác, quý khách cứ nhắn cho AraStore nhé!`
   );
 };
 
 /**
  * Tạo mẫu tin nhắn thông báo đóng gói xong kèm mã vận đơn
  * @param {Object} order - Bản ghi SalesOrder
- * @param {string} waybillCode - Mã vận đơn
+ * @param {string} [waybillCode] - Mã vận đơn
  * @returns {string}
  */
 export const buildPackingCompletedText = (order, waybillCode) => {
+  const code = waybillCode || order?.warehouseFulfillment?.waybillCode || 'Đang cập nhật';
+  const cod = formatMoney(order?.financialSummary?.expectedCodAmount || order?.financialSummary?.totalOrderAmount || 0);
   return (
     `📦 ĐƠN HÀNG #${order.orderCode} ĐÃ ĐƯỢC ĐÓNG GÓI XONG!\n` +
     `━━━━━━━━━━━━━━━━━━━━━\n` +
-    `Mã vận đơn GHN: ${waybillCode}\n` +
+    `Mã đơn hàng: #${order.orderCode}\n` +
+    `Mã vận đơn GHN: ${code}\n` +
+    `Tổng thu hộ: ${cod}\n` +
     `Đơn vị vận chuyển: Giao Hàng Nhanh\n` +
-    `Kiện hàng của bạn đang được bàn giao cho bưu tá. Thời gian giao hàng dự kiến từ 2-3 ngày làm việc.\n` +
+    `━━━━━━━━━━━━━━━━━━━━━\n` +
+    `Kiện hàng của bạn đã được đóng gói cẩn thận và đang chờ bàn giao cho bưu tá. Thời gian giao hàng dự kiến từ 2-3 ngày làm việc.\n` +
     `Quý khách vui lòng chú ý điện thoại để bưu tá liên hệ giao hàng nhé!`
   );
 };
@@ -295,6 +347,20 @@ export const sendOrderNotificationToChat = async ({
                 },
               ],
             }),
+            ...(notificationType === 'CANCEL_INQUIRY' && {
+              quick_replies: [
+                {
+                  content_type: 'text',
+                  title: '❌ Xác nhận hủy đơn',
+                  payload: `CANCEL_ORDER_${order._id}`,
+                },
+                {
+                  content_type: 'text',
+                  title: '✅ Giữ lại đơn hàng',
+                  payload: `KEEP_ORDER_${order._id}`,
+                },
+              ],
+            }),
           },
         };
 
@@ -395,6 +461,8 @@ export const sendOrderNotificationToChat = async ({
 export default {
   buildOrderConfirmationText,
   buildOrderConfirmedSuccessText,
+  buildOrderCancelInquiryText,
+  buildOrderCancelledText,
   buildPackingCompletedText,
   buildGhnStatusUpdateText,
   sendOrderNotificationToChat,
