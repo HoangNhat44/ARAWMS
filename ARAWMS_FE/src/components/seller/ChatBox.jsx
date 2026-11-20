@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * @title        : ChatBox Component (Pancake-style Quick Tag Bar)
+ * @title        : ChatBox Component
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
  * @lastModified : 2026-11-14
@@ -27,58 +27,223 @@ import { getMediaUrl, cleanChatMessageText, classifyOrderReceiptMessage, parseOr
 export { getMediaUrl, cleanChatMessageText };
 
 /**
- * Component hiển thị thông báo chốt đơn / phiếu xác nhận theo dạng thẻ tương tác (Rich Interactive Receipt Card)
- * chuẩn AraWMS Haute Logistics (khớp hoàn hảo mẫu thiết kế trong ảnh thực tế).
+ * Xác định siêu dữ liệu hiển thị thống nhất (Rich Interactive Card) cho toàn bộ tin nhắn tự động từ WMS/GHN.
+ * Dùng chung cho cả kiểm tra isOrderCard và component OrderReceiptCard để mọi loại thông báo tự động
+ * luôn có cùng 1 cấu trúc thẻ đồng nhất.
  */
-const OrderReceiptCard = ({ text, isSeller }) => {
-  const isConfirmSuccess = text.includes('XÁC NHẬN CHỐT ĐƠN THÀNH CÔNG') || text.includes('ĐÃ TẠO VẬN ĐƠN');
-  const isConfirmationRequest = text.includes('THÔNG TIN XÁC NHẬN ĐƠN HÀNG') || text.includes('PHIẾU XÁC NHẬN');
-  const isPackingNotice = text.includes('ĐÃ ĐƯỢC ĐÓNG GÓI XONG');
+const getOrderNotificationCardMeta = (rawText) => {
+  if (!rawText || typeof rawText !== 'string') return null;
+  const text = cleanChatMessageText(rawText);
 
-  if (!isConfirmSuccess && !isConfirmationRequest && !isPackingNotice) {
+  if (text.includes('THÔNG TIN XÁC NHẬN ĐƠN HÀNG') || text.includes('PHIẾU XÁC NHẬN')) {
+    return {
+      kind: 'CONFIRM_REQUEST',
+      title: 'PHIẾU XÁC NHẬN ĐƠN HÀNG',
+      badgeText: 'CHỜ XÁC NHẬN',
+      iconName: 'receipt',
+      iconColor: 'var(--wms-primary, #8A6A46)',
+      badgeStyle: { backgroundColor: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A' },
+    };
+  }
+  if (text.includes('XÁC NHẬN CHỐT ĐƠN THÀNH CÔNG')) {
+    return {
+      kind: 'CONFIRM_SUCCESS',
+      title: 'XÁC NHẬN CHỐT ĐƠN THÀNH CÔNG',
+      badgeText: 'ĐÃ CHỐT ĐƠN',
+      iconName: 'check-circle-fill',
+      iconColor: '#006C4A',
+      badgeStyle: { backgroundColor: '#ECFDF5', color: '#006C4A', border: '1px solid #A7F3D0' },
+    };
+  }
+  if (text.includes('XÁC NHẬN TRƯỚC KHI HỦY ĐƠN HÀNG')) {
+    return {
+      kind: 'CANCEL_INQUIRY',
+      title: 'HỎI XÁC NHẬN HỦY ĐƠN HÀNG',
+      badgeText: 'CHỜ PHẢN HỒI HỦY',
+      iconName: 'question-circle-fill',
+      iconColor: '#B45309',
+      badgeStyle: { backgroundColor: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A' },
+    };
+  }
+  if (text.includes('THÔNG BÁO HỦY ĐƠN HÀNG')) {
+    return {
+      kind: 'ORDER_CANCELLED',
+      title: 'THÔNG BÁO HỦY ĐƠN HÀNG',
+      badgeText: 'ĐÃ HỦY',
+      iconName: 'x-circle-fill',
+      iconColor: '#BA1A1A',
+      badgeStyle: { backgroundColor: '#FFDAD6', color: '#BA1A1A', border: '1px solid #FFB4AB' },
+    };
+  }
+  if (text.includes('ĐÃ ĐƯỢC ĐÓNG GÓI XONG')) {
+    return {
+      kind: 'PACKING_NOTICE',
+      title: 'ĐÃ ĐÓNG GÓI XONG KIỆN HÀNG',
+      badgeText: 'ĐÃ ĐÓNG GÓI',
+      iconName: 'box-seam',
+      iconColor: '#1D4ED8',
+      badgeStyle: { backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' },
+    };
+  }
+  if (text.includes('ĐÃ TẠO VẬN ĐƠN')) {
+    return {
+      kind: 'GHN_READY',
+      title: 'ĐÃ TẠO VẬN ĐƠN GIAO HÀNG NHANH',
+      badgeText: 'CHỜ LẤY HÀNG',
+      iconName: 'truck',
+      iconColor: 'var(--wms-primary, #8A6A46)',
+      badgeStyle: { backgroundColor: '#ECFDF5', color: '#006C4A', border: '1px solid #A7F3D0' },
+    };
+  }
+  if (text.includes('BƯU TÁ GHN ĐANG ĐẾN KHO LẤY HÀNG')) {
+    return {
+      kind: 'GHN_PICKING',
+      title: 'BƯU TÁ GHN ĐANG ĐẾN KHO LẤY HÀNG',
+      badgeText: 'ĐANG LẤY HÀNG',
+      iconName: 'truck',
+      iconColor: '#1D4ED8',
+      badgeStyle: { backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' },
+    };
+  }
+  if (text.includes('BƯU TÁ GHN ĐÃ LẤY HÀNG')) {
+    return {
+      kind: 'GHN_PICKED',
+      title: 'BƯU TÁ GHN ĐÃ LẤY HÀNG',
+      badgeText: 'ĐÃ LẤY HÀNG',
+      iconName: 'truck',
+      iconColor: '#1D4ED8',
+      badgeStyle: { backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' },
+    };
+  }
+  if (text.includes('ĐƠN HÀNG ĐANG ĐƯỢC GIAO ĐẾN BẠN')) {
+    return {
+      kind: 'GHN_DELIVERING',
+      title: 'ĐƠN HÀNG ĐANG ĐƯỢC GIAO ĐẾN BẠN',
+      badgeText: 'ĐANG GIAO HÀNG',
+      iconName: 'truck',
+      iconColor: '#1D4ED8',
+      badgeStyle: { backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' },
+    };
+  }
+  if (text.includes('ĐÃ GIAO THÀNH CÔNG')) {
+    return {
+      kind: 'GHN_DELIVERED',
+      title: 'GIAO HÀNG THÀNH CÔNG',
+      badgeText: 'ĐÃ GIAO THÀNH CÔNG',
+      iconName: 'check-circle-fill',
+      iconColor: '#006C4A',
+      badgeStyle: { backgroundColor: '#ECFDF5', color: '#006C4A', border: '1px solid #A7F3D0' },
+    };
+  }
+  if (text.includes('GIAO HÀNG CHƯA THÀNH CÔNG')) {
+    return {
+      kind: 'GHN_DELIVERY_FAIL',
+      title: 'GIAO HÀNG CHƯA THÀNH CÔNG',
+      badgeText: 'GIAO THẤT BẠI',
+      iconName: 'exclamation-triangle-fill',
+      iconColor: '#B45309',
+      badgeStyle: { backgroundColor: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A' },
+    };
+  }
+  if (text.includes('THÔNG BÁO CHUYỂN HOÀN ĐƠN HÀNG')) {
+    return {
+      kind: 'GHN_RETURN',
+      title: 'THÔNG BÁO CHUYỂN HOÀN ĐƠN HÀNG',
+      badgeText: 'CHUYỂN HOÀN',
+      iconName: 'arrow-counterclockwise',
+      iconColor: '#BA1A1A',
+      badgeStyle: { backgroundColor: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' },
+    };
+  }
+  if (text.includes('CẬP NHẬT TRẠNG THÁI VẬN ĐƠN')) {
+    return {
+      kind: 'GHN_UPDATE',
+      title: 'CẬP NHẬT TRẠNG THÁI VẬN ĐƠN',
+      badgeText: 'CẬP NHẬT GHN',
+      iconName: 'bell-fill',
+      iconColor: 'var(--wms-primary, #8A6A46)',
+      badgeStyle: { backgroundColor: 'var(--wms-primary-subtle, #EFE6DA)', color: 'var(--wms-accent-hover, #6E5233)', border: '1px solid var(--wms-accent-light, #D4B48C)' },
+    };
+  }
+
+  return null;
+};
+
+/** Trích xuất nội dung ghi chú sạch (bỏ dòng tiêu đề lặp, đường kẻ ━━━ và các trường đã hiển thị trên 4 ô metrics). */
+const extractCleanNotificationBody = (rawText, kind) => {
+  const cleaned = cleanChatMessageText(rawText);
+  const lines = cleaned
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line) return false;
+      if (/^[━─═-]{3,}$/.test(line)) return false;
+      return true;
+    });
+
+  // Bỏ dòng tiêu đề đầu tiên (vì đã hiển thị trên header thẻ)
+  const contentLines = lines.slice(1);
+
+  if (kind === 'CONFIRM_REQUEST') {
+    // Giữ lại Người nhận, SĐT, Địa chỉ, danh sách sản phẩm và lời nhắc xác nhận
+    return contentLines
+      .filter((line) => !/^(Mã đơn hàng|Tạm tính|Phí vận chuyển|TỔNG THU HỘ):/i.test(line))
+      .join('\n');
+  }
+
+  // Các loại thẻ khác (chốt đơn, vận đơn, hỏi hủy, hủy đơn, đóng gói, trạng thái GHN):
+  // Bỏ các dòng key-value đã hiển thị sẵn ở 4 ô metrics
+  const noteLines = contentLines.filter(
+    (line) => !/^(Mã đơn hàng|Mã vận đơn(?:\s*GHN)?|Trạng thái|Trạng thái mới nhất|Tổng thu hộ|Tổng tiền|Số tiền cần thanh toán|Đơn vị vận chuyển|Lý do(?:\s*dự kiến)?):/i.test(line)
+  );
+  return noteLines.join('\n');
+};
+
+/**
+ * Component hiển thị toàn bộ thông báo tự động (xác nhận đơn, chốt đơn, hỏi hủy, hủy đơn, đóng gói, trạng thái GHN)
+ * theo cùng 1 chuẩn thẻ Rich Interactive Card (AraWMS Haute Logistics).
+ */
+const OrderReceiptCard = ({ text }) => {
+  const meta = getOrderNotificationCardMeta(text);
+  if (!meta) {
     return <div style={{ whiteSpace: 'pre-wrap' }}>{cleanChatMessageText(text)}</div>;
   }
 
-  const details = parseOrderReceiptDetails(text);
+  const cleanedText = cleanChatMessageText(text);
+  const details = parseOrderReceiptDetails(cleanedText);
   const orderCode = details.orderCode
     ? (details.orderCode.startsWith('#') ? details.orderCode : `#${details.orderCode}`)
     : '-';
   const waybillCode = details.waybillCode || '-';
   const codAmount = details.codAmount || '-';
-
-  const title = isPackingNotice
-    ? 'ĐÃ ĐÓNG GÓI XONG KIỆN HÀNG'
-    : isConfirmationRequest
-    ? 'PHIẾU XÁC NHẬN ĐƠN HÀNG'
-    : 'ĐÃ TẠO VẬN ĐƠN GIAO HÀNG NHANH';
-
-  const badgeText = isPackingNotice ? 'ĐÃ ĐÓNG GÓI' : isConfirmationRequest ? 'CHỜ XÁC NHẬN' : 'CHỜ LẤY HÀNG';
+  const reasonMatch = cleanedText.match(/Lý do(?:\s*dự kiến)?:\s*(.+)/i);
+  const cancelReason = reasonMatch ? reasonMatch[1].trim() : null;
+  const isCancelKind = meta.kind === 'CANCEL_INQUIRY' || meta.kind === 'ORDER_CANCELLED';
+  const bodyNote = extractCleanNotificationBody(cleanedText, meta.kind);
 
   return (
     <div className="ara-order-receipt-card text-start my-1 shadow-sm">
       {/* Header */}
       <div className="receipt-header">
         <div className="d-flex align-items-center gap-2">
-          <Icon name="truck" className="fs-5" style={{ color: 'var(--wms-primary, #8A6A46)' }} />
+          <Icon name={meta.iconName} className="fs-5" style={{ color: meta.iconColor }} />
           <span className="fw-bold small" style={{ color: 'var(--wms-text-primary, #141210)', letterSpacing: '0.01em' }}>
-            {title}
+            {meta.title}
           </span>
         </div>
         <span
           className="badge rounded-pill px-2.5 py-1"
           style={{
-            backgroundColor: isConfirmationRequest ? '#FFFBEB' : '#ECFDF5',
-            color: isConfirmationRequest ? '#D97706' : '#006C4A',
-            border: `1px solid ${isConfirmationRequest ? '#FDE68A' : '#A7F3D0'}`,
+            ...meta.badgeStyle,
             fontSize: '11px',
             fontWeight: 600,
           }}
         >
-          {badgeText}
+          {meta.badgeText}
         </span>
       </div>
 
-      {/* 4-Box Key Metrics Grid */}
+      {/* 4-Box Key Metrics Grid (đồng nhất cho mọi tin nhắn tự động) */}
       <div className="receipt-metrics-grid">
         <div>
           <div className="metric-label">MÃ ĐƠN HÀNG</div>
@@ -89,8 +254,10 @@ const OrderReceiptCard = ({ text, isSeller }) => {
           <div className="metric-value font-monospace">{waybillCode}</div>
         </div>
         <div>
-          <div className="metric-label">DỊCH VỤ CHUYỂN PHÁT</div>
-          <div className="metric-value" style={{ fontSize: '12.5px', fontWeight: 500 }}>GHN Tiết kiệm (Dưới 1kg)</div>
+          <div className="metric-label">{isCancelKind ? 'LÝ DO HỦY' : 'DỊCH VỤ CHUYỂN PHÁT'}</div>
+          <div className="metric-value" style={{ fontSize: '12.5px', fontWeight: 500 }}>
+            {isCancelKind ? (cancelReason || 'Khách đổi ý hủy đơn') : 'GHN Tiết kiệm (Dưới 1kg)'}
+          </div>
         </div>
         <div>
           <div className="metric-label">TỔNG THU HỘ (COD)</div>
@@ -99,9 +266,18 @@ const OrderReceiptCard = ({ text, isSeller }) => {
       </div>
 
       {/* Note description */}
-      <div className="small lh-sm mb-2" style={{ color: 'var(--wms-text-secondary, #514536)', fontSize: '12px' }}>
-        Đơn hàng của quý khách đã được đẩy lên hệ thống GHN và có mã vận đơn tự động. AraStore đang đóng gói và chờ shipper bàn giao kiện hàng cho bưu tá.
-      </div>
+      {bodyNote && (
+        <div
+          className="small lh-sm mb-2"
+          style={{
+            color: 'var(--wms-text-secondary, #514536)',
+            fontSize: '12px',
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {bodyNote}
+        </div>
+      )}
 
       {/* Footer line */}
       <div className="d-flex align-items-center justify-content-between pt-2 border-top small" style={{ borderColor: 'var(--wms-border-subtle, #F0EDED)', fontSize: '11px', color: 'var(--wms-text-light, #837564)' }}>
@@ -142,6 +318,14 @@ const ChatBox = ({
 }) => {
   const { showWarning, showError, showSuccess } = useToast();
   const [messages, setMessages] = useState([]);
+
+  const appendUniqueMessage = (prev, incoming) => {
+    if (!incoming) return prev;
+    const exists = prev.some(
+      (m) => (m._id && incoming._id && m._id === incoming._id) || (m.fbMessageId && incoming.fbMessageId && m.fbMessageId === incoming.fbMessageId)
+    );
+    return exists ? prev : [...prev, incoming];
+  };
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -171,14 +355,7 @@ const ChatBox = ({
 
     const handleNewMessage = (newMsg) => {
       if (!newMsg || String(newMsg.conversationId) !== String(convId)) return;
-      setMessages((prev) => {
-        // Tránh trùng lặp tin nhắn nếu đã có trong mảng
-        const exists = prev.some(
-          (m) => (m._id && m._id === newMsg._id) || (m.fbMessageId && m.fbMessageId === newMsg.fbMessageId)
-        );
-        if (exists) return prev;
-        return [...prev, newMsg];
-      });
+      setMessages((prev) => appendUniqueMessage(prev, newMsg));
     };
 
     socket.on('new_message', handleNewMessage);
@@ -269,7 +446,7 @@ const ChatBox = ({
 
         const res = await sellerService.sendAttachments(conversation._id, formData);
         if (res.success) {
-          setMessages((prev) => [...prev, res.data]);
+          setMessages((prev) => appendUniqueMessage(prev, res.data));
           setText('');
           selectedFiles.forEach((item) => {
             if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
@@ -280,7 +457,7 @@ const ChatBox = ({
         // Chỉ gửi tin nhắn văn bản thuần túy
         const res = await sellerService.sendMessage(conversation._id, { messageText: text.trim() });
         if (res.success) {
-          setMessages((prev) => [...prev, res.data]);
+          setMessages((prev) => appendUniqueMessage(prev, res.data));
           setText('');
         }
       }
@@ -533,13 +710,7 @@ const ChatBox = ({
             const timeDiffNext = nextMsg ? (new Date(nextMsg.sentAt) - new Date(m.sentAt)) : Infinity;
             const isLastInCluster = !sameSenderAsNext || timeDiffNext > 120000;
 
-            const isOrderCard = m.messageText && (
-              m.messageText.includes('XÁC NHẬN CHỐT ĐƠN THÀNH CÔNG') ||
-              m.messageText.includes('THÔNG TIN XÁC NHẬN ĐƠN HÀNG') ||
-              m.messageText.includes('PHIẾU XÁC NHẬN') ||
-              m.messageText.includes('ĐÃ ĐƯỢC ĐÓNG GÓI XONG') ||
-              m.messageText.includes('ĐÃ TẠO VẬN ĐƠN')
-            );
+            const isOrderCard = Boolean(getOrderNotificationCardMeta(m.messageText));
 
             // Khoảng cách: 4px nếu cùng cụm, 14px nếu khác cụm (chuẩn UX Messenger/Slack)
             const gapClass = isLastInCluster ? 'mb-3' : 'mb-1';

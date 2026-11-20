@@ -14,6 +14,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Nav, Button, Badge, Stack, Offcanvas } from 'react-bootstrap';
 import ConversationList from '../../components/seller/ConversationList';
 import ChatBox from '../../components/seller/ChatBox';
@@ -42,11 +43,13 @@ let memoryFetchTime = 0;
  */
 const SellerChatPage = () => {
   const { showSuccess } = useToast();
+  const [searchParams] = useSearchParams();
   // Khởi tạo ngay từ cache bộ nhớ nếu đã từng tải trước đó trong phiên làm việc
   const [conversations, setConversations] = useState(memoryConversations);
   const [selectedConversation, setSelectedConversation] = useState(memorySelectedConv || memoryConversations[0] || null);
   const [loading, setLoading] = useState(memoryConversations.length === 0);
   const [activeTab, setActiveTab] = useState('order'); // 'crm' | 'order' | 'history'
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [activeFilterTag, setActiveFilterTag] = useState('');
   const [allTags, setAllTags] = useState(memoryTags);
 
@@ -91,6 +94,16 @@ const SellerChatPage = () => {
   const isMobile = windowWidth < 768;
   const isTablet = windowWidth >= 768 && windowWidth < 1200;
   const isDesktop = windowWidth >= 1200;
+
+  // Tự động chọn hội thoại nếu chuyển từ trang Quản lý khách hàng (?conversationId=...)
+  useEffect(() => {
+    const targetConvId = searchParams.get('conversationId');
+    if (!targetConvId || conversations.length === 0) return;
+    const matched = conversations.find((c) => String(c._id) === String(targetConvId));
+    if (matched && String(selectedConversation?._id) !== String(matched._id)) {
+      handleSelectConversation(matched);
+    }
+  }, [searchParams, conversations]);
 
   // Toggle right panel (CRM / Quick Order / History)
   const handleToggleRightPanel = () => {
@@ -387,14 +400,19 @@ const SellerChatPage = () => {
             <QuickOrderPanel
               customer={selectedConversation?.customerId}
               conversationId={selectedConversation?._id}
-              onOrderCreated={() => setActiveTab('history')}
+              onOrderCreated={() => {
+                setHistoryRefreshKey((k) => k + 1);
+                setActiveTab('history');
+              }}
             />
           )}
           {activeTab === 'history' && (
             <CustomerOrderHistory
               customerId={selectedConversation?.customerId?._id}
+              refreshKey={historyRefreshKey}
               onRequestRma={handleOpenRma}
               onViewDetail={handleOpenOrderDetail}
+              onOrderConfirmed={() => setHistoryRefreshKey((k) => k + 1)}
             />
           )}
         </div>
@@ -573,7 +591,10 @@ const SellerChatPage = () => {
         isOpen={orderDetailOpen}
         order={selectedOrderDetail}
         onClose={() => setOrderDetailOpen(false)}
-        onStatusUpdated={(updatedOrder) => setSelectedOrderDetail(updatedOrder)}
+        onStatusUpdated={(updatedOrder) => {
+          setSelectedOrderDetail(updatedOrder);
+          setHistoryRefreshKey((k) => k + 1);
+        }}
         onOpenRma={handleOpenRma}
       />
     </div>
