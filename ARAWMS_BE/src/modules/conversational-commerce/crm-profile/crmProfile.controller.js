@@ -58,7 +58,35 @@ export const getCustomerPurchaseHistory = async (req, res) => {
   }
 };
 
+/**
+ * Lấy danh sách khách hàng CRM (phân trang, tìm kiếm, lọc tag/kênh)
+ * GET /api/conversations/customers
+ */
+export const getCustomerList = async (req, res) => {
+  try {
+    const result = await crmProfileService.getCustomerList(req.query);
+    return successResponse(res, result, 'Lấy danh sách khách hàng thành công');
+  } catch (error) {
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Lấy chi tiết hồ sơ 1 khách hàng
+ * GET /api/conversations/customers/:id
+ */
+export const getCustomerById = async (req, res) => {
+  try {
+    const customer = await crmProfileService.getCustomerById(req.params.id);
+    return successResponse(res, customer, 'Lấy chi tiết khách hàng thành công');
+  } catch (error) {
+    return errorResponse(res, error.message, 404);
+  }
+};
+
 export default {
+  getCustomerList,
+  getCustomerById,
   createCustomer,
   updateCustomer,
   getCustomerInteractionHistory,

@@ -22,6 +22,7 @@ import RegisterPage from '../pages/RegisterPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import SellerChatPage from '../pages/seller/SellerChatPage';
 import SellerOrdersPage from '../pages/seller/SellerOrdersPage';
+import SellerCustomersPage from '../pages/seller/SellerCustomersPage';
 import MaterialInboundVerificationPage from '../pages/garment/MaterialInboundVerificationPage';
 import GarmentRawMaterialsPage from '../pages/garment/GarmentRawMaterialsPage';
 import GarmentReturnInspectionPage from '../pages/garment/GarmentReturnInspectionPage';
@@ -120,10 +121,11 @@ export default function AppRouter() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/account" element={<ProtectedRoute><AccountEntry /></ProtectedRoute>} />
 
-        {/* Phân hệ Seller Workspace (Bán hàng & CSKH đa kênh, Quản lý đơn hàng, TMĐT, RMA) */}
+        {/* Phân hệ Seller Workspace (Bán hàng & CSKH đa kênh, Quản lý đơn hàng, Khách hàng CRM, TMĐT, RMA) */}
         <Route element={<ProtectedRoute role="SELLER"><SellerLayout /></ProtectedRoute>}>
           <Route path="/seller/chat" element={<SellerChatPage />} />
           <Route path="/seller/orders" element={<SellerOrdersPage />} />
+          <Route path="/seller/customers" element={<SellerCustomersPage />} />
         </Route>
 
         {/* Phân hệ Kế toán (Accountant) */}
