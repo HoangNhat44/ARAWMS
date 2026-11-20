@@ -13,6 +13,8 @@ import {
   BarChart3,
   Table as TableIcon,
   Filter,
+  XCircle,
+  RotateCcw,
 } from 'lucide-react';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
 import { WmsField, WmsSelect } from '../../components/ui/WmsControls';
@@ -48,7 +50,7 @@ const stepLabels = {
   FAILED_INSPECTION: 'Hàng kiểm không đạt', RESTOCKED: 'Đã nhập lại kho',
 };
 const percentage = value => value === null ? 'Chưa có đơn giao vận chuyển' : `${quantity(value)}%`;
-const rateSeries = [{ key: 'turnbackRate', label: 'Tỷ lệ quay đầu' }, { key: 'refusalRate', label: 'Tỷ lệ bom hàng đã xác định' }];
+const rateSeries = [{ key: 'refusalRate', label: 'Tỷ lệ bom hàng' }, { key: 'turnbackRate', label: 'Tỷ lệ đổi / trả' }];
 
 // Chỉ tải bộ số liệu mẫu khi Owner chọn trình diễn. Bộ lọc Tổng quan tiếp tục
 // áp dụng cho báo cáo thật; biểu đồ mẫu có khoảng tháng cố định.
@@ -107,34 +109,291 @@ function ReturnTrend({ points, threshold }) {
   </section>;
 }
 
-// Bảng phân tích chỉ dùng lý do được ghi nhận trên phiếu. Chủ cửa hàng có thể
-// lọc trường hợp Facebook không hợp lệ để rà soát mã đơn mà không lộ thông tin cá nhân.
-function ReturnReasons({ rows }) {
+function BomOrderAnalytics({ bom = {}, threshold }) {
   const [channel, setChannel] = useState('');
-  const [reason, setReason] = useState('');
-  const visible = rows.filter(row => (!channel || channel === row.channel) && (!reason || reason === row.reason));
-  return <section className="owner-content-panel">
-    <h2>Nguyên nhân đơn quay đầu</h2>
-    <div className="owner-filters">
-      <WmsField>Nguồn bán<WmsSelect value={channel} onChange={e => setChannel(e.target.value)}>
-        <option value="">Tất cả nguồn bán đang xem</option>
-        {Object.entries(channelLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-      </WmsSelect></WmsField>
-      <WmsField>Nguyên nhân<WmsSelect value={reason} onChange={e => setReason(e.target.value)}>
-        <option value="">Tất cả nguyên nhân</option>
-        {Object.entries(reasonLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-      </WmsSelect></WmsField>
-    </div>
-    <Columns title="Số đơn theo nguyên nhân quay đầu" defaultKind="horizontal" unitLabel="đơn hàng"
-      rows={Object.entries(reasonLabels).map(([key, label]) => ({
-        label, value: visible.filter(row => row.reason === key).length,
-      })).filter(row => row.value > 0).sort((a, b) => b.value - a.value)} />
-    <details><summary>Xem danh sách đơn quay đầu</summary>
-    <Table headings={['Mã đơn hàng', 'Nguồn bán', 'Ngày bàn giao vận chuyển', 'Nguyên nhân']} empty={!visible.length}>
-      {visible.map(row => <tr key={row.code}><td>{row.code}</td><td>{channelLabels[row.channel]}</td><td>{datetime(row.shippedAt)}</td><td>{reasonLabels[row.reason]}</td></tr>)}
-    </Table>
-    </details>
-  </section>;
+  const [reasonKey, setReasonKey] = useState('');
+
+  const details = bom.details || [];
+  const reasons = bom.reasons || [];
+  const count = bom.count || 0;
+  const rateValue = bom.rate !== null && bom.rate !== undefined ? bom.rate : 0;
+  const amount = bom.amount || 0;
+  const isHighBomRate = threshold?.value && rateValue > threshold.value;
+
+  const visible = details.filter(row =>
+    (!channel || channel === row.channel) &&
+    (!reasonKey || reasonKey === row.reasonKey)
+  );
+
+  return (
+    <section id="owner-bom-analytics" className="owner-content-panel" style={{ marginTop: '24px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '10px',
+            background: '#FEE2E2',
+            color: '#DC2626',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <XCircle size={22} />
+          </div>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#111827' }}>
+              Phân tích đơn bom hàng (Giao không thành công)
+            </h2>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6B7280' }}>
+              Đơn đã xuất kho nhưng giao thất bại hoặc khách từ chối nhận trước khi giao thành công
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ background: isHighBomRate ? '#FEF2F2' : '#F9FAFB', border: `1px solid ${isHighBomRate ? '#FECACA' : '#E5E7EB'}`, padding: '8px 14px', borderRadius: '8px', textAlign: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#6B7280', display: 'block' }}>Tỷ lệ bom hàng</span>
+            <strong style={{ fontSize: '16px', color: isHighBomRate ? '#DC2626' : '#111827' }}>
+              {rateValue ? `${rateValue.toFixed(1)}%` : '0%'}
+            </strong>
+            {isHighBomRate && <small style={{ display: 'block', fontSize: '11px', color: '#DC2626', fontWeight: 600 }}>Vượt ngưỡng ({threshold.value}%)</small>}
+          </div>
+          <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', padding: '8px 14px', borderRadius: '8px', textAlign: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#6B7280', display: 'block' }}>Số đơn bom</span>
+            <strong style={{ fontSize: '16px', color: '#111827' }}>{quantity(count)} đơn</strong>
+          </div>
+          <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', padding: '8px 14px', borderRadius: '8px', textAlign: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#6B7280', display: 'block' }}>Tổng thiệt hại</span>
+            <strong style={{ fontSize: '16px', color: '#DC2626' }}>{money(amount)}</strong>
+          </div>
+        </div>
+      </div>
+
+      {/* Bộ lọc */}
+      <div className="owner-filters" style={{ marginBottom: '16px' }}>
+        <WmsField>
+          Nguồn bán
+          <WmsSelect value={channel} onChange={e => setChannel(e.target.value)}>
+            <option value="">Tất cả nguồn bán</option>
+            {Object.entries(channelLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </WmsSelect>
+        </WmsField>
+        <WmsField>
+          Nguyên nhân bom hàng
+          <WmsSelect value={reasonKey} onChange={e => setReasonKey(e.target.value)}>
+            <option value="">Tất cả nguyên nhân ({reasons.length})</option>
+            {reasons.map(r => <option key={r.key} value={r.key}>{r.label} ({quantity(r.count)})</option>)}
+          </WmsSelect>
+        </WmsField>
+      </div>
+
+      {/* Biểu đồ cơ cấu nguyên nhân bom hàng */}
+      {reasons.length > 0 ? (
+        <Columns
+          title="Tỷ lệ lý do bom hàng (Giao không thành công)"
+          defaultKind="horizontal"
+          unitLabel="đơn hàng"
+          allowDonut
+          rows={reasons.map(r => ({
+            label: r.label,
+            value: r.count,
+          }))}
+        />
+      ) : (
+        <p style={{ color: '#6B7280', fontStyle: 'italic', padding: '16px 0' }}>Chưa ghi nhận đơn bom hàng nào trong kỳ.</p>
+      )}
+
+      {/* Danh sách đơn bom */}
+      <details style={{ marginTop: '16px' }} open={Boolean(visible.length > 0 && visible.length <= 10)}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#374151' }}>
+          Xem danh sách chi tiết đơn bom hàng ({quantity(visible.length)} đơn)
+        </summary>
+        <div style={{ marginTop: '12px' }}>
+          <Table
+            headings={['Mã đơn hàng', 'Nguồn bán', 'Ngày bàn giao', 'Trạng thái GHN', 'Lý do bom hàng', 'Trị giá đơn hàng']}
+            empty={!visible.length}
+            paginated={visible.length > 15}
+          >
+            {visible.map(row => (
+              <tr key={row.code}>
+                <td><strong>{row.code}</strong></td>
+                <td>{channelLabels[row.channel] || row.channel}</td>
+                <td>{datetime(row.shippedAt)}</td>
+                <td>
+                  <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '4px', background: '#FEE2E2', color: '#991B1B' }}>
+                    {row.ghnStatus || 'Đang hoàn'}
+                  </span>
+                </td>
+                <td>
+                  <span style={{ color: '#DC2626', fontWeight: 500 }}>{row.reasonLabel}</span>
+                  {row.detailNote && <small style={{ display: 'block', color: '#6B7280' }}>{row.detailNote}</small>}
+                </td>
+                <td><strong style={{ color: '#DC2626' }}>{money(row.amount)}</strong></td>
+              </tr>
+            ))}
+          </Table>
+        </div>
+      </details>
+    </section>
+  );
+}
+
+function CustomerReturnAnalytics({ returns = {} }) {
+  const [channel, setChannel] = useState('');
+  const [returnType, setReturnType] = useState('');
+  const [reasonKey, setReasonKey] = useState('');
+
+  const details = returns.details || [];
+  const reasons = returns.reasons || [];
+  const count = returns.count || 0;
+  const rateValue = returns.rate !== null && returns.rate !== undefined ? returns.rate : 0;
+  const amount = returns.amount || 0;
+  const exchangeCount = returns.exchangeCount || 0;
+  const refundCount = returns.refundCount || 0;
+
+  const visible = details.filter(row =>
+    (!channel || channel === row.channel) &&
+    (!returnType || returnType === row.returnType) &&
+    (!reasonKey || reasonKey === row.reasonKey)
+  );
+
+  return (
+    <section id="owner-return-analytics" className="owner-content-panel" style={{ marginTop: '24px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '10px',
+            background: '#FEF3C7',
+            color: '#D97706',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <RotateCcw size={22} />
+          </div>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#111827' }}>
+              Phân tích đơn đổi / trả hàng (Yêu cầu RMA)
+            </h2>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6B7280' }}>
+              Khách hàng phát sinh yêu cầu đổi sản phẩm mới hoặc trả hàng hoàn tiền sau khi mua
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ background: '#FFFDF7', border: '1px solid #FDE68A', padding: '8px 14px', borderRadius: '8px', textAlign: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#6B7280', display: 'block' }}>Tỷ lệ đổi / trả</span>
+            <strong style={{ fontSize: '16px', color: '#D97706' }}>
+              {rateValue ? `${rateValue.toFixed(1)}%` : '0%'}
+            </strong>
+          </div>
+          <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '8px 14px', borderRadius: '8px', textAlign: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#6B7280', display: 'block' }}>Đổi sản phẩm</span>
+            <strong style={{ fontSize: '16px', color: '#2563EB' }}>{quantity(exchangeCount)} đơn</strong>
+          </div>
+          <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', padding: '8px 14px', borderRadius: '8px', textAlign: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#6B7280', display: 'block' }}>Trả hàng hoàn tiền</span>
+            <strong style={{ fontSize: '16px', color: '#4B5563' }}>{quantity(refundCount)} đơn</strong>
+          </div>
+          <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', padding: '8px 14px', borderRadius: '8px', textAlign: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#6B7280', display: 'block' }}>Tổng trị giá đổi trả</span>
+            <strong style={{ fontSize: '16px', color: '#D97706' }}>{money(amount)}</strong>
+          </div>
+        </div>
+      </div>
+
+      {/* Bộ lọc */}
+      <div className="owner-filters" style={{ marginBottom: '16px' }}>
+        <WmsField>
+          Nguồn bán
+          <WmsSelect value={channel} onChange={e => setChannel(e.target.value)}>
+            <option value="">Tất cả nguồn bán</option>
+            {Object.entries(channelLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </WmsSelect>
+        </WmsField>
+        <WmsField>
+          Loại yêu cầu
+          <WmsSelect value={returnType} onChange={e => setReturnType(e.target.value)}>
+            <option value="">Tất cả (Đổi &amp; Trả)</option>
+            <option value="EXCHANGE_PRODUCT">Đổi sản phẩm mới</option>
+            <option value="RETURN_FOR_REFUND">Trả hàng hoàn tiền</option>
+          </WmsSelect>
+        </WmsField>
+        <WmsField>
+          Lý do đổi / trả
+          <WmsSelect value={reasonKey} onChange={e => setReasonKey(e.target.value)}>
+            <option value="">Tất cả lý do ({reasons.length})</option>
+            {reasons.map(r => <option key={r.key} value={r.key}>{r.label} ({quantity(r.count)})</option>)}
+          </WmsSelect>
+        </WmsField>
+      </div>
+
+      {/* Biểu đồ cơ cấu nguyên nhân đổi / trả hàng */}
+      {reasons.length > 0 ? (
+        <Columns
+          title="Tỷ lệ lý do đổi / trả hàng"
+          defaultKind="horizontal"
+          unitLabel="đơn hàng"
+          allowDonut
+          rows={reasons.map(r => ({
+            label: r.label,
+            value: r.count,
+          }))}
+        />
+      ) : (
+        <p style={{ color: '#6B7280', fontStyle: 'italic', padding: '16px 0' }}>Chưa ghi nhận yêu cầu đổi/trả hàng nào trong kỳ.</p>
+      )}
+
+      {/* Danh sách đơn đổi trả */}
+      <details style={{ marginTop: '16px' }} open={Boolean(visible.length > 0 && visible.length <= 10)}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#374151' }}>
+          Xem danh sách chi tiết đơn đổi / trả hàng ({quantity(visible.length)} đơn)
+        </summary>
+        <div style={{ marginTop: '12px' }}>
+          <Table
+            headings={['Mã đơn hàng', 'Mã RMA', 'Loại yêu cầu', 'Nguồn bán', 'Ngày tạo RMA', 'Lý do đổi/trả', 'Trạng thái', 'Trị giá hoàn/đổi']}
+            empty={!visible.length}
+            paginated={visible.length > 15}
+          >
+            {visible.map(row => (
+              <tr key={row.code + (row.rmaCode || '')}>
+                <td><strong>{row.code}</strong></td>
+                <td><span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{row.rmaCode || '—'}</span></td>
+                <td>
+                  <span style={{
+                    fontSize: '12px',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    background: row.returnType === 'EXCHANGE_PRODUCT' ? '#DBEAFE' : '#FEF3C7',
+                    color: row.returnType === 'EXCHANGE_PRODUCT' ? '#1E40AF' : '#92400E',
+                    fontWeight: 500,
+                  }}>
+                    {row.returnTypeLabel}
+                  </span>
+                </td>
+                <td>{channelLabels[row.channel] || row.channel}</td>
+                <td>{datetime(row.createdAt)}</td>
+                <td>
+                  <span style={{ color: '#111827', fontWeight: 500 }}>{row.reasonLabel}</span>
+                  {row.reasonDescription && <small style={{ display: 'block', color: '#6B7280' }}>{row.reasonDescription}</small>}
+                </td>
+                <td>
+                  <span style={{ fontSize: '12px', color: '#4B5563' }}>{row.status}</span>
+                </td>
+                <td><strong style={{ color: '#D97706' }}>{money(row.amount)}</strong></td>
+              </tr>
+            ))}
+          </Table>
+        </div>
+      </details>
+    </section>
+  );
 }
 
 function ReturnWorklist({ rows, initialOverdueOnly }) {
@@ -728,15 +987,15 @@ export default function BusinessActivity({ resource, salesChannel }) {
       <h2>Giao hàng và khách mới</h2>
       <div className="owner-metrics">
         <Metric label="Đơn bàn giao vận chuyển" value={quantity(activity.shipped)} />
-        <Metric label={`Tỷ lệ quay đầu (${quantity(activity.turnedBack)} đơn)`} value={percentage(activity.turnbackRate)} />
-        <Metric label={`Tỷ lệ bom hàng đã xác định (${quantity(activity.refused)} đơn)`} value={percentage(activity.refusalRate)} />
+        <Metric label={`Đơn bom hàng (${quantity(activity.bom?.count ?? activity.refused)} đơn)`} value={percentage(activity.bom?.rate ?? activity.refusalRate)} note={activity.bom?.amount ? `Thiệt hại: ${money(activity.bom.amount)}` : undefined} />
+        <Metric label={`Đơn đổi / trả (${quantity(activity.returns?.count ?? Math.max(0, activity.turnedBack - activity.refused))} đơn)`} value={percentage(activity.returns?.rate ?? (activity.shipped ? (Math.max(0, activity.turnedBack - activity.refused) / activity.shipped) * 100 : null))} note={activity.returns?.amount ? `Trị giá: ${money(activity.returns.amount)}` : undefined} />
         <Metric label="Khách hàng mới" value={quantity(activity.newCustomers)} />
       </div>
-      {data.previous && <p>Kỳ đối chiếu có {quantity(data.previous.newCustomers)} khách mới và tỷ lệ quay đầu {percentage(data.previous.turnbackRate)}.</p>}
+      {data.previous && <p>Kỳ đối chiếu có {quantity(data.previous.newCustomers)} khách mới và tỷ lệ bom hàng {percentage(data.previous.bom?.rate ?? data.previous.refusalRate)}.</p>}
       <div className="owner-report-chart-grid">
         <section className="owner-content-panel">
-          <h3>Tỷ lệ quay đầu và bom hàng theo kênh</h3>
-          {activity.shipped > 0 ? <SeriesPlot rows={channelRows} series={rateSeries} title="Tỷ lệ quay đầu và bom hàng theo kênh"
+          <h3>Tỷ lệ bom hàng và đổi/trả theo kênh</h3>
+          {activity.shipped > 0 ? <SeriesPlot rows={channelRows} series={rateSeries} title="Tỷ lệ bom hàng và đổi/trả theo kênh"
             categoryLabel="Nguồn bán" unitLabel="phần trăm" valueSuffix="%" reference={threshold} /> : <p>Chưa có đơn bàn giao vận chuyển trong kỳ.</p>}
         </section>
         <section className="owner-content-panel">
@@ -746,11 +1005,13 @@ export default function BusinessActivity({ resource, salesChannel }) {
         </section>
       </div>
       <details><summary>Xem bảng vận chuyển và khách hàng theo kênh</summary>
-      <Table headings={['Nguồn bán', 'Đã bàn giao', 'Đơn quay đầu', 'Tỷ lệ quay đầu', 'Đơn bom', 'Tỷ lệ bom', 'Khách mới',
+      <Table headings={['Nguồn bán', 'Đã bàn giao', 'Đơn bom hàng', 'Tỷ lệ bom', 'Đơn đổi / trả', 'Tỷ lệ đổi trả', 'Khách mới',
         ...(data.previous ? ['Khách mới kỳ đối chiếu', 'Chênh lệch khách mới'] : [])]} paginated={false}>
         {channels.map(row => <tr key={row.channel}>
-          <td>{channelLabels[row.channel]}</td><td>{quantity(row.shipped)}</td><td>{quantity(row.turnedBack)}</td><td>{percentage(row.turnbackRate)}</td>
-          <td>{quantity(row.refused)}</td><td>{percentage(row.refusalRate)}</td><td>{quantity(row.newCustomers)}</td>
+          <td>{channelLabels[row.channel]}</td><td>{quantity(row.shipped)}</td>
+          <td><strong style={{ color: row.refused > 0 ? '#DC2626' : 'inherit' }}>{quantity(row.refused)}</strong></td><td>{percentage(row.refusalRate)}</td>
+          <td><strong style={{ color: (row.returns?.count || 0) > 0 ? '#D97706' : 'inherit' }}>{quantity(row.returns?.count ?? Math.max(0, row.turnedBack - row.refused))}</strong></td><td>{percentage(row.returns?.rate ?? (row.shipped ? (Math.max(0, row.turnedBack - row.refused) / row.shipped) * 100 : null))}</td>
+          <td>{quantity(row.newCustomers)}</td>
           {data.previous && <><td>{quantity(previousChannels.get(row.channel).newCustomers)}</td>
             <td>{quantity(row.newCustomers - previousChannels.get(row.channel).newCustomers)}</td></>}
         </tr>)}
@@ -758,7 +1019,8 @@ export default function BusinessActivity({ resource, salesChannel }) {
       </details>
     </section>
     <ReturnTrend points={activity.points} threshold={threshold} />
-    <ReturnReasons rows={activity.returnDetails} />
+    <BomOrderAnalytics bom={activity.bom} threshold={threshold} />
+    <CustomerReturnAnalytics returns={activity.returns} />
     <ReturnWorklist key={location.key} rows={data.worklist} initialOverdueOnly={section === 'owner-return-processing'} />
     <OrderStatusPipeline orderStatuses={data.orderStatuses} />
   </>}</ResourceState>;
