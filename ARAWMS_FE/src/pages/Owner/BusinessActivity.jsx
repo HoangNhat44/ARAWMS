@@ -278,7 +278,7 @@ function CustomerReturnAnalytics({ returns = {} }) {
           </div>
           <div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#111827' }}>
-              Phân tích đơn đổi / trả hàng (Yêu cầu RMA)
+              Phân tích đơn đổi / trả hàng
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6B7280' }}>
               Khách hàng phát sinh yêu cầu đổi sản phẩm mới hoặc trả hàng hoàn tiền sau khi mua
@@ -413,11 +413,11 @@ function ReturnWorklist({ rows, initialOverdueOnly }) {
       categoryLabel="Công đoạn hiện tại" unitLabel="đơn hàng"
       series={[{ key: 'other', label: 'Các đơn còn lại' }, { key: 'overdue', label: 'Quá hạn xử lý' }]} />}
     <details open={overdueOnly || undefined}><summary>Xem danh sách hàng hoàn</summary>
-    <Table headings={['Mã đơn hàng', 'Nguồn bán', 'Ghi nhận nhận lại', 'Công đoạn', 'Hạn xử lý', 'Phiếu nhập kho']} empty={!visible.length}>
-      {visible.map(row => <tr key={row.id}><td>{row.code}</td><td>{channelLabels[row.channel]}</td><td>{datetime(row.receivedAt)}{row.carriedOver && ' · Tồn từ kỳ trước'}</td>
-        <td>{stepLabels[row.step]}{row.overdue && <strong className="owner-error"> · Quá hạn</strong>}</td>
-        <td>{datetime(row.deadline)}</td><td>{row.ticket || '—'}</td></tr>)}
-    </Table>
+      <Table headings={['Mã đơn hàng', 'Nguồn bán', 'Ghi nhận nhận lại', 'Công đoạn', 'Hạn xử lý', 'Phiếu nhập kho']} empty={!visible.length}>
+        {visible.map(row => <tr key={row.id}><td>{row.code}</td><td>{channelLabels[row.channel]}</td><td>{datetime(row.receivedAt)}{row.carriedOver && ' · Tồn từ kỳ trước'}</td>
+          <td>{stepLabels[row.step]}{row.overdue && <strong className="owner-error"> · Quá hạn</strong>}</td>
+          <td>{datetime(row.deadline)}</td><td>{row.ticket || '—'}</td></tr>)}
+      </Table>
     </details>
   </section>;
 }
@@ -1005,17 +1005,17 @@ export default function BusinessActivity({ resource, salesChannel }) {
         </section>
       </div>
       <details><summary>Xem bảng vận chuyển và khách hàng theo kênh</summary>
-      <Table headings={['Nguồn bán', 'Đã bàn giao', 'Đơn bom hàng', 'Tỷ lệ bom', 'Đơn đổi / trả', 'Tỷ lệ đổi trả', 'Khách mới',
-        ...(data.previous ? ['Khách mới kỳ đối chiếu', 'Chênh lệch khách mới'] : [])]} paginated={false}>
-        {channels.map(row => <tr key={row.channel}>
-          <td>{channelLabels[row.channel]}</td><td>{quantity(row.shipped)}</td>
-          <td><strong style={{ color: row.refused > 0 ? '#DC2626' : 'inherit' }}>{quantity(row.refused)}</strong></td><td>{percentage(row.refusalRate)}</td>
-          <td><strong style={{ color: (row.returns?.count || 0) > 0 ? '#D97706' : 'inherit' }}>{quantity(row.returns?.count ?? Math.max(0, row.turnedBack - row.refused))}</strong></td><td>{percentage(row.returns?.rate ?? (row.shipped ? (Math.max(0, row.turnedBack - row.refused) / row.shipped) * 100 : null))}</td>
-          <td>{quantity(row.newCustomers)}</td>
-          {data.previous && <><td>{quantity(previousChannels.get(row.channel).newCustomers)}</td>
-            <td>{quantity(row.newCustomers - previousChannels.get(row.channel).newCustomers)}</td></>}
-        </tr>)}
-      </Table>
+        <Table headings={['Nguồn bán', 'Đã bàn giao', 'Đơn bom hàng', 'Tỷ lệ bom', 'Đơn đổi / trả', 'Tỷ lệ đổi trả', 'Khách mới',
+          ...(data.previous ? ['Khách mới kỳ đối chiếu', 'Chênh lệch khách mới'] : [])]} paginated={false}>
+          {channels.map(row => <tr key={row.channel}>
+            <td>{channelLabels[row.channel]}</td><td>{quantity(row.shipped)}</td>
+            <td><strong style={{ color: row.refused > 0 ? '#DC2626' : 'inherit' }}>{quantity(row.refused)}</strong></td><td>{percentage(row.refusalRate)}</td>
+            <td><strong style={{ color: (row.returns?.count || 0) > 0 ? '#D97706' : 'inherit' }}>{quantity(row.returns?.count ?? Math.max(0, row.turnedBack - row.refused))}</strong></td><td>{percentage(row.returns?.rate ?? (row.shipped ? (Math.max(0, row.turnedBack - row.refused) / row.shipped) * 100 : null))}</td>
+            <td>{quantity(row.newCustomers)}</td>
+            {data.previous && <><td>{quantity(previousChannels.get(row.channel).newCustomers)}</td>
+              <td>{quantity(row.newCustomers - previousChannels.get(row.channel).newCustomers)}</td></>}
+          </tr>)}
+        </Table>
       </details>
     </section>
     <ReturnTrend points={activity.points} threshold={threshold} />
