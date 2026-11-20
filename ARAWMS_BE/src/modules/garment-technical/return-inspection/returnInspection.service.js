@@ -35,7 +35,8 @@ const createServiceError = (message, status = 400, code = 'BAD_REQUEST') => {
 
 /**
  * Computes the Option-A return outcome from expected order quantity and inspected units.
- * - PASSED / RETURNED: 100% expected items scanned and accepted for saleable restock.
+ * - PASSED / RETURN_COMPLETED: 100% expected items scanned and accepted for saleable restock.
+ * (RETURNED = parcel arrived back at the warehouse, waiting for KCS; it is an input status, not an outcome.)
  * - PARTIAL / PARTIALLY_RETURNED: at least one saleable item, plus defect or shortage.
  * - FAILED / RETURN_FAILED: zero saleable items.
  */
@@ -47,7 +48,7 @@ export const computeOrderReturnOutcome = (expectedTotalQty, units = []) => {
   if (expected > 0 && passedQty >= expected && defectQty === 0) {
     return {
       inspectionResult: 'PASSED',
-      orderStatus: 'RETURNED',
+      orderStatus: 'RETURN_COMPLETED',
       rmaStatus: 'UNBOXED_INSPECTED',
       passedQty,
       defectQty,
@@ -278,7 +279,7 @@ export const getRecentReturnableOrders = async () => {
 
 /**
  * Ghi lại quá trình kiểm tra hàng hoàn/trả.
- * - Nếu ĐẠT: Chuyển trạng thái đơn sang 'RETURNED' (Đã hoàn về kho / Hoàn thành công), sẵn sàng tạo lệnh nhập kho.
+ * - Nếu ĐẠT: Chuyển trạng thái đơn sang 'RETURN_COMPLETED' (Hoàn thành công), sẵn sàng tạo lệnh nhập kho.
  * - Nếu KHÔNG ĐẠT: Yêu cầu bắt buộc video & lý do từ chối, lưu video gắn với đơn và ghi nhận trạng thái từ chối hoàn.
  *
  * @async
@@ -403,13 +404,13 @@ export const submitReturnInspection = async (payload = {}, user) => {
 
   // Xử lý luồng theo kết quả kiểm tra
   if (inspectionResult === 'PASSED') {
-    // 1. Chuyển trạng thái đơn hàng sang RETURNED (Đã hoàn về kho / Hoàn thành công)
+    // 1. Chuyển trạng thái đơn hàng sang RETURN_COMPLETED (Hoàn thành công)
     const prevStatus = order.status;
-    order.status = 'RETURNED';
+    order.status = 'RETURN_COMPLETED';
     order.statusHistory = order.statusHistory || [];
     order.statusHistory.push({
       from: prevStatus,
-      to: 'RETURNED',
+      to: 'RETURN_COMPLETED',
       by: user._id,
       at: new Date(),
       note: `KCS kiểm tra hàng hoàn: ĐẠT (${inspectionCode}). ${qcNote ? 'Ghi chú: ' + qcNote.trim() : 'Đủ điều kiện hoàn hàng'}`.trim(),
@@ -990,7 +991,7 @@ export const cancelReturnInspectionSession = async (sessionId) => {
 
 /**
  * Chốt phân loại sản phẩm (đạt nhập kho vs hàng lỗi) cho 1 hoặc nhiều đơn đã quay,
- * tự động đổi trạng thái từng đơn (RETURNED / PARTIALLY_RETURNED / RETURN_FAILED),
+ * tự động đổi trạng thái từng đơn (RETURN_COMPLETED / PARTIALLY_RETURNED / RETURN_FAILED),
  * đánh dấu ProductUnit.inventoryStatus = 'DEFECT_PENDING' (lỗi, chờ kho nhận) cho sản phẩm lỗi,
  * và tạo đồng thời phiếu nhập kho hàng đạt (INBOUND_FROM_RETURN) + phiếu nhập hàng lỗi (DEFECT_QUARANTINE_INBOUND).
  */
@@ -1151,7 +1152,7 @@ export const finalizeReturnInspectionsAndRequestInbound = async (payload = {}, u
         insp.inspectedAt = now;
         await insp.save({ session: dbSession });
 
-        // Cập nhật trạng thái đơn hàng theo Phương án A (RETURNED / PARTIALLY_RETURNED / RETURN_FAILED)
+        // Cập nhật trạng thái đơn hàng theo Phương án A (RETURN_COMPLETED / PARTIALLY_RETURNED / RETURN_FAILED)
         const prevStatus = order.status;
         order.status = outcome.orderStatus;
         order.warehouseFulfillment = order.warehouseFulfillment || {};

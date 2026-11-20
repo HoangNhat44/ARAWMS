@@ -19,8 +19,8 @@ const panel = {
 
 const statusNames = { PENDING: 'Chờ chốt', CONFIRMED: 'Đã chốt', CONFIRMED_RESERVED: 'Đã giữ hàng',
   PICKING: 'Đang soạn hàng', PACKED: 'Sẵn sàng vận chuyển', HANDED_OVER_CARRIER: 'Đã bàn giao vận chuyển',
-  DELIVERED: 'Đã giao', CANCELLED: 'Đã hủy', RETURN_REQUESTED: 'Yêu cầu trả hàng', RETURNED: 'Đã trả hàng' };
-const packedStatuses = new Set(['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'RETURN_REQUESTED', 'RETURNED']);
+  DELIVERED: 'Đã giao', CANCELLED: 'Đã hủy', RETURN_REQUESTED: 'Yêu cầu trả hàng', RETURNED: 'Đã hoàn về kho', RETURN_COMPLETED: 'Hoàn thành công' };
+const packedStatuses = new Set(['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'RETURN_REQUESTED', 'RETURNED', 'RETURN_COMPLETED']);
 const statusLabel = (status) => statusNames[status] || status;
 const unplacedStockMessage = 'Hàng của SKU còn trong kho nhưng chưa đủ chiếc ở vị trí có thể soạn. Hãy xếp hàng vào kệ, rồi chốt đơn và tạo QR lại.';
 

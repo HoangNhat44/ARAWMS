@@ -46,3 +46,4 @@
 @media (max-width: 640px) {
   .bt-current { min-width: 0; width: 100%; }
 }
+.bt-current.stocktake_write_off { background: #fdecec; } .bt-current.stocktake_write_off strong { color: #a32121; }

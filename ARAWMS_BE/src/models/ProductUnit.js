@@ -16,8 +16,10 @@ const { Schema } = mongoose;
  *                  (set when the garment technician finalizes a return inspection)
  * - DEFECTIVE      defective, inside the defect warehouse (set when the warehouse confirms the defect inbound)
  * - DEFECT_OUT     taken out of the defect warehouse (defect outbound, with a reason)
+ * - STOCKTAKE_WRITE_OFF  removed from stock by a stocktake adjustment (found damaged, or missing);
+ *                  terminal. The barcode stays traceable through stocktakeWriteOff.
  */
-export const PRODUCT_UNIT_STATUSES = ['AVAILABLE', 'UNAVAILABLE', 'DEFECT_PENDING', 'DEFECTIVE', 'DEFECT_OUT'];
+export const PRODUCT_UNIT_STATUSES = ['AVAILABLE', 'UNAVAILABLE', 'DEFECT_PENDING', 'DEFECTIVE', 'DEFECT_OUT', 'STOCKTAKE_WRITE_OFF'];
 /** Defective units still held by the company (waiting for or inside the defect warehouse). */
 export const DEFECT_HELD_STATUSES = ['DEFECT_PENDING', 'DEFECTIVE'];
 
@@ -40,6 +42,17 @@ const productUnitSchema = new Schema({
   defectOutReason: { type: String, trim: true },
   defectOutBy: { type: Schema.Types.ObjectId, ref: 'User' },
   defectOutTicketId: { type: Schema.Types.ObjectId, ref: 'FinishedGoodsTicket' },
+  // Loại khỏi kho khi điều chỉnh theo kiểm kê: lý do, phiên, thời điểm, người điều chỉnh.
+  stocktakeWriteOff: { type: new Schema({
+    reason: { type: String, enum: ['DAMAGED', 'LOST'], required: true },
+    note: { type: String, trim: true },
+    sessionId: { type: Schema.Types.ObjectId, ref: 'StocktakeSession', required: true },
+    sessionCode: String,
+    locationId: { type: Schema.Types.ObjectId, ref: 'WarehouseLocation' },
+    countedAt: Date,
+    at: { type: Date, required: true },
+    byUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+  }, { _id: false }), default: undefined },
   packedOrderId: { type: Schema.Types.ObjectId, ref: 'SalesOrder' },
   packedAt: Date,
   packingClaim: { type: new Schema({ orderKey: { type: String, required: true },

@@ -41,6 +41,7 @@ const STATUS_LABELS = {
   RETURN_REQUESTED: 'Khách yêu cầu trả hàng',
   EXCHANGE_REQUESTED: 'Đang đổi hàng',
   RETURNED: 'Đã hoàn về kho',
+  RETURN_COMPLETED: 'Hoàn thành công',
 };
 
 const skuKeyOf = (it) => String(it?.skuId?._id || it?.skuId || '');

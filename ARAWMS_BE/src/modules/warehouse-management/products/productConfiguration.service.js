@@ -154,6 +154,22 @@ async function copyImportMedia(payload, productCode, ownerUserId, operationId, u
     media[kind === 'image' ? 'thumbnailUrl' : 'videoUrl'] = asset.secure_url;
     media[publicIdField] = asset.public_id;
   }
+  // Other distinct images of the product (one per color row in the source file) become extra images.
+  const extras = (Array.isArray(payload.imageUrls) ? payload.imageUrls : []).filter((url) => url && url !== payload.imageUrl).slice(0, 10);
+  for (const [index, url] of extras.entries()) {
+    assertImportMediaUrl(url);
+    let asset;
+    try {
+      asset = await copyProductMediaUrl(url, productCode, 'image', `catalog_${ownerUserId}_${operationId}_${index + 2}`);
+    } catch (error) {
+      if ([400, 404, 422].includes(error.http_code || error.status)) {
+        throw requestError('Không tải được ảnh/video từ URL trong file Excel', 'MEDIA_URL_UNAVAILABLE', 422);
+      }
+      throw error;
+    }
+    uploadedAssets.push(asset);
+    (media.additionalImageUrls ||= []).push(asset.secure_url);
+  }
   return media;
 }
 

@@ -40,6 +40,7 @@ const notificationSchema = new Schema(
         'STOCK_ALERT',                  // Cảnh báo chạm đáy tồn kho an toàn
         'FABRIC_LEFTOVER_EXCEEDED',     // Vải thừa/vải vụn vượt ngưỡng định mức
         'INVENTORY_VARIANCE',           // Sai lệch kiểm kê kho vượt ngưỡng cần duyệt
+        'STOCKTAKE_SCHEDULED',          // Lịch kiểm kê: nhân viên kỹ thuật chuẩn bị, kho thành phẩm khóa đóng hàng
 
         // 3. Nhóm KCS & Xưởng may gia công (QC & Garment Technical)
         'QC_INSPECTION',                // Kết quả kiểm định chất lượng ngoại quan

@@ -35,7 +35,8 @@ const HISTORY_STATUS_META = {
   EXCHANGE_REQUESTED: { label: 'Đang đổi hàng', icon: 'arrow-repeat' },
   RETURN_REQUESTED: { label: 'Khách yêu cầu trả hàng', icon: 'arrow-counterclockwise' },
   CANCELLED: { label: 'Đã hủy', icon: 'x-circle' },
-  RETURNED: { label: 'Hoàn thành công', icon: 'box-arrow-in-down-left' },
+  RETURNED: { label: 'Đã hoàn về kho', icon: 'box-arrow-in-down-left' },
+  RETURN_COMPLETED: { label: 'Hoàn thành công', icon: 'check2-circle' },
   PARTIALLY_RETURNED: { label: 'Hoàn một phần', icon: 'exclamation-triangle' },
   RETURN_FAILED: { label: 'Hoàn không thành công', icon: 'x-octagon' },
 };
@@ -106,6 +107,7 @@ const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail, onOrderC
              status === 'HANDED_OVER_CARRIER' ? 'Đang giao hàng' :
              status === 'CANCELLED' ? 'Đã hủy' :
              status === 'RETURNED' ? 'Đã hoàn về kho' :
+             status === 'RETURN_COMPLETED' ? 'Hoàn thành công' :
              status === 'PACKED' ? 'Đã lấy hàng' :
              status === 'PICKING' ? 'Đang lấy hàng' :
              status === 'CONFIRMED_RESERVED' ? 'Chờ lấy hàng' :

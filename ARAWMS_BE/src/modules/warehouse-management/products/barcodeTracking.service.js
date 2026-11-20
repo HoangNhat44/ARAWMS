@@ -87,7 +87,18 @@ async function unitEvents(unit, receipt) {
       details: [`Kệ ${await locationCode(scan.targetLocationId) || '—'}`, `Nhân viên kho: ${await userName(scan.actorId) || '—'}`] });
   }
   const isDefect = DEFECT_STATUSES.includes(unit.inventoryStatus);
-  if (unit.inventoryStatus !== 'AVAILABLE') {
+  const writeOff = unit.inventoryStatus === 'STOCKTAKE_WRITE_OFF' ? unit.stocktakeWriteOff : null;
+  if (writeOff) {
+    // Điểm kết thúc: kiểm kê phát hiện hỏng / không thấy, quản lý kho điều chỉnh loại khỏi kho.
+    if (writeOff.countedAt) events.push({ type: 'STOCKTAKE', at: writeOff.countedAt, title: 'Kiểm kê',
+      details: [`Phiên ${writeOff.sessionCode || '—'}`, `Ô ${await locationCode(writeOff.locationId) || '—'}`,
+        writeOff.reason === 'DAMAGED' ? 'Phát hiện hàng hỏng' : 'Không đếm thấy trên kệ'] });
+    events.push({ type: 'WRITE_OFF', at: writeOff.at,
+      title: writeOff.reason === 'DAMAGED' ? 'Loại khỏi kho · Hàng hỏng khi kiểm kê' : 'Loại khỏi kho · Thất lạc khi kiểm kê',
+      details: [`Phiên kiểm kê ${writeOff.sessionCode || '—'}`, writeOff.note ? `Ghi chú: ${writeOff.note}` : null,
+        `Người điều chỉnh: ${await userName(writeOff.byUserId) || '—'}`].filter(Boolean) });
+  }
+  if (unit.inventoryStatus !== 'AVAILABLE' && !writeOff) {
     // Receiving a defective unit into the defect warehouse clears packedOrderId; its order stays in returnedFromOrderId.
     const orderId = unit.packedOrderId || (isDefect ? unit.returnedFromOrderId : null);
     if (orderId) {
@@ -124,6 +135,10 @@ async function currentState(unit) {
     return { code: 'DEFECTIVE', label: `Trong kho hàng lỗi${await locationCode(unit.warehouseId).then((code) => (code ? ` (${code})` : ''))}` };
   }
   if (unit.inventoryStatus === 'DEFECT_OUT') return { code: 'DEFECT_OUT', label: 'Đã xuất khỏi kho hàng lỗi' };
+  if (unit.inventoryStatus === 'STOCKTAKE_WRITE_OFF') {
+    const w = unit.stocktakeWriteOff || {};
+    return { code: 'STOCKTAKE_WRITE_OFF', label: `Đã loại khỏi kho khi kiểm kê · ${w.reason === 'DAMAGED' ? 'hàng hỏng' : 'thất lạc'}${w.sessionCode ? ` (${w.sessionCode})` : ''}` };
+  }
   if (unit.inventoryStatus !== 'AVAILABLE') return { code: 'OUT', label: 'Đã ra kho' };
   const location = await WarehouseLocation.findById(unit.warehouseId).select('locationCode layoutBin').lean();
   return location?.layoutBin ? { code: 'ON_SHELF', label: `Trên kệ ${location.locationCode}` }

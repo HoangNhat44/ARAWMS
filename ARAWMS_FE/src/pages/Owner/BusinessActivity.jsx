@@ -21,7 +21,7 @@ const orderLabels = {
   PENDING: 'Chờ xác nhận', CONFIRMED_RESERVED: 'Đã giữ hàng', PICKING: 'Đang lấy hàng',
   PACKED: 'Đã đóng gói', HANDED_OVER_CARRIER: 'Đang giao hàng', DELIVERED: 'Đã giao thành công',
   COMPLETED: 'Hoàn thành', CANCELLED: 'Đã hủy', RETURN_REQUESTED: 'Đang xử lý hoàn hàng',
-  EXCHANGE_REQUESTED: 'Đang xử lý đổi hàng', RETURNED: 'Đã ghi nhận hàng hoàn',
+  EXCHANGE_REQUESTED: 'Đang xử lý đổi hàng', RETURNED: 'Đã hoàn về kho', RETURN_COMPLETED: 'Hoàn thành công',
 };
 const stepLabels = {
   WAIT_INSPECTION: 'Chờ kiểm hàng', WAIT_RESTOCK: 'Chờ nhập lại kho',

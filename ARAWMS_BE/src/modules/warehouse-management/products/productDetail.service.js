@@ -153,7 +153,7 @@ export async function getReceiptUnits(productId, documentId) {
       const sku = skuById.get(id(unit.skuId));
       const location = locationById.get(id(unit.warehouseId));
       // Defective units keep their own status; only other non-available units have left in an order or outbound.
-      const status = ['DEFECT_PENDING', 'DEFECTIVE', 'DEFECT_OUT'].includes(unit.inventoryStatus) ? unit.inventoryStatus
+      const status = ['DEFECT_PENDING', 'DEFECTIVE', 'DEFECT_OUT', 'STOCKTAKE_WRITE_OFF'].includes(unit.inventoryStatus) ? unit.inventoryStatus
         : unit.inventoryStatus !== 'AVAILABLE' ? 'PACKED' : location?.layoutBin ? 'ON_SHELF' : 'UNPLACED';
       return {
         barcode: unit.barcode, status,

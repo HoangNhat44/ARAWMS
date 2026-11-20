@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { packingSessionService } from '../../services/packingSessionService';
-import { savePendingVideo, listPendingVideos, storageEstimate } from '../../services/localPackingVideoQueue';
+import { savePendingVideo, listPendingVideos, deletePendingVideo, storageEstimate } from '../../services/localPackingVideoQueue';
 import { packingVideoUploadManager } from '../../services/packingVideoUploadManager';
 import '../../styles/warehousePacking.css';
 import { formatOrderMoney as formatMoney, formatShortDateTime as formatDate } from '../../utils/warehouseFormat';
@@ -45,6 +45,8 @@ const reasons = {
   ORDER_LOCKED: 'Đơn đang được xử lý ở bàn kho khác.',
   STATION_BUSY: 'Bàn này đang giữ một đơn khác. Hãy kết thúc đơn hiện tại trước.',
   LEASE_EXPIRED: 'Phiên tại bàn đã hết hạn. Quét lại QR để tiếp tục.',
+  STOCKTAKE_LOCK: 'Kho thành phẩm đang kiểm kê nên chức năng đóng hàng tạm khóa. Lần đóng dở (nếu có) đã bị hủy, đơn vẫn chưa đóng; hết giờ kiểm kê hãy quét QR và đóng lại từ đầu.',
+  PACKING_RESTARTED_AFTER_STOCKTAKE: 'Lần đóng này bị gián đoạn bởi kiểm kê kho nên không được ghi nhận. Hãy quét lại QR đơn và đóng lại từ đầu.',
   ORDER_CHANGED: 'Nội dung đơn đã thay đổi. Cần đối soát lại trước khi quét tiếp.',
   ORDER_NOT_PACKABLE: 'Đơn chưa được phân bổ đủ lô và vị trí kho để đóng hàng.',
   SCAN_INCOMPLETE: 'Chưa quét đủ hàng của đơn. Hãy kiểm tra lại phiên đóng hàng.',
@@ -310,9 +312,16 @@ export default function WarehousePackingPage() {
       currentQrRef.current = qrValue;
       removedCameraBarcodeRef.current = '';
       setBarcodeInput('');
+      // Lần đóng bị hủy do kiểm kê: bỏ video cũ còn trên máy để quay lại từ đầu.
+      const STOCKTAKE_DROPPED = ['STOCKTAKE_LOCK', 'PACKING_RESTARTED_AFTER_STOCKTAKE'];
+      const jobsForOrder = (await listPendingVideos()).filter((job) => job.sessionId === response.data.session.id && job.status !== 'COMPLETED');
+      for (const job of jobsForOrder) {
+        if (response.data.restartedAfterStocktake || STOCKTAKE_DROPPED.includes(job.lastError)) await deletePendingVideo(job).catch(() => {});
+      }
       const queuedForOrder = (await listPendingVideos()).some((job) => job.sessionId === response.data.session.id && job.status !== 'COMPLETED');
       if (!response.data.session.video && !queuedForOrder) await startRecording();
       else if (queuedForOrder) setMessage('Video của đơn này đang chờ tải lên Cloudinary.');
+      if (response.data.restartedAfterStocktake) setMessage('Lần đóng trước bị hủy do kiểm kê kho, đơn chưa được đóng. Hãy quét lại toàn bộ sản phẩm.');
       showScanNotice(`✓ Đã quét QR đơn ${response.data.order.orderCode}`);
     } catch (err) {
       if (newlyPreparedSession && !recorderRef.current && !newlyPreparedSession.video) {

@@ -14,7 +14,7 @@ import '../../styles/finishedGoods.css';
 import '../../styles/barcodeTracking.css';
 
 const dateTime = (value) => (value ? new Date(value).toLocaleString('vi-VN') : 'Không rõ thời gian');
-const EVENT_CLASS = { IN: 'in', REENTRY: 'reentry', PUTAWAY: 'putaway', OUT: 'out', HANDOVER: 'out' };
+const EVENT_CLASS = { IN: 'in', REENTRY: 'reentry', PUTAWAY: 'putaway', OUT: 'out', HANDOVER: 'out', STOCKTAKE: 'reentry', WRITE_OFF: 'out' };
 
 /** Barcode tracking for warehouse managers and staff. */
 export default function BarcodeTrackingPage({ isStaffMode = false }) {

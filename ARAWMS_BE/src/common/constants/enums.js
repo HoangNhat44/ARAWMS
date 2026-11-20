@@ -93,6 +93,7 @@ export const ORDER_STATUS = [
   'RETURN_REQUESTED',
   'EXCHANGE_REQUESTED',
   'RETURNED',
+  'RETURN_COMPLETED',
   'PARTIALLY_RETURNED',
   'RETURN_FAILED',
 ];
@@ -113,7 +114,8 @@ export const ORDER_STATUS_LABELS = {
   CANCELLED: 'Đã hủy',
   RETURN_REQUESTED: 'Khách yêu cầu trả hàng',
   EXCHANGE_REQUESTED: 'Đang đổi hàng',
-  RETURNED: 'Hoàn thành công',
+  RETURNED: 'Đã hoàn về kho',
+  RETURN_COMPLETED: 'Hoàn thành công',
   PARTIALLY_RETURNED: 'Hoàn một phần',
   RETURN_FAILED: 'Hoàn không thành công',
 };

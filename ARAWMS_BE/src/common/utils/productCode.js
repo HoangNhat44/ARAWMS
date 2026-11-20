@@ -53,3 +53,29 @@ export const buildSkuCode = (productCode, color, size, { allowLegacyCode = false
   if (!/^[A-Z0-9]+$/.test(sizeCode)) throw new Error(`Size không hợp lệ: ${size}`);
   return `${productCode}-${colorCode}-${sizeCode}`;
 };
+
+/** Common color codes written without accents in source files, mapped back to the display name. */
+const COLOR_NAMES = {
+  TRANG: 'Trắng', DEN: 'Đen', KEM: 'Kem', HONG: 'Hồng', DO: 'Đỏ', XANH: 'Xanh', VANG: 'Vàng', NAU: 'Nâu',
+  XAM: 'Xám', GHI: 'Ghi', BE: 'Be', TIM: 'Tím', CAM: 'Cam', BAC: 'Bạc', REU: 'Rêu', XANHLA: 'Xanh lá',
+  XANHDUONG: 'Xanh dương', XANHNAVY: 'Xanh navy', NAVY: 'Navy', HONGPHAN: 'Hồng phấn', DODO: 'Đỏ đô',
+};
+
+/** Display color for a code segment such as "KEM" / "ĐEN" ("Kem", "Đen"); unknown codes become "Abc". */
+export const colorNameFromCode = (segment) => {
+  const code = toColorCode(segment);
+  if (!code) return '';
+  if (COLOR_NAMES[code]) return COLOR_NAMES[code];
+  const text = String(segment).trim().toLocaleLowerCase('vi-VN');
+  return text.charAt(0).toLocaleUpperCase('vi-VN') + text.slice(1);
+};
+
+/**
+ * Reads a source code that carries the color, e.g. "CV90-KEM" -> { productCode: "CV90", colorSegment: "KEM" }.
+ * Only one "-" is accepted and the part before it must be a valid product code; otherwise null.
+ */
+export const splitColoredProductCode = (rawCode) => {
+  const parts = normalizeProductCode(rawCode).split('-');
+  if (parts.length !== 2 || !isValidProductCode(parts[0]) || !toColorCode(parts[1])) return null;
+  return { productCode: parts[0], colorSegment: parts[1] };
+};

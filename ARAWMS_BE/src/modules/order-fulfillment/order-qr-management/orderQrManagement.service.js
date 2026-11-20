@@ -19,7 +19,7 @@ import { qrDataUrl } from '../../../common/services/codeImageRenderer.js';
 
 const QR_PREFIX = 'PACK:v1:';
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
-const blockedStatuses = new Set(['CANCELLED', 'RETURNED']);
+const blockedStatuses = new Set(['CANCELLED', 'RETURNED', 'RETURN_COMPLETED']);
 
 /** Generates a QR value carrying only a random 256-bit token. */
 export const generateOrderQrValue = () => `${QR_PREFIX}${randomBytes(32).toString('hex')}`;

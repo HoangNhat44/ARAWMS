@@ -22,6 +22,7 @@ import InboundProgressPage from '../pages/warehouse/InboundProgressPage';
 import ProductConfigurationPage from '../pages/warehouse/ProductConfigurationPage';
 import WarehouseLayoutPage from '../pages/warehouse/WarehouseLayoutPage';
 import StocktakePage from '../pages/warehouse/StocktakePage';
+import StocktakeReportDetailPage from '../pages/warehouse/StocktakeReportDetailPage';
 import WarehousePutawayPage from '../pages/warehouse/WarehousePutawayPage';
 import WarehousePackingPage from '../pages/warehouse/WarehousePackingPage';
 import OrderQrPage from '../pages/warehouse/OrderQrPage';
@@ -47,6 +48,7 @@ export const warehouseManagerRoutes = (ProtectedRoute) => (
     <Route path="/warehouse/products/:id/edit" element={<ProductConfigurationPage />} />
     <Route path="/warehouse/layout" element={<WarehouseLayoutPage />} />
     <Route path="/warehouse/stocktake" element={<StocktakePage />} />
+    <Route path="/warehouse/stocktake/:id" element={<StocktakeReportDetailPage />} />
   </Route>
 );
 

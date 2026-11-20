@@ -28,9 +28,10 @@ const UNIT_STATUS = {
   DEFECT_PENDING: () => 'Hàng lỗi · chờ nhập kho lỗi',
   DEFECTIVE: () => 'Trong kho hàng lỗi',
   DEFECT_OUT: () => 'Đã xuất khỏi kho hàng lỗi',
+  STOCKTAKE_WRITE_OFF: () => 'Loại khỏi kho khi kiểm kê',
 };
 /** Units no longer in sellable stock: packed into an order, or defective. */
-const NOT_IN_STOCK = new Set(['PACKED', 'DEFECT_PENDING', 'DEFECTIVE', 'DEFECT_OUT']);
+const NOT_IN_STOCK = new Set(['PACKED', 'DEFECT_PENDING', 'DEFECTIVE', 'DEFECT_OUT', 'STOCKTAKE_WRITE_OFF']);
 const MAX_LABELS_PER_PRINT = 500;
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'FREESIZE'];
 const catalogFrom = (product) => ({ productName: product.productName, productCode: product.productCode,

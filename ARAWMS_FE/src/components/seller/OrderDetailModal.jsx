@@ -33,7 +33,8 @@ const ORDER_STATUSES = [
   { value: 'COMPLETED',           label: 'Hoàn thành (Bán tại quầy)' },
   { value: 'RETURN_REQUESTED',    label: 'Khách yêu cầu trả hàng' },
   { value: 'EXCHANGE_REQUESTED',  label: 'Đang đổi hàng' },
-  { value: 'RETURNED',            label: 'Hoàn thành công' },
+  { value: 'RETURNED',            label: 'Đã hoàn về kho' },
+  { value: 'RETURN_COMPLETED',    label: 'Hoàn thành công' },
   { value: 'PARTIALLY_RETURNED',  label: 'Hoàn một phần' },
   { value: 'RETURN_FAILED',       label: 'Hoàn không thành công' },
   { value: 'CANCELLED',           label: 'Đã hủy' },
@@ -140,7 +141,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
         order.orderType !== 'POS_DIRECT' &&
         order.channel !== 'POS' &&
         order.channel !== 'POS_OFFLINE' &&
-        !['PENDING', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'RETURNED'].includes(order.status)
+        !['PENDING', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'RETURNED', 'RETURN_COMPLETED'].includes(order.status)
       ) {
         const orderId = order._id || order.id;
         if (orderId) {
@@ -175,7 +176,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
   const pickedStatuses = ['picked', 'storing', 'transporting', 'sorting', 'delivering', 'delivered', 'return', 'returned'];
   const isShipperPicked =
     pickedStatuses.includes(String(ghnStatus || '').toLowerCase()) ||
-    ['PACKED', 'HANDED_OVER_CARRIER', 'CARRIER_PICKED_UP', 'DELIVERED', 'COMPLETED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED'].includes(status);
+    ['PACKED', 'HANDED_OVER_CARRIER', 'CARRIER_PICKED_UP', 'DELIVERED', 'COMPLETED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED', 'RETURN_COMPLETED'].includes(status);
   const isCancelable = ['PENDING', 'CONFIRMED_RESERVED', 'PICKING'].includes(status) && !isShipperPicked && status !== 'CANCELLED';
 
   // Tính toán tổng tiền realtime theo items hiện tại

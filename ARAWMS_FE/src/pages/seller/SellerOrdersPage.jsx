@@ -66,6 +66,7 @@ const PANCAKE_STATUSES = [
   { key: 'COMPLETED',           label: 'Hoàn thành (Bán tại quầy)',         countKey: 'COMPLETED' },
   { key: 'CANCELLED',           label: 'Đã hủy',                            countKey: 'CANCELLED' },
   { key: 'RETURNED',            label: 'Đã hoàn về kho',                    countKey: 'RETURNED' },
+  { key: 'RETURN_COMPLETED',    label: 'Hoàn thành công',                   countKey: 'RETURN_COMPLETED' },
 ];
 
 /**
@@ -716,7 +717,7 @@ const SellerOrdersPage = () => {
                               </span>
                             ) : null}
                           </div>
-                        ) : ord.orderType !== 'POS_DIRECT' && ord.channel !== 'POS' && ord.channel !== 'POS_OFFLINE' && !['CANCELLED', 'RETURNED'].includes(ord.status) ? (
+                        ) : ord.orderType !== 'POS_DIRECT' && ord.channel !== 'POS' && ord.channel !== 'POS_OFFLINE' && !['CANCELLED', 'RETURNED', 'RETURN_COMPLETED'].includes(ord.status) ? (
                           <Button
                             size="sm"
                             variant="outline-primary"

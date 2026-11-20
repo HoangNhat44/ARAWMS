@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import WmsHeader from '../common/WmsHeader';
+import StocktakeNoticeBanner from '../common/StocktakeNoticeBanner';
 
 export default function WarehouseStaffLayout({ children }) {
   const { user } = useAuth();
@@ -218,6 +219,7 @@ export default function WarehouseStaffLayout({ children }) {
           profilePath="/account"
         />
         <main className="wms-content-container">
+          <StocktakeNoticeBanner role="WAREHOUSE_STAFF" />
           {children}
         </main>
       </div>

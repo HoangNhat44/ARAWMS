@@ -6,6 +6,7 @@ import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import WarehouseLayout from '../../../models/WarehouseLayout.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import Sku from '../../../models/Sku.model.js';
+import { notifyStocktakeScheduled } from './stocktakeNotice.service.js';
 import User from '../../../models/User.model.js';
 
 const fail = (ok, message, code = 'INVALID_INPUT', status = 400) => { if (!ok) throw Object.assign(new Error(message), { code, status }); };
@@ -33,13 +34,30 @@ function validate(input, { allowUnchangedPastStart = false } = {}) {
   fail(allowUnchangedPastStart || startDateValue >= todayInBangkok(), 'Ngày bắt đầu không được ở trong quá khứ');
   const endDate = input.endDate ? asDate(input.endDate) : undefined;
   fail(!input.endDate || endDate && endDate >= startDate, 'Ngày kết thúc phải sau ngày bắt đầu');
-  const durationHours = Number(input.durationHours || 2);
-  fail(Number.isFinite(durationHours) && durationHours >= 1 && durationHours <= 72, 'Hạn hoàn thành từ 1 đến 72 giờ');
+  // Khung giờ kiểm chính xác (vd 07:30 – 09:30) trong cùng ngày; durationHours chỉ còn là giá trị suy ra.
+  // Dữ liệu/lịch cũ không có endTime thì vẫn dùng durationHours.
+  let durationHours;
+  let endTime;
+  if (input.endTime) {
+    endTime = String(input.endTime);
+    fail(/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime), 'Chọn giờ kết thúc');
+    const minutes = (time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+    const span = minutes(endTime) - minutes(input.startTime);
+    fail(span >= 15, 'Giờ kết thúc phải sau giờ bắt đầu ít nhất 15 phút (trong cùng ngày)');
+    durationHours = span / 60;
+  } else {
+    durationHours = Number(input.durationHours || 2);
+    fail(Number.isFinite(durationHours) && durationHours >= 1 && durationHours <= 72, 'Hạn hoàn thành từ 1 đến 72 giờ');
+  }
   fail(mongoose.isValidObjectId(input.inspectorId) && mongoose.isValidObjectId(input.approverId), 'Chọn người kiểm và người duyệt');
   fail(String(input.inspectorId) !== String(input.approverId), 'Người kiểm không được tự duyệt báo cáo');
   const config = { ...input };
   delete config.selectionMode;
-  return { ...config, name: String(input.name).trim(), startDate, endDate, durationHours,
+  // The form always sends rackId/itemId (as "" when unused); keep them only for the scope that uses them,
+  // otherwise "" fails the ObjectId cast on save.
+  config.rackId = input.scopeType === 'RACK' ? input.rackId : undefined;
+  config.itemId = input.scopeType === 'ITEM' ? input.itemId : undefined;
+  return { ...config, name: String(input.name).trim(), startDate, endDate, durationHours, endTime,
     itemType: input.warehouseType === 'RAW_MATERIAL' ? 'RAW_MATERIAL' : input.warehouseType === 'FINISHED_GOODS' ? 'SKU' : 'MIXED',
     zoneCode: String(input.zoneCode || '').trim().toUpperCase(), instructions: String(input.instructions || '').trim().slice(0, 1000) };
 }
@@ -127,7 +145,13 @@ export async function createStocktake(input, user) {
   fail(managers(user), 'Chỉ quản lý kho được tạo lệnh', 'FORBIDDEN', 403);
   const config = await validateAssignees(validate(input));
   config.createdByUserId = user._id;
-  if (config.recurrence === 'ONCE') return { session: await addSession(config) };
+  if (config.recurrence === 'ONCE') {
+    const scheduledAt = new Date(`${new Date(config.startDate).toISOString().slice(0, 10)}T${config.startTime}:00+07:00`);
+    fail(scheduledAt.getTime() + config.durationHours * 3600000 > Date.now(), 'Khung giờ kiểm kê đã qua, hãy chọn giờ khác');
+    const session = await addSession(config);
+    await notifyStocktakeScheduled(session, user);
+    return { session };
+  }
   const schedule = await StocktakeSchedule.create({ ...config, createdByUserId: user._id, status: 'ACTIVE' });
   return { schedule };
 }

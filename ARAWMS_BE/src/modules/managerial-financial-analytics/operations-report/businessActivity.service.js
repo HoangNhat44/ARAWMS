@@ -14,7 +14,9 @@ const localDate = new Intl.DateTimeFormat('en-CA', {
 });
 const dayMs = 86400000;
 const returningCarrierStatuses = ['waiting_to_return', 'return', 'return_transporting', 'return_sorting', 'returning', 'returned'];
-const returnOrderStatuses = ['RETURN_REQUESTED', 'RETURNED'];
+const returnOrderStatuses = ['RETURN_REQUESTED', 'RETURNED', 'RETURN_COMPLETED'];
+// RETURNED = bưu kiện về tới kho; đơn KCS đạt trước đây ghi RETURNED, nay ghi RETURN_COMPLETED.
+const returnArrivedStatuses = ['RETURNED', 'RETURN_COMPLETED'];
 const reasonCodes = ['CUSTOMER_REFUSED', 'INVALID_ORDER', 'PRODUCT_DEFECT', 'OTHER', 'UNKNOWN'];
 const refusalReasons = ['CUSTOMER_REFUSED', 'INVALID_ORDER'];
 const validPurchase = { status: { $ne: 'CANCELLED' }, orderType: { $ne: 'EXCHANGE_ORDER' } };
@@ -52,7 +54,7 @@ export function shippingReturn(order, asOf) {
     && !/thất lạc|bị hư hỏng|ngoại lệ/i.test(row.note || '')
     && !(carrierException && row.to === 'RETURN_REQUESTED' && !row.note));
   const startedAt = event?.at || (isCarrierReturn ? carrierAt : null);
-  const arrivedAt = history.find(row => row.to === 'RETURNED' && (!shippedAt || row.at >= shippedAt))?.at
+  const arrivedAt = history.find(row => returnArrivedStatuses.includes(row.to) && (!shippedAt || row.at >= shippedAt))?.at
     || (isCarrierReturn && fulfillment.ghnStatus === 'returned' ? carrierAt : null);
   return {
     startedAt,
@@ -191,7 +193,7 @@ export async function businessActivity(query, now = new Date()) {
     // Sự kiện nhận có thể ở kỳ mới dù đơn đã xuất từ một kỳ trước.
     read('sales_orders', { ...scope, $or: [
       { _id: { $in: windowInspections.map(record => record.orderId) } },
-      { statusHistory: { $elemMatch: { to: 'RETURNED', at: processingRange } } },
+      { statusHistory: { $elemMatch: { to: { $in: returnArrivedStatuses }, at: processingRange } } },
       { 'warehouseFulfillment.ghnStatus': 'returned', 'warehouseFulfillment.ghnUpdatedAt': processingRange },
     ] }, { ...sourceFields, orderCode: 1, statusHistory: 1, warehouseFulfillment: 1, deliveredAt: 1 }),
   ]);

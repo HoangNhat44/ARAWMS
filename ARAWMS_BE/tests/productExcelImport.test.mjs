@@ -62,16 +62,29 @@ test('an empty "Màu" cell falls back to the name suffix so one file can mix bot
   assert.match(parsed.errors[0].message, /Không xác định được màu/);
 });
 
-test('old per-color codes, missing colors, duplicates and colliding color codes are row errors', async () => {
+test('a color carried in the code (CV90-KEM) splits into product CV90 + color, matching the shop export', async () => {
   const parsed = await parseProductWorkbook(await workbook([
-    ['1', 'AL186-KEM', 'Áo len - Kem', 'M', 100000],
+    ['11', 'AL186-KEM', 'AL186 SET LEN (KHOÁC+ÁO DÂY) - KEM', 'M', 560000],
+    ['12', 'AL186-HONG', 'AL186 SET LEN (KHOÁC+ÁO DÂY) - HỒNG', 'M', 560000],
+    ['5', 'V179-TRANG', 'V179 VÁY XÒE CÁCH ĐIỆU- TRẮNG', 'S', 765000],
+    ['8', 'Q22-ĐEN', 'Q22 QUẦN DÀI', 'L', 595000],
+  ]));
+  assert.deepEqual(parsed.errors, []);
+  assert.deepEqual(parsed.products.map((product) => `${product.productCode}:${product.productName}:`
+    + product.variants.map((variant) => variant.color).join('+')),
+  ['AL186:AL186 SET LEN (KHOÁC+ÁO DÂY):Kem+Hồng', 'V179:V179 VÁY XÒE CÁCH ĐIỆU:Trắng', 'Q22:Q22 QUẦN DÀI:Đen']);
+});
+
+test('bad codes, missing colors, duplicates and colliding color codes are row errors', async () => {
+  const parsed = await parseProductWorkbook(await workbook([
+    ['1', 'AL186-KEM-X', 'Áo len - Kem', 'M', 100000],
     ['2', 'AL188', 'Áo không màu', 'M', 100000],
     ['3', 'AL189', 'Áo - Đỏ', 'M', 100000],
     ['3', 'AL189', 'Áo - Đỏ', 'M', 100000],
     ['3', 'AL189', 'Áo - Do', 'L', 100000],
   ]));
   const messages = Object.fromEntries(parsed.errors.map((item) => [item.row, item.message]));
-  assert.match(messages[2], /không được có dấu gạch/);
+  assert.match(messages[2], /chỉ một dấu gạch trước màu/);
   assert.match(messages[3], /Không xác định được màu/);
   assert.match(messages[5], /Màu và size bị trùng/);
   assert.match(messages[6], /trùng mã DO/);

@@ -39,14 +39,15 @@ export const getCodOrdersList = async (filters = {}) => {
 
   // 3. Chỉ lấy các đơn đã bàn giao sang khâu vận chuyển:
   // - DELIVERED: Đã giao thành công (Đủ điều kiện đối soát tiền mặt)
-  // - RETURNED: Đã chuyển hoàn (Đủ điều kiện đối soát hàng hoàn)
+  // - RETURNED / RETURN_COMPLETED: Đã chuyển hoàn về kho / đã KCS hàng hoàn đạt (Đủ điều kiện đối soát hàng hoàn)
   // - HANDED_OVER_CARRIER: Đã bàn giao cho bên vận chuyển (Chờ giao xong)
   // - CARRIER_PICKED_UP: Đã lấy hàng (Chờ giao xong)
   // LOẠI BỎ HOÀN TOÀN các trạng thái nội bộ kho chưa gửi hãng: PENDING, CONFIRMED_RESERVED, PICKING, PACKED, CANCELLED
   if (filters.shippingStatus && filters.shippingStatus !== 'ALL') {
-    query.status = filters.shippingStatus;
+    // "Đã chuyển hoàn" gồm cả đơn đã về kho (RETURNED) và đơn đã KCS đạt (RETURN_COMPLETED).
+    query.status = filters.shippingStatus === 'RETURNED' ? { $in: ['RETURNED', 'RETURN_COMPLETED'] } : filters.shippingStatus;
   } else {
-    query.status = { $in: ['DELIVERED', 'RETURNED', 'HANDED_OVER_CARRIER', 'CARRIER_PICKED_UP'] };
+    query.status = { $in: ['DELIVERED', 'RETURNED', 'RETURN_COMPLETED', 'HANDED_OVER_CARRIER', 'CARRIER_PICKED_UP'] };
   }
 
   // Tìm kiếm theo mã đơn hoặc mã vận đơn
@@ -123,7 +124,7 @@ export const executeAutomatedCodReconciliation = async (payload = {}, currentUse
   const orderFilter = {
     'financialSummary.expectedCodAmount': { $gt: 0 },
     'warehouseFulfillment.waybillCode': { $exists: true, $ne: '' },
-    status: { $in: ['DELIVERED', 'RETURNED'] },
+    status: { $in: ['DELIVERED', 'RETURNED', 'RETURN_COMPLETED'] },
   };
 
   if (payload.orderIds && Array.isArray(payload.orderIds) && payload.orderIds.length > 0) {
@@ -217,7 +218,7 @@ export const executeAutomatedCodReconciliation = async (payload = {}, currentUse
         carrierReportedCod = 450000; // Mock thu thiếu 50k
         ghnStatus = 'delivered';
         ghnStatusName = 'Giao thành công (Thiếu 50.000đ)';
-      } else if (waybillCode === 'LYFHBOOM' || order.status === 'RETURNED' || order.status === 'CANCELLED') {
+      } else if (waybillCode === 'LYFHBOOM' || order.status === 'RETURNED' || order.status === 'RETURN_COMPLETED' || order.status === 'CANCELLED') {
         carrierReportedCod = 0; // Hàng hoàn không thu được tiền COD
         ghnStatus = 'return';
         ghnStatusName = 'Chuyển hoàn';
@@ -300,7 +301,7 @@ export const executeAutomatedCodReconciliation = async (payload = {}, currentUse
   await batch.save();
 
   const deliveredCount = codOrders.filter((o) => o.status === 'DELIVERED').length;
-  const returnedCount = codOrders.filter((o) => o.status === 'RETURNED' || o.status === 'CANCELLED').length;
+  const returnedCount = codOrders.filter((o) => ['RETURNED', 'RETURN_COMPLETED', 'CANCELLED'].includes(o.status)).length;
 
   return {
     success: true,

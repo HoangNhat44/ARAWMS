@@ -343,7 +343,7 @@ export const getCarrierDebtOverview = async () => {
       if (feeUnsettled) {
         totalShippingFee += fee;
       }
-    } else if (o.status === 'RETURNED' || o.status === 'CANCELLED') {
+    } else if (['RETURNED', 'RETURN_COMPLETED', 'CANCELLED'].includes(o.status)) {
       returnedOrdersCount++;
       if (feeUnsettled) {
         totalShippingFee += fee;
