@@ -194,10 +194,9 @@ const QuickOrderModal = ({
   const totalAmount = Math.max(0, itemsSubtotal + Number(shippingFee || 0) - Number(discountAmount || 0));
 
   /**
-   * Tạo đơn hàng bán lẻ mới: Hỗ trợ Online (UC-78, UC-79) hoặc POS bán tại quầy lấy ngay
-   * @param {boolean} sendConfirmationReceipt - Nếu true, tự động gửi Phiếu xác nhận đơn hàng vào chat cho khách
+   * Tạo đơn hàng bán lẻ mới: Hỗ trợ Online (Chờ khách xác nhận hoặc Tạo & Chốt ngay) hoặc POS tại quầy
    */
-  const handleCreateOrder = async (sendConfirmationReceipt = true) => {
+  const handleCreateOrder = async ({ autoConfirm = false, sendConfirmationReceipt = false } = {}) => {
     const customerId = customer?._id || customer?.id;
 
     if (items.length === 0) {
@@ -235,6 +234,7 @@ const QuickOrderModal = ({
         conversationId: orderChannel === 'ONLINE' ? conversationId : undefined,
         orderType: orderChannel === 'POS' ? 'POS_DIRECT' : 'DIRECT_SALES',
         channel: orderChannel === 'POS' ? 'POS' : 'FACEBOOK_MESSENGER',
+        autoConfirm: orderChannel === 'ONLINE' ? Boolean(autoConfirm) : false,
         shippingRecipient: {
           name: recipient.name || (orderChannel === 'POS' ? 'Khách tại quầy AraStore' : 'Khách vãng lai'),
           phone: cleanPhone || (orderChannel === 'POS' ? '0900000000' : ''),
@@ -253,19 +253,15 @@ const QuickOrderModal = ({
 
       let res;
       if (orderChannel === 'POS') {
-        // Đơn bán tại quầy POS: Trừ tồn onHandQty trực tiếp, hoàn thành ngay lập tức
         res = await sellerService.createPosDirectOrder(orderPayload);
       } else {
-        // Tạo đơn PENDING (UC-78)
         res = await sellerService.createDirectOrder(orderPayload);
       }
 
       if (res.success) {
         const createdOrder = res.data;
 
-        // Nếu là đơn Online và chọn gửi phiếu: Tự động gửi Phiếu xác nhận đơn hàng vào chat
-        // (Đơn vẫn giữ trạng thái PENDING chờ khách phản hồi, KHÔNG chốt sớm!)
-        if (orderChannel === 'ONLINE' && sendConfirmationReceipt) {
+        if (orderChannel === 'ONLINE' && !autoConfirm && sendConfirmationReceipt) {
           const orderId = createdOrder?._id || createdOrder?.id;
           if (orderId) {
             try {
@@ -276,7 +272,6 @@ const QuickOrderModal = ({
           }
         }
 
-        // Xóa cache để lần mở tiếp theo lấy tồn kho mới nhất
         cachedSkusRef.current = [];
         setSuccessOrder(createdOrder);
         if (onOrderCreated) onOrderCreated(createdOrder);
@@ -315,18 +310,29 @@ const QuickOrderModal = ({
               <span
                 className="badge rounded px-2.5 py-1"
                 style={
-                  successOrder.status === 'COMPLETED'
+                  ['COMPLETED', 'CONFIRMED_RESERVED'].includes(successOrder.status)
                     ? { backgroundColor: '#E3F5EC', color: '#1E6B47', border: '1px solid #86CFA8', fontSize: '13px' }
                     : { backgroundColor: '#FEF0C7', color: '#9A5B06', border: '1px solid #F5B95F', fontSize: '13px' }
                 }
               >
-                Trạng thái: {successOrder.status}
+                Trạng thái:{' '}
+                {successOrder.status === 'COMPLETED'
+                  ? 'Hoàn thành (Bán tại quầy)'
+                  : successOrder.status === 'CONFIRMED_RESERVED'
+                  ? 'Đã xác nhận, đã giữ hàng'
+                  : 'Chờ xác nhận'}
               </span>
             </div>
             {successOrder.status === 'PENDING' && (
               <Alert variant="info" className="small text-start mx-auto py-2 px-3 mb-3" style={{ maxWidth: 540 }}>
                 <Icon name="info-circle" className="me-2 text-primary" />
-                Hệ thống đã gửi <strong>Phiếu xác nhận đơn hàng</strong> vào Messenger của khách. Khi khách nhắn <em>"OK"</em> hoặc xác nhận, đơn sẽ tự động chốt và chuyển sang giữ chỗ tồn kho!
+                Đơn hàng đang ở trạng thái <strong>Chờ xác nhận</strong>. Khi khách nhắn <em>"OK"</em> hoặc bạn bấm <strong>Xác nhận chốt đơn</strong> trong chi tiết đơn hàng, hệ thống sẽ giữ chỗ tồn kho!
+              </Alert>
+            )}
+            {successOrder.status === 'CONFIRMED_RESERVED' && (
+              <Alert variant="success" className="small text-start mx-auto py-2 px-3 mb-3" style={{ maxWidth: 540 }}>
+                <Icon name="check2-circle" className="me-2" />
+                Đơn hàng đã được <strong>xác nhận chốt đơn và giữ hàng trong kho</strong> ngay lập tức.
               </Alert>
             )}
             {Array.isArray(successOrder.stockWarnings) && successOrder.stockWarnings.length > 0 && (
@@ -461,7 +467,7 @@ const QuickOrderModal = ({
             <Button
               size="sm"
               disabled={loading || items.length === 0}
-              onClick={() => handleCreateOrder(false)}
+              onClick={() => handleCreateOrder({ autoConfirm: false, sendConfirmationReceipt: false })}
               className="d-flex align-items-center gap-2 fw-bold btn-wms-primary"
             >
               {loading ? <Spinner animation="border" size="sm" /> : <Icon name="cart-check-fill" />}
@@ -471,20 +477,20 @@ const QuickOrderModal = ({
             <>
               <Button
                 size="sm"
-                className="btn-wms-default"
+                className="btn-wms-default d-flex align-items-center gap-1"
                 disabled={loading || items.length === 0}
-                onClick={() => handleCreateOrder(false)}
+                onClick={() => handleCreateOrder({ autoConfirm: false, sendConfirmationReceipt: Boolean(conversationId) })}
               >
-                Lưu Đơn Nháp
+                <Icon name="clock" /> Chờ khách xác nhận
               </Button>
               <Button
                 size="sm"
                 disabled={loading || items.length === 0}
-                onClick={() => handleCreateOrder(true)}
+                onClick={() => handleCreateOrder({ autoConfirm: true, sendConfirmationReceipt: false })}
                 className="d-flex align-items-center gap-2 fw-semibold btn-wms-accent"
               >
-                {loading ? <Spinner animation="border" size="sm" /> : <Icon name="send-check" />}
-                Tạo Đơn &amp; Gửi Phiếu Xác Nhận
+                {loading ? <Spinner animation="border" size="sm" /> : <Icon name="check2-circle" />}
+                Tạo &amp; Chốt đơn ngay
               </Button>
             </>
           )}
