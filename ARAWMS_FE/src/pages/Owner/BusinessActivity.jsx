@@ -3,12 +3,21 @@
  * Ngày: 14-11-2026
  * Giao diện theo dõi đơn hàng, hàng hoàn và khách hàng mới của chủ cửa hàng.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import {
+  Package,
+  Truck,
+  CheckCircle2,
+  AlertTriangle,
+  BarChart3,
+  Table as TableIcon,
+  Filter,
+} from 'lucide-react';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
 import { WmsField, WmsSelect } from '../../components/ui/WmsControls';
 import { Columns, SeriesPlot } from './OwnerCharts';
-import { datetime, Metric, quantity, ResourceState, Table } from './OwnerUI';
+import { datetime, Metric, money, quantity, ResourceState, Table } from './OwnerUI';
 
 export const channelLabels = {
   FACEBOOK: 'Facebook', SHOPEE: 'Shopee', TIKTOK: 'TikTok', UNKNOWN: 'Chưa rõ nguồn bán',
@@ -154,6 +163,545 @@ function ReturnWorklist({ rows, initialOverdueOnly }) {
   </section>;
 }
 
+const PIPELINE_STAGES = [
+  {
+    key: 'WAREHOUSE',
+    label: '1. Xử lý tại kho',
+    shortLabel: 'Tại kho',
+    icon: Package,
+    color: '#D97706',
+    bg: '#FFFDF7',
+    border: '#FDE68A',
+    badgeBg: '#FEF3C7',
+    badgeColor: '#92400E',
+    dotColor: '#F59E0B',
+    description: 'Chờ xác nhận, giữ tồn, nhặt & đóng hàng',
+    statuses: ['PENDING', 'CONFIRMED_RESERVED', 'PICKING', 'PACKED'],
+  },
+  {
+    key: 'SHIPPING',
+    label: '2. Đang giao hàng (GHN)',
+    shortLabel: 'Đang giao',
+    icon: Truck,
+    color: '#2563EB',
+    bg: '#F8FAFF',
+    border: '#BFDBFE',
+    badgeBg: '#DBEAFE',
+    badgeColor: '#1E40AF',
+    dotColor: '#3B82F6',
+    description: 'Bàn giao vận chuyển & trung chuyển giao hàng',
+    statuses: ['HANDED_OVER_CARRIER', 'CARRIER_PICKED_UP'],
+  },
+  {
+    key: 'SUCCESS',
+    label: '3. Giao thành công',
+    shortLabel: 'Thành công',
+    icon: CheckCircle2,
+    color: '#059669',
+    bg: '#F6FEFA',
+    border: '#A7F3D0',
+    badgeBg: '#D1FAE5',
+    badgeColor: '#065F46',
+    dotColor: '#10B981',
+    description: 'Khách nhận thành công / hoàn tất tại quầy',
+    statuses: ['DELIVERED', 'COMPLETED'],
+  },
+  {
+    key: 'RETURNS_RISK',
+    label: '4. Đổi trả & Đơn hủy',
+    shortLabel: 'Đổi trả / Hủy',
+    icon: AlertTriangle,
+    color: '#DC2626',
+    bg: '#FFF8F8',
+    border: '#FECACA',
+    badgeBg: '#FEE2E2',
+    badgeColor: '#991B1B',
+    dotColor: '#EF4444',
+    description: 'Khách hủy, yêu cầu đổi/trả & hoàn về kho',
+    statuses: [
+      'CANCELLED',
+      'RETURN_REQUESTED',
+      'EXCHANGE_REQUESTED',
+      'RETURNED',
+      'RETURN_COMPLETED',
+      'PARTIALLY_RETURNED',
+      'RETURN_FAILED',
+    ],
+  },
+];
+
+const STATUS_TO_STAGE = {};
+PIPELINE_STAGES.forEach(stage => {
+  stage.statuses.forEach(status => {
+    STATUS_TO_STAGE[status] = stage;
+  });
+});
+
+function OrderStatusPipeline({ orderStatuses = [] }) {
+  const [selectedStage, setSelectedStage] = useState('ALL');
+  const [onlyWithOrders, setOnlyWithOrders] = useState(true);
+  const [viewMode, setViewMode] = useState('table'); // 'table' | 'chart'
+  const [chartMetric, setChartMetric] = useState('count'); // 'count' | 'amount'
+
+  // Tổng toàn kỳ
+  const totalOrders = useMemo(
+    () => orderStatuses.reduce((acc, row) => acc + (row.count || 0), 0),
+    [orderStatuses]
+  );
+  const totalAmount = useMemo(
+    () => orderStatuses.reduce((acc, row) => acc + (row.totalAmount || 0), 0),
+    [orderStatuses]
+  );
+
+  // Thống kê theo từng khâu (Pipeline Stages)
+  const stageStats = useMemo(() => {
+    return PIPELINE_STAGES.map(stage => {
+      const stageItems = orderStatuses.filter(s => stage.statuses.includes(s.status));
+      const count = stageItems.reduce((sum, item) => sum + (item.count || 0), 0);
+      const amount = stageItems.reduce((sum, item) => sum + (item.totalAmount || 0), 0);
+      const activeItems = stageItems.filter(item => item.count > 0);
+      const percentage = totalOrders > 0 ? (count / totalOrders) * 100 : 0;
+      return {
+        ...stage,
+        count,
+        amount,
+        percentage,
+        activeItems,
+      };
+    });
+  }, [orderStatuses, totalOrders]);
+
+  // Lọc danh sách dòng hiển thị
+  const filteredRows = useMemo(() => {
+    let rows = orderStatuses;
+    if (selectedStage !== 'ALL') {
+      const stageDef = PIPELINE_STAGES.find(s => s.key === selectedStage);
+      if (stageDef) {
+        rows = rows.filter(r => stageDef.statuses.includes(r.status));
+      }
+    }
+    if (onlyWithOrders) {
+      rows = rows.filter(r => r.count > 0);
+    }
+    return rows;
+  }, [orderStatuses, selectedStage, onlyWithOrders]);
+
+  const filteredOrdersTotal = useMemo(
+    () => filteredRows.reduce((acc, r) => acc + (r.count || 0), 0),
+    [filteredRows]
+  );
+  const filteredAmountTotal = useMemo(
+    () => filteredRows.reduce((acc, r) => acc + (r.totalAmount || 0), 0),
+    [filteredRows]
+  );
+
+  // Chuẩn bị dữ liệu cho biểu đồ
+  const chartRows = useMemo(() => {
+    const sourceRows = onlyWithOrders ? orderStatuses.filter(r => r.count > 0) : orderStatuses;
+    return sourceRows.map(r => ({
+      label: orderLabels[r.status] || r.status,
+      value: chartMetric === 'amount' ? (r.totalAmount || 0) : (r.count || 0),
+    }));
+  }, [orderStatuses, onlyWithOrders, chartMetric]);
+
+  return (
+    <section id="owner-order-status" className="owner-content-panel" style={{ marginTop: '24px' }}>
+      {/* Tiêu đề mục & Tổng quan nhanh */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '20px' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#111827' }}>
+            Trạng thái hiện tại của đơn hàng tạo trong kỳ
+          </h2>
+          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6B7280' }}>
+            Theo dõi luồng xử lý đơn hàng theo 4 khâu vận hành thực tế kèm số lượng và dòng tiền (VNĐ)
+          </p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#F3F4F6', padding: '6px 14px', borderRadius: '8px' }}>
+          <span style={{ fontSize: '13px', color: '#4B5563' }}>Tổng đơn trong kỳ:</span>
+          <strong style={{ fontSize: '15px', color: '#111827', fontVariantNumeric: 'tabular-nums' }}>
+            {quantity(totalOrders)} đơn
+          </strong>
+          <span style={{ color: '#D1D5DB' }}>|</span>
+          <span style={{ fontSize: '13px', color: '#4B5563' }}>Tổng trị giá:</span>
+          <strong style={{ fontSize: '15px', color: '#059669', fontVariantNumeric: 'tabular-nums' }}>
+            {money(totalAmount)}
+          </strong>
+        </div>
+      </div>
+
+      {/* 4 Thẻ Funnel Pipeline */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        {stageStats.map(stage => {
+          const IconComponent = stage.icon;
+          const isSelected = selectedStage === stage.key;
+          return (
+            <div
+              key={stage.key}
+              onClick={() => setSelectedStage(prev => prev === stage.key ? 'ALL' : stage.key)}
+              role="button"
+              tabIndex={0}
+              title={`Nhấp để ${isSelected ? 'bỏ lọc' : 'lọc'} danh sách theo ${stage.label}`}
+              style={{
+                background: stage.bg,
+                border: `1.5px solid ${isSelected ? stage.color : stage.border}`,
+                borderRadius: '12px',
+                padding: '16px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                boxShadow: isSelected
+                  ? `0 0 0 2px ${stage.color}33, 0 4px 6px -1px rgba(0, 0, 0, 0.1)`
+                  : '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      background: stage.badgeBg,
+                      color: stage.badgeColor,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <IconComponent size={18} />
+                    </div>
+                    <div>
+                      <strong style={{ fontSize: '14px', color: '#111827', display: 'block' }}>
+                        {stage.label}
+                      </strong>
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    padding: '2px 8px',
+                    borderRadius: '10px',
+                    background: stage.badgeBg,
+                    color: stage.badgeColor,
+                  }}>
+                    {stage.percentage.toFixed(1)}%
+                  </span>
+                </div>
+                <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#6B7280', lineHeight: 1.4 }}>
+                  {stage.description}
+                </p>
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '24px', fontWeight: 700, color: '#111827', fontVariantNumeric: 'tabular-nums' }}>
+                    {quantity(stage.count)} <small style={{ fontSize: '13px', fontWeight: 500, color: '#6B7280' }}>đơn</small>
+                  </span>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: stage.color, fontVariantNumeric: 'tabular-nums' }}>
+                    {money(stage.amount)}
+                  </span>
+                </div>
+
+                {/* Danh sách trạng thái đang có đơn */}
+                <div style={{ minHeight: '26px', marginTop: '8px', paddingTop: '8px', borderTop: `1px dashed ${stage.border}` }}>
+                  {stage.activeItems.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {stage.activeItems.map(item => (
+                        <span
+                          key={item.status}
+                          style={{
+                            fontSize: '11px',
+                            background: '#FFFFFF',
+                            border: `1px solid ${stage.border}`,
+                            borderRadius: '4px',
+                            padding: '1px 6px',
+                            color: '#374151',
+                          }}
+                        >
+                          {orderLabels[item.status] || item.status}: <strong>{quantity(item.count)}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: '11px', color: '#9CA3AF', fontStyle: 'italic' }}>
+                      Chưa có đơn phát sinh trong khâu này
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Thanh điều khiển, Bộ lọc & Công tắc xem */}
+      <div style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '12px',
+        background: '#FAFBFB',
+        padding: '12px 16px',
+        borderRadius: '8px',
+        border: '1px solid #E5E7EB',
+        marginBottom: '16px',
+      }}>
+        {/* Bộ lọc khâu */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '13px', fontWeight: 600, color: '#4B5563', marginRight: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Filter size={14} /> Khâu:
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectedStage('ALL')}
+            style={{
+              fontSize: '12px',
+              padding: '4px 10px',
+              borderRadius: '6px',
+              border: selectedStage === 'ALL' ? '1px solid #315d48' : '1px solid #D1D5DB',
+              background: selectedStage === 'ALL' ? '#315d48' : '#FFFFFF',
+              color: selectedStage === 'ALL' ? '#FFFFFF' : '#374151',
+              cursor: 'pointer',
+              fontWeight: selectedStage === 'ALL' ? 600 : 400,
+            }}
+          >
+            Tất cả ({quantity(totalOrders)})
+          </button>
+          {stageStats.map(stage => {
+            const isSelected = selectedStage === stage.key;
+            return (
+              <button
+                key={stage.key}
+                type="button"
+                onClick={() => setSelectedStage(stage.key)}
+                style={{
+                  fontSize: '12px',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: isSelected ? `1px solid ${stage.color}` : '1px solid #D1D5DB',
+                  background: isSelected ? stage.badgeBg : '#FFFFFF',
+                  color: isSelected ? stage.badgeColor : '#374151',
+                  cursor: 'pointer',
+                  fontWeight: isSelected ? 600 : 400,
+                }}
+              >
+                {stage.shortLabel} ({quantity(stage.count)})
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Công tắc lọc 0 đơn & Chuyển chế độ xem */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#374151', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={onlyWithOrders}
+              onChange={e => setOnlyWithOrders(e.target.checked)}
+              style={{ cursor: 'pointer', accentColor: '#315d48' }}
+            />
+            Chỉ hiện trạng thái có đơn phát sinh (&gt; 0)
+          </label>
+
+          <div style={{ display: 'flex', border: '1px solid #D1D5DB', borderRadius: '6px', overflow: 'hidden' }}>
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '4px 10px',
+                border: 'none',
+                background: viewMode === 'table' ? '#E5E7EB' : '#FFFFFF',
+                color: '#111827',
+                fontSize: '12px',
+                fontWeight: viewMode === 'table' ? 600 : 400,
+                cursor: 'pointer',
+              }}
+            >
+              <TableIcon size={14} /> Bảng chi tiết
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('chart')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '4px 10px',
+                border: 'none',
+                borderLeft: '1px solid #D1D5DB',
+                background: viewMode === 'chart' ? '#E5E7EB' : '#FFFFFF',
+                color: '#111827',
+                fontSize: '12px',
+                fontWeight: viewMode === 'chart' ? 600 : 400,
+                cursor: 'pointer',
+              }}
+            >
+              <BarChart3 size={14} /> Biểu đồ
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Hiển thị nội dung: Bảng hoặc Biểu đồ */}
+      {viewMode === 'chart' ? (
+        <Columns
+          title="Biểu đồ phân tích trạng thái đơn hàng trong kỳ"
+          defaultKind="horizontal"
+          unitLabel={chartMetric === 'amount' ? 'đồng' : 'đơn hàng'}
+          currency={chartMetric === 'amount'}
+          controls={
+            <WmsField>
+              Chỉ số hiển thị
+              <WmsSelect value={chartMetric} onChange={e => setChartMetric(e.target.value)}>
+                <option value="count">Số lượng đơn hàng</option>
+                <option value="amount">Giá trị tiền hàng (VNĐ)</option>
+              </WmsSelect>
+            </WmsField>
+          }
+          rows={chartRows}
+        />
+      ) : (
+        <>
+          {filteredRows.length === 0 ? (
+            <div style={{ padding: '36px', textAlign: 'center', background: '#F9FAFB', borderRadius: '8px', border: '1px dashed #D1D5DB' }}>
+              <p style={{ margin: 0, fontSize: '14px', color: '#6B7280' }}>
+                Không có đơn hàng nào thuộc tiêu chí lọc này.
+              </p>
+              {onlyWithOrders && (
+                <button
+                  type="button"
+                  onClick={() => setOnlyWithOrders(false)}
+                  style={{
+                    marginTop: '8px',
+                    fontSize: '13px',
+                    color: '#2563EB',
+                    background: 'none',
+                    border: 'none',
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Hiển thị tất cả 15 trạng thái (kể cả trạng thái 0 đơn)
+                </button>
+              )}
+            </div>
+          ) : (
+            <Table
+              headings={[
+                'Khâu vận hành',
+                'Trạng thái đơn hàng',
+                'Số lượng đơn',
+                'Tỷ trọng',
+                'Tổng giá trị tiền hàng',
+              ]}
+              paginated={false}
+            >
+              {filteredRows.map(row => {
+                const stage = STATUS_TO_STAGE[row.status] || PIPELINE_STAGES[0];
+                const pct = totalOrders > 0 ? ((row.count || 0) / totalOrders) * 100 : 0;
+                return (
+                  <tr key={row.status}>
+                    <td>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '12px',
+                          fontWeight: 500,
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          background: stage.badgeBg,
+                          color: stage.badgeColor,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            background: stage.dotColor,
+                          }}
+                        />
+                        {stage.shortLabel}
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{ fontWeight: row.count > 0 ? 600 : 400, color: row.count > 0 ? '#111827' : '#6B7280' }}>
+                        {orderLabels[row.status] || row.status}
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{ fontWeight: row.count > 0 ? 700 : 400, color: row.count > 0 ? '#111827' : '#9CA3AF' }}>
+                        {quantity(row.count)}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+                        <div style={{ width: '60px', height: '6px', background: '#E5E7EB', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              width: `${Math.min(100, pct)}%`,
+                              height: '100%',
+                              background: stage.dotColor,
+                              borderRadius: '3px',
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: '12px', color: '#4B5563', width: '42px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {pct.toFixed(1)}%
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <span
+                        style={{
+                          fontWeight: (row.totalAmount || 0) > 0 ? 600 : 400,
+                          color: (row.totalAmount || 0) > 0 ? '#059669' : '#9CA3AF',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {money(row.totalAmount || 0)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {/* Dòng tổng cộng */}
+              <tr style={{ background: '#FAFBFB', fontWeight: 700 }}>
+                <td>
+                  <strong>Tổng cộng</strong>
+                </td>
+                <td>
+                  <em style={{ fontSize: '12px', color: '#6B7280', fontWeight: 400 }}>
+                    ({filteredRows.length} trạng thái đang hiển thị)
+                  </em>
+                </td>
+                <td>
+                  <strong style={{ color: '#111827' }}>{quantity(filteredOrdersTotal)}</strong>
+                </td>
+                <td>
+                  <div style={{ textAlign: 'right', fontSize: '12px', color: '#111827' }}>
+                    {totalOrders > 0 ? ((filteredOrdersTotal / totalOrders) * 100).toFixed(1) : '0.0'}%
+                  </div>
+                </td>
+                <td>
+                  <strong style={{ color: '#059669' }}>{money(filteredAmountTotal)}</strong>
+                </td>
+              </tr>
+            </Table>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function BusinessActivity({ resource, salesChannel }) {
   const location = useLocation();
   const data = resource.data;
@@ -212,14 +760,6 @@ export default function BusinessActivity({ resource, salesChannel }) {
     <ReturnTrend points={activity.points} threshold={threshold} />
     <ReturnReasons rows={activity.returnDetails} />
     <ReturnWorklist key={location.key} rows={data.worklist} initialOverdueOnly={section === 'owner-return-processing'} />
-    <section id="owner-order-status" className="owner-content-panel">
-      <Columns title="Trạng thái hiện tại của đơn hàng tạo trong kỳ" defaultKind="horizontal" unitLabel="đơn hàng"
-        rows={data.orderStatuses.map(row => ({ label: orderLabels[row.status] || 'Chưa rõ trạng thái', value: row.count }))} />
-      <details><summary>Xem bảng đếm trạng thái đơn hàng</summary>
-        <Table headings={['Trạng thái hiện tại', 'Số đơn hàng']} paginated={false}>
-          {data.orderStatuses.map(row => <tr key={row.status}><td>{orderLabels[row.status] || row.status}</td><td>{quantity(row.count)}</td></tr>)}
-        </Table>
-      </details>
-    </section>
+    <OrderStatusPipeline orderStatuses={data.orderStatuses} />
   </>}</ResourceState>;
 }

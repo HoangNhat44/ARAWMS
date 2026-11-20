@@ -182,7 +182,7 @@ export async function businessActivity(query, now = new Date()) {
   const [shipped, previousShipped, customers, previousCustomers, created, windowInspections] = await Promise.all([
     loadShipped(range, scope, now), compare ? loadShipped(compare, scope, now) : [],
     firstPurchases(range, scope), compare ? firstPurchases(compare, scope) : [],
-    read('sales_orders', { ...scope, createdAt: range }, { status: 1 }),
+    read('sales_orders', { ...scope, createdAt: range }, { status: 1, totalOrderAmount: 1, financialSummary: 1 }),
     read('return_inspections', { inspectedAt: processingRange }, { orderId: 1 }),
   ]);
   const [requests, returned] = await Promise.all([
@@ -209,7 +209,11 @@ export async function businessActivity(query, now = new Date()) {
   return {
     activity: summarizeActivity(shipped, customers, requestsByOrder, range, now),
     previous: compare ? summarizeActivity(previousShipped, previousCustomers, requestsByOrder, compare, now) : null,
-    orderStatuses: ORDER_STATUS.map(status => ({ status, count: created.filter(order => order.status === status).length })),
+    orderStatuses: ORDER_STATUS.map(status => {
+      const matching = created.filter(order => order.status === status);
+      const totalAmount = matching.reduce((sum, order) => sum + (Number(order.financialSummary?.totalOrderAmount) || Number(order.totalOrderAmount) || 0), 0);
+      return { status, count: matching.length, totalAmount };
+    }),
     worklist: returnWorklist(returned, inspections, tickets, range, now, includeBacklog),
     policy: returnPolicy,
   };
