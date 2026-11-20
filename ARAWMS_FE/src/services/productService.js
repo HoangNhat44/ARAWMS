@@ -24,7 +24,16 @@ export const productService = {
   binOptions: (skuIds) => api.get('/products/bulk/bin-options', { params: { skuIds: skuIds.join(',') } }),
   allocateReceipt: (id, values) => api.post(`/products/bulk/documents/${id}/allocations`, values),
   documentBarcodes: (id) => api.get(`/products/bulk/documents/${id}/barcodes`),
-  syncDocumentBarcodes: (id) => api.post(`/products/bulk/documents/${id}/barcodes/sync`),
+  // Product detail page (finished goods): read-only data, labels rendered on demand for printing.
+  detail: (id) => api.get(`/products/${id}/detail`),
+  shelfStock: (id) => api.get(`/products/${id}/shelf-stock`),
+  productReceipts: (id, params) => api.get(`/products/${id}/receipts`, { params }),
+  productReceiptUnits: (id, documentId) => api.get(`/products/${id}/receipts/${documentId}/units`),
+  productLabels: (id, barcodes) => api.post(`/products/${id}/labels`, { barcodes }),
+  barcodeTimeline: (barcode) => api.get(`/products/units/${encodeURIComponent(barcode)}/timeline`),
+  // Defect warehouse: units waiting for / inside the defect warehouse, and taking them out with a reason.
+  defectUnits: () => api.get('/products/defects'),
+  defectOutbound: (values) => api.post('/products/defects/outbound', values),
   locations: () => api.get('/products/locations'),
   createLocation: (values) => api.post('/products/locations', values),
   // Group product setup calls used by the configuration form.

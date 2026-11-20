@@ -18,7 +18,6 @@ import SystemLog from '../../../models/SystemLog.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import { ReceiptError, getReceiptOptions } from './inboundExecution.service.js';
 import { configureProductCloudinary } from '../../../common/services/productMediaStorage.js';
-import { scheduleBarcodeImages } from '../../../common/services/barcodeImageStorage.js';
 import { claimRawMaterialBarcode, nextRawMaterialBarcode } from '../../../common/services/rawMaterialBarcode.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
 import { getDeliveryBatchContext, commitDeliveryReceipt } from './deliveryPlan.service.js';
@@ -689,7 +688,6 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
             actualQty: line.actualQty, acceptedQty: line.acceptedQty, rejectedQty: line.rejectedQty })) } }], { session });
       confirmed = receipt;
     });
-    scheduleBarcodeImages('RAW_MATERIAL', String(confirmed._id));
     if (confirmed.inboundRequestId) publishRealtime('material-inbound-request:changed', {
       requestId: id(confirmed.inboundRequestId), receiptId: id(confirmed._id) });
     return confirmed;

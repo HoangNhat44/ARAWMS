@@ -175,29 +175,39 @@ test('SKU edits change only the price; color and size are immutable', async () =
   assert.equal((await Sku.findById(before._id)).color, 'Đen');
 });
 
-test('a draft product code can change and regenerates SKU codes; it locks once ACTIVE', async () => {
+test('a product sells and its code is locked as soon as it is added, even from an old queued draft', async () => {
+  // An operation queued by an older client that still sends status DRAFT.
   const created = await send({ operationId: 'offline-draft-code-0001', operationType: 'CREATE',
-    payload: { productName: 'Mẫu nháp', productCode: 'DRAFT01', category: 'Áo', description: '',
+    payload: { productName: 'Mẫu cũ', productCode: 'DRAFT01', category: 'Áo', description: '',
       basePrice: 5000, status: 'DRAFT', variants: [{ color: 'Trắng', size: 'S' }, { color: 'Đỏ đô', size: 'M' }] } });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const productId = created.body.data.product.id;
-  assert.equal(created.body.data.product.codeLockedAt, null);
+  assert.equal(created.body.data.product.isActive, true);
+  assert.ok(created.body.data.product.codeLockedAt);
+  assert.ok((await Sku.find({ productId })).every((sku) => sku.isActive));
   const renamed = await send({ operationId: 'offline-draft-code-0002', operationType: 'UPDATE_PRODUCT',
     serverEntityId: productId, baseVersion: 0, payload: { productCode: 'DRAFT02' } });
-  assert.equal(renamed.status, 200, JSON.stringify(renamed.body));
-  const codes = (await Sku.find({ productId }).sort({ size: 1 })).map((sku) => sku.skuCode).sort();
-  assert.deepEqual(codes, ['DRAFT02-DODO-M', 'DRAFT02-TRANG-S']);
-  const activated = await send({ operationId: 'offline-draft-code-0003', operationType: 'UPDATE_PRODUCT',
-    serverEntityId: productId, baseVersion: renamed.body.data.product.version, payload: { status: 'ACTIVE' } });
+  assert.equal(renamed.status, 409);
+  assert.equal(renamed.body.error.code, 'PRODUCT_CODE_LOCKED');
+  // A status sent by an older client no longer turns a product back into a draft.
+  const draft = await send({ operationId: 'offline-draft-code-0003', operationType: 'UPDATE_PRODUCT',
+    serverEntityId: productId, baseVersion: 0, payload: { productName: 'Mẫu cũ đã sửa', status: 'DRAFT' } });
+  assert.equal(draft.status, 200, JSON.stringify(draft.body));
+  assert.equal(draft.body.data.product.isActive, true);
+  assert.equal(draft.body.data.product.productName, 'Mẫu cũ đã sửa');
+});
+
+test('a draft saved by an older version can still be activated', async () => {
+  const inserted = await Product.collection.insertOne({ productCode: 'OLDDRAFT', productName: 'Nháp cũ', category: 'Áo',
+    basePrice: 1000, isActive: false, isDeleted: false, version: 0 });
+  await Sku.create({ productId: inserted.insertedId, skuCode: 'OLDDRAFT-DEN-M', skuBarcode: 'OLDDRAFT-DEN-M', styleName: 'OLDDRAFT',
+    color: 'Đen', size: 'M', retailPrice: 1000, isActive: false, variantKey: `${inserted.insertedId}:đen:M` });
+  const activated = await send({ operationId: 'offline-old-draft-0001', operationType: 'UPDATE_PRODUCT',
+    serverEntityId: String(inserted.insertedId), baseVersion: 0, payload: { status: 'ACTIVE' } });
   assert.equal(activated.status, 200, JSON.stringify(activated.body));
+  assert.equal(activated.body.data.product.isActive, true);
   assert.ok(activated.body.data.product.codeLockedAt);
-  const backToDraft = await send({ operationId: 'offline-draft-code-0004', operationType: 'UPDATE_PRODUCT',
-    serverEntityId: productId, baseVersion: activated.body.data.product.version, payload: { status: 'DRAFT' } });
-  assert.equal(backToDraft.status, 200);
-  const locked = await send({ operationId: 'offline-draft-code-0005', operationType: 'UPDATE_PRODUCT',
-    serverEntityId: productId, baseVersion: backToDraft.body.data.product.version, payload: { productCode: 'DRAFT03' } });
-  assert.equal(locked.status, 409);
-  assert.equal(locked.body.error.code, 'PRODUCT_CODE_LOCKED');
+  assert.equal((await Sku.findOne({ skuCode: 'OLDDRAFT-DEN-M' })).isActive, true);
 });
 
 test('stopping a color keeps its SKUs; adding it again re-enables the same SKUs', async () => {
@@ -215,19 +225,27 @@ test('stopping a color keeps its SKUs; adding it again re-enables the same SKUs'
   const red = await Sku.find({ productId, color: 'Đỏ' });
   assert.ok(red.every((sku) => !sku.isActive && sku.discontinuedAt));
   assert.equal((await Sku.findOne({ productId, color: 'Trắng' })).isActive, true);
-  // Product re-activation must not re-enable a stopped color.
-  const draft = await send({ operationId: 'offline-color-0003', operationType: 'UPDATE_PRODUCT', serverEntityId: productId,
-    baseVersion: stopped.body.data.product.version, payload: { status: 'DRAFT' } });
-  const active = await send({ operationId: 'offline-color-0004', operationType: 'UPDATE_PRODUCT', serverEntityId: productId,
-    baseVersion: draft.body.data.product.version, payload: { status: 'ACTIVE' } });
-  assert.equal(active.status, 200, JSON.stringify(active.body));
-  assert.ok((await Sku.find({ productId, color: 'Đỏ' })).every((sku) => !sku.isActive));
+  assert.equal(stopped.body.data.product.isActive, true, 'one color still sells, so the product still sells');
+  // Stopping the last color stops the whole product.
+  const allStopped = await send({ operationId: 'offline-color-0003', operationType: 'SET_COLOR_ACTIVE',
+    serverEntityId: productId, baseVersion: stopped.body.data.product.version, payload: { color: 'Trắng', isActive: false } });
+  assert.equal(allStopped.status, 200, JSON.stringify(allStopped.body));
+  assert.equal(allStopped.body.data.product.isActive, false);
+  // Adding a stopped color again re-enables the same SKU and the product sells again.
   const readded = await send({ operationId: 'offline-color-0005', operationType: 'ADD_VARIANTS', serverEntityId: productId,
-    baseVersion: active.body.data.product.version, payload: { variants: [{ color: 'Đỏ', size: 'M' }] } });
+    baseVersion: allStopped.body.data.product.version, payload: { variants: [{ color: 'Đỏ', size: 'M' }] } });
   assert.equal(readded.status, 200, JSON.stringify(readded.body));
   assert.equal(readded.body.data.skus[0].skuCode, 'AL186-DO-M');
+  assert.equal(readded.body.data.skus[0].isActive, true);
   assert.ok(redIds.includes(String(readded.body.data.skus[0].id)), 'must reuse the stopped SKU');
+  assert.equal(readded.body.data.product.isActive, true);
   assert.equal(await Sku.countDocuments({ productId }), 3);
+  // Resuming a color the same way also makes the product sell.
+  const resumed = await send({ operationId: 'offline-color-0006', operationType: 'SET_COLOR_ACTIVE',
+    serverEntityId: productId, baseVersion: readded.body.data.product.version, payload: { color: 'Trắng', isActive: true } });
+  assert.equal(resumed.status, 200, JSON.stringify(resumed.body));
+  assert.equal((await Sku.findOne({ productId, color: 'Trắng' })).isActive, true);
+  assert.equal(resumed.body.data.product.isActive, true);
 });
 
 test('two color names that collapse to the same code are rejected', async () => {

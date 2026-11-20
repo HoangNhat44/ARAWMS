@@ -29,6 +29,17 @@ const stocktakeRecordSchema = new Schema(
     isAgingThresholdExceeded: { type: Boolean, default: false, index: true },
     scannedByStaffId: { type: Schema.Types.ObjectId, ref: 'User' },
     scannedAt: { type: Date },
+    // Nhân viên kỹ thuật báo hỏng khi kiểm (vd để lâu bị ố, mốc): nằm trong actualScannedQty nhưng không còn bán được.
+    damagedQty: { type: Number, default: 0, min: 0 },
+    conditionNote: { type: String, trim: true, maxlength: 500 },
+    // Kết quả điều chỉnh tồn sau khi báo cáo được duyệt.
+    adjustment: {
+      action: { type: String, enum: ['WRITE_OFF', 'QTY_ADJUST', 'MANUAL', 'NONE'] },
+      reason: { type: String, enum: ['DAMAGED', 'LOST'] },
+      quantity: Number,
+      note: String,
+      adjustedAt: Date,
+    },
   },
   { collection: 'stocktake_records' }
 );

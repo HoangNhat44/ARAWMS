@@ -37,6 +37,7 @@ export const ORDER_STATUS_VARIANT = {
   RETURN_FAILED: 'danger',
   CANCELLED: 'danger',
   RETURNED: 'dark',
+  RETURN_COMPLETED: 'success',
 };
 
 /**
@@ -58,6 +59,7 @@ export const ORDER_STATUS_CLASS = {
   EXCHANGE_REQUESTED: 'ara-badge-handed',
   CANCELLED: 'ara-badge-cancelled',
   RETURNED: 'ara-badge-returned',
+  RETURN_COMPLETED: 'ara-badge-delivered',
 };
 
 /**

@@ -23,7 +23,7 @@ import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
 import ProductUnit from '../../../models/ProductUnit.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
-import { scheduleBarcodeImages } from '../../../common/services/barcodeImageStorage.js';
+import { code128DataUrl } from '../../../common/services/codeImageRenderer.js';
 import PutawayAllocation from '../../../models/PutawayAllocation.model.js';
 import { confirmReceiptAllocation, fingerprint, parseLines, remainingQuantity } from '../location-layout/allocation.service.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
@@ -170,7 +170,6 @@ router.get('/bin-options', async (req, res, next) => {
  * THÔNG TIN TRẢ VỀ:
  * - documentCode, direction (IN/OUT)
  * - totalQuantity: tổng số sản phẩm
- * - barcodeImagesReady: số tem đã có ảnh
  * - unallocated: số sản phẩm chưa phân bổ vị trí
  * - pending: số sản phẩm đang chờ xếp
  * - placed: số sản phẩm đã xếp xong
@@ -646,9 +645,6 @@ router.get('/documents', async (req, res, next) => {
   try {
     const documents = await FinishedGoodsBulkDocument.find({ isDeleted: { $ne: true } })
       .sort({ createdAt: -1 }).limit(20).lean();
-    const readyCounts = await ProductUnit.aggregate([{ $match: { receivingDocumentId: { $in: documents.map((item) => item._id) },
-      barcodeImageUrl: { $type: 'string' } } }, { $group: { _id: '$receivingDocumentId', count: { $sum: 1 } } }]);
-    const readyByDocument = new Map(readyCounts.map((item) => [String(item._id), item.count]));
     const allocations = await PutawayAllocation.find({ sourceReceiptId: { $in: documents.map((item) => item._id) },
       status: 'CONFIRMED' }).select('sourceReceiptId lines').lean();
     const progress = new Map();
@@ -659,14 +655,9 @@ router.get('/documents', async (req, res, next) => {
       row.placed += line.placedQuantity || 0;
       progress.set(key, row);
     }
-    for (const document of documents) if (document.direction === 'IN' &&
-      (readyByDocument.get(String(document._id)) || 0) < document.totalQuantity) {
-      scheduleBarcodeImages('FINISHED_GOODS', String(document._id));
-    }
     return sendSuccess(res, 'Phiếu kho gần đây', { documents: documents.map((document) => ({
       id: String(document._id), documentCode: document.documentCode, direction: document.direction,
       totalQuantity: document.totalQuantity, createdAt: document.createdAt,
-      barcodeImagesReady: readyByDocument.get(String(document._id)) || 0,
       lineCount: document.items.length,
       unallocated: Math.max(0, document.totalQuantity - (progress.get(String(document._id))?.pending || 0) -
         (progress.get(String(document._id))?.placed || 0)),
@@ -688,16 +679,11 @@ router.get('/documents', async (req, res, next) => {
  * 
  * RESPONSE:
  * - total: tổng số tem
- * - ready: số tem đã có ảnh
  * - labels: mảng các tem {barcode, imageUrl, skuId, batchId}
+ *   imageUrl là ảnh SVG (data URL) vẽ tại thời điểm gọi từ barcode lưu trong MongoDB
  * 
  * SỬ DỤNG:
  * - Hiển thị danh sách tem để in
- * - Download tất cả tem dạng ZIP
- * - Kiểm tra tem nào chưa có ảnh
- * 
- * TỰ ĐỘNG:
- * - Nếu có tem chưa có ảnh → schedule background job
  */
 router.get('/documents/:id/barcodes', async (req, res, next) => {
   try {
@@ -706,39 +692,11 @@ router.get('/documents/:id/barcodes', async (req, res, next) => {
       .select('documentCode totalQuantity items').lean();
     if (!document) return sendError(res, 'Không tìm thấy phiếu nhập', { code: 'DOCUMENT_NOT_FOUND' }, 404);
     const units = await ProductUnit.find({ receivingDocumentId: document._id })
-      .select('barcode barcodeImageUrl skuId batchId').sort({ createdAt: 1 }).lean();
-    if (units.some((unit) => !unit.barcodeImageUrl)) scheduleBarcodeImages('FINISHED_GOODS', String(document._id));
+      .select('barcode skuId batchId').sort({ createdAt: 1 }).lean();
     return sendSuccess(res, 'Tem sản phẩm của phiếu nhập', { documentCode: document.documentCode,
-      total: units.length, ready: units.filter((unit) => unit.barcodeImageUrl).length,
-      labels: units.map((unit) => ({ barcode: unit.barcode, imageUrl: unit.barcodeImageUrl || null,
+      total: units.length,
+      labels: units.map((unit) => ({ barcode: unit.barcode, imageUrl: code128DataUrl(unit.barcode),
         skuId: String(unit.skuId), batchId: String(unit.batchId) })) });
-  } catch (error) { next(error); }
-});
-
-/**
- * POST /documents/:id/barcodes/sync
- * 
- * Tạo lại ảnh barcode bị thiếu
- * 
- * KHI NÀO DÙNG:
- * - Upload Cloudinary bị lỗi lần đầu
- * - Ảnh barcode bị xóa nhầm
- * - Cần regenerate ảnh với quality cao hơn
- * 
- * CƠ CHẾ:
- * - Schedule background job (async)
- * - Chỉ tạo lại ảnh chưa có (barcodeImageUrl === null)
- * - Barcode text không đổi
- * 
- * RESPONSE: 202 Accepted (background job đang chạy)
- */
-router.post('/documents/:id/barcodes/sync', async (req, res, next) => {
-  try {
-    if (!mongoose.isValidObjectId(req.params.id)) return sendError(res, 'Mã phiếu không hợp lệ', { code: 'INVALID_DOCUMENT' }, 400);
-    const exists = await FinishedGoodsBulkDocument.exists({ _id: req.params.id, direction: 'IN', isDeleted: { $ne: true } });
-    if (!exists) return sendError(res, 'Không tìm thấy phiếu nhập', { code: 'DOCUMENT_NOT_FOUND' }, 404);
-    scheduleBarcodeImages('FINISHED_GOODS', req.params.id);
-    return sendSuccess(res, 'Đang tạo các ảnh barcode còn thiếu', { scheduled: true }, 202);
   } catch (error) { next(error); }
 });
 
@@ -1105,7 +1063,11 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
       for (const item of items) {
         const product = await Product.findOne({ _id: item.productId, isDeleted: { $ne: true } }).session(session);
         if (!product) throw createBulkStockRequestError('Không tìm thấy sản phẩm trong phiếu', 'PRODUCT_NOT_FOUND', 404);
-        if (!product.isActive) throw createBulkStockRequestError(`Sản phẩm ${product.productCode} đang ở trạng thái nháp`, 'PRODUCT_INACTIVE', 409);
+        // Returned goods (good or defective) of a product/color that has stopped selling must still be
+        // received; only new stock (from sewing / manual inbound) and outbound require an active SKU.
+        const isReturnInbound = direction === 'IN' &&
+          ['INBOUND_FROM_RETURN', 'DEFECT_QUARANTINE_INBOUND'].includes(sourceTicket?.ticketType);
+        if (!product.isActive && !isReturnInbound) throw createBulkStockRequestError(`Sản phẩm ${product.productCode} đã ngừng bán`, 'PRODUCT_INACTIVE', 409);
         let sku;
         if (item.skuId) {
           sku = await Sku.findOne({ _id: item.skuId, productId: product._id, isDeleted: { $ne: true } }).session(session);
@@ -1115,7 +1077,7 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
           if (existing.length === 1) sku = existing[0];
         }
         if (!sku) throw createBulkStockRequestError(`Không tìm thấy SKU cho ${product.productCode}`, 'SKU_NOT_FOUND', 404);
-        if (!sku.isActive) throw createBulkStockRequestError(`SKU ${sku.skuCode} đã ngừng sử dụng`, 'SKU_INACTIVE', 409);
+        if (!sku.isActive && !isReturnInbound) throw createBulkStockRequestError(`SKU ${sku.skuCode} đã ngừng sử dụng`, 'SKU_INACTIVE', 409);
         const resolvedKey = String(sku._id);
         if (resolvedSkus.has(resolvedKey)) throw createBulkStockRequestError(`SKU ${sku.skuCode} bị lặp trong phiếu`, 'DUPLICATE_LINE');
         resolvedSkus.add(resolvedKey);
@@ -1129,7 +1091,9 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
           let barcodes = [];
 
           if (isDefectInbound) {
-            // Hàng lỗi nhập vào khu DEFECT_QUARANTINE: KHÔNG cộng tồn bán Sku.onHandQty, giữ trạng thái DEFECTIVE.
+            // Hàng lỗi nhập vào khu DEFECT_QUARANTINE: KHÔNG cộng tồn bán Sku.onHandQty.
+            // Kho xác nhận nhận hàng: DEFECT_PENDING (kỹ thuật vừa chốt lỗi) -> DEFECTIVE (đang trong kho hàng lỗi).
+            const receivedAt = new Date();
             if (quantity > 0) {
               await InventoryTransaction.create([{
                 transactionCode: `FGD-${randomUUID()}`, warehouseType: 'DEFECT_QUARANTINE', itemType: 'FINISHED_SKU',
@@ -1153,6 +1117,7 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
                       warehouseId: location._id,
                       receivingDocumentId: documentId,
                       inventoryStatus: 'DEFECTIVE',
+                      defectReceivedAt: receivedAt,
                       packedOrderId: null,
                     },
                   },
@@ -1165,7 +1130,7 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
                 await ProductUnit.insertMany(newBarcodes.map((barcode) => ({
                   barcode, barcodeFormat: 'CODE_128', skuId: sku._id,
                   warehouseId: location._id, receivingDocumentId: documentId,
-                  inventoryStatus: 'DEFECTIVE',
+                  inventoryStatus: 'DEFECTIVE', defectReceivedAt: receivedAt,
                 })), { session });
               }
               barcodes = [...existingSet, ...newBarcodes];
@@ -1281,7 +1246,6 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
       }
     });
     if (direction === 'IN' && saved.totalQuantity > 0) {
-      scheduleBarcodeImages('FINISHED_GOODS', String(saved._id));
       publishRealtime('finished-goods:changed', { warehouseType: 'FINISHED_GOODS', direction,
         documentId: String(saved._id), documentCode: saved.documentCode, totalQuantity: saved.totalQuantity,
         skuIds: saved.items.map((item) => String(item.skuId)) });

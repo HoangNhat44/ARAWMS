@@ -7,39 +7,42 @@ import { useOwnerResource } from '../../hooks/useOwnerResource';
 import { WmsField, WmsSelect } from '../../components/ui/WmsControls';
 import { ResourceState, Table, money, quantity } from './OwnerUI';
 import { SeriesPlot, Columns } from './OwnerCharts';
-const metrics = { orderValue: 'Tổng giá trị đơn hàng', orders: 'Số đơn hàng', returns: 'Số yêu cầu hoàn', shipping: 'Phí vận chuyển', paid: 'Số đơn đã thanh toán', unpaid: 'Số đơn chưa thanh toán', late: 'Số đơn giao trễ' };
+const metrics = { revenue: 'Tiền hàng sau giảm giá và trả hàng', orderValue: 'Tổng giá trị đơn hàng', orders: 'Số đơn hàng', returns: 'Số yêu cầu hoàn', shipping: 'Phí vận chuyển', paid: 'Số đơn đã thanh toán', unpaid: 'Số đơn chưa thanh toán', late: 'Số đơn giao trễ' };
 const dateRange = (from, to) => [from, to].map(date => date.split('-').reverse().join('/')).join(' – ');
+const channelColors = { FACEBOOK: '#315d48', SHOPEE: '#a66c28', TIKTOK: '#466c9b', UNKNOWN: '#626b75' };
 /**
  * API trend tổng hợp từng tháng trong đúng khoảng ngày, kể cả tháng đầu/cuối chỉ xem một phần.
  * Đổi chỉ số hoặc dạng biểu đồ chỉ đổi cách vẽ; dữ liệu tải lại khi ngày/nguồn bán/thanh toán đổi.
  */
 export default function AnnualAnalytics({ from, to, salesChannel, paymentStatus }) {
   const [metric, setMetric] = useState('orderValue'); const [kind, setKind] = useState('line');
-  const resource = useOwnerResource('operations-report/trend', { from, to, salesChannel, paymentStatus });
-  // Tổng giá trị đơn hàng và phí vận chuyển hiển thị bằng VND; các chỉ số còn lại là số đếm.
-  const currency = ['orderValue', 'shipping'].includes(metric); const format = currency ? money : quantity;
-  const rows = (resource.data?.months || []).map((r) => ({ label: r.label, current: r[metric] }));
+  const daily = Date.parse(to) - Date.parse(from) < 31 * 86400000;
+  const resource = useOwnerResource('operations-report/trend', { from, to, salesChannel, paymentStatus, bucket: daily ? 'day' : 'month' });
+  // Kỳ ngắn chia theo ngày; kỳ dài chia theo tháng. Chỉ số tiền hiển thị bằng đồng.
+  const currency = ['revenue', 'orderValue', 'shipping'].includes(metric); const format = currency ? money : quantity;
+  const rows = (resource.data?.points || []).map((r) => ({ label: r.label, current: r[metric] }));
   const title = `${metrics[metric]} · ${from} – ${to}`;
   return <section className="owner-content-panel owner-annual-analytics"><h2>Xu hướng trong kỳ</h2>
     <div className="owner-filters"><WmsField>Chỉ số<WmsSelect value={metric} onChange={(e) => setMetric(e.target.value)}>{Object.entries(metrics).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</WmsSelect></WmsField>
     <WmsField>Dạng biểu đồ<WmsSelect value={kind} onChange={(e) => setKind(e.target.value)}><option value="column">Biểu đồ cột</option><option value="line">Biểu đồ đường</option></WmsSelect></WmsField></div>
-    <ResourceState resource={resource}>{resource.data && <><SeriesPlot rows={rows} title={title} currency={currency} kind={kind} categoryLabel="Tháng ghi nhận số liệu trong kỳ đang xem" unitLabel={metric === 'returns' ? 'yêu cầu hoàn' : 'đơn hàng'} series={[{ key: 'current', label: 'Kỳ đang xem' }]} />
-    <details><summary>Xem bảng số liệu</summary><Table headings={['Tháng', metrics[metric]]} empty={!rows.length}>{rows.map((row) => <tr key={row.label}><td>{row.label}</td><td>{format(row.current)}</td></tr>)}</Table></details></>}</ResourceState>
+    <ResourceState resource={resource}>{resource.data && <><SeriesPlot rows={rows} title={title} currency={currency} kind={kind} categoryLabel={daily ? 'Ngày ghi nhận' : 'Tháng ghi nhận'} unitLabel={metric === 'returns' ? 'yêu cầu hoàn' : 'đơn hàng'} series={[{ key: 'current', label: 'Kỳ đang xem' }]} />
+    <details><summary>Xem bảng số liệu</summary><Table headings={[daily ? 'Ngày' : 'Tháng', metrics[metric]]} empty={!rows.length}>{rows.map((row) => <tr key={row.label}><td>{row.label}</td><td>{format(row.current)}</td></tr>)}</Table></details></>}</ResourceState>
   </section>;
 }
 // UC-13: Tỷ trọng chỉ dùng số không âm; tên đầy đủ trên thanh ngang, các số tiền vẫn có đơn vị đồng.
 // Bộ chọn chỉ số nằm trong thẻ biểu đồ; tiêu đề cố định giúp hai thẻ cạnh nhau thẳng hàng.
 export function SalesSourceChart({ channels, labels }) {
   const [metric, setMetric] = useState('orderValue');
-  const options = { orderValue: 'Tổng giá trị đơn hàng', orders: 'Số đơn hàng', paid: 'Số đơn đã thanh toán', unpaid: 'Số đơn chưa thanh toán', late: 'Số đơn giao trễ', shipping: 'Phí vận chuyển' };
-  return <Columns title="Kết quả theo nguồn bán" controls={<WmsField>Chỉ số theo nguồn bán<WmsSelect value={metric} onChange={(e) => setMetric(e.target.value)}>{Object.entries(options).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</WmsSelect></WmsField>} allowDonut currency={['orderValue', 'shipping'].includes(metric)} categoryLabel="Nguồn bán" unitLabel="đơn hàng" rows={channels.map((r) => ({ label: labels[r.channel], value: r[metric] }))} />;
+  const options = { revenue: metrics.revenue, orderValue: metrics.orderValue, refunded: 'Giá trị hàng trả đã duyệt', orders: metrics.orders, paid: metrics.paid, unpaid: metrics.unpaid, late: metrics.late, shipping: metrics.shipping };
+  return <Columns title="Kết quả theo nguồn bán"
+    controls={<WmsField>Chỉ số theo nguồn bán<WmsSelect value={metric} onChange={(e) => setMetric(e.target.value)}>{Object.entries(options).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</WmsSelect></WmsField>} allowDonut defaultKind="donut" currency={['revenue', 'orderValue', 'refunded', 'shipping'].includes(metric)} categoryLabel="Nguồn bán" unitLabel="đơn hàng" rows={channels.map((r) => ({ label: labels[r.channel], value: r[metric] }))} />;
 }
 
 // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13 - Chủ cửa hàng chọn chỉ số để đối chiếu hai kỳ trên cùng đơn vị.
 export function PeriodComparison({ data, dates }) {
   const [metric, setMetric] = useState('orderValue');
-  const options = { orderValue: 'Tổng giá trị đơn hàng', orders: 'Số đơn hàng', paid: 'Số đơn đã thanh toán', unpaid: 'Số đơn chưa thanh toán', returns: 'Số yêu cầu hoàn', shipping: 'Phí vận chuyển' };
-  const currency = ['orderValue', 'shipping'].includes(metric);
+  const options = { revenue: metrics.revenue, orderValue: metrics.orderValue, orders: metrics.orders, paid: metrics.paid, unpaid: metrics.unpaid, returns: metrics.returns, shipping: metrics.shipping };
+  const currency = ['revenue', 'orderValue', 'shipping'].includes(metric);
   const rows = [
     { label: `Kỳ đang xem: ${dateRange(dates.from, dates.to)}`, value: data.sales[metric] },
     { label: `Kỳ đối chiếu: ${dateRange(dates.compareFrom, dates.compareTo)}`, value: data.previous[metric] },
@@ -53,6 +56,70 @@ export function PeriodComparison({ data, dates }) {
     </WmsField>}
     lineContent={<ComparisonTrend dates={dates} metric={metric} title={options[metric]} currency={currency} />}
   />;
+}
+
+// Khi chọn cả năm, gom thành bốn nhóm quý và vẽ hai cột cạnh nhau trong mỗi nhóm.
+// Năm đối chiếu dùng cùng bộ lọc nguồn bán và trạng thái thanh toán.
+export function QuarterlyRevenue({ year, compareYear, salesChannel, paymentStatus }) {
+  const resource = useOwnerResource('operations-report/annual', { year, compareYear, salesChannel, paymentStatus });
+  const [grouping, setGrouping] = useState('months');
+  const [kind, setKind] = useState('column');
+  const rows = (resource.data?.[grouping] || []).map(row => ({
+    label: row.label, current: row.orderValue, previous: row.previous?.orderValue,
+  }));
+  return <section className="owner-content-panel">
+    <h2>So sánh tổng giá trị đơn hàng hai năm</h2>
+    <div className="owner-filters"><WmsField>Xem theo<WmsSelect value={grouping} onChange={event => setGrouping(event.target.value)}>
+      <option value="months">Tháng</option><option value="quarters">Quý</option>
+    </WmsSelect></WmsField>
+    <WmsField>Dạng biểu đồ<WmsSelect value={kind} onChange={event => setKind(event.target.value)}>
+      <option value="column">Biểu đồ cột</option><option value="line">Biểu đồ đường</option>
+    </WmsSelect></WmsField></div>
+    <ResourceState resource={resource}>{resource.data && <>
+      <SeriesPlot title="So sánh tổng giá trị đơn hàng hai năm" rows={rows} kind={kind} currency categoryLabel={grouping === 'months' ? 'Tháng' : 'Quý'}
+        series={[{ key: 'current', label: String(year) }, { key: 'previous', label: String(compareYear) }]} />
+      <details><summary>Xem bảng tổng giá trị đơn hàng hai năm</summary>
+        <Table headings={[grouping === 'months' ? 'Tháng' : 'Quý', String(year), String(compareYear)]} paginated={false}>
+          {rows.map(row => <tr key={row.label}><td>{row.label}</td><td>{row.current == null ? '—' : money(row.current)}</td><td>{row.previous == null ? '—' : money(row.previous)}</td></tr>)}
+        </Table>
+      </details>
+    </>}</ResourceState>
+  </section>;
+}
+
+// Thanh ngang 100% dùng để so cơ cấu nguồn bán. Mỗi hàng tự chia theo
+// tổng giá trị đơn của kỳ đó; giữ bảng số liệu cho kỳ có tổng bằng 0.
+export function ChannelMixComparison({ data, dates, labels }) {
+  const periods = [
+    { label: dateRange(dates.from, dates.to), sales: data.sales },
+    { label: dateRange(dates.compareFrom, dates.compareTo), sales: data.previous },
+  ];
+  const share = (sales, value) => sales.orderValue > 0 && sales.channels.every(row => row.orderValue >= 0)
+    ? value / sales.orderValue * 100 : null;
+  const included = data.sales.channels.filter(row => !dates.salesChannel || row.channel === dates.salesChannel);
+  return <section className="owner-content-panel">
+    <h2>Tỷ trọng giá trị đơn hàng theo nguồn bán</h2>
+    {periods.map(({ label, sales }) => <div key={label + (sales === data.sales ? '-current' : '-previous')}>
+      <h3>{sales === data.sales ? 'Kỳ đang xem' : 'Kỳ đối chiếu'} · {label}</h3>
+      {share(sales, sales.orderValue) === null ? <p>Chưa thể tính tỷ trọng cho kỳ này.</p> :
+        <div className="owner-channel-share-bar" aria-hidden="true">
+          {sales.channels.filter(row => row.orderValue > 0).map(row => <div key={row.channel}
+            style={{ width: `${share(sales, row.orderValue)}%`, background: channelColors[row.channel] }}
+            title={`${labels[row.channel]} · ${quantity(share(sales, row.orderValue))}%`} />)}
+        </div>}
+    </div>)}
+    <div className="owner-chart-legend">{included.map(row => <span key={row.channel}>
+      <i style={{ background: channelColors[row.channel] }} />{labels[row.channel]}
+    </span>)}</div>
+    <Table headings={['Nguồn bán', 'Tỷ trọng kỳ đang xem', 'Tỷ trọng kỳ đối chiếu']} paginated={false}>
+      {included.map(row => <tr key={row.channel}><td>{labels[row.channel]}</td>
+        {periods.map(({ sales }, index) => {
+          const percentage = share(sales, sales.channels.find(channel => channel.channel === row.channel).orderValue);
+          return <td key={index}>{percentage === null ? '—' : `${quantity(percentage)}%`}</td>;
+        })}
+      </tr>)}
+    </Table>
+  </section>;
 }
 /**
  * Mỗi kỳ có một truy vấn trend riêng, cùng điều kiện nguồn bán và thanh toán.

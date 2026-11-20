@@ -10,7 +10,9 @@ const stocktakeScheduleSchema = new Schema({
   recurrence: { type: String, enum: ['ONCE', 'WEEKLY', 'MONTHLY', 'QUARTERLY'], required: true },
   weekday: Number, monthDay: Number, monthEnd: Boolean, quarterMonth: Number,
   startDate: { type: Date, required: true }, endDate: Date, startTime: { type: String, required: true },
-  durationHours: { type: Number, default: 2, min: 1, max: 72 },
+  // Khung giờ kiểm: startTime – endTime (cùng ngày). durationHours suy ra từ khung giờ; lịch cũ chỉ có durationHours.
+  endTime: String,
+  durationHours: { type: Number, default: 2, min: 0.25, max: 72 },
   inspectorId: { type: Schema.Types.ObjectId, ref: 'User' }, approverId: { type: Schema.Types.ObjectId, ref: 'User' },
   hideSystemQty: { type: Boolean, default: true }, instructions: { type: String, maxlength: 1000 },
   status: { type: String, enum: ['ACTIVE', 'PAUSED', 'CANCELLED'], default: 'ACTIVE', index: true },

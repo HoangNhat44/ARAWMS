@@ -20,6 +20,7 @@ import {
   cancelOrder,
   createPosDirectOrder,
   sendOrderConfirmationReceipt,
+  sendCancelConfirmationInquiry,
   simulateCustomerConfirm,
   syncOrderWithGhn,
   switchOrderGhnStatus,
@@ -79,6 +80,9 @@ router.post('/:id/confirm', authorizeRole('SELLER', 'OWNER'), confirmOrderReserv
 
 // Gửi phiếu xác nhận đơn hàng vào chat Messenger
 router.post('/:id/send-confirmation', authorizeRole('SELLER', 'OWNER'), sendOrderConfirmationReceipt);
+
+// Gửi tin nhắn hỏi xác nhận khách hàng trước khi hủy đơn (chỉ áp dụng Facebook)
+router.post('/:id/send-cancel-inquiry', authorizeRole('SELLER', 'OWNER'), sendCancelConfirmationInquiry);
 
 // Sandbox Simulator: Giả lập khách hàng nhắn "OK chốt đơn"
 router.post('/:id/simulate-confirm', authorizeRole('SELLER', 'OWNER'), simulateCustomerConfirm);

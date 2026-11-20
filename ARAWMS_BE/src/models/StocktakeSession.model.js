@@ -24,7 +24,9 @@ const stocktakeSessionSchema = new Schema(
     createdByManagerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     status: {
       type: String,
-      enum: ['WAITING', 'FROZEN_COUNTING', 'VARIANCE_REVIEW', 'APPROVED_COMPLETED', 'CANCELLED'],
+      // APPROVED_PENDING_ADJUSTMENT: đã duyệt, chờ ghi điều chỉnh tồn.
+      // RECOUNT_REQUESTED: báo cáo bị trả về vì không hợp lý, đã phát phiên kiểm kê lại.
+      enum: ['WAITING', 'FROZEN_COUNTING', 'VARIANCE_REVIEW', 'APPROVED_PENDING_ADJUSTMENT', 'APPROVED_COMPLETED', 'RECOUNT_REQUESTED', 'CANCELLED'],
       default: 'WAITING',
       index: true,
     },
@@ -39,6 +41,33 @@ const stocktakeSessionSchema = new Schema(
       agingStockActionPlan: String,
       // GBR-18: Lưu dấu báo cáo đã duyệt để module điều chỉnh đối chiếu trước khi ghi sổ.
       approvedReportHash: String,
+      // Quản lý kho duyệt cả khi báo cáo chưa "đúng hết": lưu lại vấn đề đã chấp nhận lúc duyệt.
+      exceededThreshold: Boolean,
+      uncountedCount: Number,
+      missingCost: Boolean,
+    },
+    // Điều chỉnh tồn kho theo báo cáo đã duyệt; xong thì phiên chuyển APPROVED_COMPLETED.
+    adjustmentInfo: {
+      adjustedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+      adjustedAt: Date,
+      writtenOffUnits: Number,
+      quantityAdjustedLines: Number,
+      manualLines: Number,
+    },
+    // Nhân viên kỹ thuật nộp báo cáo; có lệch hoặc còn dòng chưa đếm thì bắt buộc ghi chú lý do.
+    submissionInfo: {
+      submittedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+      submittedAt: Date,
+      hasIssues: Boolean,
+      note: String,
+    },
+    // Phiên kiểm lại trỏ về phiên gốc; phiên gốc lưu lý do trả về và phiên kiểm lại đã phát.
+    recountOfSessionId: { type: Schema.Types.ObjectId, ref: 'StocktakeSession', index: true },
+    recountInfo: {
+      requestedByUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+      requestedAt: Date,
+      reason: String,
+      recountSessionId: { type: Schema.Types.ObjectId, ref: 'StocktakeSession' },
     },
   },
   { collection: 'stocktake_sessions' }

@@ -50,6 +50,6 @@ export const updateQty = run('Cập nhật số lượng kiểm kê thành công
 );
 
 export const completeSession = run('Đã hoàn thành kiểm kê và gửi Quản lý kho xem xét', async (req) =>
-  submitSessionCompletion(req.params.id, req.user)
+  submitSessionCompletion(req.params.id, req.user, req.body || {})
 );
 

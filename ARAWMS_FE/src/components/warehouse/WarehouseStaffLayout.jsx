@@ -13,12 +13,14 @@ import {
   Truck,
   Shirt,
   ArrowUpRight,
+  ScanBarcode,
   PanelLeftClose,
   PanelLeftOpen,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import WmsHeader from '../common/WmsHeader';
+import StocktakeNoticeBanner from '../common/StocktakeNoticeBanner';
 
 export default function WarehouseStaffLayout({ children }) {
   const { user } = useAuth();
@@ -51,7 +53,14 @@ export default function WarehouseStaffLayout({ children }) {
       label: 'Kho thành phẩm',
       subLabel: 'Tra cứu tồn kho theo SKU',
       icon: Shirt,
-      match: (path) => path === '/warehouse/staff/finished-goods',
+      match: (path) => path === '/warehouse/staff/finished-goods' || path.startsWith('/warehouse/staff/finished-goods/'),
+    },
+    {
+      to: '/warehouse/staff/barcode-tracking',
+      label: 'Tra cứu barcode',
+      subLabel: 'Hành trình ra vào kho của sản phẩm',
+      icon: ScanBarcode,
+      match: (path) => path.startsWith('/warehouse/staff/barcode-tracking'),
     },
     {
       to: '/packing/qr',
@@ -210,6 +219,7 @@ export default function WarehouseStaffLayout({ children }) {
           profilePath="/account"
         />
         <main className="wms-content-container">
+          <StocktakeNoticeBanner role="WAREHOUSE_STAFF" />
           {children}
         </main>
       </div>

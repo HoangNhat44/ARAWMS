@@ -183,7 +183,161 @@ export const getCustomerPurchaseHistory = async (customerId) => {
   return orders;
 };
 
+const escapeRegex = (s) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Lấy danh sách khách hàng CRM có tìm kiếm, lọc theo tag / kênh Messenger, sắp xếp và phân trang
+ */
+export const getCustomerList = async (filters = {}) => {
+  const {
+    search = '',
+    tag = '',
+    channel = '',
+    sortBy = 'createdAt',
+    sortDir = 'desc',
+    page = 1,
+    limit = 20,
+  } = filters;
+
+  const query = { isDeleted: { $ne: true } };
+
+  if (search && String(search).trim()) {
+    const regex = new RegExp(escapeRegex(String(search).trim()), 'i');
+    query.$or = [
+      { fullName: regex },
+      { phone: regex },
+      { customerCode: regex },
+      { email: regex },
+      { 'addresses.fullAddress': regex },
+    ];
+  }
+
+  if (tag && String(tag).trim()) {
+    query.tags = String(tag).trim();
+  }
+
+  if (channel === 'FACEBOOK') {
+    query.facebookPsid = { $exists: true, $nin: [null, ''] };
+  } else if (channel === 'DIRECT') {
+    query.$and = [
+      ...(query.$and || []),
+      { $or: [{ facebookPsid: { $exists: false } }, { facebookPsid: null }, { facebookPsid: '' }] },
+    ];
+  }
+
+  const allowedSort = {
+    createdAt: 'createdAt',
+    totalSpent: 'totalSpent',
+    totalOrders: 'totalOrders',
+    fullName: 'fullName',
+  };
+  const sortField = allowedSort[sortBy] || 'createdAt';
+  const sortOrder = sortDir === 'asc' ? 1 : -1;
+
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
+  const skip = (pageNum - 1) * limitNum;
+
+  const [items, total, summaryAgg, allTags] = await Promise.all([
+    Customer.find(query)
+      .sort({ [sortField]: sortOrder, _id: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+    Customer.countDocuments(query),
+    Customer.aggregate([
+      { $match: { isDeleted: { $ne: true } } },
+      {
+        $group: {
+          _id: null,
+          totalCustomers: { $sum: 1 },
+          messengerLinkedCount: {
+            $sum: {
+              $cond: [
+                { $and: [{ $ne: ['$facebookPsid', null] }, { $ne: ['$facebookPsid', ''] }, { $ifNull: ['$facebookPsid', false] }] },
+                1,
+                0,
+              ],
+            },
+          },
+          vipCount: {
+            $sum: {
+              $cond: [{ $in: ['Khách VIP', { $ifNull: ['$tags', []] }] }, 1, 0],
+            },
+          },
+          totalRevenue: { $sum: { $ifNull: ['$totalSpent', 0] } },
+        },
+      },
+    ]),
+    Customer.distinct('tags', { isDeleted: { $ne: true } }),
+  ]);
+
+  // Gắn kèm conversationId mới nhất (nếu có) để Seller bấm "Nhắn tin" nhảy sang Chat
+  const customerIds = items.map((c) => c._id);
+  const convMap = new Map();
+  if (customerIds.length > 0) {
+    const convs = await ChatConversation.find({ customerId: { $in: customerIds } })
+      .select('_id customerId pageName lastMessageAt')
+      .sort({ lastMessageAt: -1 })
+      .lean();
+    for (const cv of convs) {
+      const key = String(cv.customerId);
+      if (!convMap.has(key)) convMap.set(key, cv);
+    }
+  }
+
+  const enrichedItems = items.map((c) => {
+    const cv = convMap.get(String(c._id));
+    return {
+      ...c,
+      latestConversationId: cv?._id || null,
+      latestPageName: cv?.pageName || null,
+    };
+  });
+
+  const summary = summaryAgg[0] || {
+    totalCustomers: 0,
+    messengerLinkedCount: 0,
+    vipCount: 0,
+    totalRevenue: 0,
+  };
+
+  return {
+    items: enrichedItems,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
+    },
+    summary,
+    availableTags: (allTags || []).filter(Boolean).sort(),
+  };
+};
+
+/**
+ * Lấy chi tiết 1 hồ sơ khách hàng theo ID
+ */
+export const getCustomerById = async (customerId) => {
+  const customer = await Customer.findOne({ _id: customerId, isDeleted: { $ne: true } }).lean();
+  if (!customer) {
+    throw new Error('Khách hàng không tồn tại');
+  }
+  const latestConv = await ChatConversation.findOne({ customerId: customer._id })
+    .select('_id pageName lastMessageAt')
+    .sort({ lastMessageAt: -1 })
+    .lean();
+
+  return {
+    ...customer,
+    latestConversationId: latestConv?._id || null,
+    latestPageName: latestConv?.pageName || null,
+  };
+};
+
 export default {
+  getCustomerList,
+  getCustomerById,
   updateCustomer,
   createCustomer,
   getCustomerInteractionHistory,

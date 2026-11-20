@@ -56,7 +56,7 @@ export const applyGhnStatusToSalesOrder = async ({
 
   // Đơn đã kết thúc hoặc đang được xử lý đổi/trả nội bộ: không để GHN ghi đè trạng thái
   const isLockedOrder =
-    ['CANCELLED', 'RETURNED', 'PARTIALLY_RETURNED', 'RETURN_FAILED', 'EXCHANGE_REQUESTED', 'COMPLETED'].includes(previousOrderStatus) ||
+    ['CANCELLED', 'RETURNED', 'RETURN_COMPLETED', 'PARTIALLY_RETURNED', 'RETURN_FAILED', 'EXCHANGE_REQUESTED', 'COMPLETED'].includes(previousOrderStatus) ||
     (previousOrderStatus === 'RETURN_REQUESTED' && Boolean(order.linkedReturnRequestId));
   // Chống lùi trạng thái: dữ liệu GHN cũ hơn trạng thái đã ghi nhận thì bỏ qua
   const previousRank = previousGhnStatus ? mapGhnStatusToOrderStatus(previousGhnStatus).rank : 0;

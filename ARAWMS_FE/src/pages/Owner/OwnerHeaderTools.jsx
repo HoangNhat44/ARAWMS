@@ -1,10 +1,17 @@
+/*
+ * Nguyễn Ngọc Huy - HE171157
+ * Ngày: 14-11-2026
+ * Tìm chức năng và hiển thị thông báo trên thanh đầu trang Owner.
+ */
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AutoComplete, Badge, Button, Empty, Input, Popover, Skeleton } from 'antd';
 import { Bell, FileText, Search, AlertTriangle, CheckCheck } from 'lucide-react';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
 import notificationService from '../../services/notificationService';
-import { datetime } from './OwnerUI';
+import { datetime, quantity } from './OwnerUI';
+import { dateRangeError, defaultOwnerDates } from '../../utils/ownerValidation';
+import { channelLabels } from './BusinessActivity';
 
 const normalize = (value) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').trim();
 
@@ -14,6 +21,21 @@ export default function OwnerHeaderTools({ groups }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [seenAlerts, setSeenAlerts] = useState({});
+  const dates = defaultOwnerDates();
+  const filters = new URLSearchParams(location.pathname === '/owner/dashboard' ? location.search : '');
+  const from = filters.get('from') || dates.from;
+  const to = filters.get('to') || dates.to;
+  const salesChannel = filters.get('salesChannel');
+  const paymentStatus = filters.get('paymentStatus');
+  const alertQuery = {
+    ...(dateRangeError({ from, to }) ? dates : { from, to }),
+    ...(Object.hasOwn(channelLabels, salesChannel) ? { salesChannel } : {}),
+    ...(['PAID', 'UNPAID', 'PARTIAL', 'REFUNDED', 'UNKNOWN'].includes(paymentStatus) ? { paymentStatus } : {}),
+  };
+  const business = useOwnerResource('operations-report/business-activity', alertQuery);
+  const alerts = businessAlerts(business.data, alertQuery);
+  const unreadAlerts = alerts.filter(alert => !seenAlerts[alert.key]).length;
 
   // 1. Quản lý Báo cáo quản trị (Legacy reports)
   const reports = useOwnerResource('manager-reports', { limit: 10, status: 'SUBMITTED' });
@@ -44,7 +66,7 @@ export default function OwnerHeaderTools({ groups }) {
     return () => clearInterval(timer);
   }, []);
 
-  const totalUnread = unreadNotifCount + reportsTotal;
+  const totalUnread = unreadNotifCount + reportsTotal + unreadAlerts;
 
   const handleNotificationClick = async (notif) => {
     try {
@@ -71,6 +93,7 @@ export default function OwnerHeaderTools({ groups }) {
   };
 
   const handleMarkAllRead = async () => {
+    setSeenAlerts(previous => ({ ...previous, ...Object.fromEntries(alerts.map(alert => [alert.key, true])) }));
     try {
       await notificationService.markAllAsRead('OWNER');
       setSystemNotifs((prev) => prev.map((n) => ({ ...n, isRead: true })));
@@ -101,7 +124,7 @@ export default function OwnerHeaderTools({ groups }) {
     <Input allowClear prefix={<Search size={18} aria-hidden="true" />} placeholder="Tìm chức năng…" maxLength={100} aria-label="Tìm chức năng" />
   </AutoComplete>;
 
-  const hasAnyItems = (systemNotifs && systemNotifs.length > 0) || (reports.data?.items && reports.data.items.length > 0);
+  const hasAnyItems = Boolean(alerts.length || systemNotifs.length || reports.data?.items?.length);
 
   const notifications = (
     <section className="owner-notifications" aria-label="Danh sách thông báo">
@@ -111,7 +134,7 @@ export default function OwnerHeaderTools({ groups }) {
           <span style={{ fontSize: '12px', color: '#64748B' }}>
             {totalUnread > 0 ? `${totalUnread} chưa xem` : 'Đã xem hết'}
           </span>
-          {unreadNotifCount > 0 && (
+          {unreadNotifCount + unreadAlerts > 0 && (
             <Button
               type="text"
               size="small"
@@ -125,8 +148,8 @@ export default function OwnerHeaderTools({ groups }) {
         </div>
       </div>
 
-      <div className="owner-notifications-list" aria-busy={loadingNotifs || reports.loading}>
-        {loadingNotifs && !systemNotifs.length ? (
+      <div className="owner-notifications-list" aria-busy={loadingNotifs || reports.loading || business.loading}>
+        {!hasAnyItems && (loadingNotifs || reports.loading || business.loading) ? (
           <div className="owner-notifications-state" role="status">
             <Skeleton active paragraph={{ rows: 3 }} />
           </div>
@@ -134,35 +157,33 @@ export default function OwnerHeaderTools({ groups }) {
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Bạn không có thông báo mới" />
         ) : (
           <ul>
+            {alerts.map(alert => <li key={alert.key}>
+              <Link className="owner-notification-item" to={alert.to} onClick={() => {
+                setSeenAlerts(previous => ({ ...previous, [alert.key]: true }));
+                setNotificationsOpen(false);
+              }}>
+                <span className="owner-notification-icon owner-notification-warning"><AlertTriangle size={20} aria-hidden="true" /></span>
+                <span className="owner-notification-copy"><strong>{alert.title}</strong><span>{alert.message}</span></span>
+                {!seenAlerts[alert.key] && <span className="owner-notification-dot" aria-label="Chưa xem" />}
+              </Link>
+            </li>)}
             {/* 1. Danh sách thông báo hệ thống & sai lệch KCS */}
             {systemNotifs.map((notif) => {
               const isDeviation = notif.type === 'CONTRACT_DEVIATION';
               return (
                 <li key={notif._id}>
-                  <div
+                  <button type="button"
                     className="owner-notification-item"
-                    style={{
-                      cursor: 'pointer',
-                      backgroundColor: !notif.isRead ? (isDeviation ? '#FFF1F2' : '#F0F9FF') : 'transparent',
-                    }}
                     onClick={() => handleNotificationClick(notif)}
                   >
                     <span
-                      className="owner-notification-icon"
-                      style={{
-                        backgroundColor: isDeviation ? '#FEE2E2' : '#E0F2FE',
-                        color: isDeviation ? '#DC2626' : '#0284C7',
-                      }}
+                      className={`owner-notification-icon${isDeviation ? ' owner-notification-warning' : ''}`}
                     >
                       {isDeviation ? <AlertTriangle size={20} /> : <Bell size={20} />}
                     </span>
                     <span className="owner-notification-copy">
-                      <strong style={{ color: isDeviation ? '#9F1239' : 'inherit' }}>
-                        {notif.title}
-                      </strong>
-                      <span style={{ fontSize: '12.5px', color: '#475569', lineHeight: 1.4 }}>
-                        {notif.message}
-                      </span>
+                      <strong>{notif.title}</strong>
+                      <span>{notif.message}</span>
                       <time dateTime={notif.createdAt || undefined}>
                         {datetime(notif.createdAt)}
                       </time>
@@ -170,11 +191,10 @@ export default function OwnerHeaderTools({ groups }) {
                     {!notif.isRead && (
                       <span
                         className="owner-notification-dot"
-                        style={{ backgroundColor: isDeviation ? '#E11D48' : '#0284C7' }}
                         aria-label="Chưa xem"
                       />
                     )}
-                  </div>
+                  </button>
                 </li>
               );
             })}
@@ -208,10 +228,10 @@ export default function OwnerHeaderTools({ groups }) {
 
       <Link
         className="owner-notifications-footer"
-        to="/owner/purchases"
+        to="/owner/manager-reports"
         onClick={() => setNotificationsOpen(false)}
       >
-        Xem tổng quan Mua sắm & Kế hoạch
+        Xem báo cáo quản lý kho
       </Link>
     </section>
   );
@@ -223,11 +243,35 @@ export default function OwnerHeaderTools({ groups }) {
       <Button type="text" className="owner-icon-button" aria-label="Mở tìm kiếm" aria-expanded={searchOpen} icon={<Search size={20} />} />
     </Popover></div>
     <Popover trigger="click" placement="bottomRight" open={notificationsOpen} content={notifications} overlayClassName="owner-notifications-popover"
-      onOpenChange={(open) => { setNotificationsOpen(open); if (open) { setSearchOpen(false); fetchSystemNotifications(); reports.reload(); } }}>
+      onOpenChange={(open) => { setNotificationsOpen(open); if (open) { setSearchOpen(false); fetchSystemNotifications(); reports.reload(); business.reload(); } }}>
       <Button type="text" className={`owner-icon-button${notificationsOpen ? ' owner-notifications-active' : ''}`}
         aria-label={`Thông báo${totalUnread === 0 ? '' : `: ${totalUnread} chưa xem`}`} aria-expanded={notificationsOpen}>
         <Badge count={totalUnread || 0} size="small" overflowCount={99}><Bell size={20} /></Badge>
       </Button>
     </Popover>
   </>;
+}
+
+// Dùng chính khoảng thời gian và nguồn bán đã tạo cảnh báo khi mở phần chi tiết.
+function businessAlerts(data, filters) {
+  if (!data) return [];
+  const { activity, policy, worklist } = data;
+  const above = activity.channels.filter(row => row.turnbackRate >= policy.alertRate);
+  const overall = activity.turnbackRate >= policy.alertRate;
+  const overdue = worklist.filter(row => row.overdue);
+  const search = new URLSearchParams(filters).toString();
+  const target = section => `/owner/dashboard?${search}#${section}`;
+  const alerts = [];
+  if (overall || above.length) {
+    const rates = [overall ? `Tổng ${quantity(activity.turnbackRate)}%` : '',
+      ...above.map(row => `${channelLabels[row.channel]} ${quantity(row.turnbackRate)}%`)].filter(Boolean);
+    alerts.push({ key: `returns:${search}:${rates.join(',')}`, title: `Tỷ lệ quay đầu từ ${policy.alertRate}%`,
+      message: rates.join(' · '), to: target('owner-delivery-performance') });
+  }
+  if (overdue.length) {
+    alerts.push({ key: `overdue:${search}:${overdue.map(row => row.id).sort().join(',')}`,
+      title: `${quantity(overdue.length)} đơn hoàn quá hạn`,
+      message: 'Xem các đơn còn chờ kiểm hàng hoặc nhập lại kho.', to: target('owner-return-processing') });
+  }
+  return alerts;
 }

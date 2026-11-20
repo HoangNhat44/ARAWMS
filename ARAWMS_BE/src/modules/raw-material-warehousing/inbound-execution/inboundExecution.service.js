@@ -17,7 +17,7 @@ import SupplierContract from '../../../models/SupplierContract.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import InventoryTransaction from '../../../models/InventoryTransaction.model.js';
 import User from '../../../models/User.model.js';
-import { scheduleBarcodeImages } from '../../../common/services/barcodeImageStorage.js';
+import { code128DataUrl } from '../../../common/services/codeImageRenderer.js';
 import { claimRawMaterialBarcode, nextRawMaterialBarcode } from '../../../common/services/rawMaterialBarcode.js';
 import { isFractionalMaterialUnit, isValidMaterialUnit, normalizeMaterialUnit } from '../../../common/constants/materialUnits.js';
 import { canAccessLocation, locationScopeFilter } from '../../../common/services/warehouseAccess.js';
@@ -319,10 +319,9 @@ export async function getMaterialReceiptLabels(receiptId, user) {
   requireValue(receipt.status === 'COMPLETED', 'Chỉ in tem cho phiếu đã xác nhận', 'RECEIPT_NOT_CONFIRMED', 409);
   const [rolls, lots] = await Promise.all([
     FabricRoll.find({ $or: [{ inboundTicketId: receiptId }, { returnReceiptIds: receiptId }] })
-      .select('rollBarcode barcodeImageUrl rawMaterialId supplierId supplierNameSnapshot clientLineId supplierRollCode initialLengthMeters currentLengthMeters measuredWidthCm supplierLotCode unitCostPerMeter fifoInboundTimestamp status locationId inboundTicketId returnReceiptIds').lean(),
-    MaterialStockLot.find({ inboundTicketId: receiptId }).select('lotBarcode barcodeImageUrl rawMaterialId supplierId supplierNameSnapshot clientLineId initialQty currentQty unitCost quality status allocations supplierLotCode fifoInboundTimestamp').lean(),
+      .select('rollBarcode rawMaterialId supplierId supplierNameSnapshot clientLineId supplierRollCode initialLengthMeters currentLengthMeters measuredWidthCm supplierLotCode unitCostPerMeter fifoInboundTimestamp status locationId inboundTicketId returnReceiptIds').lean(),
+    MaterialStockLot.find({ inboundTicketId: receiptId }).select('lotBarcode rawMaterialId supplierId supplierNameSnapshot clientLineId initialQty currentQty unitCost quality status allocations supplierLotCode fifoInboundTimestamp').lean(),
   ]);
-  if ([...rolls, ...lots].some((item) => !item.barcodeImageUrl)) scheduleBarcodeImages('RAW_MATERIAL', receiptId);
   const materialIds = [...new Set([...rolls, ...lots].map((item) => id(item.rawMaterialId)))];
   const locationIds = [...new Set([...rolls.map((item) => id(item.locationId)),
     ...lots.flatMap((lot) => lot.allocations.map((item) => id(item.locationId)))])];
@@ -342,7 +341,7 @@ export async function getMaterialReceiptLabels(receiptId, user) {
       quantity: id(roll.inboundTicketId) === id(receiptId) ? roll.initialLengthMeters :
         receipt.receiptLines[0]?.acceptedQty || 0,
       remainingQuantity: roll.currentLengthMeters, unitCost: roll.unitCostPerMeter,
-      imageUrl: roll.barcodeImageUrl || null,
+      imageUrl: code128DataUrl(roll.rollBarcode),
       materialName: byMaterial.get(id(roll.rawMaterialId))?.materialName, materialCode: byMaterial.get(id(roll.rawMaterialId))?.materialCode,
       color: byMaterial.get(id(roll.rawMaterialId))?.color, unit: 'METER', widthCm: roll.measuredWidthCm,
       supplierLotCode: roll.supplierLotCode, lotOrRollCode: roll.supplierRollCode || roll.supplierLotCode || roll.rollBarcode,
@@ -359,7 +358,7 @@ export async function getMaterialReceiptLabels(receiptId, user) {
       receiptCode: receipt.ticketCode, supplierName: lot.supplierNameSnapshot || bySupplier.get(id(lot.supplierId)) || supplier?.supplierName || receipt.purchaseSourceName || 'Chưa xác định',
       supplierId: id(lot.supplierId), rawMaterialId: id(lot.rawMaterialId), quantity: lot.initialQty,
       remainingQuantity: lot.currentQty, unitCost: lot.unitCost,
-      imageUrl: lot.barcodeImageUrl || null,
+      imageUrl: code128DataUrl(lot.lotBarcode),
       materialName: byMaterial.get(id(lot.rawMaterialId))?.materialName, materialCode: byMaterial.get(id(lot.rawMaterialId))?.materialCode,
       color: byMaterial.get(id(lot.rawMaterialId))?.color,
       widthCm: byMaterial.get(id(lot.rawMaterialId))?.widthCm, gsm: byMaterial.get(id(lot.rawMaterialId))?.gsm,
@@ -795,7 +794,6 @@ export async function confirmMaterialReceipt(receiptId, input, user) {
       await receipt.save({ session });
       confirmed = receipt;
     });
-    scheduleBarcodeImages('RAW_MATERIAL', String(confirmed._id));
     return confirmed;
   } finally {
     await session.endSession();

@@ -78,7 +78,11 @@ export default function GarmentStocktakeExecutionPage() {
   // Modal states
   const [editingRecord, setEditingRecord] = useState(null);
   const [editQtyValue, setEditQtyValue] = useState('');
+  const [editDamagedValue, setEditDamagedValue] = useState('0');
+  const [editConditionNote, setEditConditionNote] = useState('');
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [submitNote, setSubmitNote] = useState('');
+  const [submitError, setSubmitError] = useState('');
 
   // Scanner refs
   const videoRef = useRef(null);
@@ -309,6 +313,8 @@ export default function GarmentStocktakeExecutionPage() {
   const handleOpenEditQty = (rec) => {
     setEditingRecord(rec);
     setEditQtyValue(String(rec.actualScannedQty ?? 0));
+    setEditDamagedValue(String(rec.damagedQty || 0));
+    setEditConditionNote(rec.conditionNote || '');
   };
 
   // Save adjusted quantity
@@ -319,10 +325,19 @@ export default function GarmentStocktakeExecutionPage() {
       alert('Vui lòng nhập số lượng hợp lệ (>= 0)');
       return;
     }
+    const damaged = Number(editDamagedValue || 0);
+    if (Number.isNaN(damaged) || damaged < 0 || damaged > val) {
+      alert('Số lượng hỏng phải từ 0 đến số lượng đã đếm');
+      return;
+    }
+    if (damaged > 0 && editConditionNote.trim().length < 3) {
+      alert('Ghi rõ tình trạng hàng hỏng (vd: ố vàng do để lâu)');
+      return;
+    }
     setBusy(true);
     try {
       const res = await garmentTechnicalService.stocktake.updateRecordQty(editingRecord._id, {
-        actualScannedQty: val,
+        actualScannedQty: val, damagedQty: damaged, conditionNote: editConditionNote.trim(),
       });
       const updated = res.data?.data || res.data;
       setSessionRecords((prev) =>
@@ -340,12 +355,19 @@ export default function GarmentStocktakeExecutionPage() {
   // Submit complete stocktake to warehouse manager
   const handleCompleteStocktake = async () => {
     if (!selectedSession) return;
+    const note = submitNote.trim();
+    if (submitHasIssues && note.length < 10) {
+      setSubmitError('Phiên có chênh lệch hoặc còn dòng chưa đếm. Vui lòng ghi rõ lý do (ít nhất 10 ký tự).');
+      return;
+    }
+    setSubmitError('');
     setBusy(true);
     try {
-      const res = await garmentTechnicalService.stocktake.completeSession(selectedSession._id);
+      const res = await garmentTechnicalService.stocktake.completeSession(selectedSession._id, note ? { note } : {});
       const data = res.data?.data || res.data;
       stopCamera();
       setShowSubmitModal(false);
+      setSubmitNote('');
       alert(
         `Đã hoàn thành kiểm kê thành công!\nTổng số mặt hàng dự kiến: ${data.summary?.totalItemsExpected || 0}\nSố mặt hàng có chênh lệch: ${data.summary?.totalDiscrepancies || 0}\nKết quả đã được gửi cho Quản lý kho xem xét.`
       );
@@ -354,7 +376,7 @@ export default function GarmentStocktakeExecutionPage() {
       setVerifiedLocation(null);
       loadSessions();
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Không thể gửi kết quả kiểm kê');
+      setSubmitError(err.response?.data?.message || err.message || 'Không thể gửi kết quả kiểm kê');
     } finally {
       setBusy(false);
     }
@@ -394,6 +416,10 @@ export default function GarmentStocktakeExecutionPage() {
   const shelfTotalExpected = sessionRecords.reduce((sum, r) => sum + (r.systemSnapshotQty || 0), 0);
   const shelfTotalScanned = sessionRecords.reduce((sum, r) => sum + (r.actualScannedQty || 0), 0);
   const shelfVarianceCount = sessionRecords.filter((r) => r.varianceQty !== 0).length;
+  const uncountedCount = sessionRecords.filter((r) => !r.scannedAt).length;
+  // Có lệch, còn dòng chưa đếm hoặc chưa ghi nhận gì thì bắt buộc ghi lý do trước khi gửi.
+  const damagedCount = sessionRecords.filter((r) => (r.damagedQty || 0) > 0).length;
+  const submitHasIssues = sessionRecords.length === 0 || shelfVarianceCount > 0 || uncountedCount > 0 || damagedCount > 0;
 
   return (
     <div className="ara-page" style={{ padding: '1.5rem', maxWidth: '1400px', margin: '0 auto' }}>
@@ -458,6 +484,8 @@ export default function GarmentStocktakeExecutionPage() {
                 ['WAITING', 'Chờ kiểm kê'],
                 ['FROZEN_COUNTING', 'Đang kiểm kê'],
                 ['VARIANCE_REVIEW', 'Chờ duyệt chênh lệch'],
+                ['APPROVED_PENDING_ADJUSTMENT', 'Đã duyệt'],
+                ['RECOUNT_REQUESTED', 'Bị trả về kiểm lại'],
                 ['APPROVED_COMPLETED', 'Đã duyệt hoàn thành'],
               ].map(([val, labelText]) => (
                 <button
@@ -511,7 +539,8 @@ export default function GarmentStocktakeExecutionPage() {
               <tbody>
                 {filteredSessions.length > 0 ? (
                   filteredSessions.map((s) => {
-                    const isClosed = ['APPROVED_COMPLETED', 'CANCELLED'].includes(s.status);
+                    const isClosed = ['APPROVED_PENDING_ADJUSTMENT', 'APPROVED_COMPLETED', 'RECOUNT_REQUESTED', 'CANCELLED'].includes(s.status);
+                    const isReturned = s.status === 'RECOUNT_REQUESTED';
                     const isReview = s.status === 'VARIANCE_REVIEW';
                     const isDoing = s.status === 'FROZEN_COUNTING';
                     const isWait = s.status === 'WAITING';
@@ -525,6 +554,11 @@ export default function GarmentStocktakeExecutionPage() {
                           <div style={{ color: 'var(--ara-text)', marginTop: '0.15rem' }}>
                             {s.name || 'Kiểm kê định kỳ'}
                           </div>
+                          {isReturned && s.recountInfo?.reason && (
+                            <div style={{ fontSize: '0.78rem', color: '#c5221f', marginTop: '0.2rem' }}>
+                              Quản lý trả về: {s.recountInfo.reason}. Đã có phiên kiểm lại mới trong danh sách.
+                            </div>
+                          )}
                           {s.instructions && (
                             <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)', fontStyle: 'italic', marginTop: '0.2rem' }}>
                               Lưu ý: {s.instructions}
@@ -572,10 +606,10 @@ export default function GarmentStocktakeExecutionPage() {
                             borderRadius: '999px',
                             fontSize: '0.78rem',
                             fontWeight: 700,
-                            background: isDoing ? '#fff0da' : isReview ? '#e8f0fe' : isClosed ? '#e6f4ea' : '#f1f3f4',
-                            color: isDoing ? '#8a5500' : isReview ? '#1a73e8' : isClosed ? '#137333' : '#5f6368',
+                            background: isReturned ? '#fce8e6' : isDoing ? '#fff0da' : isReview ? '#e8f0fe' : isClosed ? '#e6f4ea' : '#f1f3f4',
+                            color: isReturned ? '#c5221f' : isDoing ? '#8a5500' : isReview ? '#1a73e8' : isClosed ? '#137333' : '#5f6368',
                           }}>
-                            {isDoing ? 'Đang kiểm kê' : isReview ? 'Chờ quản lý duyệt' : isClosed ? 'Đã hoàn tất' : 'Chờ kiểm kê'}
+                            {isReturned ? 'Bị trả về · kiểm lại' : isDoing ? 'Đang kiểm kê' : isReview ? 'Chờ quản lý duyệt' : s.status === 'APPROVED_PENDING_ADJUSTMENT' ? 'Đã duyệt' : s.status === 'CANCELLED' ? 'Đã hủy' : isClosed ? 'Đã hoàn tất' : 'Chờ kiểm kê'}
                           </span>
                         </td>
                         <td style={{ padding: '1rem', textAlign: 'center' }}>
@@ -1078,6 +1112,31 @@ export default function GarmentStocktakeExecutionPage() {
                   <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)', marginTop: '0.35rem' }}>
                     Tồn kho hệ thống: {editingRecord.systemSnapshotQty} · Chênh lệch mới sẽ là: {Number(editQtyValue || 0) - editingRecord.systemSnapshotQty}
                   </div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, margin: '1rem 0 0.4rem' }}>
+                    Trong đó số lượng hỏng (để lâu, ố, mốc, rách…):
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max={editQtyValue || 0}
+                    step="1"
+                    value={editDamagedValue}
+                    onChange={(e) => setEditDamagedValue(e.target.value)}
+                    style={{ width: '100%', padding: '0.6rem', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-sm)', fontSize: '1rem' }}
+                  />
+                  {Number(editDamagedValue || 0) > 0 && (
+                    <textarea
+                      value={editConditionNote}
+                      onChange={(e) => setEditConditionNote(e.target.value)}
+                      maxLength={500}
+                      rows={2}
+                      placeholder="Tình trạng hàng hỏng, vd: ố vàng do để lâu trong kho"
+                      style={{ width: '100%', boxSizing: 'border-box', marginTop: '0.5rem', padding: '0.6rem', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-sm)', font: 'inherit' }}
+                    />
+                  )}
+                  <div style={{ fontSize: '0.78rem', color: 'var(--ara-text-muted)', marginTop: '0.35rem' }}>
+                    Hàng hỏng vẫn tính là đã đếm; quản lý kho sẽ loại chúng khỏi kho khi điều chỉnh tồn.
+                  </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                   <button
@@ -1133,11 +1192,37 @@ export default function GarmentStocktakeExecutionPage() {
                     <span>Số mặt hàng phát hiện sai lệch:</span>
                     <strong>{shelfVarianceCount} mặt hàng</strong>
                   </div>
+                  {uncountedCount > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#c5221f' }}>
+                      <span>Số dòng chưa đếm:</span>
+                      <strong>{uncountedCount} dòng</strong>
+                    </div>
+                  )}
                 </div>
+                {submitHasIssues ? (
+                  <label style={{ display: 'grid', gap: '0.35rem', fontSize: '0.88rem', color: 'var(--ara-noir)', marginBottom: '1rem' }}>
+                    <span style={{ fontWeight: 600 }}>Lý do chênh lệch / chưa kiểm đủ <span style={{ color: '#c5221f' }}>*</span></span>
+                    <textarea
+                      value={submitNote}
+                      onChange={(e) => { setSubmitNote(e.target.value); if (submitError) setSubmitError(''); }}
+                      maxLength={1000}
+                      rows={4}
+                      disabled={busy}
+                      placeholder="Ví dụ: ô A-01-T2 thiếu 3 chiếc, đã tìm quanh kệ không thấy; ô A-02 bị che khuất chưa đếm được"
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', font: 'inherit', resize: 'vertical' }}
+                    />
+                    <small style={{ color: 'var(--ara-text-muted)' }}>Bắt buộc vì kết quả có vấn đề. Quản lý kho sẽ đọc ghi chú này khi duyệt.</small>
+                  </label>
+                ) : (
+                  <p style={{ fontSize: '0.85rem', color: '#137333', margin: '0 0 1rem' }}>Mọi dòng đã đếm và khớp hệ thống, không cần ghi chú.</p>
+                )}
+                {submitError && (
+                  <p role="alert" style={{ fontSize: '0.85rem', color: '#c5221f', background: '#fce8e6', padding: '0.6rem 0.75rem', borderRadius: 'var(--radius-sm)', margin: '0 0 1rem' }}>{submitError}</p>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
                   <button
                     type="button"
-                    onClick={() => setShowSubmitModal(false)}
+                    onClick={() => { setShowSubmitModal(false); setSubmitError(''); }}
                     className="btn-ara-secondary"
                     style={{ padding: '0.55rem 1.1rem' }}
                     disabled={busy}

@@ -20,7 +20,7 @@ const active = { isDeleted: { $ne: true } };
 
 export const listStocktakes = async (query) => {
   const { filter, page, limit } = readQuery(query, { fields: ['sessionCode'],
-    statuses: ['FROZEN_COUNTING', 'VARIANCE_REVIEW', 'APPROVED_PENDING_ADJUSTMENT', 'APPROVED_COMPLETED', 'CANCELLED'], extra: ['warehouseType'] });
+    statuses: ['FROZEN_COUNTING', 'VARIANCE_REVIEW', 'APPROVED_PENDING_ADJUSTMENT', 'APPROVED_COMPLETED', 'RECOUNT_REQUESTED', 'CANCELLED'], extra: ['warehouseType'] });
   if (query.warehouseType) {
     if (!['RAW_MATERIAL', 'FINISHED_GOODS'].includes(query.warehouseType)) throw httpError(400, 'Loại kho không hợp lệ.');
     filter.warehouseType = query.warehouseType;
@@ -30,7 +30,8 @@ export const listStocktakes = async (query) => {
   return { items, total, page, limit };
 };
 
-const reportData = async (id, session = null) => {
+// requireCost=false: chỉ để xem báo cáo; dòng thiếu đơn giá vẫn hiện, summary = null và không được duyệt.
+export const reportData = async (id, session = null, { requireCost = true } = {}) => {
   const stocktake = await StocktakeSession.findOne({ _id: id, ...active }).session(session);
   if (!stocktake) throw httpError(404, 'Không tìm thấy phiên kiểm kê.');
   const records = await StocktakeRecord.find({ sessionId: id, ...active }).sort({ _id: 1 }).session(session);
@@ -56,14 +57,16 @@ const reportData = async (id, session = null) => {
       systemSnapshotQty: record.systemSnapshotQty, actualScannedQty: record.actualScannedQty,
       varianceQty: record.actualScannedQty - record.systemSnapshotQty, unitCost: record.unitCostSnapshot ?? fallback,
       costBasis: record.unitCostSnapshot === undefined ? 'CURRENT_MASTER_COST' : 'SNAPSHOT',
-      scannedAt: record.scannedAt, isAgingThresholdExceeded: record.isAgingThresholdExceeded, agingDaysAtCount: record.agingDaysAtCount };
+      scannedAt: record.scannedAt, damagedQty: record.damagedQty || 0,
+      isAgingThresholdExceeded: record.isAgingThresholdExceeded, agingDaysAtCount: record.agingDaysAtCount };
   });
   // Thiếu giá không được thay bằng 0 vì có thể làm chênh lệch lớn bị phân loại thành nhỏ.
-  if (rows.some((row) => typeof row.unitCost !== 'number' || !Number.isFinite(row.unitCost))) throw httpError(409, 'Có dòng thiếu đơn giá. Cần bổ sung dữ liệu kiểm kê trước khi duyệt.');
+  const missingCost = rows.some((row) => typeof row.unitCost !== 'number' || !Number.isFinite(row.unitCost));
+  if (missingCost && requireCost) throw httpError(409, 'Có dòng thiếu đơn giá. Cần bổ sung dữ liệu kiểm kê trước khi duyệt.');
   const config = settings || new SystemSetting();
-  const summary = varianceSummary(rows, config, stocktake.approvalInfo?.agingStockActionPlan);
+  const summary = missingCost ? null : varianceSummary(rows, config, stocktake.approvalInfo?.agingStockActionPlan);
   const reportHash = createHash('sha256').update(JSON.stringify(rows)).digest('hex');
-  return { stocktake, records: rows, summary, reportHash, thresholds: {
+  return { stocktake, records: rows, summary, missingCost, reportHash, thresholds: {
     quantity: config.minorStocktakeVarianceLimitQty, value: config.minorStocktakeVarianceLimitValue } };
 };
 export const stocktakeDetail = async (id) => { objectId(id); return reportData(id); };

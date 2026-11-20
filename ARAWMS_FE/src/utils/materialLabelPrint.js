@@ -4,11 +4,9 @@
  * Date: 2026-10-27
  * Description: Prints persisted supplier material roll and lot barcodes with the physical identification details needed at the shelf.
  */
-import { code128Svg } from './barcodePrint';
+import { labelImage } from './barcodePrint';
+import { escapeHtml } from './warehouseFormat';
 
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-})[character]);
 
 /** Prints the receipt's calendar date in the viewer's time zone rather than the UTC date. */
 const receivedDate = (value) => {
@@ -22,7 +20,7 @@ export const printMaterialLabels = (labels, tab = window.open('', '_blank')) => 
   if (!tab) throw new Error('Trình duyệt đang chặn cửa sổ in tem');
   const articles = labels.map((label) => `<article>
     <strong>${escapeHtml(label.materialCode)} · ${escapeHtml(label.materialName)}</strong>
-    ${label.imageUrl ? `<img src="${escapeHtml(label.imageUrl)}" alt="${escapeHtml(label.barcode)}"/>` : code128Svg(label.barcode)}
+    ${labelImage(label)}
     <p>Nhà cung cấp: ${escapeHtml(label.supplierName || 'Chưa xác định')}</p>
     <p>Màu: ${escapeHtml(label.color || '—')} · Khổ: ${escapeHtml(label.widthCm ? `${label.widthCm} cm` : '—')}</p>
     <p>Lô / cây: ${escapeHtml(label.lotOrRollCode || label.supplierLotCode || '—')} · Ngày nhập: ${escapeHtml(receivedDate(label.receivedAt))}</p>

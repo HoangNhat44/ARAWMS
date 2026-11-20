@@ -76,7 +76,8 @@ const SCAN_ERROR_MESSAGES = {
 const ORDER_STATUS_META = {
   EXCHANGE_REQUESTED: { label: 'Đang đổi hàng', bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' },
   RETURN_REQUESTED: { label: 'Yêu cầu trả hàng', bg: '#FEF3C7', color: '#B45309', border: '#FDE68A' },
-  RETURNED: { label: 'Hoàn thành công', bg: '#ECFDF5', color: '#047857', border: '#A7F3D0' },
+  RETURNED: { label: 'Đã hoàn về kho', bg: '#F3E8FF', color: '#6B21A8', border: '#E9D5FF' },
+  RETURN_COMPLETED: { label: 'Hoàn thành công', bg: '#ECFDF5', color: '#047857', border: '#A7F3D0' },
   PARTIALLY_RETURNED: { label: 'Hoàn một phần', bg: '#FFF7ED', color: '#C2410C', border: '#FED7AA' },
   RETURN_FAILED: { label: 'Hoàn không thành công', bg: '#FEF2F2', color: '#B91C1C', border: '#FECACA' },
 };
@@ -127,7 +128,7 @@ function previewOutcome(expectedTotalQty, units = []) {
   const passedQty = units.filter((u) => u.disposition !== 'QUARANTINE_DEFECT').length;
   const defectQty = units.filter((u) => u.disposition === 'QUARANTINE_DEFECT').length;
   if (expectedTotalQty > 0 && passedQty >= expectedTotalQty && defectQty === 0) {
-    return { code: 'RETURNED', label: 'Hoàn thành công', passedQty, defectQty, style: RESULT_BADGE.PASSED };
+    return { code: 'RETURN_COMPLETED', label: 'Hoàn thành công', passedQty, defectQty, style: RESULT_BADGE.PASSED };
   }
   if (passedQty > 0) {
     return {
@@ -2096,7 +2097,7 @@ export default function GarmentReturnInspectionPage() {
                       placeholder="Ghi chú kiểm tra chung của đơn..."
                       style={{ padding: '0.5rem 0.75rem', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: '0.82rem', background: '#FFF' }}
                     />
-                    {preview.code !== 'RETURNED' && (
+                    {preview.code !== 'RETURN_COMPLETED' && (
                       <input
                         value={edit.rejectReason || ''}
                         onChange={(e) => updateInspectionMeta(insp._id, 'rejectReason', e.target.value)}

@@ -81,9 +81,13 @@ export const parseOrderReceiptDetails = (text) => {
 
   const cleaned = cleanChatMessageText(text);
 
-  const orderMatch = cleaned.match(/Mã đơn hàng:\s*([A-Z0-9_-]+)/i);
-  const waybillMatch = cleaned.match(/Mã vận đơn:\s*([A-Z0-9_-]+)/i);
-  const codMatch = cleaned.match(/(?:TỔNG THU HỘ|Tổng thanh toán|TỔNG TIỀN):\s*([0-9.,]+(?:\s*đ|\s*VND)?)/i);
+  const orderMatch =
+    cleaned.match(/Mã đơn hàng:\s*#?([A-Z0-9_-]+)/i) ||
+    cleaned.match(/#((?:ORD|ARA|POS|IMP|EX)[A-Z0-9_-]*)/i);
+  const waybillMatch = cleaned.match(/Mã vận đơn(?:\s*GHN)?:\s*([A-Z0-9_-]+)/i);
+  const codMatch = cleaned.match(
+    /(?:TỔNG THU HỘ|Tổng thanh toán|TỔNG TIỀN|Số tiền cần thanh toán):\s*([0-9.,]+(?:\s*đ|\s*VND)?)/i
+  );
 
   return {
     orderCode: orderMatch ? orderMatch[1].trim() : null,

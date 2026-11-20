@@ -22,7 +22,7 @@ const skuSchema = new Schema(
     unitCogs: { type: Number, required: true, default: 0, min: 0 },
     onHandQty: { type: Number, default: 0, min: 0 },
     reservedQty: { type: Number, default: 0, min: 0 },
-    defectQuarantineQty: { type: Number, default: 0, min: 0 },
+    // Defective units are tracked per unit (ProductUnit DEFECT_PENDING / DEFECTIVE); see common/services/defectStock.js.
     safetyStockThreshold: { type: Number, default: 10 },
     fifoAgingThresholdDays: { type: Number, default: 60 },
     isActive: { type: Boolean, default: true },

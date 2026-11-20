@@ -17,7 +17,7 @@ import '../../styles/owner.css';
 // Một đường dẫn cho một màn hình; chức năng chi tiết giữ cùng mục điều hướng với danh sách cha.
 const groups = [
   // Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 1/6/8 - Các nghiệp vụ chính hiện đầy đủ, nhân sự/thu chi ở dưới.
-  { title: 'Điều hành kinh doanh', items: [['dashboard', 'Tổng quan', BarChart3], ['purchases', 'Nhập hàng và công nợ', Package], ['plan-deviations', 'Sai lệch kế hoạch', AlertTriangle], ['bi', 'Báo cáo doanh thu', Layers], ['products', 'Danh mục sản phẩm', Package]] },
+  { title: 'Điều hành kinh doanh', items: [['dashboard', 'Tổng quan', BarChart3], ['purchases', 'Nhập hàng và công nợ', Package], ['plan-deviations', 'Sai lệch kế hoạch', AlertTriangle], ['bi', 'Báo cáo bán hàng', Layers], ['products', 'Danh mục sản phẩm', Package]] },
   { title: 'Tồn kho và kiểm kê', items: [['material-valuation', 'Tồn kho nguyên liệu', Package], ['asset-valuation', 'Tồn kho thành phẩm', Layers], ['stock-adjustments', 'Báo cáo kiểm kê', ClipboardCheck]] },
   // Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi bổ sung - Quản lý và nhân sự là nhóm cuối cùng.
   { title: 'Công nợ và cài đặt', items: [['payables', 'Lập phiếu chi trả nợ', FileText], ['settings/integrations', 'Kết nối dịch vụ', Settings], ['settings/fabric', 'Thu hồi vải dư', Settings], ['settings/inventory', 'Mức tồn tối thiểu', Settings], ['settings/returns', 'Chính sách đổi trả', Settings]] },

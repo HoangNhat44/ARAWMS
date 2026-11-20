@@ -13,8 +13,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Alert, Stack } from 'react-bootstrap';
+import { Card, Button, Alert, Stack, Spinner } from 'react-bootstrap';
 import { sellerService } from '../../services/sellerService';
+import { useToast } from '../../context/ToastContext';
 import { SkeletonOrderHistoryCard } from '../common/Skeleton';
 import { Icon, EmptyState, formatVnd, ORDER_STATUS_CLASS } from './SellerUi';
 
@@ -34,7 +35,8 @@ const HISTORY_STATUS_META = {
   EXCHANGE_REQUESTED: { label: 'Đang đổi hàng', icon: 'arrow-repeat' },
   RETURN_REQUESTED: { label: 'Khách yêu cầu trả hàng', icon: 'arrow-counterclockwise' },
   CANCELLED: { label: 'Đã hủy', icon: 'x-circle' },
-  RETURNED: { label: 'Hoàn thành công', icon: 'box-arrow-in-down-left' },
+  RETURNED: { label: 'Đã hoàn về kho', icon: 'box-arrow-in-down-left' },
+  RETURN_COMPLETED: { label: 'Hoàn thành công', icon: 'check2-circle' },
   PARTIALLY_RETURNED: { label: 'Hoàn một phần', icon: 'exclamation-triangle' },
   RETURN_FAILED: { label: 'Hoàn không thành công', icon: 'x-octagon' },
 };
@@ -49,16 +51,37 @@ const HISTORY_STATUS_META = {
  * @param {Function} [props.onViewDetail] - Callback mở modal chi tiết đơn hàng (OrderDetailModal).
  * @returns {JSX.Element} Danh sách thẻ lịch sử đơn hàng.
  */
-const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail }) => {
+const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail, onOrderConfirmed, refreshKey = 0 }) => {
+  const { showSuccess, showError } = useToast();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [confirmingId, setConfirmingId] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (customerId) {
       fetchOrderHistory();
     }
-  }, [customerId]);
+  }, [customerId, refreshKey]);
+
+  const handleConfirmOrder = async (ord) => {
+    const orderId = ord._id || ord.id;
+    if (!orderId) return;
+    try {
+      setConfirmingId(orderId);
+      const res = await sellerService.confirmOrderReserve(orderId);
+      if (res.success) {
+        const updated = res.data || { ...ord, status: 'CONFIRMED_RESERVED' };
+        setOrders((prev) => prev.map((o) => ((o._id || o.id) === orderId ? { ...o, ...updated } : o)));
+        showSuccess(`Đã xác nhận chốt đơn ${ord.orderCode} và giữ chỗ tồn kho!`, 'Xác nhận đơn');
+        if (onOrderConfirmed) onOrderConfirmed(updated);
+      }
+    } catch (err) {
+      showError(err.message || 'Không thể xác nhận chốt đơn hàng', 'Lỗi xác nhận đơn');
+    } finally {
+      setConfirmingId(null);
+    }
+  };
 
   const fetchOrderHistory = async () => {
     try {
@@ -84,6 +107,7 @@ const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail }) => {
              status === 'HANDED_OVER_CARRIER' ? 'Đang giao hàng' :
              status === 'CANCELLED' ? 'Đã hủy' :
              status === 'RETURNED' ? 'Đã hoàn về kho' :
+             status === 'RETURN_COMPLETED' ? 'Hoàn thành công' :
              status === 'PACKED' ? 'Đã lấy hàng' :
              status === 'PICKING' ? 'Đang lấy hàng' :
              status === 'CONFIRMED_RESERVED' ? 'Chờ lấy hàng' :
@@ -157,7 +181,24 @@ const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail }) => {
                   {formatVnd(ord.financialSummary?.totalOrderAmount)}
                 </span>
               </div>
-              <Stack direction="horizontal" gap={1.5}>
+              <Stack direction="horizontal" gap={1.5} className="flex-wrap justify-content-end">
+                {/* Nút xác nhận đơn nhanh cho đơn PENDING (Chờ xác nhận) */}
+                {ord.status === 'PENDING' && (
+                  <Button
+                    size="sm"
+                    className="btn-wms-accent rounded-pill px-2.5 py-0.5 d-inline-flex align-items-center gap-1"
+                    style={{ fontSize: '11.5px' }}
+                    disabled={confirmingId === (ord._id || ord.id)}
+                    onClick={() => handleConfirmOrder(ord)}
+                  >
+                    {confirmingId === (ord._id || ord.id) ? (
+                      <Spinner animation="border" size="sm" style={{ width: 11, height: 11 }} />
+                    ) : (
+                      <Icon name="check2-circle" />
+                    )}
+                    Xác nhận đơn
+                  </Button>
+                )}
                 {/* Xem chi tiết và đổi trạng thái */}
                 {onViewDetail && (
                   <Button size="sm" className="btn-wms-default rounded-pill px-2.5 py-0.5" style={{ fontSize: '11.5px' }} onClick={() => onViewDetail(ord)}>

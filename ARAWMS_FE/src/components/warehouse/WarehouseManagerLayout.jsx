@@ -16,6 +16,9 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   TrendingUp,
+  ScanBarcode,
+  PackageX,
+  FileBarChart,
   PanelLeftClose,
   PanelLeftOpen,
   X,
@@ -54,7 +57,21 @@ export default function WarehouseManagerLayout({ children }) {
       label: 'Kho thành phẩm',
       subLabel: 'Tồn kho theo SKU & định giá',
       icon: Shirt,
-      match: (path) => path === '/warehouse/finished-goods',
+      match: (path) => path === '/warehouse/finished-goods' || path.startsWith('/warehouse/finished-goods/'),
+    },
+    {
+      to: '/warehouse/defects',
+      label: 'Kho hàng lỗi',
+      subLabel: 'Hàng hoàn lỗi: xem & xuất kho',
+      icon: PackageX,
+      match: (path) => path.startsWith('/warehouse/defects'),
+    },
+    {
+      to: '/warehouse/barcode-tracking',
+      label: 'Tra cứu barcode',
+      subLabel: 'Hành trình ra vào kho của sản phẩm',
+      icon: ScanBarcode,
+      match: (path) => path.startsWith('/warehouse/barcode-tracking'),
     },
     {
       to: '/warehouse/technical-inbound',
@@ -97,6 +114,13 @@ export default function WarehouseManagerLayout({ children }) {
       subLabel: 'Lập đợt kiểm kê & đối soát',
       icon: ClipboardCheck,
       match: (path) => path.startsWith('/warehouse/stocktake'),
+    },
+    {
+      to: '/warehouse/reports',
+      label: 'Báo cáo thống kê',
+      subLabel: 'Tổng hợp kho & gửi Owner',
+      icon: FileBarChart,
+      match: (path) => path.startsWith('/warehouse/reports'),
     },
   ];
 

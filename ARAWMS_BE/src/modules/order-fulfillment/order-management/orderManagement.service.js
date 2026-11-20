@@ -91,7 +91,7 @@ export const evaluateStockForItems = async (items = []) => {
  * UC-78: Tạo đơn hàng bán lẻ trực tiếp từ chat (Create Direct New Order)
  */
 export const createDirectOrder = async (orderData, user, req) => {
-  const { customerId, conversationId, shippingRecipient, items, financialSummary = {} } = orderData;
+  const { customerId, conversationId, shippingRecipient, items, financialSummary = {}, autoConfirm = false } = orderData;
 
   // 1. Kiểm tra khách hàng hoặc tự động liên kết / tạo mới theo số điện thoại
   let customer = null;
@@ -181,8 +181,41 @@ export const createDirectOrder = async (orderData, user, req) => {
   const totalOrderAmount = itemsSubtotal + shippingFee - discountAmount;
   const expectedCodAmount = orderData.paymentMethod === 'BANK_TRANSFER' ? 0 : totalOrderAmount;
 
+  // 2b. Nếu Seller chọn "Tạo & Chốt đơn ngay" (autoConfirm = true): kiểm tra đủ tồn khả dụng trước khi tạo đơn
+  const shouldAutoConfirm = Boolean(autoConfirm) && !isPosOrder;
+  if (shouldAutoConfirm) {
+    for (const item of processedItems) {
+      const sku = await Sku.findById(item.skuId);
+      const available = (sku?.onHandQty || 0) - (sku?.reservedQty || 0);
+      if (available < item.orderedQty) {
+        throw new Error(
+          `Không thể tạo và chốt đơn ngay: sản phẩm ${item.skuCode} không đủ tồn khả dụng ` +
+          `(còn ${available}, cần ${item.orderedQty}). Vui lòng chọn "Chờ khách xác nhận" hoặc điều chỉnh số lượng.`
+        );
+      }
+    }
+  }
+
   // 3. Sinh mã đơn nguyên tử qua CounterSequence (ORD-00001)
   const orderCode = await CounterSequence.getNextSequence('ORDER_CODE', 'ORD', 5);
+
+  const initialStatus = shouldAutoConfirm ? 'CONFIRMED_RESERVED' : 'PENDING';
+  const now = new Date();
+
+  const resolvedChannel = SalesOrder.schema.path('channel').enumValues.includes(orderData.channel)
+    ? orderData.channel
+    : 'FACEBOOK_MESSENGER';
+  const resolvedSourceType =
+    orderData.sourceDetails?.sourceType ||
+    (resolvedChannel === 'SHOPEE'
+      ? 'SHOPEE_STORE'
+      : resolvedChannel === 'TIKTOK'
+      ? 'TIKTOK_SHOP'
+      : resolvedChannel === 'EXCEL_IMPORT'
+      ? 'EXCEL_CUSTOM'
+      : ['FACEBOOK', 'FACEBOOK_MESSENGER'].includes(resolvedChannel)
+      ? 'FANPAGE'
+      : 'OTHER');
 
   // 4. Tạo bản ghi SalesOrder
   const newOrder = await SalesOrder.create({
@@ -193,21 +226,28 @@ export const createDirectOrder = async (orderData, user, req) => {
     // UI labels such as 'ONLINE' are not stored types; anything outside the schema enum is a direct sale.
     orderType: ['DIRECT_SALES', 'EXCHANGE_ORDER', 'POS_SHIP'].includes(orderData.orderType)
       ? orderData.orderType : 'DIRECT_SALES',
-    channel: SalesOrder.schema.path('channel').enumValues.includes(orderData.channel)
-      ? orderData.channel : 'FACEBOOK_MESSENGER',
+    channel: resolvedChannel,
+    sourceDetails: {
+      ...(orderData.sourceDetails || {}),
+      sourceType: resolvedSourceType,
+    },
     paymentMethod: orderData.paymentMethod || 'COD',
     paymentStatus: orderData.paymentStatus || 'PENDING',
     notes: orderData.notes || '',
     linkedReturnRequestId: orderData.linkedReturnRequestId || null,
-    status: 'PENDING',
+    status: initialStatus,
     statusHistory: [{
       from: 'NONE',
-      to: 'PENDING',
+      to: initialStatus,
       by: user._id,
-      at: new Date(),
-      note: 'Tạo đơn hàng mới',
+      at: now,
+      note: shouldAutoConfirm
+        ? 'Tạo và xác nhận chốt đơn ngay (kích hoạt giữ chỗ tồn kho)'
+        : 'Tạo đơn hàng mới (chờ khách xác nhận)',
     }],
-    isCustomerConfirmed: false,
+    isCustomerConfirmed: shouldAutoConfirm,
+    customerConfirmedAt: shouldAutoConfirm ? now : undefined,
+    confirmedAt: shouldAutoConfirm ? now : undefined,
     shippingRecipient: {
       name: shippingRecipient?.name || customer.fullName,
       phone: cleanPhone || shippingRecipient?.phone || customer.phone || '',
@@ -223,13 +263,61 @@ export const createDirectOrder = async (orderData, user, req) => {
     },
     warehouseFulfillment: {
       carrierName: 'GHN',
+      ...(shouldAutoConfirm ? { stockReservedAt: now } : {}),
     },
     codReconciliationStatus: 'UNRECONCILED',
   });
 
-  // 4b. Tự động đẩy đơn lên GHN API để lấy mã vận đơn (order_code) và trạng thái realtime từ GHN
-  //     (Lưu ý: GhnService chỉ đẩy tiền hàng thuần, KHÔNG đẩy phí ship 30k lên GHN)
-  if (!isPosOrder) {
+  // 4b. Nếu autoConfirm = true: khóa giữ chỗ tồn kho (GBR-07), tạo vận đơn GHN và gửi thông báo chốt đơn vào chat
+  //     Nếu đơn đang PENDING (khách chưa chốt): KHÔNG đẩy vận đơn GHN sớm để tránh tự nhảy trạng thái.
+  if (shouldAutoConfirm) {
+    const reservedSoFar = [];
+    try {
+      for (const item of processedItems) {
+        const sku = await Sku.findOneAndUpdate(
+          {
+            _id: item.skuId,
+            $expr: {
+              $gte: [
+                { $subtract: [{ $ifNull: ['$onHandQty', 0] }, { $ifNull: ['$reservedQty', 0] }] },
+                item.orderedQty,
+              ],
+            },
+          },
+          { $inc: { reservedQty: item.orderedQty } },
+          { new: true }
+        );
+        if (!sku) {
+          throw new Error(`Sản phẩm ${item.skuCode} vừa có đơn khác chốt trước và không còn đủ tồn khả dụng.`);
+        }
+        reservedSoFar.push({ skuId: item.skuId, qty: item.orderedQty });
+
+        const txCode = await CounterSequence.getNextSequence('INVENTORY_TX', 'TX', 6);
+        await InventoryTransaction.create({
+          transactionCode: txCode,
+          warehouseType: 'FINISHED_GOODS',
+          itemType: 'FINISHED_SKU',
+          skuId: sku._id,
+          transactionType: 'ORDER_RESERVE',
+          referenceModel: 'SalesOrder',
+          referenceId: newOrder._id,
+          quantityChange: item.orderedQty,
+          onHandBefore: sku.onHandQty,
+          onHandAfter: sku.onHandQty,
+          unitCostSnapshot: sku.unitCogs || 0,
+          performedByUserId: user._id,
+        });
+      }
+    } catch (reserveErr) {
+      // Rollback giữ chỗ nếu xảy ra race-condition giữa chừng
+      for (const r of reservedSoFar) {
+        await Sku.findByIdAndUpdate(r.skuId, { $inc: { reservedQty: -r.qty } });
+      }
+      await SalesOrder.findByIdAndDelete(newOrder._id);
+      throw reserveErr;
+    }
+
+    // Tự động đẩy lên GHN lấy mã vận đơn (chỉ khi đơn đã CONFIRMED_RESERVED)
     try {
       const ghnRes = await ghnService.createShippingOrderFromSalesOrder(newOrder);
       if (ghnRes?.waybillCode) {
@@ -243,25 +331,24 @@ export const createDirectOrder = async (orderData, user, req) => {
           ghnExpectedDeliveryTime: ghnRes.expectedDeliveryTime ? new Date(ghnRes.expectedDeliveryTime) : undefined,
         };
         await newOrder.save();
-
-        // Bắn tin nhắn thông báo mã vận đơn & trạng thái GHN cho khách qua Chat
-        try {
-          await notificationTemplateService.sendOrderNotificationToChat({
-            order: newOrder,
-            messageText: notificationTemplateService.buildGhnStatusUpdateText(
-              newOrder,
-              newOrder.warehouseFulfillment.ghnStatus,
-              ghnRes.waybillCode
-            ),
-            notificationType: 'GHN_READY_TO_PICK',
-            senderSellerId: user?._id,
-          });
-        } catch (chatErr) {
-          console.warn('⚠️ [GHN Auto-Notify on Create]:', chatErr.message);
-        }
       }
     } catch (ghnErr) {
-      console.warn(`⚠️ [GHN Auto-Create Waybill] Chưa lấy được mã vận đơn GHN ngay khi tạo đơn ${newOrder.orderCode}:`, ghnErr.message);
+      console.warn(`⚠️ [GHN Auto-Create Waybill] Chưa lấy được mã vận đơn GHN cho đơn ${newOrder.orderCode}:`, ghnErr.message);
+    }
+
+    // Gửi thông báo chốt đơn thành công kèm mã vận đơn (nếu đơn có liên kết chat Facebook)
+    try {
+      await notificationTemplateService.sendOrderNotificationToChat({
+        order: newOrder,
+        messageText: notificationTemplateService.buildOrderConfirmedSuccessText(
+          newOrder,
+          newOrder.warehouseFulfillment?.waybillCode
+        ),
+        notificationType: 'CONFIRMED_SUCCESS',
+        senderSellerId: user?._id,
+      });
+    } catch (chatErr) {
+      console.warn('⚠️ [Auto-Confirm Chat Notify]:', chatErr.message);
     }
   }
 
@@ -524,12 +611,12 @@ export const confirmOrderReserve = async (orderId, user, req) => {
 
   // Gửi thông báo tự động xác nhận chốt đơn kèm mã vận đơn GHN vào chat
   try {
-    const waybillText = order.warehouseFulfillment?.waybillCode
-      ? `\nMã vận đơn GHN: ${order.warehouseFulfillment.waybillCode}`
-      : '';
     await notificationTemplateService.sendOrderNotificationToChat({
       order,
-      messageText: `${notificationTemplateService.buildOrderConfirmedSuccessText(order)}${waybillText}`,
+      messageText: notificationTemplateService.buildOrderConfirmedSuccessText(
+        order,
+        order.warehouseFulfillment?.waybillCode
+      ),
       notificationType: 'CONFIRMED_SUCCESS',
       senderSellerId: user?._id,
     });
@@ -572,6 +659,10 @@ export const syncOrderWithGhn = async (orderId, user, req) => {
       ...orderObj,
       chatNotified: false,
     };
+  }
+
+  if (order.status === 'PENDING') {
+    throw new Error('Đơn hàng đang ở trạng thái Chờ xác nhận. Vui lòng xác nhận chốt đơn trước khi tạo hoặc đồng bộ vận đơn GHN.');
   }
 
   let waybillCode = (order.warehouseFulfillment?.waybillCode || '').trim();
@@ -693,7 +784,7 @@ export const cancelOrder = async (orderId, cancelReason, user, req) => {
   const ghnStatus = String(order.warehouseFulfillment?.ghnStatus || '').toLowerCase().trim();
   const isPickedByCarrier =
     GHN_PICKED_UP_STATUSES.includes(ghnStatus) ||
-    ['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'COMPLETED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED', 'PARTIALLY_RETURNED', 'RETURN_FAILED'].includes(order.status);
+    ['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'COMPLETED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED', 'RETURN_COMPLETED', 'PARTIALLY_RETURNED', 'RETURN_FAILED'].includes(order.status);
 
   if (isPickedByCarrier) {
     throw new Error('Không thể hủy đơn hàng vì shipper đã lấy kiện hàng đi giao. Chức năng hủy đơn chỉ có thể thực hiện khi hàng chưa rời kho (trước khi shipper lấy hàng). Nếu muốn thu hồi đơn này, vui lòng liên hệ trực tiếp với bộ phận vận chuyển để hỗ trợ.');
@@ -762,6 +853,18 @@ export const cancelOrder = async (orderId, cancelReason, user, req) => {
   }
 
   await order.save();
+
+  // Gửi thông báo tự động hủy đơn hàng vào khung chat khách hàng (nếu có hội thoại Facebook)
+  try {
+    await notificationTemplateService.sendOrderNotificationToChat({
+      order,
+      messageText: notificationTemplateService.buildOrderCancelledText(order, cancelReason.trim()),
+      notificationType: 'ORDER_CANCELLED',
+      senderSellerId: user?._id,
+    });
+  } catch (notifyErr) {
+    console.warn('⚠️ Lỗi gửi thông báo hủy đơn tự động vào chat:', notifyErr.message);
+  }
 
   // Hoàn lại tích lũy của khách hàng
   await Customer.findByIdAndUpdate(order.customerId, {
@@ -942,6 +1045,16 @@ export const createPosDirectOrder = async (posData, user, req) => {
   return newOrder;
 };
 
+const isOrderFromFacebook = (order) => {
+  if (!order) return false;
+  const nonFbChannels = ['SHOPEE', 'TIKTOK', 'EXCEL_IMPORT', 'POS_OFFLINE', 'POS', 'ZALO', 'HOTLINE', 'DIRECT_OTHER'];
+  const nonFbSources = ['TIKTOK_SHOP', 'SHOPEE_STORE', 'EXCEL_CUSTOM', 'POS'];
+  if (nonFbChannels.includes(order.channel) || nonFbSources.includes(order.sourceDetails?.sourceType)) {
+    return false;
+  }
+  return ['FACEBOOK', 'FACEBOOK_MESSENGER'].includes(order.channel) || order.sourceDetails?.sourceType === 'FANPAGE';
+};
+
 /**
  * Gửi phiếu xác nhận đơn hàng vào phiên chat Messenger
  */
@@ -949,8 +1062,7 @@ export const sendOrderConfirmationReceipt = async (orderId, user, req) => {
   const order = await SalesOrder.findById(orderId);
   if (!order) throw new Error('Đơn hàng không tồn tại');
 
-  const isFacebookOrder = ['FACEBOOK', 'FACEBOOK_MESSENGER'].includes(order.channel) || order.sourceDetails?.sourceType === 'FANPAGE';
-  if (!isFacebookOrder) {
+  if (!isOrderFromFacebook(order)) {
     throw new Error('Chức năng gửi phiếu xác nhận qua Chat chỉ áp dụng cho đơn hàng từ kênh Facebook.');
   }
 
@@ -982,8 +1094,7 @@ export const simulateCustomerConfirm = async (orderId, user, req) => {
   const order = await SalesOrder.findById(orderId);
   if (!order) throw new Error('Đơn hàng không tồn tại');
 
-  const isFacebookOrder = ['FACEBOOK', 'FACEBOOK_MESSENGER'].includes(order.channel) || order.sourceDetails?.sourceType === 'FANPAGE';
-  if (!isFacebookOrder) {
+  if (!isOrderFromFacebook(order)) {
     throw new Error('Luồng xác nhận hai chiều qua Chat chỉ áp dụng cho đơn hàng từ Facebook.');
   }
 
@@ -1283,6 +1394,42 @@ export const updateOrderRecipient = async (orderId, recipientData, user, req) =>
   return getOrderById(order._id);
 };
 
+/**
+ * Gửi tin nhắn hỏi xác nhận khách hàng trước khi hủy đơn hàng (chỉ áp dụng đơn Facebook)
+ */
+export const sendCancelConfirmationInquiry = async (orderId, reason = '', user, req) => {
+  const order = await SalesOrder.findById(orderId);
+  if (!order) throw new Error('Đơn hàng không tồn tại');
+
+  if (!isOrderFromFacebook(order)) {
+    throw new Error('Chức năng gửi tin nhắn hỏi xác nhận hủy qua Chat chỉ áp dụng cho đơn hàng từ kênh Facebook.');
+  }
+
+  if (!['PENDING', 'CONFIRMED_RESERVED', 'PICKING'].includes(order.status)) {
+    throw new Error('Đơn hàng hiện không ở trạng thái cho phép hủy.');
+  }
+
+  const msgText = notificationTemplateService.buildOrderCancelInquiryText(order, String(reason || '').trim());
+  const chatMessage = await notificationTemplateService.sendOrderNotificationToChat({
+    order,
+    messageText: msgText,
+    notificationType: 'CANCEL_INQUIRY',
+    senderSellerId: user?._id,
+  });
+
+  const isExpired24h = chatMessage?.deliveryStatus === 'FAILED_24H_EXPIRED';
+  const message = isExpired24h
+    ? 'Đã ghi nhận tin nhắn trên web, nhưng Messenger chưa nhận được do quá khung 24h Meta.'
+    : 'Đã gửi tin nhắn hỏi xác nhận hủy đơn vào khung chat Messenger của khách!';
+
+  return {
+    success: true,
+    message,
+    chatMessage,
+    deliveryStatus: chatMessage?.deliveryStatus || 'DELIVERED',
+  };
+};
+
 export default {
   createDirectOrder,
   updateOrderItemsAndDetails,
@@ -1293,6 +1440,7 @@ export default {
   cancelOrder,
   createPosDirectOrder,
   sendOrderConfirmationReceipt,
+  sendCancelConfirmationInquiry,
   simulateCustomerConfirm,
   getOrderList,
   getOrderById,

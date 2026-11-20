@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * @title        : Conversation List Component (Pancake-style)
+ * @title        : Conversation List Component
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
  * @lastModified : 2026-11-14
@@ -115,9 +115,13 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
                   className="d-flex gap-2.5 py-3 px-3"
                   style={{
                     backgroundColor: isSelected ? 'var(--wms-primary-subtle, #EFE6DA)' : 'transparent',
-                    borderLeft: isSelected ? '3px solid var(--wms-accent, #8A6A46)' : '3px solid transparent',
+                    borderTopColor: 'var(--wms-border, #C8B9A6)',
+                    borderRightColor: 'var(--wms-border, #C8B9A6)',
+                    borderBottomColor: 'var(--wms-border, #C8B9A6)',
+                    borderLeftWidth: '3px',
+                    borderLeftStyle: 'solid',
+                    borderLeftColor: isSelected ? 'var(--wms-accent, #8A6A46)' : 'transparent',
                     color: 'var(--wms-text-primary, #141210)',
-                    borderColor: 'var(--wms-border, #C8B9A6)',
                     transition: 'all 0.15s ease',
                   }}
                 >

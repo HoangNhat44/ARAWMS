@@ -21,9 +21,10 @@ import {
   registerProductUnitBarcode 
 } from './packingVerification.service.js';
 import { allocateMissingFifoPicks } from '../order-qr-management/orderReservation.service.js';
+import { guardPacking } from './packingStocktakeLock.js';
 import { uploadPackingVideo as saveVideo, syncPackingVideo as syncVideo, streamPackingVideo } from './packingVideo.service.js';
 
-const sendPackingErrorResponse = (res, error) => sendError(res, error.code, { code: error.code }, error.status);
+const sendPackingErrorResponse = (res, error) => sendError(res, error.code, { code: error.code, ...(error.details || {}) }, error.status);
 
 /** Loads a packing session only when the operator may access its order. */
 const loadAuthorizedPackingSession = async (req) => {
@@ -51,7 +52,9 @@ export const openPackingSessionRequest = async (req, res, next) => {
         { code: error.code, skuCode: error.skuCode, missing: error.missing }, 409);
     }
     if (!canPackOrder(req.user, order)) return sendError(res, 'Đơn chưa được phân bổ đủ hàng theo lô', { code: 'ORDER_NOT_PACKABLE' }, 409);
+    const { restarted } = await guardPacking({ orderKey: String(order._id), resumeSilently: true });
     const session = await openPackingSession(order, req.user._id, req.body.stationId);
+    if (restarted) return sendSuccess(res, 'Lần đóng trước bị hủy do kiểm kê kho. Hãy đóng lại đơn từ đầu.', { order: publicOrderDetail(order), session, restartedAfterStocktake: true });
     return sendSuccess(res, 'Đã mở phiên soạn hàng', { order: publicOrderDetail(order), session });
   } catch (error) {
     if (error instanceof PackingError) return sendPackingErrorResponse(res, error);
@@ -74,6 +77,7 @@ export const getPackingSession = async (req, res, next) => {
 export const renewPackingSessionLeaseRequest = async (req, res, next) => {
   try {
     await loadAuthorizedPackingSession(req);
+    await guardPacking({ packingId: req.params.id });
     const session = await renewPackingSessionLease(req.params.id, req.body.stationId, req.body.leaseVersion);
     return sendSuccess(res, 'Đã gia hạn phiên', { session });
   } catch (error) {
@@ -110,6 +114,7 @@ export const discardPackingAttemptRequest = async (req, res, next) => {
 export const scanPackingProductBarcodeRequest = async (req, res, next) => {
   try {
     await loadAuthorizedPackingSession(req);
+    await guardPacking({ packingId: req.params.id });
     const result = await scanProductBarcodeForPacking({ sessionId: req.params.id, ...req.body });
     return sendSuccess(res, result.result === 'ACCEPTED' ? 'Đã nhận sản phẩm' : 'Barcode không được chấp nhận', result);
   } catch (error) {
@@ -122,6 +127,7 @@ export const scanPackingProductBarcodeRequest = async (req, res, next) => {
 export const removeScannedBarcodeRequest = async (req, res, next) => {
   try {
     await loadAuthorizedPackingSession(req);
+    await guardPacking({ packingId: req.params.id });
     const session = await removeScannedBarcodeFromPacking({ sessionId: req.params.id, ...req.body });
     return sendSuccess(res, 'Đã gỡ barcode khỏi lần đóng hàng', { session });
   } catch (error) {
@@ -134,6 +140,7 @@ export const removeScannedBarcodeRequest = async (req, res, next) => {
 export const uploadPackingVideo = async (req, res, next) => {
   try {
     await loadAuthorizedPackingSession(req);
+    await guardPacking({ packingId: req.params.id });
     const session = await saveVideo({
       sessionId: req.params.id,
       recordingId: req.header('X-Recording-Id'),
@@ -153,6 +160,7 @@ export const uploadPackingVideo = async (req, res, next) => {
 export const syncPackingVideo = async (req, res, next) => {
   try {
     await loadAuthorizedPackingSession(req);
+    await guardPacking({ packingId: req.params.id });
     const result = await syncVideo({
       sessionId: req.params.id, recordingId: req.params.recordingId,
       durationMs: Number(req.body?.durationMs) || 1,

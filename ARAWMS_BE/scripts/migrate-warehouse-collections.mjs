@@ -53,7 +53,7 @@ const migrateQr = async () => {
     if (owner && id(owner._id) !== id(order._id)) fail(`QR token collision: ${row._id}`);
     if (apply) await SalesOrder.updateOne({ _id: order._id, 'qr.token': { $exists: false } },
       { $set: { qr: { token: row.token, revokedAt: row.revokedAt,
-        issuedBy: row.issuedBy, qrImagePublicId: row.qrImagePublicId } } }, { timestamps: false });
+        issuedBy: row.issuedBy } } }, { timestamps: false });
   }
 };
 

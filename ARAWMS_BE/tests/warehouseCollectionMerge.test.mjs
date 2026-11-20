@@ -64,8 +64,7 @@ test('embedded QR supersedes a stale legacy token while legacy-only orders remai
     const listed = await listOrdersForQr({ _id: oid(), roles: ['ADMIN'] });
     assert.equal(listed.find((row) => row.orderCode === 'QR-MERGE-1').hasQr, true);
     const oldOnly = await makeOrder('QR-MERGE-2');
-    await OrderQrToken.create({ orderId: oldOnly._id, token: 'c'.repeat(64), issuedBy: oid(),
-      qrImagePublicId: 'qr/legacy' });
+    await OrderQrToken.create({ orderId: oldOnly._id, token: 'c'.repeat(64), issuedBy: oid() });
     assert.equal((await resolveQr(`PACK:v1:${'c'.repeat(64)}`)).order.orderCode, 'QR-MERGE-2');
     const issued = await issueQr({ _id: oldOnly._id, orderCode: 'QR-MERGE-2',
       status: 'CONFIRMED_RESERVED' }, oid());

@@ -596,10 +596,10 @@ const CodReconciliationPage = () => {
                                 Đủ điều kiện đối soát
                               </div>
                             </div>
-                          ) : o.status === 'RETURNED' || o.status === 'CANCELLED' ? (
+                          ) : ['RETURNED', 'RETURN_COMPLETED', 'CANCELLED'].includes(o.status) ? (
                             <div>
                               <span className="wms-status-badge wms-status-rejected">
-                                {o.status === 'RETURNED' ? 'Đã chuyển hoàn' : 'Đã hủy đơn'}
+                                {o.status === 'CANCELLED' ? 'Đã hủy đơn' : 'Đã chuyển hoàn'}
                               </span>
                               <div className="wms-helper-text" style={{ fontSize: '11px', marginTop: '2px', color: 'var(--wms-danger)' }}>
                                 Kiểm tra hàng hoàn

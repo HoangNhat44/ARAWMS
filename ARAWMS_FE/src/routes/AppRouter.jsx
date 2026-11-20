@@ -22,19 +22,7 @@ import RegisterPage from '../pages/RegisterPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import SellerChatPage from '../pages/seller/SellerChatPage';
 import SellerOrdersPage from '../pages/seller/SellerOrdersPage';
-import OrderQrPage from '../pages/OrderQrPage';
-import WarehousePackingPage from '../pages/WarehousePackingPage';
-import ProductConfigurationPage from '../pages/ProductConfigurationPage';
-import FinishedGoodsPage from '../pages/FinishedGoodsPage';
-import TechnicalInboundPage from '../pages/TechnicalInboundPage';
-import TechnicalOutboundPage from '../pages/TechnicalOutboundPage';
-import InboundProgressPage from '../pages/InboundProgressPage';
-import SupplierInboundPage from '../pages/SupplierInboundPage';
-import MaterialOutboundPage from '../pages/MaterialOutboundPage';
-import WarehouseLayoutPage from '../pages/WarehouseLayoutPage';
-import WarehousePutawayPage from '../pages/WarehousePutawayPage';
-import StocktakePage from '../pages/StocktakePage';
-import ShippingPage from '../pages/ShippingPage';
+import SellerCustomersPage from '../pages/seller/SellerCustomersPage';
 import MaterialInboundVerificationPage from '../pages/garment/MaterialInboundVerificationPage';
 import GarmentRawMaterialsPage from '../pages/garment/GarmentRawMaterialsPage';
 import GarmentReturnInspectionPage from '../pages/garment/GarmentReturnInspectionPage';
@@ -45,10 +33,9 @@ import GarmentCuttingAndRemnantPage from '../pages/garment/GarmentCuttingAndRemn
 import GarmentLotManagementPage from '../pages/garment/GarmentLotManagementPage';
 import GarmentDashboardPage from '../pages/garment/GarmentDashboardPage';
 import GarmentLayout from '../components/garment/GarmentLayout';
-import WarehouseManagerLayout from '../components/warehouse/WarehouseManagerLayout';
-import WarehouseStaffLayout from '../components/warehouse/WarehouseStaffLayout';
 import SellerLayout from '../components/seller/SellerLayout';
 import AccountantRoutes from './AccountantRoutes';
+import { warehouseManagerRoutes, warehouseStaffRoutes } from './WarehouseRoutes';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { getRoleHome } from './roleHome';
@@ -134,40 +121,19 @@ export default function AppRouter() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/account" element={<ProtectedRoute><AccountEntry /></ProtectedRoute>} />
 
-        {/* Phân hệ Seller Workspace (Bán hàng & CSKH đa kênh, Quản lý đơn hàng, TMĐT, RMA) */}
+        {/* Phân hệ Seller Workspace (Bán hàng & CSKH đa kênh, Quản lý đơn hàng, Khách hàng CRM, TMĐT, RMA) */}
         <Route element={<ProtectedRoute role="SELLER"><SellerLayout /></ProtectedRoute>}>
           <Route path="/seller/chat" element={<SellerChatPage />} />
           <Route path="/seller/orders" element={<SellerOrdersPage />} />
+          <Route path="/seller/customers" element={<SellerCustomersPage />} />
         </Route>
 
         {/* Phân hệ Kế toán (Accountant) */}
         <Route path="/accountant/*" element={<ProtectedRoute role="ACCOUNTANT"><AccountantRoutes /></ProtectedRoute>} />
 
-        {/* Phân hệ Quản lý kho */}
-        <Route element={<ProtectedRoute role="WAREHOUSE_MANAGER"><WarehouseManagerLayout><Outlet /></WarehouseManagerLayout></ProtectedRoute>}>
-          <Route path="/warehouse/raw-materials/inbound" element={<SupplierInboundPage />} />
-          <Route path="/warehouse/raw-materials/outbound" element={<MaterialOutboundPage />} />
-          <Route path="/warehouse/finished-goods" element={<FinishedGoodsPage />} />
-          <Route path="/warehouse/technical-inbound" element={<TechnicalInboundPage />} />
-          <Route path="/warehouse/technical-outbound" element={<TechnicalOutboundPage />} />
-          <Route path="/warehouse/inbound-progress" element={<InboundProgressPage />} />
-          <Route path="/warehouse/products/new" element={<ProductConfigurationPage />} />
-          <Route path="/warehouse/products/:id/edit" element={<ProductConfigurationPage />} />
-          <Route path="/warehouse/layout" element={<WarehouseLayoutPage />} />
-          <Route path="/warehouse/stocktake" element={<StocktakePage />} />
-        </Route>
-
-        {/* Phân hệ Nhân viên kho */}
-        <Route element={<ProtectedRoute role="WAREHOUSE_STAFF"><WarehouseStaffLayout><Outlet /></WarehouseStaffLayout></ProtectedRoute>}>
-          <Route path="/warehouse/putaway" element={<WarehousePutawayPage />} />
-          <Route path="/warehouse/staff/outbound" element={<MaterialOutboundPage isStaffMode />} />
-          <Route path="/warehouse/staff/finished-goods" element={<FinishedGoodsPage isStaffMode />} />
-          {/* Trang tiến độ nhập kho đã bỏ khỏi nhân viên kho; link cũ chuyển về trang xếp hàng. */}
-          <Route path="/warehouse/staff/inbound-progress" element={<Navigate to="/warehouse/putaway" replace />} />
-          <Route path="/packing/qr" element={<WarehousePackingPage />} />
-          <Route path="/orders/qr" element={<OrderQrPage />} />
-          <Route path="/warehouse/shipping" element={<ShippingPage />} />
-        </Route>
+        {/* Phân hệ Quản lý kho và Nhân viên kho (routes/WarehouseRoutes.jsx) */}
+        {warehouseManagerRoutes(ProtectedRoute)}
+        {warehouseStaffRoutes(ProtectedRoute)}
 
         {/* Phân hệ Kỹ thuật may */}
         <Route element={<ProtectedRoute role="GARMENT_TECHNICIAN"><GarmentLayout><Outlet /></GarmentLayout></ProtectedRoute>}>

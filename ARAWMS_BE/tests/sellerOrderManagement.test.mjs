@@ -563,3 +563,122 @@ test('PATCH /api/orders/:id/status đã được gỡ bỏ để chống nhảy 
 
   assert.equal(res.status, 404);
 });
+
+// ============================================================================
+// 8. Phương án A: Tạo & Chốt đơn ngay (autoConfirm) vs Chờ xác nhận (PENDING)
+//    + Gửi tin hỏi xác nhận hủy đơn + API Quản lý khách hàng CRM
+// ============================================================================
+test('Option A: Tạo đơn chờ xác nhận (autoConfirm=false) giữ PENDING, không đẩy GHN sớm và chặn sync-ghn', async () => {
+  const res = await request(app)
+    .post('/api/orders')
+    .set('Authorization', `Bearer ${sellerToken}`)
+    .send({
+      autoConfirm: false,
+      shippingRecipient: {
+        name: 'Khách Chờ Chốt',
+        phone: '0911223344',
+        address: '100 Xuân Thủy, Cầu Giấy, Hà Nội',
+      },
+      items: [{ skuId: String(testSkuInStock._id), orderedQty: 1, unitSalePrice: 150000 }],
+    });
+
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  assert.equal(res.body.data.status, 'PENDING');
+  assert.ok(!res.body.data.warehouseFulfillment?.waybillCode, 'PENDING order must not create GHN waybill prematurely');
+
+  const syncRes = await request(app)
+    .post(`/api/orders/${res.body.data._id}/sync-ghn`)
+    .set('Authorization', `Bearer ${sellerToken}`);
+
+  assert.equal(syncRes.status, 400);
+  assert.match(syncRes.body.message, /Chờ xác nhận/);
+});
+
+test('Option A: Tạo & Chốt đơn ngay (autoConfirm=true) chuyển CONFIRMED_RESERVED, giữ chỗ tồn kho và lấy vận đơn GHN', async () => {
+  const skuBefore = await Sku.findById(testSkuInStock._id);
+  const res = await request(app)
+    .post('/api/orders')
+    .set('Authorization', `Bearer ${sellerToken}`)
+    .send({
+      autoConfirm: true,
+      shippingRecipient: {
+        name: 'Khách Chốt Ngay',
+        phone: '0911223355',
+        address: '200 Hồ Tùng Mậu, Hà Nội',
+      },
+      items: [{ skuId: String(testSkuInStock._id), orderedQty: 2, unitSalePrice: 150000 }],
+    });
+
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  assert.equal(res.body.data.status, 'CONFIRMED_RESERVED');
+  assert.equal(res.body.data.isCustomerConfirmed, true);
+  assert.ok(res.body.data.warehouseFulfillment?.waybillCode, 'Auto-confirmed order should generate GHN waybill');
+
+  const skuAfter = await Sku.findById(testSkuInStock._id);
+  assert.equal(skuAfter.reservedQty, skuBefore.reservedQty + 2);
+});
+
+test('Cancel Inquiry: Gửi tin hỏi xác nhận hủy áp dụng cho đơn Facebook và chặn đơn ngoài Facebook', async () => {
+  const fbRes = await request(app)
+    .post('/api/orders')
+    .set('Authorization', `Bearer ${sellerToken}`)
+    .send({
+      channel: 'FACEBOOK_MESSENGER',
+      shippingRecipient: {
+        name: 'Khách Facebook Hủy',
+        phone: '0911223366',
+        address: '12 Duy Tân, Hà Nội',
+      },
+      items: [{ skuId: String(testSkuInStock._id), orderedQty: 1, unitSalePrice: 150000 }],
+    });
+
+  assert.equal(fbRes.status, 201);
+  const inquiryRes = await request(app)
+    .post(`/api/orders/${fbRes.body.data._id}/send-cancel-inquiry`)
+    .set('Authorization', `Bearer ${sellerToken}`)
+    .send({ reason: 'Khách muốn đổi sang mẫu khác' });
+
+  assert.equal(inquiryRes.status, 200, JSON.stringify(inquiryRes.body));
+  assert.equal(inquiryRes.body.success, true);
+
+  const shopeeRes = await request(app)
+    .post('/api/orders')
+    .set('Authorization', `Bearer ${sellerToken}`)
+    .send({
+      channel: 'SHOPEE',
+      shippingRecipient: {
+        name: 'Khách Shopee Hủy',
+        phone: '0911223377',
+        address: '15 Duy Tân, Hà Nội',
+      },
+      items: [{ skuId: String(testSkuInStock._id), orderedQty: 1, unitSalePrice: 150000 }],
+    });
+
+  const shopeeInquiryRes = await request(app)
+    .post(`/api/orders/${shopeeRes.body.data._id}/send-cancel-inquiry`)
+    .set('Authorization', `Bearer ${sellerToken}`)
+    .send({ reason: 'Hủy đơn sàn' });
+
+  assert.equal(shopeeInquiryRes.status, 400);
+  assert.match(shopeeInquiryRes.body.message, /Facebook/);
+});
+
+test('CRM Customers: GET /api/conversations/customers trả về danh sách, tìm kiếm, phân trang và thống kê summary', async () => {
+  const listRes = await request(app)
+    .get('/api/conversations/customers?search=Khách%20Chốt%20Ngay')
+    .set('Authorization', `Bearer ${sellerToken}`);
+
+  assert.equal(listRes.status, 200, JSON.stringify(listRes.body));
+  assert.equal(listRes.body.success, true);
+  assert.ok(Array.isArray(listRes.body.data.items));
+  assert.ok(listRes.body.data.items.some((c) => c.phone === '0911223355'));
+  assert.ok(listRes.body.data.summary.totalCustomers >= 1);
+
+  const custId = listRes.body.data.items[0]._id;
+  const detailRes = await request(app)
+    .get(`/api/conversations/customers/${custId}`)
+    .set('Authorization', `Bearer ${sellerToken}`);
+
+  assert.equal(detailRes.status, 200);
+  assert.equal(String(detailRes.body.data._id), String(custId));
+});

@@ -14,6 +14,7 @@ import SalesOrder from '../../../models/SalesOrder.model.js';
 import { consumePackedStock } from './packingStock.service.js';
 import { ARASTORE_CLOUDINARY_FOLDERS } from '../../../config/cloudinaryFolders.js';
 import { PackingError, toPackingSessionView } from './packingVerification.service.js';
+import notificationTemplateService from '../../conversational-commerce/chat-interface/notificationTemplate.service.js';
 
 export const MAX_VIDEO_BYTES = 512 * 1024 * 1024;
 const videoTypes = new Set(['video/webm', 'video/mp4']);
@@ -152,6 +153,7 @@ const completeVideo = async (packing, video) => {
   const dbSession = await mongoose.startSession();
   try {
     let saved;
+    let packedOrderForNotify = null;
     await dbSession.withTransaction(async () => {
       const current = await PackingSession.findById(packing._id).session(dbSession);
       if (!current) throw new PackingError('SESSION_NOT_FOUND', 404);
@@ -188,12 +190,28 @@ const completeVideo = async (packing, video) => {
         updated.orderVersion = order.updatedAt;
         await updated.save({ session: dbSession });
         current.video = updated.video;
+        packedOrderForNotify = order.toObject ? order.toObject() : order;
       }
       await PackingSession.updateOne({ _id: packing._id },
         { $set: { recordingId: video.recordingId, 'video.status': 'COMPLETED' },
           $unset: { pendingVideo: '' } }, { session: dbSession });
       saved = toPackingSessionView(current);
     });
+    if (packedOrderForNotify) {
+      try {
+        await notificationTemplateService.sendOrderNotificationToChat({
+          order: packedOrderForNotify,
+          messageText: notificationTemplateService.buildPackingCompletedText(
+            packedOrderForNotify,
+            packedOrderForNotify.warehouseFulfillment?.waybillCode
+          ),
+          notificationType: 'PACKED_WAYBILL',
+          senderSellerId: packedOrderForNotify.sellerId,
+        });
+      } catch (notifyErr) {
+        console.warn('⚠️ Lỗi gửi thông báo đóng gói hoàn tất vào chat:', notifyErr.message);
+      }
+    }
     return { status: 'COMPLETED', session: saved };
   } finally {
     await dbSession.endSession();

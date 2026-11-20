@@ -9,6 +9,7 @@ import { Link, useLocation, Outlet } from 'react-router-dom';
 import {
   MessageSquare,
   ShoppingBag,
+  Users,
   PanelLeftClose,
   PanelLeftOpen,
   X,
@@ -41,6 +42,13 @@ export default function SellerLayout() {
       subLabel: 'Danh sách đơn, sàn TMĐT & hoàn hàng',
       icon: ShoppingBag,
       match: (path) => path.startsWith('/seller/orders'),
+    },
+    {
+      to: '/seller/customers',
+      label: 'Quản lý khách hàng',
+      subLabel: 'Hồ sơ CRM, phân loại & lịch sử mua',
+      icon: Users,
+      match: (path) => path.startsWith('/seller/customers'),
     },
   ];
 

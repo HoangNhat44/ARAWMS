@@ -1,0 +1,4 @@
+.stocktake-notice-stack{display:grid;gap:8px;margin:0 0 16px}
+.stocktake-notice{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;padding:10px 14px;border:1px solid #f0d9a8;border-left:4px solid #c98a12;border-radius:10px;background:#fff8e8;color:#5c4206;font-size:14px}
+.stocktake-notice strong{font-size:14px}.stocktake-notice a{color:inherit;font-weight:600}
+.stocktake-notice.is-active{border-color:#f2c0b8;border-left-color:#b3261e;background:#fdeeec;color:#7a1d16}

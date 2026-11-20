@@ -1,0 +1,30 @@
+/* Defect warehouse page. Reuses finishedGoods.css cards and tables; only page-specific layout lives here. */
+.defect-warehouse-page .fg-stock-card { margin-bottom: 1.25rem; }
+.dw-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 1.25rem; }
+.dw-summary-card { display: grid; gap: 2px; padding: 14px 16px; text-align: left; border: 1px solid #eadfcf; border-radius: 12px; background: #fff; cursor: pointer; font: inherit; color: #1c1b1b; }
+.dw-summary-card small { color: #71675c; font-size: .78rem; font-weight: 600; }
+.dw-summary-card strong { font-size: 1.8rem; line-height: 1.1; color: #a32121; }
+.dw-summary-card.pending strong { color: #825500; }
+.dw-summary-card span { color: #71675c; font-size: .75rem; }
+.dw-summary-card.is-active { border-color: #825500; box-shadow: 0 0 0 2px #82550022; }
+.dw-outbound-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; margin-top: 12px; }
+.dw-reason { display: grid; gap: 6px; font-weight: 600; font-size: .85rem; }
+.dw-reason b { color: #a32121; }
+.dw-reason textarea { width: 100%; padding: 10px 12px; border: 1px solid #d8cbb8; border-radius: 8px; font: inherit; font-weight: 400; resize: vertical; }
+.dw-outbound-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.dw-outbound-actions span { font-size: .85rem; color: #4a433b; }
+.dw-list-head { flex-wrap: wrap; }
+.dw-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.dw-tabs button { padding: 8px 14px; border: 1px solid #eadfcf; border-radius: 999px; background: #f7f2ea; font: inherit; font-size: .85rem; cursor: pointer; color: #4a433b; }
+.dw-tabs button.is-active { background: #141210; border-color: #141210; color: #fff; }
+.dw-search { min-width: 240px; flex: 0 1 320px; padding: 9px 12px; border: 1px solid #d8cbb8; border-radius: 8px; font: inherit; }
+.dw-table td small { display: block; color: #71675c; font-size: .75rem; }
+.dw-table code { white-space: nowrap; }
+.dw-table tr.is-selected td { background: #fff8ed; }
+@media (max-width: 640px) {
+  .dw-summary { grid-template-columns: 1fr; }
+  .dw-outbound-form { grid-template-columns: 1fr; }
+  .dw-outbound-actions { justify-content: stretch; }
+  .dw-outbound-actions .btn-ara-primary { flex: 1 1 100%; }
+  .dw-search { min-width: 0; flex: 1 1 100%; }
+}

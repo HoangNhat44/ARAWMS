@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import WmsHeader from '../common/WmsHeader';
+import StocktakeNoticeBanner from '../common/StocktakeNoticeBanner';
 import { formatRoleVi } from '../../utils/garmentDisplayVi';
 
 export default function GarmentLayout({ children }) {
@@ -222,6 +223,7 @@ export default function GarmentLayout({ children }) {
           profilePath="/account"
         />
         <main className="wms-content-container">
+          <StocktakeNoticeBanner role="GARMENT_TECHNICIAN" />
           {children}
         </main>
       </div>

@@ -286,6 +286,12 @@ export const accountantProcurementApi = {
     const res = await apiClient.get('/financial/raw-material-valuation/metadata');
     return res.data.data || {};
   },
+
+  // Accountant Dashboard Summary & Period Comparison
+  getDashboardSummary: async (params = {}) => {
+    const res = await apiClient.get('/financial/dashboard/summary', { params });
+    return res.data.data;
+  },
 };
 
 export default accountantProcurementApi;

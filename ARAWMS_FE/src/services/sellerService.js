@@ -32,6 +32,8 @@ export const sellerService = {
   deleteCustomTag: (tagId) => api.delete(`/conversations/tags/${tagId}`),
 
   // === CRM CUSTOMER (UC-70, UC-71, UC-75, UC-76) ===
+  getCustomers: (params) => api.get('/conversations/customers', { params }),
+  getCustomerById: (id) => api.get(`/conversations/customers/${id}`),
   createCustomer: (data) => api.post('/conversations/customers', data),
   updateCustomer: (id, data) => api.put(`/conversations/customers/${id}`, data),
   getCustomerInteractionHistory: (customerId) => api.get(`/conversations/customers/${customerId}/interaction-history`),
@@ -49,6 +51,7 @@ export const sellerService = {
   updateOrderRecipient: (id, data) => api.patch(`/orders/${id}/recipient`, data),
   confirmOrderReserve: (id) => api.post(`/orders/${id}/confirm`),
   sendOrderConfirmationReceipt: (id) => api.post(`/orders/${id}/send-confirmation`),
+  sendCancelConfirmationInquiry: (id, reason) => api.post(`/orders/${id}/send-cancel-inquiry`, { reason }),
   simulateCustomerConfirm: (id) => api.post(`/orders/${id}/simulate-confirm`),
   syncOrderWithGhn: (id) => api.post(`/orders/${id}/sync-ghn`),
   switchOrderGhnStatus: (id, ghnStatus) => api.post(`/orders/${id}/ghn-status`, { ghnStatus }),

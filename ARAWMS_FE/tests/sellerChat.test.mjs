@@ -219,3 +219,18 @@ test('formatVnd: Định dạng đúng số tiền chuẩn VND', () => {
   assert.match(formatVnd(null), /0\s*đ/);
 });
 
+test('parseOrderReceiptDetails: Trích xuất đúng mã đơn có dấu # và Mã vận đơn GHN thực tế', () => {
+  const ghnCardMsg =
+    '🚚 ĐÃ TẠO VẬN ĐƠN GIAO HÀNG NHANH\n' +
+    '━━━━━━━━━━━━━━━━━━━━━\n' +
+    'Mã đơn hàng: #ORD-00023\n' +
+    'Mã vận đơn GHN: L4ABCD99\n' +
+    'Trạng thái: Chờ lấy hàng\n' +
+    'Tổng thu hộ: 628.000 đ\n';
+
+  const details = parseOrderReceiptDetails(ghnCardMsg);
+  assert.equal(details.orderCode, 'ORD-00023');
+  assert.equal(details.waybillCode, 'L4ABCD99');
+  assert.equal(details.codAmount, '628.000 đ');
+});
+

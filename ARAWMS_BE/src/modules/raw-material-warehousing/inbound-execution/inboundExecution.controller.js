@@ -6,7 +6,6 @@
  */
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
 import { createFabricRollTemplate, previewFabricRollImport } from './fabricRollExcelImport.js';
-import { scheduleBarcodeImages } from '../../../common/services/barcodeImageStorage.js';
 import {
   getSupplierReceiptOptions, listSupplierReceipts, getSupplierReceipt, getSupplierReceiptByDraftKey, findDeliveryMatches,
   createSupplierReceipt, updateSupplierReceipt, cancelSupplierReceipt, confirmSupplierReceipt, createSupplierMaterial,
@@ -75,13 +74,6 @@ export const uploadReceiptAttachment = handle('Đã đính kèm chứng từ', a
   await uploadSupplierReceiptAttachment(req.params.id, req.body, req.headers['content-type']?.split(';')[0],
     req.headers['x-file-name'], req.user) }));
 export const receiptLabels = handle('Tem nguyên phụ liệu', (req) => getMaterialReceiptLabels(req.params.id, req.user));
-export const syncReceiptBarcodes = handle('Đang tạo ảnh tem còn thiếu', async (req) => {
-  const { receipt } = await getMaterialReceipt(req.params.id, req.user);
-  if (receipt.status !== 'COMPLETED') throw Object.assign(new Error('Phiếu chưa được xác nhận'),
-    { code: 'RECEIPT_NOT_CONFIRMED', status: 409 });
-  scheduleBarcodeImages('RAW_MATERIAL', String(receipt._id));
-  return { scheduled: true };
-}, 202);
 export const putaway = handle('Đã xác nhận cất hàng', async (req) => ({ putaway: await confirmMaterialPutaway(req.params.id, req.body || {}, req.user) }));
 export const requestSupplierReturn = handle('Đã tạo yêu cầu trả nhà cung cấp',
   async (req) => requestMaterialSupplierReturn(req.params.id, req.body || {}, req.user));

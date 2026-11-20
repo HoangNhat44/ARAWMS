@@ -10,7 +10,7 @@ import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
 import {
   options, createLocation, createMaterial, plans, planDetails, receipts, receiptDetails, deliveryMatches,
   createReceipt, updateReceipt, confirmReceipt, cancelReceipt, receiptByDraftKey, uploadReceiptAttachment,
-  receiptLabels, syncReceiptBarcodes, rollTemplate, previewRolls, putaway,
+  receiptLabels, rollTemplate, previewRolls, putaway,
   requestSupplierReturn, confirmSupplierReturn,
   createPlan, setupLegacyPlan, closeBatch, cancelBatch, reviseBatch, reviseBatchItems,
   technicianRequests, createTechnicianRequest,
@@ -58,7 +58,6 @@ router.post('/receipts/:id/attachments', express.raw({ type: ['application/pdf',
 router.post('/receipts/:id/confirm', confirmReceipt);
 router.post('/receipts/:id/cancel', cancelReceipt);
 router.get('/receipts/:id/labels', receiptLabels);
-router.post('/receipts/:id/barcodes/sync', syncReceiptBarcodes);
 router.post('/receipts/:id/putaway', putaway);
 router.post('/receipts/:id/supplier-returns', requestSupplierReturn);
 router.post('/receipts/:id/supplier-returns/confirm', confirmSupplierReturn);

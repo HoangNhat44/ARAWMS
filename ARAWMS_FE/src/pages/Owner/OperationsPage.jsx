@@ -7,16 +7,16 @@ import { comparisonDates, quarterDates } from '../../utils/reportFilters';
 import { useLocation } from 'react-router-dom';
 import api from '../../services/api';
 import { Columns, InventoryStatusChart } from './OwnerCharts';
-import AnnualAnalytics, { SalesSourceChart, PeriodComparison } from './AnnualAnalytics';
+import AnnualAnalytics, { SalesSourceChart, PeriodComparison, QuarterlyRevenue, ChannelMixComparison } from './AnnualAnalytics';
+import BusinessActivity, { channelLabels } from './BusinessActivity';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
 import { useOwnerQuery } from '../../hooks/useOwnerQuery';
-import { defaultOwnerDates, dateRangeError } from '../../utils/ownerValidation';
+import { defaultOwnerDates, dateRangeError, todayOwner } from '../../utils/ownerValidation';
 import { ResourceState, Table, Metric, Status, money, quantity, datetime, labels, Notice } from './OwnerUI';
 import { WmsButton, WmsInput, WmsSelect, WmsField, WmsLinkButton } from '../../components/ui/WmsControls';
 
 // Các mã nguồn bán/trạng thái chỉ được đổi thành nhãn tiếng Việt ở FE; số liệu lấy từ API.
-const titles = { dashboard: 'Tổng quan kinh doanh', bi: 'Báo cáo doanh thu', purchases: 'Báo cáo nhập hàng', inventory: 'Tồn kho nguyên liệu', finished: 'Tồn kho thành phẩm', payables: 'Lập phiếu chi trả nợ' };
-const channelLabels = { FACEBOOK: 'Facebook', SHOPEE: 'Shopee', TIKTOK: 'TikTok', WHOLESALE: 'Bán buôn', RETAIL: 'Bán lẻ', DIRECT: 'Khách mua trực tiếp', UNKNOWN: 'Chưa rõ nguồn bán' };
+const titles = { dashboard: 'Tổng quan kinh doanh', bi: 'Báo cáo bán hàng', purchases: 'Báo cáo nhập hàng', inventory: 'Tồn kho nguyên liệu', finished: 'Tồn kho thành phẩm', payables: 'Lập phiếu chi trả nợ' };
 const reasonLabels = { CUSTOMER_REFUSED: 'Khách không nhận hàng', INVALID_ORDER: 'Đơn hàng không hợp lệ', PRODUCT_DEFECT: 'Sản phẩm bị lỗi', OTHER: 'Lý do khác', UNKNOWN: 'Chưa rõ lý do' };
 const iso = (d) => d.toISOString().slice(0, 10);
 // Lùi một năm để lập kỳ đối chiếu mặc định. Ngày 29/02 được đưa về 28/02
@@ -32,6 +32,7 @@ const previousYear = (s) => {
 const initial = () => { const dates = defaultOwnerDates(); return { ...dates, compareFrom: previousYear(dates.from), compareTo: previousYear(dates.to) }; };
 // UC-13: Các lựa chọn tuần/tháng/quý/năm đều chuyển thành ngày rõ ràng, cho phép chọn kỳ lịch sử bất kỳ.
 function preset(kind, anchor) {
+  if (kind === 'day') return { from: anchor, to: anchor };
   const d = new Date(`${anchor}T00:00:00Z`); const y = d.getUTCFullYear(); const m = d.getUTCMonth();
   // Tuần bắt đầu vào thứ Hai; tháng/quý/năm dùng ngày đầu và ngày cuối kỳ lịch.
   if (kind === 'week') { d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7); const end = new Date(d); end.setUTCDate(end.getUTCDate() + 6); return { from: iso(d), to: iso(end) }; }
@@ -47,7 +48,7 @@ function preset(kind, anchor) {
 function PeriodFilter({ value, onChange, showComparison = true }) {
   const [draft, setDraft] = useState(() => ({ from: value.from, to: value.to, compareFrom: value.compareFrom, compareTo: value.compareTo, salesChannel: value.salesChannel || '', paymentStatus: value.paymentStatus || '' }));
   const [comparing, setComparing] = useState(value.comparison === 'on');
-  const [kind, setKind] = useState(value.compareMode === 'quarter' ? 'quarter' : 'custom'); const [mode, setMode] = useState(value.compareMode || 'previous-year'); const [error, setError] = useState('');
+  const [kind, setKind] = useState(value.periodKind); const [mode, setMode] = useState(value.compareMode || 'previous-year'); const [error, setError] = useState('');
   const [quarters, setQuarters] = useState({ current: Math.floor((Number(value.from.slice(5, 7)) - 1) / 3) + 1, previous: Math.floor((Number(value.compareFrom.slice(5, 7)) - 1) / 3) + 1 });
   const changeQuarters = (next) => {
     setQuarters(next);
@@ -64,26 +65,44 @@ function PeriodFilter({ value, onChange, showComparison = true }) {
 
     // Chế độ quý tính lại đủ ranh giới quý; các chế độ còn lại giữ khoảng ngày đã nhập.
     const selectedMode = showComparison && comparing ? mode : 'previous-year';
-    const current = selectedMode === 'quarter' ? quarterDates(Number(draft.from.slice(0, 4)), quarters.current) : draft;
+    const selectedDates = selectedMode === 'quarter' ? quarterDates(Number(draft.from.slice(0, 4)), quarters.current) : draft;
+    const today = todayOwner();
+    if (showComparison && selectedDates.from > today) {
+      setError('Ngày bắt đầu báo cáo không được sau hôm nay.');
+      return;
+    }
+    const current = showComparison && selectedDates.to > today ? { ...selectedDates, to: today } : selectedDates;
     const previous = selectedMode === 'quarter' ? quarterDates(Number(draft.from.slice(0, 4)), quarters.previous) : null;
+    const fullPreviousYear = kind === 'year' && selectedMode === 'previous-year';
+    const yearBefore = Number(current.from.slice(0, 4)) - 1;
     const dates = {
       ...draft, ...current,
-      ...(previous ? { compareFrom: previous.from, compareTo: previous.to } : comparisonDates(current, selectedMode)),
+      ...(previous ? { compareFrom: previous.from, compareTo: previous.to } : fullPreviousYear
+        ? { compareFrom: `${yearBefore}-01-01`, compareTo: `${yearBefore}-12-31` }
+        : comparisonDates(current, selectedMode)),
     };
 
     // Kiểm tra cả kỳ đối chiếu trước khi gửi bộ lọc lên trang cha; lỗi giữ nguyên form để sửa.
     const comparisonError = dateRangeError({ from: dates.compareFrom, to: dates.compareTo });
     setError(comparisonError);
-    if (!comparisonError) onChange({ ...dates, compareMode: selectedMode, comparison: comparing ? 'on' : 'off' });
+    if (!comparisonError) onChange({ ...dates, periodKind: kind, compareMode: selectedMode, comparison: comparing ? 'on' : 'off' });
+  };
+  // Từ ngày là mốc chọn kỳ. Chỉ khoảng tự chọn cho phép sửa độc lập ngày kết thúc.
+  const changeDate = (field, date) => {
+    if (field === 'from' && kind !== 'custom' && date && !dateRangeError({ from: date, to: date })) {
+      setDraft({ ...draft, ...preset(kind, date) });
+    } else {
+      setDraft({ ...draft, [field]: date });
+    }
   };
   return <form className="owner-filters owner-period-filter" onSubmit={apply}>
     <div className="owner-period-fields">
-      <WmsField>Xem theo<WmsSelect value={kind} onChange={(e) => { const k = e.target.value; setKind(k); if (k !== 'custom') setDraft({ ...draft, ...preset(k, draft.from) }); }}><option value="custom">Khoảng thời gian</option><option value="week">Tuần</option><option value="month">Tháng</option><option value="quarter">Quý</option><option value="year">Năm</option></WmsSelect></WmsField>
-      {[['from', 'Từ ngày'], ['to', 'Đến ngày']].map(([key, title]) => <WmsField key={key}>{title}<WmsInput type="date" required value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} /></WmsField>)}
-      {showComparison && <><WmsField>Nguồn bán<WmsSelect value={draft.salesChannel} onChange={(e) => setDraft({ ...draft, salesChannel: e.target.value })}><option value="">Tất cả nguồn bán</option>{Object.entries(channelLabels).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</WmsSelect></WmsField><WmsField>Thanh toán<WmsSelect value={draft.paymentStatus} onChange={(e) => setDraft({ ...draft, paymentStatus: e.target.value })}><option value="">Tất cả trạng thái</option><option value="PAID">Đã thanh toán</option><option value="UNPAID">Chưa thanh toán</option><option value="PARTIAL">Đã trả một phần</option><option value="UNKNOWN">Chưa rõ thanh toán</option></WmsSelect></WmsField></>}
+      <WmsField>Xem theo<WmsSelect value={kind} onChange={(e) => { const k = e.target.value; setKind(k); if (k !== 'custom' && !dateRangeError({ from: draft.from, to: draft.from })) setDraft({ ...draft, ...preset(k, draft.from) }); }}><option value="custom">Khoảng thời gian</option><option value="day">Ngày</option><option value="week">Tuần</option><option value="month">Tháng</option><option value="quarter">Quý</option><option value="year">Năm</option></WmsSelect></WmsField>
+      {[['from', 'Từ ngày'], ['to', 'Đến ngày']].map(([key, title]) => <WmsField key={key}>{title}<WmsInput type="date" required disabled={key === 'to' && kind !== 'custom'} value={draft[key]} onChange={(e) => changeDate(key, e.target.value)} /></WmsField>)}
+      {showComparison && <><WmsField>Nguồn bán<WmsSelect value={draft.salesChannel} onChange={(e) => setDraft({ ...draft, salesChannel: e.target.value })}><option value="">Tất cả nguồn bán</option>{Object.entries(channelLabels).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</WmsSelect></WmsField><WmsField>Thanh toán<WmsSelect value={draft.paymentStatus} onChange={(e) => setDraft({ ...draft, paymentStatus: e.target.value })}><option value="">Tất cả trạng thái</option><option value="PAID">Đã thanh toán</option><option value="UNPAID">Chưa thanh toán</option><option value="PARTIAL">Đã trả một phần</option><option value="REFUNDED">Đã hoàn tiền</option><option value="UNKNOWN">Chưa rõ thanh toán</option></WmsSelect></WmsField></>}
     </div>
     {showComparison && comparing && <div className="owner-period-fields owner-comparison-fields" id="owner-period-comparison">
-      <WmsField>So sánh với<WmsSelect value={mode} onChange={(e) => { const next = e.target.value; setMode(next); if (next === 'quarter') { setKind('quarter'); changeQuarters({ current: 1, previous: 2 }); } }}><option value="previous-year">Cùng kỳ năm trước</option><option value="previous-period">Kỳ liền trước</option><option value="quarter">Quý khác trong năm</option><option value="custom">Khoảng ngày tự chọn</option></WmsSelect></WmsField>
+      <WmsField>So sánh với<WmsSelect value={mode} onChange={(e) => { const next = e.target.value; setMode(next); if (next === 'quarter') { setKind('quarter'); const current = Math.ceil(Number(draft.from.slice(5, 7)) / 3) || 1; changeQuarters({ current, previous: current === 1 ? 2 : current - 1 }); } }}><option value="previous-year">{kind === 'year' ? 'Cả năm trước' : 'Cùng kỳ năm trước'}</option><option value="previous-period">Kỳ liền trước</option><option value="quarter">Quý khác trong năm</option><option value="custom">Khoảng ngày tự chọn</option></WmsSelect></WmsField>
       {mode === 'quarter' && [['current', 'Quý cần xem'], ['previous', 'Quý đối chiếu']].map(([key, title]) => <WmsField key={key}>{title}<WmsSelect value={String(quarters[key])} onChange={(e) => changeQuarters({ ...quarters, [key]: Number(e.target.value) })}>{[1, 2, 3, 4].map((q) => <option key={q} value={String(q)}>Quý {q}</option>)}</WmsSelect></WmsField>)}
       {mode === 'custom' && [['compareFrom', 'So sánh từ ngày'], ['compareTo', 'So sánh đến ngày']].map(([key, title]) => <WmsField key={key}>{title}<WmsInput type="date" required value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} /></WmsField>)}
     </div>}
@@ -101,41 +120,48 @@ function PeriodFilter({ value, onChange, showComparison = true }) {
  */
 export default function OperationsPage({ mode = 'dashboard' }) {
   const location = useLocation();
-  const [filters, setFilters] = useOwnerQuery({ ...initial(), search: '', status: '', unit: '', page: 1, salesChannel: '', paymentStatus: '', compareMode: 'previous-year', comparison: 'off', scope: ['purchases', 'payables'].includes(mode) ? 'all' : 'period' }); const { search, status, unit, page, ...query } = filters;
+  const [filters, setFilters] = useOwnerQuery({ ...initial(), search: '', status: '', unit: '', page: 1, salesChannel: '', paymentStatus: '', periodKind: 'custom', compareMode: 'previous-year', comparison: 'off', scope: ['purchases', 'payables'].includes(mode) ? 'all' : 'period' }); const { search, status, unit, page, ...query } = filters;
+  // Đường dẫn cũ có thể chứa một phân loại bán hàng đã bỏ khỏi màn hình Owner.
+  if (!Object.hasOwn(channelLabels, query.salesChannel)) query.salesChannel = '';
   const setQuery = (next) => setFilters({ ...filters, ...next }); const setSearch = (search) => setFilters({ ...filters, search, page: 1 }); const setStatus = (status) => setFilters({ ...filters, status, page: 1 });
   const [error, setError] = useState(''); const [success, setSuccess] = useState('');
+  const [dashboardRevision, setDashboardRevision] = useState(0);
   // Ngày, nguồn bán và thanh toán gửi tới BE; tìm kiếm/trạng thái/đơn vị lọc danh sách đã tải.
   const resource = useOwnerResource('operations-report', query); const data = resource.data;
   const matchUnit = (row) => !unit || row.unit === unit;
   const match = (row) => (!status || !row.status || row.status === status) && `${JSON.stringify(row)} ${labels[row.status] || ''}`.toLocaleLowerCase('vi').includes(search.toLocaleLowerCase('vi'));
   // Thao tác ghi (ví dụ lập phiếu chi) đi qua API xác thực; thành công mới tải lại báo cáo.
   const action = async (path, body, method = 'patch') => { setError(''); setSuccess(''); try { await api[method](`/owner/operations-report/${path}`, body); setSuccess('Đã lưu thay đổi.'); resource.reload(); } catch (e) { setError(e.message); } };
-  return <><header className="owner-page-heading"><div><h1>{titles[mode]}</h1></div><WmsButton onClick={resource.reload}>Tải lại</WmsButton></header>
+  const reload = () => {
+    resource.reload();
+    if (mode === 'dashboard') setDashboardRevision(revision => revision + 1);
+  };
+  return <><header className="owner-page-heading"><div><h1>{titles[mode]}</h1></div><WmsButton onClick={reload}>Tải lại</WmsButton></header>
     {['purchases', 'payables'].includes(mode) && <div className="owner-filters"><WmsField>Phạm vi danh sách<WmsSelect value={query.scope} onChange={(e) => setQuery({ scope: e.target.value, page: 1 })}><option value="all">Tất cả thời gian</option><option value="period">Trong khoảng ngày</option></WmsSelect></WmsField></div>}
-    {(!['purchases', 'payables'].includes(mode) || query.scope === 'period') && <PeriodFilter key={`${query.from}-${query.to}-${query.compareFrom}-${query.compareTo}-${query.compareMode}-${query.comparison}`} value={query} onChange={setQuery} showComparison={['dashboard', 'bi'].includes(mode)} />}<Notice error={error} success={success} />
-    <ResourceState resource={resource}>{data && <>
+    {(!['purchases', 'payables'].includes(mode) || query.scope === 'period') && <PeriodFilter key={JSON.stringify(query)} value={query} onChange={setQuery} showComparison={['dashboard', 'bi'].includes(mode)} />}<Notice error={error} success={success} />
+    {/* Tổng quan trình bày số tổng và doanh thu trước, tiếp theo là giao hàng
+        và hàng hoàn. Truy vấn vận hành vẫn độc lập với báo cáo doanh thu. */}
+    {mode === 'dashboard' && <DashboardReports key={JSON.stringify([query, dashboardRevision])} query={query} resource={resource} />}
+    {mode !== 'dashboard' && <ResourceState resource={resource}>{data && <>
       {/* Chỉ hiện kết quả đối chiếu khi Owner bật so sánh và áp dụng bộ lọc. */}
-      {['dashboard', 'bi'].includes(mode) && query.comparison === 'on' && <PeriodComparison data={data} dates={query} />}
+      {mode === 'bi' && query.comparison === 'on' && <PeriodComparison data={data} dates={query} />}
       {!['dashboard', 'bi'].includes(mode) && <div className="owner-filters"><WmsField>Tìm trong danh sách<WmsInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nhập mã hoặc tên cần tìm" /></WmsField>{!['dashboard', 'bi', 'payables'].includes(mode) && <WmsField>{mode === 'purchases' ? 'Trạng thái kế hoạch' : 'Trạng thái'}<WmsSelect value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Tất cả trạng thái</option>{[...new Set((['inventory', 'finished'].includes(mode) ? data.inventory : mode === 'purchases' ? data.purchases : []).map((r) => r.status))].filter(Boolean).map((s) => <option key={s} value={s}>{labels[s] || 'Chưa cập nhật'}</option>)}</WmsSelect></WmsField>}{['purchases', 'inventory', 'finished'].includes(mode) && <WmsField>Đơn vị tính<WmsSelect value={unit} onChange={(e) => setFilters({ ...filters, unit: e.target.value, page: 1 })}><option value="">Tất cả đơn vị</option>{['METER', 'SPOOL', 'KG', 'BOX', 'PIECE'].map((value) => <option key={value} value={value}>{labels[value]}</option>)}</WmsSelect></WmsField>}</div>}
-      {/* Đếm kế hoạch theo mã để kế hoạch có nhiều nguyên liệu không bị tính lặp.
-          Cảnh báo tồn kho đếm số mã hàng, không cộng lẫn số lượng mét/kg/cái. */}
-      {mode === 'dashboard' && <><div className="owner-metrics"><Metric label="Kế hoạch nhập trong kỳ còn chờ hàng" value={new Set(data.purchases.filter((r) => r.planned > r.totalReceived && r.status !== 'CANCELLED').map((r) => r.planCode)).size} /><Metric label="Mặt hàng sắp hết hoặc đã hết hàng" value={data.inventory.filter((r) => ['LOW_STOCK', 'OUT_OF_STOCK'].includes(r.status)).length} /><Metric label="Hợp đồng nhà cung cấp" value={data.debts.length} /></div></>}
-      {['dashboard', 'bi'].includes(mode) && <>
+      {mode === 'bi' && <>
 
         {/* Các thẻ này dùng cùng kết quả sales của API; phần trăm thay đổi chỉ hiện khi bật đối chiếu. */}
-        <div className="owner-metrics"><Metric label="Tổng giá trị đơn hàng trong kỳ" value={money(data.sales.orderValue)} />{query.comparison === 'on' && <Metric label="Thay đổi so với kỳ so sánh" value={data.orderValueChange === null ? 'Chưa có cơ sở so sánh' : `${quantity(data.orderValueChange)}%`} />}<Metric label="Số đơn hàng trong kỳ" value={quantity(data.sales.orders)} /><Metric label="Đơn hàng đã thanh toán" value={quantity(data.sales.paid)} /></div>
+        <div className="owner-metrics"><Metric label="Tổng giá trị đơn hàng trong kỳ" value={money(data.sales.orderValue)} />{query.comparison === 'on' && <Metric label="Thay đổi giá trị đơn so với kỳ đối chiếu" value={data.orderValueChange === null ? 'Chưa có cơ sở so sánh' : `${quantity(data.orderValueChange)}%`} />}<Metric label="Tiền hàng sau giảm giá và trả hàng" value={money(data.sales.revenue)} /><Metric label="Đơn hàng đã thanh toán" value={quantity(data.sales.paid)} /></div>
 
         {/* Xu hướng và số tổng cùng dùng chính xác khoảng ngày đang chọn. */}
         <AnnualAnalytics from={query.from} to={query.to} salesChannel={query.salesChannel} paymentStatus={query.paymentStatus} />
+        {query.periodKind === 'year' && query.comparison === 'on' && query.compareMode === 'previous-year' &&
+          <QuarterlyRevenue year={query.from.slice(0, 4)} compareYear={query.compareFrom.slice(0, 4)}
+            salesChannel={query.salesChannel} paymentStatus={query.paymentStatus} />}
 
-        {/* Tổng quan ghép nguồn bán và tồn kho thành hai thẻ cân nhau.
-            Báo cáo doanh thu chỉ hiển thị nguồn bán trên toàn bộ chiều rộng. */}
-        {mode === 'dashboard' ? <div className="owner-report-chart-grid">
-          <SalesSourceChart channels={data.sales.channels} labels={channelLabels} />
-          <InventoryStatusChart inventory={data.inventory} />
-        </div> : <SalesSourceChart channels={data.sales.channels} labels={channelLabels} />}
+        <SalesSourceChart channels={data.sales.channels} labels={channelLabels} />
         {/* Bảng chi tiết giữ đầy đủ từng nguồn bán để đối chiếu với biểu đồ phía trên. */}
-        <Table headings={['Nguồn bán', 'Số đơn', 'Tổng giá trị đơn hàng', 'Đã thanh toán', 'Chưa thanh toán', 'Phí vận chuyển']} empty={!data.sales.orders}>{data.sales.channels.map((r) => <tr key={r.channel}><td>{channelLabels[r.channel]}</td><td>{r.orders}</td><td>{money(r.orderValue)}</td><td>{r.paid}</td><td><span title="Đơn chưa thanh toán hoặc chưa thanh toán đủ">{r.unpaid}</span></td><td>{money(r.shipping)}</td></tr>)}</Table>
+        <SalesByChannel sales={data.sales} selectedChannel={query.salesChannel} />
+        {query.comparison === 'on' &&
+          <ChannelMixComparison data={data} dates={query} labels={channelLabels} />}
         {/* Gom biểu đồ hàng hoàn vào vùng mở rộng để tổng quan không quá dài. */}
         <details className="owner-content-panel"><summary>Phân tích hàng hoàn trong kỳ</summary><div className="owner-report-chart-grid"><Columns title="Nguyên nhân hoàn hàng" allowDonut rows={data.sales.returnReasons.map((r) => ({ label: reasonLabels[r.reason], value: r.count }))} />
         <Columns title="Tiến độ xử lý đơn hoàn" allowDonut rows={data.returnStatuses.map((r) => ({ label: labels[r.status] || 'Chưa cập nhật', value: r.count }))} /></div></details>
@@ -151,7 +177,60 @@ export default function OperationsPage({ mode = 'dashboard' }) {
         <h2>Kế hoạch xuất trong kỳ</h2><Table headings={['Mã phiếu hoặc đơn', 'Ngày dự kiến', 'Trạng thái']} empty={!(data.outboundPlans || []).filter((r) => r.type === (mode === 'inventory' ? 'RAW_MATERIAL' : 'FINISHED_GOODS')).filter(match).length}>{(data.outboundPlans || []).filter((r) => r.type === (mode === 'inventory' ? 'RAW_MATERIAL' : 'FINISHED_GOODS')).filter(match).map((r) => <tr key={r.id}><td>{r.code}</td><td>{datetime(r.date)}</td><td><Status value={r.status} /></td></tr>)}</Table></>}
       {mode === 'payables' && <PaymentForm debts={data.debts.filter((row) => `${row.code} ${row.supplier} ${labels[row.status] || ''}`.toLocaleLowerCase('vi').includes(search.toLocaleLowerCase('vi')))} action={action} />}
 
-    </>}</ResourceState></>;
+    </>}</ResourceState>}</>;
+}
+
+function DashboardReports({ query, resource }) {
+  const { from, to, compareFrom, compareTo, comparison, salesChannel, paymentStatus } = query;
+  const activity = useOwnerResource('operations-report/business-activity', {
+    from, to, compareFrom, compareTo, comparison, salesChannel, paymentStatus,
+  });
+  const data = resource.data;
+  return <>
+    <ResourceState resource={resource}>{data && <>
+      <section className="owner-content-panel">
+        <h2>Kết quả kinh doanh trong kỳ</h2>
+        <div className="owner-metrics">
+          <Metric label="Tổng giá trị đơn hàng" value={money(data.sales.orderValue)} />
+          <Metric label="Tiền hàng sau giảm giá và trả hàng" value={money(data.sales.revenue)} />
+          <Metric label="Số đơn hàng" value={quantity(data.sales.orders)} />
+          <Metric label="Đơn hàng đã thanh toán" value={quantity(data.sales.paid)} />
+        </div>
+        {comparison === 'on' && <p>Thay đổi tổng giá trị đơn so với kỳ đối chiếu {data.orderValueChange === null ? '— chưa có cơ sở so sánh' : `· ${quantity(data.orderValueChange)}%`}</p>}
+      </section>
+      <AnnualAnalytics from={from} to={to} salesChannel={salesChannel} paymentStatus={paymentStatus} />
+      <section className="owner-content-panel">
+        <SalesSourceChart channels={data.sales.channels.filter(row => !salesChannel || row.channel === salesChannel)} labels={channelLabels} />
+        <details><summary>Xem bảng giá trị đơn hàng theo kênh</summary>
+          <SalesByChannel sales={data.sales} selectedChannel={salesChannel} />
+        </details>
+      </section>
+      {comparison === 'on' && <PeriodComparison data={data} dates={query} />}
+      {query.periodKind === 'year' && comparison === 'on' && query.compareMode === 'previous-year' &&
+        <QuarterlyRevenue year={from.slice(0, 4)} compareYear={compareFrom.slice(0, 4)} salesChannel={salesChannel} paymentStatus={paymentStatus} />}
+    </>}</ResourceState>
+    <BusinessActivity resource={activity} salesChannel={salesChannel} />
+    {data && <section className="owner-content-panel">
+      <h2>Tồn kho và nhập hàng</h2>
+      {/* Đếm mỗi kế hoạch một lần dù có nhiều loại nguyên liệu. */}
+      <div className="owner-metrics">
+        <Metric label="Kế hoạch nhập trong kỳ còn chờ hàng" value={new Set(data.purchases.filter(row => row.planned > row.totalReceived && row.status !== 'CANCELLED').map(row => row.planCode)).size} />
+        <Metric label="Mặt hàng sắp hết hoặc đã hết hàng" value={data.inventory.filter(row => ['LOW_STOCK', 'OUT_OF_STOCK'].includes(row.status)).length} />
+        <Metric label="Hợp đồng nhà cung cấp" value={data.debts.length} />
+      </div>
+      <InventoryStatusChart inventory={data.inventory} />
+    </section>}
+  </>;
+}
+
+// Tỷ trọng tính từ tổng giá trị đơn, cùng chỉ số mặc định của biểu đồ nguồn bán.
+function SalesByChannel({ sales, selectedChannel }) {
+  const rows = sales.channels.filter(row => !selectedChannel || row.channel === selectedChannel);
+  const showShare = sales.orderValue > 0 && rows.every(row => row.orderValue >= 0);
+  return <Table headings={['Nguồn bán', 'Số đơn', 'Tổng giá trị đơn hàng', 'Tỷ trọng trong phạm vi xem', 'Giá trị hàng trả', 'Phí vận chuyển']} paginated={false}>
+    {rows.map(row => <tr key={row.channel}><td>{channelLabels[row.channel]}</td><td>{quantity(row.orders)}</td><td>{money(row.orderValue)}</td>
+      <td>{showShare ? `${quantity(row.orderValue / sales.orderValue * 100)}%` : '—'}</td><td>{money(row.refunded)}</td><td>{money(row.shipping)}</td></tr>)}
+  </Table>;
 }
 // Phản hồi 8; GBR-14: Phiếu chi trả nợ ở cuối thanh điều hướng, luôn gắn hợp đồng nguồn.
 function PaymentForm({ debts, action }) {

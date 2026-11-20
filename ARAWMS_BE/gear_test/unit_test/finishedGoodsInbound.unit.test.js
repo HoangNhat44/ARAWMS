@@ -22,13 +22,10 @@ import InventoryTransaction from '../../src/models/InventoryTransaction.model.js
 import PutawayAllocation from '../../src/models/PutawayAllocation.model.js';
 import { parseLines } from '../../src/modules/warehouse-management/location-layout/allocation.service.js';
 
-// Receiving schedules a separate Cloudinary job; it is outside these stock tests.
-const scheduleBarcodeImages = jest.fn();
-jest.unstable_mockModule('../../src/common/services/barcodeImageStorage.js', () => ({
-  scheduleBarcodeImages,
-}));
-const { default: bulkRoutes, receivingQuantityError, receiptAllocationError } =
+const { default: bulkRoutes } =
   await import('../../src/modules/warehouse-management/products/bulkStock.routes.js');
+const { receivingQuantityError, receiptAllocationError } =
+  await import('../../src/modules/warehouse-management/products/bulkStock.validation.js');
 
 const skuA = '507f1f77bcf86cd799439011';
 const skuB = '507f1f77bcf86cd799439012';
@@ -178,7 +175,6 @@ describe('Finished goods receipt stock writes', () => {
   });
 
   beforeEach(async () => {
-    scheduleBarcodeImages.mockClear();
     product = await Product.create({ productCode: 'TEST-SHIRT', productName: 'Test shirt',
       category: 'Test', basePrice: 1, isActive: true });
     sku = await Sku.create({ skuCode: 'TEST-SHIRT-M', skuBarcode: 'TEST-BARCODE-M',
@@ -256,7 +252,6 @@ describe('Finished goods receipt stock writes', () => {
     expect(await InventoryTransaction.findOne({ skuId: sku._id })).toMatchObject({
       transactionType: 'MANUAL_INBOUND', quantityChange: 3, onHandBefore: 0, onHandAfter: 3,
     });
-    expect(scheduleBarcodeImages).toHaveBeenCalledWith('FINISHED_GOODS', String(document._id));
   });
 
   test('returns the same receipt for an identical retry', async () => {
@@ -300,7 +295,6 @@ describe('Finished goods receipt stock writes', () => {
     expect(await FinishedGoodsBatch.countDocuments()).toBe(0);
     expect(await InventoryTransaction.countDocuments()).toBe(0);
     expect(await PutawayAllocation.countDocuments()).toBe(0);
-    expect(scheduleBarcodeImages).not.toHaveBeenCalled();
   });
 
   test('rejects reuse of a confirmation key with different content', async () => {
@@ -384,7 +378,6 @@ describe('Finished goods receipt stock writes', () => {
     expect(await InventoryTransaction.countDocuments()).toBe(0);
     expect((await Sku.findById(sku._id)).onHandQty).toBe(0);
     expect((await WarehouseLocation.findById(bin._id)).plannedReservedQty).toBe(0);
-    expect(scheduleBarcodeImages).not.toHaveBeenCalled();
   });
 
   test('rejects inconsistent repair quantity before writing stock', async () => {

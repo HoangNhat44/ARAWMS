@@ -33,7 +33,8 @@ const ORDER_STATUSES = [
   { value: 'COMPLETED',           label: 'Hoàn thành (Bán tại quầy)' },
   { value: 'RETURN_REQUESTED',    label: 'Khách yêu cầu trả hàng' },
   { value: 'EXCHANGE_REQUESTED',  label: 'Đang đổi hàng' },
-  { value: 'RETURNED',            label: 'Hoàn thành công' },
+  { value: 'RETURNED',            label: 'Đã hoàn về kho' },
+  { value: 'RETURN_COMPLETED',    label: 'Hoàn thành công' },
   { value: 'PARTIALLY_RETURNED',  label: 'Hoàn một phần' },
   { value: 'RETURN_FAILED',       label: 'Hoàn không thành công' },
   { value: 'CANCELLED',           label: 'Đã hủy' },
@@ -90,7 +91,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
   const [recipientDraft, setRecipientDraft] = useState({ name: '', phone: '', address: '' });
   const [savingRecipient, setSavingRecipient] = useState(false);
 
-  // Dialog nhập thông tin trong web (thay thế window.prompt)
+  // Dialog xác nhận hủy đơn (hỏi lại khách trước khi hủy)
   const [promptDialog, setPromptDialog] = useState({
     isOpen: false,
     title: '',
@@ -99,6 +100,9 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
     targetStatus: null,
     field: '',
   });
+  const [cancelConfirmedWithCustomer, setCancelConfirmedWithCustomer] = useState(false);
+  const [sendingCancelInquiry, setSendingCancelInquiry] = useState(false);
+  const [cancelInquirySent, setCancelInquirySent] = useState(false);
 
   useEffect(() => {
     if (order) {
@@ -137,7 +141,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
         order.orderType !== 'POS_DIRECT' &&
         order.channel !== 'POS' &&
         order.channel !== 'POS_OFFLINE' &&
-        !['DELIVERED', 'COMPLETED', 'CANCELLED', 'RETURNED'].includes(order.status)
+        !['PENDING', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'RETURNED', 'RETURN_COMPLETED'].includes(order.status)
       ) {
         const orderId = order._id || order.id;
         if (orderId) {
@@ -163,11 +167,16 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
 
   const currentStatusObj = ORDER_STATUSES.find((s) => s.value === status) || { value: status, label: status };
   const isPending = status === 'PENDING';
-  const isFacebookOrder = ['FACEBOOK', 'FACEBOOK_MESSENGER'].includes(order.channel) || order.sourceDetails?.sourceType === 'FANPAGE';
+  const isNonFacebookChannel =
+    ['SHOPEE', 'TIKTOK', 'EXCEL_IMPORT', 'POS_OFFLINE', 'POS', 'ZALO', 'HOTLINE', 'DIRECT_OTHER'].includes(order.channel) ||
+    ['TIKTOK_SHOP', 'SHOPEE_STORE', 'EXCEL_CUSTOM', 'POS'].includes(order.sourceDetails?.sourceType);
+  const isFacebookOrder =
+    !isNonFacebookChannel &&
+    (['FACEBOOK', 'FACEBOOK_MESSENGER'].includes(order.channel) || order.sourceDetails?.sourceType === 'FANPAGE');
   const pickedStatuses = ['picked', 'storing', 'transporting', 'sorting', 'delivering', 'delivered', 'return', 'returned'];
   const isShipperPicked =
     pickedStatuses.includes(String(ghnStatus || '').toLowerCase()) ||
-    ['PACKED', 'HANDED_OVER_CARRIER', 'CARRIER_PICKED_UP', 'DELIVERED', 'COMPLETED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED'].includes(status);
+    ['PACKED', 'HANDED_OVER_CARRIER', 'CARRIER_PICKED_UP', 'DELIVERED', 'COMPLETED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED', 'RETURN_COMPLETED'].includes(status);
   const isCancelable = ['PENDING', 'CONFIRMED_RESERVED', 'PICKING'].includes(status) && !isShipperPicked && status !== 'CANCELLED';
 
   // Tính toán tổng tiền realtime theo items hiện tại
@@ -372,26 +381,51 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
   };
 
   /**
-   * Mở hộp thoại xác nhận lý do hủy đơn hàng
+   * Mở hộp thoại xác nhận hỏi lại khách & lý do hủy đơn hàng
    */
   const handleCancelOrder = () => {
     if (!isCancelable) {
       showError('Shipper đã lấy hàng, không thể hủy đơn hàng này.', 'Không thể hủy đơn');
       return;
     }
+    setCancelConfirmedWithCustomer(false);
+    setCancelInquirySent(false);
     setPromptDialog({
       isOpen: true,
-      title: 'Hủy Đơn Hàng',
-      label: 'Vui lòng nhập lý do hủy đơn hàng:',
+      title: 'Xác nhận hủy đơn hàng',
+      label: 'Lý do hủy đơn hàng:',
       value: 'Khách đổi ý hủy đơn',
       targetStatus: 'CANCELLED',
       field: 'cancelReason',
     });
   };
 
+  /**
+   * Gửi tin nhắn tự động vào Messenger hỏi lại khách trước khi hủy (chỉ đơn Facebook)
+   */
+  const handleSendCancelInquiry = async () => {
+    try {
+      setSendingCancelInquiry(true);
+      const orderId = order._id || order.id;
+      const res = await sellerService.sendCancelConfirmationInquiry(orderId, promptDialog.value);
+      if (res.success) {
+        setCancelInquirySent(true);
+        if (res.data?.deliveryStatus === 'FAILED_24H_EXPIRED') {
+          showWarning('Đã lưu tin hỏi hủy trên web, nhưng Messenger chưa nhận do quá khung 24h Meta.', 'Lưu ý chính sách 24h');
+        } else {
+          showSuccess('Đã gửi tin nhắn hỏi xác nhận hủy vào khung chat Messenger của khách!', 'Đã hỏi lại khách');
+        }
+      }
+    } catch (err) {
+      showError(err.message || 'Không thể gửi tin hỏi xác nhận hủy', 'Lỗi gửi tin');
+    } finally {
+      setSendingCancelInquiry(false);
+    }
+  };
+
   const handleConfirmPrompt = (e) => {
     e.preventDefault();
-    if (!promptDialog.value.trim()) return;
+    if (!promptDialog.value.trim() || !cancelConfirmedWithCustomer) return;
     const { value } = promptDialog;
     setPromptDialog({ ...promptDialog, isOpen: false });
     executeCancelOrder(value.trim());
@@ -458,36 +492,42 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
         <Modal.Body className="d-flex flex-column gap-3" style={{ backgroundColor: 'var(--wms-bg-app, #E8DFD3)' }}>
           {error && <Alert variant="danger" className="py-2 small mb-0">{error}</Alert>}
 
-          {/* Thanh công cụ xác nhận hai chiều dành cho đơn PENDING từ kênh Facebook */}
-          {isPending && isFacebookOrder && (
+          {/* Thanh công cụ xác nhận chốt đơn cho mọi đơn đang Chờ xác nhận (PENDING) */}
+          {isPending && (
             <Card className="shadow-sm" style={{ backgroundColor: '#FEF0C7', border: '1px solid #F5B95F' }}>
               <Card.Body className="py-2 px-3">
                 <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <div className="small">
                     <strong className="d-flex align-items-center gap-1" style={{ color: '#9A5B06' }}>
-                      <Icon name="chat-dots" /> Luồng Xác Nhận Hai Chiều:
+                      <Icon name={isFacebookOrder ? 'chat-dots' : 'check2-circle'} />
+                      {isFacebookOrder ? 'Đơn chờ xác nhận (Xác nhận 2 chiều / Chốt tay):' : 'Đơn hàng đang Chờ xác nhận:'}
                     </strong>
                     <span style={{ color: '#574F46' }}>
-                      Gửi phiếu hóa đơn vào Messenger để khách phản hồi "OK" hoặc xác nhận tại đây.
+                      {isFacebookOrder
+                        ? 'Gửi phiếu hóa đơn vào Messenger để khách phản hồi "OK" hoặc bấm xác nhận chốt đơn thủ công tại đây.'
+                        : 'Bấm xác nhận chốt đơn để kích hoạt giữ chỗ tồn kho và chuyển sang bộ phận kho xử lý.'}
                     </span>
                   </div>
                   <Stack direction="horizontal" gap={2} className="flex-wrap">
-                    <Button
-                      size="sm"
-                      className="btn-wms-default d-flex align-items-center gap-1"
-                      disabled={actionLoading}
-                      onClick={handleSendConfirmationReceipt}
-                      title="Gửi bảng tóm tắt đơn hàng kèm nút xác nhận vào khung chat Messenger của khách"
-                    >
-                      <Icon name="send" /> Gửi phiếu vào Chat
-                    </Button>
+                    {isFacebookOrder && (
+                      <Button
+                        size="sm"
+                        className="btn-wms-default d-flex align-items-center gap-1"
+                        disabled={actionLoading}
+                        onClick={handleSendConfirmationReceipt}
+                        title="Gửi bảng tóm tắt đơn hàng kèm nút xác nhận vào khung chat Messenger của khách"
+                      >
+                        <Icon name="send" /> Gửi phiếu vào Chat
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       className="btn-wms-accent d-flex align-items-center gap-1"
                       disabled={actionLoading}
                       onClick={handleManualConfirm}
                     >
-                      <Icon name="check-circle" /> Khách đã xác nhận (Chốt đơn)
+                      {actionLoading ? <Spinner animation="border" size="sm" /> : <Icon name="check-circle" />}
+                      Xác nhận chốt đơn
                     </Button>
                   </Stack>
                 </div>
@@ -740,8 +780,9 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
                   <Button
                     size="sm"
                     variant="dark"
-                    disabled={syncingGhn || updating}
+                    disabled={syncingGhn || updating || isPending}
                     onClick={handleSyncGhn}
+                    title={isPending ? 'Cần xác nhận chốt đơn trước khi đẩy đơn sang GHN' : undefined}
                     className="d-flex align-items-center gap-1 py-0 px-2"
                   >
                     {syncingGhn ? <Spinner animation="border" size="sm" /> : <Icon name="arrow-repeat" />}
@@ -871,14 +912,14 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
             )}
           </div>
           <Stack direction="horizontal" gap={2}>
-            {isPending && !isFacebookOrder && (
+            {isPending && (
               <Button
                 size="sm"
                 className="btn-wms-accent d-flex align-items-center gap-1"
                 disabled={actionLoading}
                 onClick={handleManualConfirm}
               >
-                <Icon name="check-circle" /> Xác nhận giữ hàng
+                <Icon name="check-circle" /> Xác nhận chốt đơn
               </Button>
             )}
             {isCancelable && (
@@ -909,31 +950,71 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
         </Modal.Footer>
       </Modal>
 
-      {/* Modal Prompt thay thế window.prompt() của trình duyệt */}
+      {/* Modal Hỏi lại khách & Xác nhận hủy đơn hàng */}
       <Modal
         show={promptDialog.isOpen}
         onHide={() => setPromptDialog({ ...promptDialog, isOpen: false })}
         centered
-        size="sm"
       >
         <Form onSubmit={handleConfirmPrompt}>
-          <Modal.Header closeButton>
-            <Modal.Title as="h6" className="fw-bold d-flex align-items-center gap-2">
-              <Icon name="pencil-square" className="text-warning-emphasis" />
+          <Modal.Header closeButton style={{ backgroundColor: '#FEF2F2', borderColor: '#FECACA' }}>
+            <Modal.Title as="h6" className="fw-bold d-flex align-items-center gap-2 text-danger">
+              <Icon name="exclamation-triangle-fill" />
               {promptDialog.title}
             </Modal.Title>
           </Modal.Header>
-          <Modal.Body>
+          <Modal.Body className="d-flex flex-column gap-3">
+            <Alert variant="warning" className="py-2 px-3 mb-0 small">
+              <div className="fw-semibold mb-1">
+                <Icon name="chat-left-text" className="me-1" />
+                Quy định trước khi hủy đơn hàng:
+              </div>
+              <div>
+                Vui lòng <strong>hỏi và xác nhận lại với khách hàng</strong> trước khi hủy đơn{' '}
+                <strong className="font-monospace">{order.orderCode}</strong> để tránh hủy nhầm đơn khách vẫn muốn lấy.
+              </div>
+              {isFacebookOrder && (
+                <div className="mt-2 pt-2 border-top d-flex align-items-center justify-content-between gap-2 flex-wrap" style={{ borderColor: '#FDE68A' }}>
+                  <span className="text-muted" style={{ fontSize: '11.5px' }}>
+                    {cancelInquirySent
+                      ? 'Đã gửi tin nhắn hỏi xác nhận hủy vào Messenger của khách.'
+                      : 'Gửi nhanh tin nhắn hỏi xác nhận hủy kèm nút phản hồi vào Messenger:'}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant={cancelInquirySent ? 'outline-success' : 'warning'}
+                    type="button"
+                    disabled={sendingCancelInquiry}
+                    onClick={handleSendCancelInquiry}
+                    className="d-inline-flex align-items-center gap-1"
+                  >
+                    {sendingCancelInquiry ? <Spinner animation="border" size="sm" /> : <Icon name={cancelInquirySent ? 'check2' : 'send'} />}
+                    {cancelInquirySent ? 'Đã gửi tin hỏi khách' : 'Gửi tin hỏi xác nhận hủy vào Chat'}
+                  </Button>
+                </div>
+              )}
+            </Alert>
+
             <Form.Group controlId="modal-prompt-input">
-              <Form.Label className="small fw-semibold">{promptDialog.label}</Form.Label>
+              <Form.Label className="small fw-semibold mb-1">{promptDialog.label}</Form.Label>
               <Form.Control
                 size="sm"
                 value={promptDialog.value}
                 onChange={(e) => setPromptDialog({ ...promptDialog, value: e.target.value })}
+                placeholder="Nhập lý do hủy đơn (tối thiểu 3 ký tự)..."
                 autoFocus
                 required
               />
             </Form.Group>
+
+            <Form.Check
+              type="checkbox"
+              id="confirm-asked-customer-cancel"
+              className="small fw-semibold"
+              checked={cancelConfirmedWithCustomer}
+              onChange={(e) => setCancelConfirmedWithCustomer(e.target.checked)}
+              label="Tôi xác nhận đã hỏi và thống nhất với khách hàng trước khi hủy đơn này"
+            />
           </Modal.Body>
           <Modal.Footer className="py-2">
             <Button
@@ -941,10 +1022,16 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
               variant="outline-secondary"
               onClick={() => setPromptDialog({ ...promptDialog, isOpen: false })}
             >
-              Hủy
+              Đóng
             </Button>
-            <Button size="sm" variant="dark" type="submit">
-              Xác nhận
+            <Button
+              size="sm"
+              variant="danger"
+              type="submit"
+              disabled={!cancelConfirmedWithCustomer || !promptDialog.value.trim() || updating}
+            >
+              <Icon name="x-circle" className="me-1" />
+              Xác nhận hủy đơn
             </Button>
           </Modal.Footer>
         </Form>

@@ -141,7 +141,6 @@ const salesOrderSchema = new Schema(
       token: { type: String, select: false },
       revokedAt: { type: Date, default: null },
       issuedBy: { type: Schema.Types.ObjectId, ref: 'User' },
-      qrImagePublicId: String,
     },
     shippingRecipient: {
       name: String,

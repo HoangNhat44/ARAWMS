@@ -15,6 +15,10 @@ import MaterialStockLot from '../../../models/MaterialStockLot.model.js';
 import Sku from '../../../models/Sku.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
 
+// Báo cáo đã duyệt, đã bị trả về để kiểm lại hoặc đã hủy thì khóa: không quét, sửa hay nộp lại được nữa.
+const CLOSED_STATUSES = ['APPROVED_PENDING_ADJUSTMENT', 'APPROVED_COMPLETED', 'RECOUNT_REQUESTED', 'CANCELLED'];
+const CLOSED_MESSAGE = 'Đợt kiểm kê này đã được duyệt, đã trả về để kiểm lại hoặc đã hủy, không thể thay đổi';
+
 const fail = (ok, message, code = 'INVALID_INPUT', status = 400) => {
   if (!ok) {
     const error = new Error(message);
@@ -36,7 +40,7 @@ export async function listAssignedSessions(user, query = {}) {
     filter.status = query.status;
   } else {
     // Default show sessions that are active or in review
-    filter.status = { $in: ['WAITING', 'FROZEN_COUNTING', 'VARIANCE_REVIEW', 'APPROVED_COMPLETED'] };
+    filter.status = { $in: ['WAITING', 'FROZEN_COUNTING', 'VARIANCE_REVIEW', 'APPROVED_PENDING_ADJUSTMENT', 'APPROVED_COMPLETED', 'RECOUNT_REQUESTED'] };
   }
 
   // If specific inspector is assigned, allow filtering, but in dev/general allow Garment Technicians to access
@@ -99,8 +103,8 @@ export async function verifyShelfLocation(sessionId, shelfBarcode) {
   const session = await StocktakeSession.findOne({ _id: sessionId, isDeleted: { $ne: true } });
   fail(session, 'Không tìm thấy đợt kiểm kê', 'SESSION_NOT_FOUND', 404);
   fail(
-    !['APPROVED_COMPLETED', 'CANCELLED'].includes(session.status),
-    'Đợt kiểm kê này đã kết thúc hoặc đã bị hủy, không thể quét thêm',
+    !CLOSED_STATUSES.includes(session.status),
+    CLOSED_MESSAGE,
     'SESSION_CLOSED',
     400
   );
@@ -115,6 +119,15 @@ export async function verifyShelfLocation(sessionId, shelfBarcode) {
     isDeleted: { $ne: true },
   }).lean();
 
+  if (!location) {
+    // Hay gặp: quét nhầm mã từng chiếc sản phẩm (ARA...) ở bước quét kệ. Chỉ rõ ô chứa để người kiểm quét đúng mã kệ.
+    const unit = await ProductUnit.findOne({ barcode: barcode.toUpperCase() })
+      .populate('warehouseId', 'locationCode barcode').select('warehouseId').lean();
+    fail(!unit, unit?.warehouseId
+      ? `"${barcode}" là mã sản phẩm, không phải mã kệ. Hãy quét mã kệ trước (sản phẩm này thuộc ô ${unit.warehouseId.locationCode}, mã kệ ${unit.warehouseId.barcode || unit.warehouseId.locationCode}), sau đó mới quét sản phẩm.`
+      : `"${barcode}" là mã sản phẩm, không phải mã kệ. Hãy quét mã kệ trước, sau đó mới quét sản phẩm.`,
+    'PRODUCT_BARCODE_AT_SHELF_STEP', 400);
+  }
   fail(location, `Không tìm thấy vị trí / kệ nào khớp với mã "${barcode}"`, 'LOCATION_NOT_FOUND', 404);
 
   // Validate scope
@@ -189,7 +202,9 @@ export async function verifyShelfLocation(sessionId, shelfBarcode) {
     ) {
       const productUnits = await ProductUnit.find({
         warehouseId: location._id,
-        inventoryStatus: { $in: ['AVAILABLE', 'UNAVAILABLE', 'DEFECTIVE'] },
+        // UNAVAILABLE = đã đóng gói cho đơn (packedAt/packedOrderId), không còn nằm trên kệ dù warehouseId vẫn trỏ về ô;
+        // đưa vào sẽ thành "thiếu" giả mà không ai tìm được để quét.
+        inventoryStatus: { $in: ['AVAILABLE', 'DEFECTIVE'] },
       }).lean();
 
       for (const unit of productUnits) {
@@ -301,8 +316,8 @@ export async function recordScannedItem(sessionId, { locationId, barcode, qty = 
   const session = await StocktakeSession.findOne({ _id: sessionId, isDeleted: { $ne: true } });
   fail(session, 'Không tìm thấy đợt kiểm kê', 'SESSION_NOT_FOUND', 404);
   fail(
-    !['APPROVED_COMPLETED', 'CANCELLED'].includes(session.status),
-    'Đợt kiểm kê này đã kết thúc hoặc đã bị hủy, không thể quét thêm',
+    !CLOSED_STATUSES.includes(session.status),
+    CLOSED_MESSAGE,
     'SESSION_CLOSED',
     400
   );
@@ -423,16 +438,25 @@ export async function recordScannedItem(sessionId, { locationId, barcode, qty = 
 /**
  * Manually update counted quantity for a record (e.g. if mis-scanned or editing count)
  */
-export async function updateRecordQty(recordId, { actualScannedQty }, user) {
+export async function updateRecordQty(recordId, { actualScannedQty, damagedQty, conditionNote } = {}, user) {
   fail(mongoose.isValidObjectId(recordId), 'ID bản ghi không hợp lệ');
   const qty = Number(actualScannedQty);
   fail(!Number.isNaN(qty) && qty >= 0, 'Số lượng kiểm kê thực tế phải là số không âm');
+  // Báo hỏng: số hỏng nằm trong số đã đếm (vd đếm 12, hỏng 2 vì để lâu) và bắt buộc mô tả tình trạng.
+  const damaged = damagedQty === undefined || damagedQty === '' ? 0 : Number(damagedQty);
+  fail(Number.isFinite(damaged) && damaged >= 0 && damaged <= qty, 'Số lượng hỏng phải từ 0 đến số lượng đã đếm');
+  const note = typeof conditionNote === 'string' ? conditionNote.trim().slice(0, 500) : '';
+  fail(!damaged || note.length >= 3, 'Ghi rõ tình trạng hàng hỏng (vd: ố vàng do để lâu)');
 
   const record = await StocktakeRecord.findById(recordId);
   fail(record, 'Không tìm thấy bản ghi kiểm kê', 'RECORD_NOT_FOUND', 404);
+  const owningSession = await StocktakeSession.findOne({ _id: record.sessionId, isDeleted: { $ne: true } }).select('status').lean();
+  fail(owningSession && !CLOSED_STATUSES.includes(owningSession.status), CLOSED_MESSAGE, 'SESSION_CLOSED', 400);
 
   record.actualScannedQty = qty;
   record.varianceQty = qty - record.systemSnapshotQty;
+  record.damagedQty = damaged;
+  record.conditionNote = damaged ? note : '';
   record.scannedByStaffId = user?._id;
   record.scannedAt = new Date();
   await record.save();
@@ -458,21 +482,34 @@ export async function updateRecordQty(recordId, { actualScannedQty }, user) {
 /**
  * Submit stocktake count to Warehouse Manager for variance review
  */
-export async function submitSessionCompletion(sessionId, user) {
+export async function submitSessionCompletion(sessionId, user, body = {}) {
   fail(mongoose.isValidObjectId(sessionId), 'ID phiên kiểm kê không hợp lệ');
 
   const session = await StocktakeSession.findOne({ _id: sessionId, isDeleted: { $ne: true } });
   fail(session, 'Không tìm thấy đợt kiểm kê', 'SESSION_NOT_FOUND', 404);
+  // Nộp lại báo cáo đã duyệt/đã trả về sẽ kéo nó về "Chờ duyệt" và mở lại quyết định đã chốt.
+  fail(!CLOSED_STATUSES.includes(session.status), CLOSED_MESSAGE, 'SESSION_CLOSED', 400);
 
   const records = await StocktakeRecord.find({ sessionId, isDeleted: { $ne: true } }).lean();
 
   const totalItemsExpected = records.reduce((sum, r) => sum + (r.systemSnapshotQty || 0), 0);
   const totalActualScanned = records.reduce((sum, r) => sum + (r.actualScannedQty || 0), 0);
-  const totalDiscrepancies = records.filter((r) => r.varianceQty !== 0).length;
+  const totalDiscrepancies = records.filter((r) => (r.actualScannedQty || 0) !== (r.systemSnapshotQty || 0)).length;
+  const uncounted = records.filter((r) => !r.scannedAt).length;
+
+  // Happy case (mọi dòng đã đếm và khớp) nộp thẳng; có lệch, sót dòng hoặc chưa ghi nhận gì thì phải ghi lý do.
+  const damagedLines = records.filter((r) => (r.damagedQty || 0) > 0).length;
+  const hasIssues = records.length === 0 || totalDiscrepancies > 0 || uncounted > 0 || damagedLines > 0;
+  const note = typeof body.note === 'string' ? body.note.normalize('NFC').trim() : '';
+  fail(note.length <= 1000, 'Ghi chú tối đa 1000 ký tự');
+  fail(!hasIssues || note.length >= 10,
+    `Phiên có ${totalDiscrepancies} dòng lệch${uncounted ? `, ${uncounted} dòng chưa đếm` : ''}${damagedLines ? `, ${damagedLines} dòng có hàng hỏng` : ''}${records.length ? '' : ' (chưa ghi nhận dòng nào)'}. Vui lòng ghi rõ lý do (ít nhất 10 ký tự) trước khi gửi.`,
+    'SUBMISSION_NOTE_REQUIRED', 400);
 
   session.status = 'VARIANCE_REVIEW';
   session.totalItemsExpected = totalItemsExpected;
   session.totalDiscrepancyCount = totalDiscrepancies;
+  session.submissionInfo = { submittedByUserId: user?._id, submittedAt: new Date(), hasIssues, note };
   await session.save();
 
   // Unfreeze locations associated with this session

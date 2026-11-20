@@ -1,0 +1,49 @@
+/*
+ * File: barcodeTracking.css
+ * Author: Duy Anh
+ * Date: 2026-11-18
+ * Description: Barcode tracking page. Frame, hero and cards come from finishedGoods.css.
+ */
+.barcode-tracking-page .fg-stock-card { margin-bottom: 1.25rem; }
+
+.bt-summary { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap; }
+.bt-summary small, .bt-current small { color: #71675c; font-size: .7rem; font-weight: 700; letter-spacing: .08em; }
+.bt-summary h2 { margin: .3rem 0; font: 700 1.3rem var(--font-sans); overflow-wrap: anywhere; }
+.bt-summary p { margin: 0 0 .5rem; color: #514536; font-size: .85rem; }
+.bt-summary a { color: #825500; font-size: .82rem; font-weight: 650; }
+.bt-current { display: grid; gap: .3rem; min-width: 220px; padding: .9rem 1.1rem; border-radius: 10px; background: #f0eded; }
+.bt-current strong { color: #1c1b1b; font-size: 1rem; }
+.bt-current span { color: #71675c; font-size: .75rem; }
+.bt-current.on_shelf { background: #dcfaed; }
+.bt-current.on_shelf strong { color: #006c4a; }
+.bt-current.unplaced, .bt-current.reentered_unknown { background: #fff0df; }
+.bt-current.unplaced strong, .bt-current.reentered_unknown strong { color: #904d00; }
+.bt-current.defect_pending, .bt-current.defective { background: #fdecec; }
+.bt-current.defect_pending strong, .bt-current.defective strong { color: #a32121; }
+
+.bt-note { margin: 0 0 1.25rem; padding: .75rem 1rem; border-radius: 8px; background: #fff7ed; color: #7a5312; font-size: .82rem; }
+
+.bt-segment + .bt-segment { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px dashed #e8dfd1; }
+.bt-segment h3 { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: 0 0 .8rem; font: 700 .9rem var(--font-sans); }
+.bt-tag { padding: .15rem .5rem; border-radius: 999px; background: #1c1b1b; color: white; font-size: .68rem; }
+
+.bt-timeline { position: relative; margin: 0; padding: 0 0 0 1.6rem; list-style: none; }
+.bt-timeline::before { content: ''; position: absolute; top: .4rem; bottom: .4rem; left: .45rem; width: 2px; background: #eee7df; }
+.bt-timeline li { position: relative; padding: 0 0 1.1rem; }
+.bt-timeline li:last-child { padding-bottom: 0; }
+.bt-dot { position: absolute; top: .3rem; left: -1.6rem; width: 14px; height: 14px; border: 3px solid white; border-radius: 50%; background: #9a9087; box-shadow: 0 0 0 1px #d5c4b0; }
+.bt-timeline li.in .bt-dot { background: #1c1b1b; }
+.bt-timeline li.reentry .bt-dot { background: #904d00; }
+.bt-timeline li.putaway .bt-dot { background: #006c4a; }
+.bt-timeline li.out .bt-dot { background: #a32121; }
+.bt-timeline time { display: block; color: #71675c; font-size: .75rem; }
+.bt-timeline strong { display: block; margin: .1rem 0; color: #1c1b1b; font-size: .9rem; }
+.bt-timeline p { margin: 0; color: #514536; font-size: .82rem; overflow-wrap: anywhere; }
+.bt-candidates { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+.bt-candidates button { min-height: 32px; padding: .25rem .6rem; border: 1px solid #d5c4b0; border-radius: 8px; background: white; cursor: pointer; }
+.bt-candidates button:hover { border-color: #825500; }
+
+@media (max-width: 640px) {
+  .bt-current { min-width: 0; width: 100%; }
+}
+.bt-current.stocktake_write_off { background: #fdecec; } .bt-current.stocktake_write_off strong { color: #a32121; }
