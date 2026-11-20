@@ -18,10 +18,21 @@ const reasonLabels = {
   PRODUCT_DEFECT: 'Sản phẩm bị lỗi', OTHER: 'Lý do khác', UNKNOWN: 'Chưa rõ lý do',
 };
 const orderLabels = {
-  PENDING: 'Chờ xác nhận', CONFIRMED_RESERVED: 'Đã giữ hàng', PICKING: 'Đang lấy hàng',
-  PACKED: 'Đã đóng gói', HANDED_OVER_CARRIER: 'Đang giao hàng', DELIVERED: 'Đã giao thành công',
-  COMPLETED: 'Hoàn thành', CANCELLED: 'Đã hủy', RETURN_REQUESTED: 'Đang xử lý hoàn hàng',
-  EXCHANGE_REQUESTED: 'Đang xử lý đổi hàng', RETURNED: 'Đã hoàn về kho', RETURN_COMPLETED: 'Hoàn thành công',
+  PENDING: 'Chờ xác nhận',
+  CONFIRMED_RESERVED: 'Đã giữ hàng',
+  PICKING: 'Đang lấy hàng',
+  PACKED: 'Đã đóng gói',
+  HANDED_OVER_CARRIER: 'Đang giao hàng',
+  CARRIER_PICKED_UP: 'Đã lấy hàng',
+  DELIVERED: 'Đã giao thành công',
+  COMPLETED: 'Hoàn thành',
+  CANCELLED: 'Đã hủy',
+  RETURN_REQUESTED: 'Đang xử lý hoàn hàng',
+  EXCHANGE_REQUESTED: 'Đang xử lý đổi hàng',
+  RETURNED: 'Đã hoàn về kho',
+  RETURN_COMPLETED: 'Hoàn thành công',
+  PARTIALLY_RETURNED: 'Hoàn một phần',
+  RETURN_FAILED: 'Hoàn không thành công',
 };
 const stepLabels = {
   WAIT_INSPECTION: 'Chờ kiểm hàng', WAIT_RESTOCK: 'Chờ nhập lại kho',
@@ -206,7 +217,7 @@ export default function BusinessActivity({ resource, salesChannel }) {
         rows={data.orderStatuses.map(row => ({ label: orderLabels[row.status] || 'Chưa rõ trạng thái', value: row.count }))} />
       <details><summary>Xem bảng đếm trạng thái đơn hàng</summary>
         <Table headings={['Trạng thái hiện tại', 'Số đơn hàng']} paginated={false}>
-          {data.orderStatuses.map(row => <tr key={row.status}><td>{orderLabels[row.status]}</td><td>{quantity(row.count)}</td></tr>)}
+          {data.orderStatuses.map(row => <tr key={row.status}><td>{orderLabels[row.status] || row.status}</td><td>{quantity(row.count)}</td></tr>)}
         </Table>
       </details>
     </section>
