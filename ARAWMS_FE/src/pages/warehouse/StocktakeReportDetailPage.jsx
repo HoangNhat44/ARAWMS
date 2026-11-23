@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { stocktakeService as api } from '../../services/stocktakeService';
 import '../../styles/stocktake.css';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 export const STOCKTAKE_STATUS = { WAITING: 'Chờ thực hiện', FROZEN_COUNTING: 'Đang kiểm', VARIANCE_REVIEW: 'Chờ duyệt',
   APPROVED_PENDING_ADJUSTMENT: 'Đã duyệt · chờ điều chỉnh', APPROVED_COMPLETED: 'Đã kết thúc',
@@ -33,6 +34,8 @@ export default function StocktakeReportDetailPage() {
   const [onlyVariance, setOnlyVariance] = useState(false);
   const [dialog, setDialog] = useState(null); // 'approve' | 'recount'
 
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-stocktake-realtime'], () => load());
   const load = useCallback(async () => {
     setError('');
     try { setData((await api.report(id)).data); } catch (e) { setError(errorText(e)); }
@@ -190,7 +193,7 @@ function ApproveDialog({ data, onClose, onDone }) {
   const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const submit = async (event) => {
     event.preventDefault();
-    if (reason.trim().length < 10) { setError('Lý do duyệt cần ít nhất 10 ký tự.'); return; }
+    if (!reason.trim()) { setError('Nhập lý do duyệt.'); return; }
     setBusy(true); setError('');
     try {
       const res = await api.approve(data.stocktake.id, { expectedVersion: data.stocktake.approvalRevision || 0, reportHash: data.reportHash, adjustmentReason: reason });
@@ -203,7 +206,7 @@ function ApproveDialog({ data, onClose, onDone }) {
     {issues.length > 0 && <ul className="wide stocktake-warn stocktake-issues">{issues.map((issue) => <li key={issue}>{issue}</li>)}
       <li>Bạn vẫn có thể duyệt; các điểm này được lưu cùng quyết định duyệt.</li></ul>}
     {data.stocktake.submissionInfo?.note && <p className="wide stocktake-pre">Ghi chú của nhân viên kỹ thuật: {data.stocktake.submissionInfo.note}</p>}
-    <label className="wide">Lý do duyệt *<textarea required minLength={10} maxLength={2000} value={reason} disabled={busy} onChange={(e) => setReason(e.target.value)}
+    <label className="wide">Lý do duyệt *<textarea required maxLength={2000} value={reason} disabled={busy} onChange={(e) => setReason(e.target.value)}
       placeholder="Ví dụ: hao hụt nhỏ do đo lại cuộn vải, đã đối chiếu với phiếu xuất" /></label>
     <p className="wide">Duyệt chưa làm thay đổi tồn kho; phiên chuyển sang chờ điều chỉnh.</p>
   </Dialog>;
@@ -252,7 +255,7 @@ function RecountDialog({ data, onClose, onDone }) {
   useEffect(() => { api.options().then((res) => { if (res.data?.inspectors?.length) setInspectors(res.data.inspectors); }).catch(() => {}); }, []);
   const submit = async (event) => {
     event.preventDefault();
-    if (form.reason.trim().length < 10) { setError('Lý do kiểm kê lại cần ít nhất 10 ký tự.'); return; }
+    if (!form.reason.trim()) { setError('Nhập lý do kiểm kê lại.'); return; }
     if (!form.startTime || !form.endTime || form.endTime <= form.startTime) { setError('Chọn khung giờ kiểm kê lại: giờ kết thúc phải sau giờ bắt đầu.'); return; }
     if (new Date(`${form.date}T${form.endTime}`) <= new Date()) { setError('Khung giờ kiểm kê lại đã qua, hãy chọn giờ khác.'); return; }
     setBusy(true); setError('');
@@ -263,7 +266,7 @@ function RecountDialog({ data, onClose, onDone }) {
   };
   return <Dialog title={`Yêu cầu kiểm kê lại ${s.sessionCode}`} subtitle="Báo cáo này sẽ bị trả về; hệ thống phát phiên kiểm mới cùng phạm vi vào khung giờ bạn chọn."
     busy={busy} error={error} onClose={onClose} onSubmit={submit} submitLabel="Phát lệnh kiểm lại">
-    <label className="wide">Lý do báo cáo không hợp lý *<textarea required minLength={10} maxLength={1000} value={form.reason} disabled={busy}
+    <label className="wide">Lý do báo cáo không hợp lý *<textarea required maxLength={1000} value={form.reason} disabled={busy}
       onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder="Ví dụ: kệ A-02 lệch 40%, nghi đếm sót tầng trên; cần đếm lại toàn bộ" /></label>
     <label>Người kiểm lại (kỹ thuật xưởng) *<select required value={form.inspectorId} disabled={busy} onChange={(e) => setForm({ ...form, inspectorId: e.target.value })}>
       <option value="">Chọn nhân viên kỹ thuật xưởng</option>

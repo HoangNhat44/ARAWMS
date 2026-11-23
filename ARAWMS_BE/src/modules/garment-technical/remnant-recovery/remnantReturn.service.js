@@ -9,8 +9,33 @@ import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import InventoryTransaction from '../../../models/InventoryTransaction.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import SystemSetting from '../../../models/SystemSetting.model.js';
+import { publishRealtime } from '../../../common/services/realtime.js';
+import { notifyWorkflow, ROLE_PAGES } from '../../../common/services/workflowNotify.js';
 
 const id = (value) => String(value?._id || value || '');
+
+/** Cập nhật realtime + thông báo cho luồng trả vải thừa giữa Kỹ thuật và Quản lý kho. */
+const announceRemnant = (request, step, user, reason = '') => {
+  if (!request) return;
+  const code = request.requestCode || 'yêu cầu trả vải';
+  publishRealtime('remnant-return:changed', { requestId: id(request._id), requestCode: code, status: request.status, step });
+  const technician = [{ userId: request.technicianId, role: 'GARMENT_TECHNICIAN', url: ROLE_PAGES.GARMENT_TECHNICIAN.remnant }];
+  const manager = { WAREHOUSE_MANAGER: ROLE_PAGES.WAREHOUSE_MANAGER.supplierInbound };
+  const metadata = { requestId: id(request._id), requestCode: code, status: request.status };
+  const item = {
+    SUBMITTED: { roles: manager, title: `Yêu cầu nhập lại vải thừa: ${code}`,
+      message: `${user?.fullName || 'Nhân viên kỹ thuật'} gửi trả ${request.measuredRemnantLengthMeters} m vải (${request.sourceBarcode}), chờ kho xác nhận.` },
+    DISCREPANCY: { users: technician, title: `Kho báo sai lệch vải trả: ${code}`, priority: 'HIGH',
+      message: `Quản lý kho báo sai lệch khi nhận vải trả ${code}. Lý do: ${reason}` },
+    REJECTED: { users: technician, title: `Kho từ chối vải trả: ${code}`, priority: 'HIGH',
+      message: `Quản lý kho đã từ chối yêu cầu nhập lại ${code}.` },
+    CANCELLED: { roles: manager, title: `Kỹ thuật hủy yêu cầu trả vải: ${code}`,
+      message: `${user?.fullName || 'Nhân viên kỹ thuật'} đã hủy yêu cầu nhập lại ${code}.` },
+    CONFIRMED: { users: technician, title: `Kho đã nhận vải trả: ${code}`,
+      message: `Quản lý kho đã xác nhận nhập lại ${request.measuredRemnantLengthMeters} m vải của ${code}.` },
+  }[step];
+  if (item) notifyWorkflow({ type: 'FABRIC_LEFTOVER_EXCEEDED', metadata, actor: user, ...item });
+};
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
 const fail = (ok, message, code = 'INVALID_RETURN', status = 400) => {
   if (!ok) throw Object.assign(new Error(message), { code, status });
@@ -233,6 +258,7 @@ export async function submitRemnantReturn(input, user) {
         status: qualifies ? 'WAITING_WAREHOUSE_CONFIRMATION' : 'SCRAPPED_BELOW_THRESHOLD',
       }], { session });
     });
+    if (qualifies) announceRemnant(recovery, 'SUBMITTED', user);
     return { recovery, threshold, isAboveThreshold: qualifies,
       message: qualifies ? 'Đã gửi yêu cầu nhập lại, chờ kho xác nhận; tồn kho chưa tăng.' :
         `Dưới ngưỡng ${threshold} m: đã chốt phế liệu, không tạo phiếu nhập.` };
@@ -270,6 +296,7 @@ export async function reportRemnantDiscrepancy(requestId, reason, user) {
     status: 'WAITING_WAREHOUSE_CONFIRMATION' }, { $set: { status: 'DISCREPANCY_REPORTED',
     discrepancyReason: message, discrepancyAt: new Date() } }, { new: true });
   fail(request, 'Yêu cầu không còn chờ kho xác nhận', 'REQUEST_CHANGED', 409);
+  announceRemnant(request, 'DISCREPANCY', user, message);
   return request;
 }
 
@@ -283,6 +310,7 @@ export async function closeRemnantReturn(requestId, status, user) {
     status: { $in: pending } }, { $set: { status, cancelledAt: new Date(),
     cancelledByUserId: user._id } }, { new: true });
   fail(request, 'Yêu cầu không còn chờ xử lý', 'REQUEST_CHANGED', 409);
+  announceRemnant(request, status, user);
   return request;
 }
 
@@ -397,6 +425,7 @@ export async function confirmRemnantReturn(requestId, input, user) {
       result = { request, receiptId: receipt._id, receiptCode, rolls: affectedRolls.map((item) =>
         ({ barcode: item.rollBarcode, id: id(item._id) })) };
     });
+    if (!result?.alreadyProcessed) announceRemnant(result?.request, 'CONFIRMED', user);
     return result;
   } finally { await session.endSession(); }
 }

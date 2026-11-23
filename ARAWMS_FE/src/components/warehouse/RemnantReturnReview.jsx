@@ -7,6 +7,7 @@ import { garmentTechnicalService } from '../../services/garmentTechnicalService'
 import { materialInboundService } from '../../services/materialInboundService';
 import '../../styles/remnantReturnReview.css';
 import { toId as id } from '../../utils/warehouseFormat';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 const amount = (value) => Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 3 });
 
@@ -106,6 +107,8 @@ export default function RemnantReturnReview({ locations = [] }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-remnant-return-realtime'], () => load());
   const load = async () => {
     setLoading(true);
     try {

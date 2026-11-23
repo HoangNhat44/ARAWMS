@@ -16,7 +16,16 @@ import { ownerTransaction, ownerAudit } from '../../../common/utils/ownerOperati
 import { httpError } from '../../../common/utils/httpError.js';
 import { reportData } from '../stock-adjustment/stockAdjustment.service.js';
 import { planSession } from './stocktakeAdjustment.service.js';
-import { notifyStocktakeScheduled } from './stocktakeNotice.service.js';
+import { notifyStocktakeScheduled, announceStocktakeStep, publishStocktakeChanged } from './stocktakeNotice.service.js';
+
+/** Lý do duyệt / kiểm lại: chỉ cần có nội dung (không giới hạn tối thiểu), cho phép xuống dòng.
+ * Ký tự điều khiển khác (ngoài xuống dòng, tab) bị loại bỏ thay vì báo lỗi. */
+const reasonField = (value, label, max) => {
+  const text = typeof value === 'string'
+    ? value.normalize('NFC').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/gu, '').trim() : '';
+  if (!text) throw httpError(400, `Nhập ${label.toLowerCase()}.`);
+  return text.slice(0, max);
+};
 
 const active = { isDeleted: { $ne: true } };
 const ownerRequiredFor = (stocktake, summary) => !summary || summary.requiresOwner
@@ -73,8 +82,8 @@ export async function approveStocktakeByManager(req) {
   objectFields(body, ['expectedVersion', 'reportHash', 'adjustmentReason']);
   if (typeof body.reportHash !== 'string' || !/^[a-f0-9]{64}$/.test(body.reportHash)) throw httpError(400, 'Cần mở lại báo cáo kiểm kê trước khi duyệt.');
   const input = { expectedVersion: versionField(body.expectedVersion), reportHash: body.reportHash,
-    adjustmentReason: textField(body.adjustmentReason, 'Lý do duyệt', 2000, 10) };
-  return ownerTransaction(async (session) => {
+    adjustmentReason: reasonField(body.adjustmentReason, 'Lý do duyệt', 2000) };
+  const result = await ownerTransaction(async (session) => {
     const { stocktake, records, summary, missingCost, reportHash } = await reportData(req.params.id, session, { requireCost: false });
     if (stocktake.status !== 'VARIANCE_REVIEW' || stocktake.approvalInfo?.approvedAt) throw httpError(409, 'Phiên không còn ở trạng thái chờ duyệt.');
     assertFresh(stocktake, input, reportHash);
@@ -96,6 +105,8 @@ export async function approveStocktakeByManager(req) {
       { status: stocktake.status, approvalInfo: stocktake.approvalInfo, summary });
     return { stocktake, summary };
   });
+  announceStocktakeStep(result.stocktake, 'APPROVED', req.user);
+  return result;
 }
 
 // Kiểm lại theo khung giờ cụ thể: ngày + từ giờ – đến giờ (giờ Việt Nam). Không gửi thì bắt đầu ngay, hạn theo durationHours.
@@ -117,7 +128,7 @@ export async function requestStocktakeRecount(req) {
   const body = req.body || {};
   objectFields(body, ['expectedVersion', 'reason', 'inspectorId', 'durationHours', 'date', 'startTime', 'endTime']);
   const input = { expectedVersion: versionField(body.expectedVersion),
-    reason: textField(body.reason, 'Lý do kiểm kê lại', 1000, 10),
+    reason: reasonField(body.reason, 'Lý do kiểm kê lại', 1000),
     inspectorId: body.inspectorId === undefined || body.inspectorId === '' ? null : objectId(body.inspectorId),
     durationHours: body.durationHours === undefined ? 2 : numberField(body.durationHours, 'Hạn hoàn thành (giờ)', 1, 72, true),
     window: recountWindow(body) };
@@ -153,5 +164,9 @@ export async function requestStocktakeRecount(req) {
   });
   // Báo sau khi giao dịch đã chốt, để không gửi thông báo cho một phiên bị hoàn tác.
   await notifyStocktakeScheduled(result.recount, req.user, { recount: true });
+  // Người kiểm phiên gốc biết báo cáo bị trả về (người kiểm lại đã nhận lịch qua notifyStocktakeScheduled).
+  if (String(result.stocktake.inspectorId || '') !== String(result.recount.inspectorId || '')) {
+    announceStocktakeStep(result.stocktake, 'RECOUNT', req.user, { reason: input.reason, recountCode: result.recount.sessionCode });
+  } else publishStocktakeChanged(result.stocktake, 'RECOUNT');
   return result;
 }

@@ -23,6 +23,7 @@ import MaterialTicket from '../../../models/MaterialTicket.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import { isFractionalMaterialUnit } from '../../../common/constants/materialUnits.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
+import { announceTechnicalInbound } from '../../../common/services/workflowNotify.js';
 
 const VALID_DEFECT_CATEGORIES = new Set([
   'NONE',
@@ -659,6 +660,10 @@ export const sendLotsToWarehouse = async (payload = {}, user) => {
       }
     });
 
+    announceTechnicalInbound({ ticketCodes: [result?.ticket?.ticketCode], actor: user,
+      rawMaterial: result?.ticketModel === 'MaterialTicket',
+      label: `${result?.sentCount || 0} lô ${lotType === 'RAW_MATERIAL' ? 'nguyên phụ liệu' : 'thành phẩm'}`,
+      detail: (result?.lotCodes || []).slice(0, 5).join(', ') });
     if (result?.ticketModel === 'MaterialTicket' && result.ticket?._id) {
       publishRealtime('material-inbound-request:changed', {
         requestId: String(result.ticket._id),

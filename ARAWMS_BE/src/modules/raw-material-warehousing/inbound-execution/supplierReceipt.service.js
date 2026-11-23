@@ -20,6 +20,7 @@ import { ReceiptError, getReceiptOptions } from './inboundExecution.service.js';
 import { configureProductCloudinary } from '../../../common/services/productMediaStorage.js';
 import { claimRawMaterialBarcode, nextRawMaterialBarcode } from '../../../common/services/rawMaterialBarcode.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
+import { notifyWorkflow, ROLE_PAGES } from '../../../common/services/workflowNotify.js';
 import { getDeliveryBatchContext, commitDeliveryReceipt } from './deliveryPlan.service.js';
 import { validateInboundRequestReceipt, applyInboundRequestReceipt } from './technicianInboundRequest.service.js';
 import { isFractionalMaterialUnit, isValidMaterialUnitForType, normalizeMaterialUnit } from '../../../common/constants/materialUnits.js';
@@ -60,10 +61,48 @@ const restoreRequestInspection = (request, lines) => {
 
 /** Returns the selectable catalog and locations already scoped to the user's warehouse access. */
 export async function getSupplierReceiptOptions(user) {
-  const [base, materials] = await Promise.all([getReceiptOptions(user), RawMaterial.find({
+  const [base, materials, usedNames] = await Promise.all([getReceiptOptions(user), RawMaterial.find({
     isActive: true, isDeleted: { $ne: true },
-  }).select('materialCode materialName materialType category color widthCm gsm unit unitCost requiresWeightKg').sort({ materialCode: 1 }).lean()]);
-  return { ...base, materials };
+  }).select('materialCode materialName materialType category color widthCm gsm unit unitCost requiresWeightKg').sort({ materialCode: 1 }).lean(),
+  getRecentExternalSupplierNames(user)]);
+  // Names that now match a catalog supplier are already suggested through `suppliers`.
+  const catalog = new Set((base.suppliers || []).map((item) => supplierNameKey(item.supplierName)));
+  const externalSuppliers = usedNames.filter((name) => !catalog.has(supplierNameKey(name)))
+    .slice(0, EXTERNAL_SUPPLIER_SUGGESTION_LIMIT);
+  return { ...base, materials, externalSuppliers };
+}
+
+const EXTERNAL_SUPPLIER_SUGGESTION_LIMIT = 200;
+const supplierNameKey = (value) => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
+
+/**
+ * Reads supplier names typed freely on unplanned receipts (no catalog supplierId), newest first.
+ * Names are deduplicated case-insensitively in JS because Mongo's $toLower does not handle Vietnamese letters.
+ */
+async function getRecentExternalSupplierNames(user) {
+  // aggregate() skips Mongoose casting, so the warehouse scope must be converted to ObjectIds here.
+  const scope = locationScopeFilter('receivingLocationId', user);
+  if (scope.receivingLocationId) scope.receivingLocationId = { $in: (scope.receivingLocationId.$in || [])
+    .filter((value) => mongoose.isValidObjectId(value)).map((value) => new mongoose.Types.ObjectId(String(value))) };
+  const rows = await MaterialTicket.aggregate([
+    { $match: { ticketType: 'INBOUND_FROM_SUPPLIER', receiptSource: 'DIRECT', isDeleted: { $ne: true },
+      status: { $ne: 'CANCELLED' }, supplierId: null, purchaseSourceName: { $nin: [null, ''] }, ...scope } },
+    { $group: { _id: { $trim: { input: '$purchaseSourceName' } }, lastUsedAt: { $max: '$createdAt' } } },
+    { $match: { _id: { $ne: '' } } },
+    { $sort: { lastUsedAt: -1 } },
+    // Headroom for case/space variants and catalog matches removed after grouping.
+    { $limit: EXTERNAL_SUPPLIER_SUGGESTION_LIMIT * 3 },
+  ]);
+  const seen = new Set();
+  const names = [];
+  for (const row of rows) {
+    const name = row._id.replace(/\s+/g, ' ');
+    const key = supplierNameKey(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names;
 }
 
 /** Creates a catalog entry explicitly before it may be selected on a receipt. */
@@ -188,9 +227,8 @@ export async function validateSupplierReceiptDraft(input, user, previousReceipt)
     isDeleted: { $ne: true } }).select('_id supplierName').lean() : null;
   fail(!input.supplierId || supplier, 'Nhà cung cấp không còn hoạt động', 'SUPPLIER_UNAVAILABLE', 409);
   const purchaseSourceName = String(input.purchaseSourceName || supplier?.supplierName || '').trim();
-  fail(!direct || purchaseSourceName.length <= 160 &&
-    (purchaseSourceName.length > 0 || Boolean(input.inboundRequestId)),
-    'Nơi mua quá dài', 'PURCHASE_SOURCE_INVALID');
+  // Direct (unplanned) receipts may pick a catalog supplier, type an external supplier name, or leave it blank.
+  fail(!direct || purchaseSourceName.length <= 160, 'Tên nhà cung cấp quá dài', 'PURCHASE_SOURCE_INVALID');
   const purchasedByName = String(input.purchasedByName || user.fullName || '').trim();
   fail(!direct || purchasedByName.length >= 2 && purchasedByName.length <= 120,
     'Người mua không hợp lệ', 'PURCHASER_REQUIRED');
@@ -512,6 +550,32 @@ function validateConfirmation(receipt, materials, locations, user) {
   return { allocations, plannedAllocations, units, byMaterial, byLocation };
 }
 
+/** Báo phiếu nhập NPL đã hoàn tất: kỹ thuật viên (nếu nhập theo yêu cầu của họ) hoặc kế toán (nhập từ NCC). */
+async function notifyReceiptConfirmed(receipt, user) {
+  try {
+    const lines = receipt.receiptLines || [];
+    const accepted = round(lines.reduce((sum, line) => sum + Number(line.acceptedQty || 0), 0));
+    const rejected = round(lines.reduce((sum, line) => sum + Number(line.rejectedQty || 0), 0));
+    const metadata = { receiptId: id(receipt._id), ticketCode: receipt.ticketCode };
+    if (receipt.inboundRequestId) {
+      const request = await MaterialTicket.findById(receipt.inboundRequestId)
+        .select('ticketCode requestedByTechnicianId createdByUserId status').lean();
+      const technicianId = request?.requestedByTechnicianId || request?.createdByUserId;
+      if (technicianId) notifyWorkflow({ actor: user, type: 'INBOUND_REQUEST', metadata,
+        users: [{ userId: technicianId, role: 'GARMENT_TECHNICIAN', url: ROLE_PAGES.GARMENT_TECHNICIAN.inboundVerification }],
+        title: `Kho đã nhận hàng: ${request.ticketCode}`,
+        message: `Kho đã xác nhận phiếu ${receipt.ticketCode} cho yêu cầu ${request.ticketCode}: đạt ${accepted}${rejected ? `, không đạt ${rejected}` : ''}.` });
+      return;
+    }
+    notifyWorkflow({ actor: user, type: 'INBOUND_REQUEST', metadata,
+      roles: { ACCOUNTANT: ROLE_PAGES.ACCOUNTANT.materialValuation },
+      title: `Đã nhập kho NPL: ${receipt.ticketCode}`,
+      message: `${user?.fullName || 'Kho'} đã xác nhận nhập ${accepted} đơn vị NPL${receipt.supplierNameSnapshot ? ` từ ${receipt.supplierNameSnapshot}` : ''}${rejected ? ` (không đạt ${rejected})` : ''}. Giá trị tồn kho NPL đã thay đổi.` });
+  } catch (error) {
+    console.error('[supplierReceipt] Không gửi được thông báo nhập kho:', error.message);
+  }
+}
+
 /** Confirms the direct receipt exactly once and commits objects, stock, ledger, and audit atomically. */
 export async function confirmSupplierReceipt(receiptId, input, user) {
   fail(mongoose.isValidObjectId(receiptId), 'Mã phiếu không hợp lệ', 'INVALID_RECEIPT');
@@ -545,8 +609,7 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
         isDeleted: { $ne: true } }).session(session) : [];
       const supplierById = new Map(suppliers.map((item) => [id(item._id), item]));
       fail(suppliers.length === supplierIds.length, 'Nhà cung cấp không còn hoạt động', 'SUPPLIER_UNAVAILABLE', 409);
-      fail(!direct || (receipt.purchaseSourceName?.trim() || receipt.inboundRequestId) && receipt.purchasedByName?.trim(),
-        'Thiếu nơi mua hoặc người mua', 'DIRECT_SOURCE_REQUIRED');
+      fail(!direct || receipt.purchasedByName?.trim(), 'Thiếu người mua', 'DIRECT_SOURCE_REQUIRED');
       const materials = await RawMaterial.find({ _id: { $in: receipt.receiptLines.map((line) => line.rawMaterialId) },
         isActive: true, isDeleted: { $ne: true } }).session(session);
       const locationIds = new Set([id(receipt.receivingLocationId)]);
@@ -690,6 +753,9 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
     });
     if (confirmed.inboundRequestId) publishRealtime('material-inbound-request:changed', {
       requestId: id(confirmed.inboundRequestId), receiptId: id(confirmed._id) });
+    publishRealtime('material-inbound:changed', { receiptId: id(confirmed._id), ticketCode: confirmed.ticketCode,
+      status: confirmed.status });
+    notifyReceiptConfirmed(confirmed, user);
     return confirmed;
   } finally { await session.endSession(); }
 }

@@ -71,8 +71,8 @@ export default function WarehouseStaffLayout({ children }) {
     },
     {
       to: '/orders/qr',
-      label: 'Đơn hàng & Quét QR',
-      subLabel: 'Tra cứu đơn & in/quét mã QR',
+      label: 'Đơn hàng & In tem',
+      subLabel: 'Tra cứu đơn, tạo và in tem đơn hàng',
       icon: QrCode,
       match: (path) => path.startsWith('/orders'),
     },
@@ -217,6 +217,7 @@ export default function WarehouseStaffLayout({ children }) {
           onToggleCollapse={() => setCollapsed((p) => !p)}
           onToggleMobile={() => setMobileOpen((p) => !p)}
           profilePath="/account"
+          liveNotifications
         />
         <main className="wms-content-container">
           <StocktakeNoticeBanner role="WAREHOUSE_STAFF" />

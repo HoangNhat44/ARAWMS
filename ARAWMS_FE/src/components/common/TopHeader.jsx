@@ -24,7 +24,7 @@ import { getSocket } from '../../services/socketService';
 const PAGE_TITLES = {
   '/seller/chat': { section: 'Bán Hàng & CSKH', title: 'Hội Thoại Đa Kênh' },
   '/seller/orders': { section: 'Bán Hàng & CSKH', title: 'Quản Lý Đơn Hàng' },
-  '/orders/qr': { section: 'Vận Hành Kho', title: 'Chốt Đơn & In Tem QR' },
+  '/orders/qr': { section: 'Vận Hành Kho', title: 'Chốt Đơn & In Tem Đơn Hàng' },
   '/packing/qr': { section: 'Vận Hành Kho', title: 'Đóng Hàng & Ghi Hình Video' },
   '/warehouse/putaway': { section: 'Vận Hành Kho', title: 'Xếp Hàng Lên Kệ (Putaway)' },
   '/warehouse/finished-goods': { section: 'Vận Hành Kho', title: 'Kho Thành Phẩm' },

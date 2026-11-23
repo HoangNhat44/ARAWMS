@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import garmentTechnicalService from '../../services/garmentTechnicalService';
 import { formatStatusVi, formatUnitVi, translateColorVi } from '../../utils/garmentDisplayVi';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 export default function MaterialInboundVerificationPage() {
   const [activeTab, setActiveTab] = useState('PLANS'); // 'PLANS' | 'REQUESTS'
@@ -137,6 +138,8 @@ export default function MaterialInboundVerificationPage() {
   }, []);
 
   // Fetch data
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-inbound-plan-realtime', 'arawms-material-request-realtime', 'arawms-material-inbound-realtime'], () => fetchData());
   const fetchData = async () => {
     setLoading(true);
     try {

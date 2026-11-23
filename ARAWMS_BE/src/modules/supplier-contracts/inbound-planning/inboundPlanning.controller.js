@@ -1,4 +1,5 @@
 import * as inboundPlanningService from './inboundPlanning.service.js';
+import { announceInboundPlan } from '../inboundPlanNotify.js';
 
 export const getInboundPlans = async (req, res, next) => {
   try {
@@ -30,6 +31,7 @@ export const getContractInboundSummary = async (req, res, next) => {
 export const createInboundPlan = async (req, res, next) => {
   try {
     const data = await inboundPlanningService.scheduleInboundPlan(req.body, req.user?._id);
+    announceInboundPlan(data, 'CREATED', req.user);
     const batchCount = data.batches?.length || data.totalBatches || 1;
     const message = batchCount > 1
       ? `Lập kế hoạch tiếp nhận nguyên liệu thành công (${batchCount} đợt giao hàng gộp chung trong kế hoạch ${data.planCode})`
@@ -47,6 +49,7 @@ export const createInboundPlan = async (req, res, next) => {
 export const updateInboundPlanStatus = async (req, res, next) => {
   try {
     const data = await inboundPlanningService.updateInboundPlanStatus(req.params.id, req.body);
+    announceInboundPlan(data, 'UPDATED', req.user);
     res.status(200).json({
       success: true,
       message: 'Cập nhật lịch trình tiếp nhận nguyên vật liệu thành công',
@@ -64,6 +67,7 @@ export const amendInboundPlan = async (req, res, next) => {
       req.body,
       req.user?._id
     );
+    announceInboundPlan(data, 'AMENDED', req.user);
     res.status(201).json({
       success: true,
       message: `Đã tạo thành công Phiên bản mới ${data.planCode} (v${data.versionNumber}) cho kế hoạch tiếp nhận nguyên liệu`,

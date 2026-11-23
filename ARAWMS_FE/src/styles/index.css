@@ -98,35 +98,74 @@
   --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.order-print-labels { display: none; }
+/* ===== Tem đơn hàng (OrderQrPage): hiển thị trên màn hình và khi in ===== */
+.order-print-labels { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 1rem; }
+.order-label-slot { position: relative; }
+.order-label-remove { position: absolute; top: -10px; right: -10px; width: 26px; height: 26px; border-radius: 50%;
+  border: 1px solid var(--ara-border, #ddd); background: #fff; cursor: pointer; font-size: 16px; line-height: 1; z-index: 1; }
+.order-label-screen { overflow-x: auto; }
+.order-detail-label-preview { border: 1px solid var(--ara-border, #ddd); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;
+  display: grid; gap: .75rem; }
+.order-detail-label-head { display: grid; gap: .35rem; }
+.order-detail-label-head h3 { margin: 0; }
+.order-detail-label-head small { color: var(--ara-text-secondary, #66717c); }
+.order-detail-label-actions { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+
+/* Tem in đơn: khổ 60 × 95 mm (ngang 60mm, dài 95mm), bố cục theo tem vận chuyển mẫu. */
+.order-print-label { width: 60mm; height: 95mm; overflow: hidden; box-sizing: border-box; padding: 1.5mm; background: #fff; color: #111;
+  font: 5.6pt/1.2 Arial, sans-serif; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: .8mm; border: 1px dashed #bbb; }
+.order-print-label p { margin: 0; }
+.order-label-box { border: 1px solid #111; border-radius: 1mm; }
+.order-label-party { padding: .5mm 1mm; display: grid; gap: .1mm; }
+.order-label-party-title { font-size: 5pt; color: #333; }
+.order-label-party strong { font-size: 5.8pt; font-weight: 700; }
+.order-label-party p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.order-label-main { display: grid; grid-template-columns: minmax(0, 1fr) 19mm; gap: 1.2mm; align-items: start; padding: 0 .5mm; }
+.order-label-main-left { display: grid; gap: .3mm; min-width: 0; }
+.order-label-barcode { display: block; width: 100%; height: 8mm; }
+.order-label-barcode-text { text-align: center; font-size: 5.6pt; letter-spacing: .05em; }
+.order-label-carrier { font-size: 6pt; font-weight: 700; letter-spacing: .03em; }
+.order-label-code { font-size: 10pt; font-weight: 700; line-height: 1.1; letter-spacing: .01em; }
+.order-label-payment { font-size: 6.2pt; }
+.order-label-muted { font-size: 5pt; color: #444; }
+.order-label-main-right { display: grid; gap: .4mm; justify-items: start; font-size: 6pt; }
+.order-label-main-right img { width: 19mm; height: 19mm; object-fit: contain; display: block; }
+.order-label-noqr { width: 19mm; height: 19mm; border: 1px dashed #777; display: grid; place-items: center;
+  text-align: center; font-size: 5pt; color: #555; }
+.order-label-amount { font-size: 8pt; font-weight: 700; white-space: nowrap; }
+.order-label-area { font-size: 5.4pt; padding: 0 .5mm; margin-top: auto !important; }
+
+.order-label-table-box { display: flex; flex-direction: column; }
+.order-label-note { display: grid; gap: .2mm; text-align: center; padding-bottom: .5mm; border-bottom: 1px solid #111; }
+.order-label-note-title { border-bottom: 1px solid #111; padding: .2mm 0; }
+.order-label-note p { padding: 0 1mm; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.order-print-label .order-label-items { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 4.6pt; margin-top: .5mm; }
+.order-print-label .order-label-items th, .order-print-label .order-label-items td { background: none; color: inherit; font-size: inherit;
+  font-weight: inherit; text-align: right; vertical-align: top; border: 0; padding: .2mm .3mm; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+.order-print-label .order-label-items th { font-weight: 700; }
+.order-print-label .order-label-items th:nth-child(1), .order-print-label .order-label-items td:nth-child(1) { width: 7%; text-align: center; }
+.order-print-label .order-label-items th:nth-child(2), .order-print-label .order-label-items td:nth-child(2) { width: 27%; text-align: left; white-space: normal; }
+.order-print-label .order-label-items th:nth-child(3), .order-print-label .order-label-items td:nth-child(3) { width: 6%; text-align: center; }
+.order-print-label .order-label-items th:nth-child(4) { width: 20%; }
+.order-print-label .order-label-items th:nth-child(5) { width: 19%; }
+.order-print-label .order-label-items th:nth-child(6) { width: 21%; }
+.order-label-confirm { display: flex; justify-content: space-between; gap: 1mm; padding: .6mm 1mm .4mm; font-size: 5pt; }
+
+/* Vùng in tem (portal gắn thẳng vào body): ẩn trên màn hình, chỉ hiện khi in tem. */
+.order-label-print-root { display: none; }
+
+/* Mỗi tem là đúng 1 trang giấy 60mm (ngang) × 95mm (dài), không lề. */
+@page order-label { size: 60mm 95mm; margin: 0; }
 
 @media print {
-  @page { margin: 8mm; }
-  body * { visibility: hidden; }
-  .packing-qr-print, .packing-qr-print * { visibility: visible; }
-  .packing-qr-print { position: absolute; inset: 0 auto auto 0; width: 100%; padding: 0 !important; border: 0 !important; box-shadow: none !important; }
-  .qr-gallery-toolbar, .qr-gallery { display: none !important; }
-  .order-print-labels { display: block; }
-  .order-print-label { color: #111; font: 10pt/1.35 Arial, sans-serif; break-after: page; page-break-after: always; overflow-wrap: anywhere; }
-  .order-print-label:last-child { break-after: auto; page-break-after: auto; }
-  .order-label-header { display: flex; justify-content: space-between; align-items: start; gap: 5mm; border-bottom: 2px solid #111; padding-bottom: 3mm; }
-  .order-label-header h2 { font-size: 13pt; margin: 0 0 2mm; }
-  .order-label-code { display: block; font-size: 16pt; }
-  .order-label-header img { width: 28mm; height: 28mm; object-fit: contain; }
-  .order-label-section { border-top: 1px solid #777; margin-top: 3mm; padding-top: 2mm; }
-  .order-label-section h3 { font-size: 10pt; margin: 0 0 1.5mm; }
-  .order-label-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1mm 4mm; margin-top: 2mm; }
-  .order-label-field { display: flex; gap: 1mm; align-items: baseline; }
-  .order-label-field span { white-space: nowrap; }
-  .order-label-field span::after { content: ':'; }
-  .order-label-field strong { font-weight: 600; }
-  .order-label-items { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  .order-label-items th, .order-label-items td { text-align: left; vertical-align: top; border-bottom: 1px solid #bbb; padding: 1.5mm 1mm; }
-  .order-label-items th:first-child { width: 48%; }
-  .order-label-items th:nth-child(2) { width: 8%; }
-  .order-label-items th:nth-child(3), .order-label-items th:nth-child(4) { width: 22%; }
-  .order-label-items small { display: block; font-size: 8pt; }
-  .order-label-items tr, .order-label-section h3 { break-inside: avoid; page-break-inside: avoid; }
+  html:has(body.printing-order-labels), body.printing-order-labels { margin: 0 !important; padding: 0 !important; background: #fff !important; width: 60mm; }
+  body.printing-order-labels > *:not(.order-label-print-root) { display: none !important; }
+  body.printing-order-labels > .order-label-print-root { display: block; margin: 0; padding: 0; }
+  .order-label-page { page: order-label; width: 60mm; height: 95mm; overflow: hidden; margin: 0; padding: 0;
+    break-after: page; page-break-after: always; break-inside: avoid; page-break-inside: avoid; }
+  .order-label-page:last-child { break-after: auto; page-break-after: auto; }
+  .order-label-page .order-print-label { border: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
 * {

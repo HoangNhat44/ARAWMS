@@ -8,12 +8,16 @@ import { useEffect, useRef, useState } from 'react';
 import { packingSessionService } from '../../services/packingSessionService';
 import { savePendingVideo, listPendingVideos, deletePendingVideo, storageEstimate } from '../../services/localPackingVideoQueue';
 import { packingVideoUploadManager } from '../../services/packingVideoUploadManager';
+import { useStocktakePackingLock } from '../../hooks/useStocktakePackingLock';
 import '../../styles/warehousePacking.css';
 import { formatOrderMoney as formatMoney, formatShortDateTime as formatDate } from '../../utils/warehouseFormat';
 
 const panel = { background: '#fff', border: '1px solid var(--ara-border)', borderRadius: 10, padding: '1.5rem' };
 const inputStyle = { flex: '1 1 240px', padding: '0.7rem', border: '1px solid var(--ara-border)', borderRadius: 6 };
 const formatBytes = (value) => `${(value / 1024 / 1024).toFixed(1)} MB`;
+const clock = (value) => new Date(value).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+const stocktakeWindow = (item) => `${new Date(item.scheduledAt).toLocaleDateString('vi-VN')} · ${clock(item.scheduledAt)} – ${clock(item.dueAt)}`;
+const stocktakeLockMessage = (item) => `Đang kiểm kê kho thành phẩm (${item.sessionCode}, ${stocktakeWindow(item)}). Chức năng đóng hàng bị khóa đến ${clock(item.dueAt)}. Lần đóng dở đã bị hủy, đơn chưa được tính là đã đóng; hết giờ kiểm kê hãy quét QR và đóng lại từ đầu.`;
 function Detail({ label, value }) {
   if (value == null || value === '') return null;
   return <div><span style={{ color: 'var(--ara-text-muted)' }}>{label}: </span><strong>{value}</strong></div>;
@@ -142,6 +146,16 @@ export default function WarehousePackingPage() {
   const lastCameraValueRef = useRef({ value: '', at: 0 });
   const removedCameraBarcodeRef = useRef('');
   const noticeTimerRef = useRef(null);
+  // Lịch kiểm kê kho thành phẩm: báo trước và khóa đóng hàng đúng giờ.
+  const { active: stocktakeLock, upcoming: upcomingStocktake, now } = useStocktakePackingLock();
+  const stocktakeLockRef = useRef(null);
+  stocktakeLockRef.current = stocktakeLock;
+  /** Chặn thao tác khi đang trong khung giờ kiểm kê; trả về true nếu đã chặn. */
+  const blockedByStocktake = () => {
+    if (!stocktakeLockRef.current) return false;
+    setError(stocktakeLockMessage(stocktakeLockRef.current));
+    return true;
+  };
 
   // Subscribe to the shared upload queue so progress updates appear in this view.
   useEffect(() => packingVideoUploadManager.subscribe(setQueue), []);
@@ -277,6 +291,7 @@ export default function WarehousePackingPage() {
   /** Finalizes the current recording before opening the next scanned order. */
   const openPackingOrderFromQr = async (value) => {
     if (busyRef.current) return;
+    if (blockedByStocktake()) return;
     const qrValue = value.trim();
     if (sessionRef.current && qrValue === currentQrRef.current) return;
     busyRef.current = true;
@@ -341,6 +356,7 @@ export default function WarehousePackingPage() {
   const scanBarcode = async (value) => {
     const activeSession = sessionRef.current;
     if (!activeSession || busyRef.current) return;
+    if (blockedByStocktake()) return;
     busyRef.current = true;
     const barcode = value.trim();
     const clientEventId = pendingScanRef.current?.barcode === barcode
@@ -392,6 +408,7 @@ export default function WarehousePackingPage() {
   /** Queues the recording before releasing the station lease. */
   const saveVideoAndReleaseOrder = async () => {
     if (!session) return;
+    if (blockedByStocktake()) return;
     if (recorderRef.current && session.state !== 'READY_TO_RECORD') {
       setError(incompleteScanMessage(session));
       return;
@@ -431,6 +448,38 @@ export default function WarehousePackingPage() {
     } catch (err) { setError(reasons[err.code] || err.message); }
     finally { busyRef.current = false; setBusy(false); }
   };
+
+  /** Đến giờ kiểm kê: dừng quay, bỏ video và kết quả quét của lần đóng dở, đóng phiên tại bàn.
+   * Backend cũng hủy lần đóng này ở lần gọi kế tiếp; ở đây làm ngay để nhân viên thấy đơn phải đóng lại. */
+  const abortPackingForStocktake = async (lock) => {
+    const activeSession = sessionRef.current;
+    const active = recorderRef.current;
+    recorderRef.current = null;
+    pendingScanRef.current = null;
+    if (active) {
+      try { if (active.recorder.state === 'recording') active.recorder.stop(); await active.done; } catch { /* video bị bỏ */ }
+    }
+    setRecording(false);
+    stopCamera();
+    if (activeSession && !activeSession.video) {
+      await packingSessionService.discardAttempt(activeSession.id, stationId, activeSession.leaseVersion).catch(() => {});
+      await packingSessionService.releaseSession(activeSession.id, stationId, activeSession.leaseVersion).catch(() => {});
+    }
+    sessionRef.current = null;
+    currentQrRef.current = '';
+    setSession(null); setOrder(null); setQrInput(''); setBarcodeInput('');
+    setMessage('');
+    setError(activeSession && !activeSession.video
+      ? `Đơn ${order?.orderCode ? `${order.orderCode} ` : ''}đang đóng dở đã bị hủy do bắt đầu kiểm kê. ${stocktakeLockMessage(lock)}`
+      : stocktakeLockMessage(lock));
+  };
+
+  useEffect(() => {
+    if (!stocktakeLock) return;
+    abortPackingForStocktake(stocktakeLock);
+    // Chỉ chạy khi một phiên kiểm kê mới bắt đầu khóa.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stocktakeLock?._id]);
 
   /** Starts QR and Code 128 scanning while suppressing consecutive duplicate reads. */
   const startCamera = async () => {
@@ -478,6 +527,15 @@ export default function WarehousePackingPage() {
       <p className="packing-crumb">Trang chủ <span>/</span> Đóng hàng</p>
       <header className="packing-heading"><div><h1>Đóng hàng</h1><p>Quét QR đơn, đối soát từng sản phẩm rồi quay video đóng gói.</p></div><div className="packing-heading-actions"><span className="packing-warehouse">Kho Tổng TP.HCM</span><span className={`packing-network ${queue.online ? 'is-online' : 'is-offline'}`}>{queue.online ? 'Đang kết nối' : 'Mất kết nối'}</span></div></header>
       <ol className="packing-steps"><li className="is-current">1 <span>Quét QR đơn</span></li><li className={session ? 'is-current' : ''}>2 <span>Quét đủ từng chiếc</span></li><li className={recording ? 'is-current' : ''}>3 <span>Quay video</span></li><li className={session?.video ? 'is-current' : ''}>4 <span>Lưu và chờ tải</span></li></ol>
+      {stocktakeLock && <div role="alert" className="packing-stocktake-banner is-active">
+        <strong>Đang kiểm kê {stocktakeLock.sessionCode} · {stocktakeWindow(stocktakeLock)}</strong>
+        <span>Chức năng đóng hàng bị khóa đến {clock(stocktakeLock.dueAt)}. Đơn đang đóng dở lúc bắt đầu kiểm kê không được ghi nhận và phải đóng lại từ đầu sau giờ kiểm kê. Bàn giao đơn đã đóng cho đơn vị vận chuyển vẫn thực hiện bình thường.</span>
+      </div>}
+      {!stocktakeLock && upcomingStocktake && <div role="status" className="packing-stocktake-banner">
+        <strong>Lịch kiểm kê {upcomingStocktake.sessionCode} · {stocktakeWindow(upcomingStocktake)}
+          {new Date(upcomingStocktake.scheduledAt).getTime() - now <= 60 * 60_000 && ` · còn ${Math.max(1, Math.ceil((new Date(upcomingStocktake.scheduledAt).getTime() - now) / 60_000))} phút`}</strong>
+        <span>Đến {clock(upcomingStocktake.scheduledAt)} chức năng đóng hàng sẽ bị khóa. Đơn nào chưa lưu video trước giờ đó sẽ bị hủy kết quả và phải đóng lại sau khi kiểm kê xong. Bàn giao đơn vẫn thực hiện bình thường.</span>
+      </div>}
       {scanNotice && <div role="status" className="packing-scan-notice">{scanNotice}</div>}
       {error && <div role="alert" style={{ ...panel, color: 'var(--ara-error)' }}>{error}</div>}
       {message && <div role="status" style={{ ...panel, color: 'var(--ara-success)' }}>{message}</div>}
@@ -485,11 +543,11 @@ export default function WarehousePackingPage() {
       {order && <section className="packing-order-ribbon"><strong>{order.orderCode}</strong><span>{order.recipientName || order.recipient?.name || 'Chưa có người nhận'}</span><span className="packing-order-status">{order.status}</span>{session && <span>{session.items.reduce((sum, item) => sum + item.scanned, 0)}/{session.items.reduce((sum, item) => sum + item.quantity, 0)} chiếc đã quét</span>}</section>}
       <div className="packing-grid">
       <section className="packing-camera-card">
-        <div className="packing-camera-top"><div><h2>Camera đóng hàng</h2><p>{recording ? 'Đang quay. Quét QR tiếp theo để chuyển đơn.' : session ? 'Đơn đang mở. Quét QR tiếp theo để chuyển đơn.' : 'Đưa QR đơn hàng vào khung hình hoặc nhập mã bên dưới.'}</p></div><button className="btn-ara-secondary" type="button" disabled={recording || !!recorderRef.current || busy} onClick={() => cameraMode ? stopCamera() : startCamera()}>{cameraMode ? 'Tắt camera' : 'Mở camera'}</button></div>
+        <div className="packing-camera-top"><div><h2>Camera đóng hàng</h2><p>{recording ? 'Đang quay. Quét QR tiếp theo để chuyển đơn.' : session ? 'Đơn đang mở. Quét QR tiếp theo để chuyển đơn.' : 'Đưa QR đơn hàng vào khung hình hoặc nhập mã bên dưới.'}</p></div><button className="btn-ara-secondary" type="button" disabled={recording || !!recorderRef.current || busy || (!!stocktakeLock && !cameraMode)} onClick={() => cameraMode ? stopCamera() : startCamera()}>{cameraMode ? 'Tắt camera' : 'Mở camera'}</button></div>
         <div className="packing-camera-frame">{cameraMode ? <video ref={videoRef} playsInline muted /> : <div className="packing-camera-empty"><span className="packing-camera-icon">⌗</span><h3>{session ? 'Đơn đang mở' : 'Quét QR để bắt đầu'}</h3><p>Camera chỉ mở sau khi bạn cấp quyền. Có thể dùng máy quét cầm tay ở bên dưới.</p></div>}{recording && <span role="status" className="packing-recording-badge">● ĐANG QUAY</span>}</div>
         <p className="packing-camera-caption">{cameraMode ? 'Đưa QR đơn hoặc barcode vào khung camera.' : 'Camera chưa mở · có thể nhập mã bằng máy quét bàn phím.'}</p>
         <form className="packing-scan-form" onSubmit={(event) => { event.preventDefault(); openPackingOrderFromQr(qrInput); }}>
-          <label htmlFor="packing-order-qr">QR đơn hàng</label><div className="packing-scan-row"><input id="packing-order-qr" aria-label="QR đơn hàng" value={qrInput} onChange={(event) => setQrInput(event.target.value)} required placeholder="Quét hoặc nhập nội dung QR đơn…" /><button className="btn-ara-primary" type="submit" disabled={busy}>Mở đơn</button></div>
+          <label htmlFor="packing-order-qr">QR đơn hàng</label><div className="packing-scan-row"><input id="packing-order-qr" aria-label="QR đơn hàng" value={qrInput} onChange={(event) => setQrInput(event.target.value)} required disabled={!!stocktakeLock} placeholder={stocktakeLock ? 'Đóng hàng đang khóa do kiểm kê kho' : 'Quét hoặc nhập nội dung QR đơn…'} /><button className="btn-ara-primary" type="submit" disabled={busy || !!stocktakeLock}>Mở đơn</button></div>
         </form>
       </section>
       <aside className="packing-products-card">
@@ -560,7 +618,7 @@ export default function WarehousePackingPage() {
         {session.state === 'SCANNING' && <>
           <form onSubmit={(event) => { event.preventDefault(); scanBarcode(barcodeInput); }} style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem', margin: '1rem 0' }}>
             <input aria-label="Barcode sản phẩm" value={barcodeInput} onChange={(event) => setBarcodeInput(event.target.value)} style={inputStyle} required placeholder="Quét Code 128 trên từng món" />
-            <button className="btn-ara-primary" type="submit" disabled={busy}>Gắn sản phẩm với đơn</button>
+            <button className="btn-ara-primary" type="submit" disabled={busy || !!stocktakeLock}>Gắn sản phẩm với đơn</button>
           </form>
           <p style={{ marginTop: '1rem' }}>Đưa barcode từng món vào khung camera ở trên hoặc dùng máy quét mã.</p>
         </>}
@@ -587,7 +645,7 @@ export default function WarehousePackingPage() {
             })}
           </ul>
         </div>}
-        <button type="button" className="btn-ara-secondary" disabled={busy} onClick={saveVideoAndReleaseOrder} style={{ marginTop: '1rem' }}>
+        <button type="button" className="btn-ara-secondary" disabled={busy || !!stocktakeLock} onClick={saveVideoAndReleaseOrder} style={{ marginTop: '1rem' }}>
           {recording || recorderRef.current ? 'Lưu video và hoàn tất đơn' : 'Đóng phiên tại bàn'}
         </button>
         {!!recorderRef.current && <button type="button" className="btn-ara-secondary" disabled={busy} onClick={discardCurrentPackingAttempt} style={{ marginTop: '1rem', marginLeft: '.5rem' }}>

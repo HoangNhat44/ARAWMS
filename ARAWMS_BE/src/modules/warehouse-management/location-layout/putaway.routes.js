@@ -12,7 +12,7 @@ import { putawayRole } from './layoutPermission.js';
 import {
   materialTasks, materialLocations, materialReceiptLabels, verifyMaterialLocation, scanMaterial, tasks, receiptLabels,
   task, verifyLocation, scanUnit, reportShortage, reportIncident, issues, incidents, reviewIncident, resolveShortage,
-  rack, binUnitPage,
+  rack, binUnitPage, bulkPlan, bulkPlace,
 } from './putaway.controller.js';
 
 const router = express.Router();
@@ -31,6 +31,9 @@ router.post('/material-tasks/scan', staff, scanMaterial);
 // Finished-goods putaway (warehouse staff).
 router.get('/tasks', staff, tasks);
 router.get('/receipts/:receiptId/labels', staff, receiptLabels);
+// Xếp hàng loạt các tem đã chọn: xem nhóm theo ô, rồi quét mã ô một lần cho cả nhóm.
+router.post('/receipts/:receiptId/bulk-plan', staff, bulkPlan);
+router.post('/receipts/:receiptId/bulk-place', staff, bulkPlace);
 router.get('/tasks/:allocationId/:lineId', staff, task);
 router.post('/tasks/:allocationId/:lineId/location', staff, verifyLocation);
 router.post('/tasks/:allocationId/:lineId/scan', staff, scanUnit);

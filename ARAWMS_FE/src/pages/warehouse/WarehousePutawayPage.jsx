@@ -12,6 +12,8 @@ import { useBarcodeCamera } from '../../hooks/useBarcodeCamera';
 import '../../styles/warehousePutaway.css';
 
 const key = (task) => `${task.allocationId}:${task.lineId}`;
+// Mỗi lần gửi xếp hàng loạt tối đa 200 chiếc (một giao dịch); nhóm lớn hơn được chia phần tự động.
+const BULK_CHUNK = 200;
 const label = (task) => [task.productName || task.skuCode,
   task.color, task.size].filter(Boolean).join(' · ');
 const locationName = (code = '') => {
@@ -41,6 +43,9 @@ function FinishedGoodsPutawayPanel() {
   const [showIncident, setShowIncident] = useState(false);
   const [incidentReason, setIncidentReason] = useState('');
   const [incidentBarcode, setIncidentBarcode] = useState('');
+  // Xếp hàng loạt: các tem đã chọn/vừa in, quét mã ô một lần cho mỗi ô.
+  const [bulk, setBulk] = useState(null);
+  const [lastPrinted, setLastPrinted] = useState(null);
   const scanHandlerRef = useRef(null);
   const lockedRef = useRef(false);
   const lastSeenRef = useRef({ code: '', at: 0 });
@@ -127,7 +132,76 @@ function FinishedGoodsPutawayPanel() {
     finally { lockedRef.current = false; setBusy(false); }
   };
 
+  /** Mở bước xếp hàng loạt: hỏi hệ thống các tem đã chọn sẽ vào ô nào. Chưa thay đổi tồn kho. */
+  const openBulk = async (receipt, barcodes, locationCode = '') => {
+    if (!barcodes.length) return;
+    stopCamera(); setPrintDialog(null); setError(''); setNotice('');
+    setBulk({ receipt, barcodes, plan: null, loading: true, done: {}, placed: {}, requestIds: {}, active: '', code: '' });
+    try {
+      const plan = (await api.bulkPlan(receipt.id, barcodes, locationCode)).data;
+      const first = plan.groups.find((group) => !group.blockedReason && group.locationCode === locationCode)
+        || plan.groups.find((group) => !group.blockedReason);
+      setBulk((current) => current && { ...current, plan, loading: false, active: first?.locationId || '' });
+    } catch (err) { setBulk(null); setError(err.message); }
+  };
+
+  const closeBulk = () => { stopCamera(); setBulk(null); loadTasks(); };
+
+  /** Quét mã ô một lần: xếp toàn bộ tem của nhóm đang chọn lên ô đó, dù nhiều bao nhiêu chiếc.
+   * Nhóm lớn được gửi thành từng phần 200 chiếc sau cùng một lần quét; mỗi phần là một giao dịch,
+   * sai ô thì không xếp chiếc nào, mất mạng giữa chừng thì quét lại để xếp tiếp phần còn lại. */
+  const submitBulkLocation = async (code) => {
+    const scanned = String(code || '').trim();
+    if (!bulk?.plan || lockedRef.current || !scanned) return;
+    const group = bulk.plan.groups.find((item) => item.locationId === bulk.active);
+    if (!group || bulk.done[group.locationId] != null) { setError('Chọn ô cần xếp trước khi quét.'); return; }
+    const placedBefore = bulk.placed?.[group.locationId] || [];
+    const remaining = group.barcodes.filter((barcode) => !placedBefore.includes(barcode));
+    const chunks = [];
+    for (let i = 0; i < remaining.length; i += BULK_CHUNK) chunks.push(remaining.slice(i, i + BULK_CHUNK));
+    lockedRef.current = true; setBusy(true); setError('');
+    let placed = [...placedBefore];
+    let requestIds = { ...bulk.requestIds };
+    try {
+      for (const chunk of chunks) {
+        setNotice(`Đang xếp vào ô ${group.locationCode}… ${placed.length}/${group.barcodes.length} chiếc`);
+        // Giữ nguyên requestId của từng phần khi thử lại để hệ thống không xếp hai lần.
+        const chunkKey = `${group.locationId}|${chunk[0]}|${chunk.length}`;
+        requestIds = { ...requestIds, [chunkKey]: requestIds[chunkKey] || crypto.randomUUID() };
+        setBulk((current) => current && { ...current, requestIds });
+        await api.bulkPlace(bulk.receipt.id, { requestId: requestIds[chunkKey], locationBarcode: scanned, barcodes: chunk });
+        placed = [...placed, ...chunk];
+        setBulk((current) => current && { ...current, placed: { ...(current.placed || {}), [group.locationId]: placed } });
+      }
+      const done = { ...bulk.done, [group.locationId]: placed.length };
+      const next = bulk.plan.groups.find((item) => !item.blockedReason && done[item.locationId] == null);
+      setBulk((current) => ({ ...current, done, active: next?.locationId || '', code: '' }));
+      const total = Object.values(done).reduce((sum, value) => sum + value, 0);
+      if (!next) {
+        stopCamera();
+        setNotice(`Đã xếp xong ${total} chiếc vào kệ.`);
+        if (lastPrinted?.receipt.id === bulk.receipt.id) setLastPrinted(null);
+      } else setNotice(`Đã xếp ${placed.length} chiếc vào ô ${group.locationCode}. Quét mã ô tiếp theo: ${next.locationCode}.`);
+      await loadTasks();
+    } catch (err) {
+      setNotice('');
+      const partly = placed.length > placedBefore.length || placedBefore.length
+        ? ` Đã xếp ${placed.length}/${group.barcodes.length} chiếc; quét lại mã ô để xếp tiếp phần còn lại.` : '';
+      setError(err.code === 'WRONG_LOCATION' ? `Sai ô. Nhóm này cần xếp vào ô ${group.locationCode}; chưa xếp thêm chiếc nào.${partly}`
+        : !err.status || err.status >= 500 ? `Chưa nhận được xác nhận. Hãy quét lại mã ô (hệ thống không xếp trùng).${partly}` : err.message + partly);
+      setBulk((current) => current && { ...current, code: '' });
+      if (placed.length > placedBefore.length) loadTasks();
+    } finally { lockedRef.current = false; setBusy(false); }
+  };
+
   scanHandlerRef.current = (barcode) => {
+    if (bulk) {
+      const now = Date.now();
+      if (lastSeenRef.current.code === barcode && now - lastSeenRef.current.at < 3000) return;
+      lastSeenRef.current = { code: barcode, at: now };
+      submitBulkLocation(barcode);
+      return;
+    }
     if (pendingRetry || lockedRef.current || !task || !task.remainingQuantity) return;
     const now = Date.now();
     if (lastSeenRef.current.code === barcode && now - lastSeenRef.current.at < 3000) return;
@@ -170,7 +244,27 @@ function FinishedGoodsPutawayPanel() {
   };
 
   /** A receipt can contain several SKUs; task printing selects only its exact variant. */
-  const printReceipt = async (receipt, skuId = '') => {
+  /** Các ô còn cần xếp của phiếu (lọc theo SKU nếu có): mỗi ô kèm số chiếc còn thiếu của từng SKU. */
+  const binsForReceipt = (receiptId, skuFilter = '') => {
+    const bins = new Map();
+    for (const line of tasks) {
+      if (String(line.receiptId) !== String(receiptId) || line.issuePending || !line.remainingQuantity) continue;
+      if (skuFilter && String(line.skuId) !== String(skuFilter)) continue;
+      const bin = bins.get(line.locationCode) || { locationCode: line.locationCode, total: 0, skus: new Map() };
+      const sku = bin.skus.get(String(line.skuId)) || { skuId: String(line.skuId), skuCode: line.skuCode,
+        productName: line.productName, color: line.color, size: line.size, quantity: 0 };
+      sku.quantity += line.remainingQuantity; bin.total += line.remainingQuantity;
+      bin.skus.set(sku.skuId, sku); bins.set(line.locationCode, bin);
+    }
+    return [...bins.values()].map((bin) => ({ ...bin, skus: [...bin.skus.values()] }))
+      .sort((a, b) => a.locationCode.localeCompare(b.locationCode));
+  };
+  /** Chọn ô: tự tick đúng số tem ô đó còn cần cho từng SKU (vd 40 chiếc AK002 cho B-01 · Tầng 2 · Ô 1). */
+  const labelsForBin = (labels, bin) => (bin ? bin.skus.flatMap((sku) => labels
+    .filter((item) => String(item.skuId) === sku.skuId).slice(0, sku.quantity).map((item) => item.barcode)) : []);
+
+  /** mode PRINT: in tem; mode BULK: chọn các tem đã dán để xếp hàng loạt (quét mã ô một lần). */
+  const printReceipt = async (receipt, skuId = '', mode = 'PRINT', locationCode = '') => {
     setPrintingReceiptId(receipt.id); setError('');
     try {
       const response = await api.receiptLabels(receipt.id);
@@ -178,8 +272,11 @@ function FinishedGoodsPutawayPanel() {
       if (!labels.length) throw new Error('Phiếu này không còn sản phẩm chờ dán tem.');
       const matching = skuId ? labels.filter((item) => String(item.skuId) === String(skuId)) : [];
       if (skuId && !matching.length) throw new Error('SKU của công việc này không còn tem chờ xếp. Hãy làm mới tiến độ.');
-      setPrintDialog({ receipt, labels, skuFilter: String(skuId),
-        selected: matching.map((item) => item.barcode), copies: 1 });
+      // Xếp hàng loạt: mở từ một dòng công việc thì chọn sẵn ô của dòng đó; SKU chỉ có một ô thì chọn luôn ô đó.
+      const bins = binsForReceipt(receipt.id, skuId);
+      const bin = mode === 'BULK' ? bins.find((item) => item.locationCode === locationCode) || (bins.length === 1 ? bins[0] : null) : null;
+      setPrintDialog({ receipt, labels, skuFilter: String(skuId), mode, binCode: bin?.locationCode || '',
+        selected: mode === 'BULK' ? labelsForBin(labels, bin) : matching.map((item) => item.barcode), copies: 1 });
     } catch (err) { setError(err.message); }
     finally { setPrintingReceiptId(''); }
   };
@@ -195,6 +292,7 @@ function FinishedGoodsPutawayPanel() {
       const selected = printDialog.labels.filter((item) => printDialog.selected.includes(item.barcode));
       printProductLabels(selected.flatMap((item) => Array.from({ length: copies }, () => item)), tab);
       setNotice(`Đã mở ${selected.length * copies} tem của phiếu ${printDialog.receipt.code}.`);
+      setLastPrinted({ receipt: printDialog.receipt, barcodes: selected.map((item) => item.barcode) });
       setPrintDialog(null);
     } catch (err) { tab.close(); setError(err.message); }
   };
@@ -242,13 +340,19 @@ function FinishedGoodsPutawayPanel() {
 
   return <main className="putaway-page">
     <header className="putaway-page-head"><div><span className="putaway-eyebrow">KHO THÀNH PHẨM / XẾP HÀNG</span>
-      <h1>Xếp hàng vào kệ</h1><p>In tem từng chiếc, quét đúng ô rồi quét barcode sản phẩm khi đặt vào kệ.</p></div>
+      <h1>Xếp hàng vào kệ</h1><p>In tem từng chiếc rồi xếp lên kệ: quét từng chiếc, hoặc chọn các tem đã in và quét mã ô một lần để xếp cả nhóm.</p></div>
       <div className="putaway-head-actions"><Link className="putaway-button putaway-button-light" to="/warehouse/staff/finished-goods">Xem kho thành phẩm</Link>
       <button type="button" className="putaway-button putaway-button-light" onClick={refresh} disabled={busy}>↻ Làm mới</button></div></header>
     {error && <div className="putaway-toast putaway-toast-error" role="alert">{error}
       <button type="button" aria-label="Đóng thông báo lỗi" onClick={() => setError('')}>×</button></div>}
     {notice && <div className="putaway-toast" role="status">{notice}
       <button type="button" aria-label="Đóng thông báo" onClick={() => setNotice('')}>×</button></div>}
+
+    {lastPrinted && !bulk && <div className="putaway-bulk-bar" role="status">
+      <span>Vừa in <strong>{lastPrinted.barcodes.length} tem</strong> của phiếu {lastPrinted.receipt.code}. Dán tem xong, đặt hàng lên kệ rồi quét mã ô một lần.</span>
+      <div><button type="button" className="putaway-button putaway-button-primary" disabled={busy}
+        onClick={() => openBulk(lastPrinted.receipt, lastPrinted.barcodes)}>Xếp {lastPrinted.barcodes.length} tem vừa in</button>
+        <button type="button" className="putaway-button" onClick={() => setLastPrinted(null)}>Bỏ qua</button></div></div>}
 
     <section className="putaway-card" aria-label="In tem hàng chờ xếp">
       <div className="putaway-section-title"><div><span className="putaway-step">1</span><h2>In tem hàng chờ xếp</h2>
@@ -267,7 +371,9 @@ function FinishedGoodsPutawayPanel() {
         <td>{receipt.lineCount} dòng cần xếp</td>
         <td><button type="button" className="putaway-button putaway-button-primary"
           disabled={Boolean(printingReceiptId)} onClick={() => printReceipt(receipt)}>
-          {printingReceiptId === receipt.id ? 'Đang lấy tem…' : 'Xem và in tem'}</button></td>
+          {printingReceiptId === receipt.id ? 'Đang lấy tem…' : 'Xem và in tem'}</button>{' '}
+          <button type="button" className="putaway-button" disabled={Boolean(printingReceiptId) || busy}
+            onClick={() => printReceipt(receipt, '', 'BULK')}>Xếp hàng loạt</button></td>
       </tr>)}</tbody></table></div>
       {!visibleReceipts.length && <p className="putaway-empty">{loading ? 'Đang tải phiếu…' : 'Không có phiếu phù hợp.'}</p>}
     </section>
@@ -275,7 +381,8 @@ function FinishedGoodsPutawayPanel() {
     <section className="putaway-card" aria-label="Quét mã và xếp hàng">
       <div className="putaway-section-title"><div><span className="putaway-step">2</span><h2>Quét mã và xếp hàng</h2>
         <span className="putaway-count">{tasks.length} công việc</span></div>
-        <p>Quét QR ô trước → quét barcode từng chiếc sau.</p></div>
+        <p><strong>Quét từng chiếc:</strong> bấm "Bắt đầu", quét QR ô rồi quét barcode từng chiếc.
+          {' '}<strong>Xếp hàng loạt:</strong> bấm "Xếp hàng loạt", tick các tem đã dán rồi quét QR ô một lần.</p></div>
       <div className="putaway-task-controls"><div className="putaway-tabs" role="group" aria-label="Lọc trạng thái">
         {[["ALL", "Tất cả"], ["NEW", "Chưa bắt đầu"], ["DOING", "Đang xếp"], ["ISSUE", "Chờ xử lý"]].map(([value, text]) =>
           <button key={value} type="button" className={statusFilter === value ? 'active' : ''}
@@ -298,6 +405,8 @@ function FinishedGoodsPutawayPanel() {
           {item.issuePending ? 'Chờ quản lý' : item.placedQuantity ? 'Đang xếp' : 'Chưa bắt đầu'}</span></td>
         <td><button type="button" className="putaway-button" disabled={Boolean(printingReceiptId)}
           onClick={() => printReceipt({ id: String(item.receiptId), code: item.receiptCode }, item.skuId)}>Tem đúng SKU</button>{' '}
+          <button type="button" className="putaway-button" disabled={Boolean(printingReceiptId) || busy || item.issuePending}
+          onClick={() => printReceipt({ id: String(item.receiptId), code: item.receiptCode }, item.skuId, 'BULK', item.locationCode)}>Xếp hàng loạt</button>{' '}
           <button type="button" className="putaway-button putaway-button-primary" disabled={busy || item.issuePending}
           onClick={() => openTask(item)}>{item.placedQuantity ? 'Tiếp tục' : 'Bắt đầu'} →</button></td>
       </tr>)}</tbody></table></div>
@@ -308,16 +417,40 @@ function FinishedGoodsPutawayPanel() {
       if (event.target === event.currentTarget) setPrintDialog(null);
     }}><section className="putaway-modal putaway-print-modal" role="dialog" aria-modal="true" aria-labelledby="putaway-print-title">
       <div className="putaway-modal-head"><div><span className="putaway-eyebrow">PHIẾU {printDialog.receipt.code}</span>
-        <h2 id="putaway-print-title">In tem sản phẩm</h2><p>Chọn đúng SKU của công việc xếp kệ trước khi in.</p></div>
+        <h2 id="putaway-print-title">{printDialog.mode === 'BULK' ? 'Chọn tem để xếp hàng loạt' : 'In tem sản phẩm'}</h2>
+        <p>{printDialog.mode === 'BULK' ? 'Tick các chiếc đã dán tem và đặt lên kệ (bao nhiêu cũng được), rồi quét mã ô một lần.'
+          : 'Chọn đúng SKU của công việc xếp kệ trước khi in.'}</p></div>
         <button type="button" className="putaway-close" aria-label="Đóng" onClick={() => setPrintDialog(null)}>×</button></div>
-      <div className="putaway-modal-body"><p className="putaway-soft-note">In lại không tạo barcode hoặc sản phẩm mới. Cùng một SKU có thể được phân bổ vào nhiều ô; tem không gắn cố định với một ô.</p>
+      <div className="putaway-modal-body"><p className="putaway-soft-note">{printDialog.mode === 'BULK'
+          ? 'Chỉ tick đúng những chiếc đang được đặt lên kệ: hệ thống xếp tất cả tem đã tick sau một lần quét mã ô, không quét từng chiếc.'
+          : 'In lại không tạo barcode hoặc sản phẩm mới. Cùng một SKU có thể được phân bổ vào nhiều ô; tem không gắn cố định với một ô.'}</p>
         <label className="putaway-copies">Lọc SKU<select value={printDialog.skuFilter} onChange={(event) => {
           const skuFilter = event.target.value;
-          setPrintDialog((current) => ({ ...current, skuFilter,
-            selected: skuFilter ? current.labels.filter((item) => String(item.skuId) === skuFilter)
-              .map((item) => item.barcode) : [] }));
+          setPrintDialog((current) => {
+            if (current.mode === 'BULK') {
+              const bins = binsForReceipt(current.receipt.id, skuFilter);
+              const bin = bins.length === 1 ? bins[0] : null;
+              return { ...current, skuFilter, binCode: bin?.locationCode || '', selected: labelsForBin(current.labels, bin) };
+            }
+            return { ...current, skuFilter,
+              selected: skuFilter ? current.labels.filter((item) => String(item.skuId) === skuFilter).map((item) => item.barcode) : [] };
+          });
         }}><option value="">Tất cả SKU trong phiếu</option>{printableSkus.map((item) =>
           <option key={item.skuId} value={item.skuId}>{[item.skuCode, item.color, item.size].filter(Boolean).join(' · ')}</option>)}</select></label>
+        {printDialog.mode === 'BULK' && (() => {
+          const bins = binsForReceipt(printDialog.receipt.id, printDialog.skuFilter);
+          const bin = bins.find((item) => item.locationCode === printDialog.binCode);
+          return <>
+            <label className="putaway-copies">Xếp vào ô<select value={printDialog.binCode} onChange={(event) => {
+              const next = bins.find((item) => item.locationCode === event.target.value);
+              setPrintDialog((current) => ({ ...current, binCode: next?.locationCode || '', selected: labelsForBin(current.labels, next) }));
+            }}><option value="">Tự chọn tem (không theo ô)</option>{bins.map((item) => <option key={item.locationCode} value={item.locationCode}>
+              {locationName(item.locationCode)} — còn {item.total} chiếc{item.skus.length > 1 ? ` (${item.skus.length} SKU)` : ''}</option>)}</select></label>
+            {bin && <p className="putaway-bulk-bin-note">Ô <strong>{locationName(bin.locationCode)}</strong> còn cần: {bin.skus.map((sku) =>
+              `${sku.quantity} × ${[sku.skuCode, sku.productName, sku.color, sku.size].filter(Boolean).join(' · ')}`).join('; ')}.
+              Đã tự tick {printDialog.selected.length} tem; bỏ tick nếu số chiếc thực tế đặt lên ô ít hơn.</p>}
+          </>;
+        })()}
         <label className="putaway-check"><input type="checkbox"
           checked={printableLabels.length > 0 && printableLabels.every((item) => printDialog.selected.includes(item.barcode))}
           onChange={(event) => setPrintDialog((current) => ({ ...current,
@@ -329,13 +462,63 @@ function FinishedGoodsPutawayPanel() {
               ? [...current.selected, item.barcode] : current.selected.filter((code) => code !== item.barcode) }))} />
           <span><strong>{item.productName || item.skuCode}</strong><small>{[item.skuCode, item.color, item.size].filter(Boolean).join(' · ')}</small>
             <code>{item.barcode}</code></span>{item.imageUrl && <img src={item.imageUrl} alt="" />}</label>)}</div>
-        <label className="putaway-copies">Số bản mỗi barcode<input type="number" min="1" max="10" step="1"
-          value={printDialog.copies} onChange={(event) => setPrintDialog((current) => ({ ...current, copies: event.target.value }))} /></label>
-      </div><div className="putaway-modal-foot"><span>{printDialog.selected.length} barcode · {Number(printDialog.copies) * printDialog.selected.length || 0} tem</span>
+        {printDialog.mode !== 'BULK' && <label className="putaway-copies">Số bản mỗi barcode<input type="number" min="1" max="10" step="1"
+          value={printDialog.copies} onChange={(event) => setPrintDialog((current) => ({ ...current, copies: event.target.value }))} /></label>}
+      </div><div className="putaway-modal-foot"><span>{printDialog.mode === 'BULK' ? `${printDialog.selected.length} chiếc sẽ xếp`
+        : `${printDialog.selected.length} barcode · ${Number(printDialog.copies) * printDialog.selected.length || 0} tem`}</span>
         <div><button type="button" className="putaway-button" onClick={() => setPrintDialog(null)}>Hủy</button>
-          <button type="button" className="putaway-button putaway-button-primary" onClick={printSelected}
+          <button type="button" className={`putaway-button${printDialog.mode === 'BULK' ? ' putaway-button-primary' : ''}`} disabled={!printDialog.selected.length || busy}
+            title="Các tem đã chọn đã được dán lên hàng: quét mã ô một lần để xếp tất cả"
+            onClick={() => openBulk(printDialog.receipt, printDialog.selected, printDialog.binCode)}>Xếp các tem đã chọn vào kệ</button>
+          {printDialog.mode !== 'BULK' && <button type="button" className="putaway-button putaway-button-primary" onClick={printSelected}
             disabled={!printDialog.selected.length || !Number.isSafeInteger(Number(printDialog.copies)) ||
-              Number(printDialog.copies) < 1 || Number(printDialog.copies) > 10}>In tem đã chọn</button></div></div>
+              Number(printDialog.copies) < 1 || Number(printDialog.copies) > 10}>In tem đã chọn</button>}</div></div>
+    </section></div>}
+
+    {bulk && <div className="putaway-overlay" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !busy) closeBulk();
+    }}><section className="putaway-modal" role="dialog" aria-modal="true" aria-labelledby="putaway-bulk-title">
+      <div className="putaway-modal-head"><div><span className="putaway-eyebrow">PHIẾU {bulk.receipt.code} · XẾP HÀNG LOẠT</span>
+        <h2 id="putaway-bulk-title">Xếp {bulk.barcodes.length} tem đã chọn</h2>
+        <p>Đặt hàng đã dán tem lên đúng ô, rồi quét mã ô một lần. Hệ thống xếp toàn bộ chiếc của nhóm vào ô đó.</p></div>
+        <button type="button" className="putaway-close" aria-label="Đóng" disabled={busy} onClick={closeBulk}>×</button></div>
+      <div className="putaway-modal-body">
+        {bulk.loading && <p className="putaway-empty">Đang kiểm tra các tem đã chọn…</p>}
+        {bulk.plan && <>
+          {!!bulk.plan.invalid.length && <div className="putaway-bulk-invalid"><strong>{bulk.plan.invalid.length} tem không xếp được</strong>
+            <ul>{bulk.plan.invalid.map((item) => <li key={item.barcode}><code>{item.barcode}</code> — {item.reason}</li>)}</ul></div>}
+          {!bulk.plan.groups.length ? <p className="putaway-empty">Không có tem nào xếp được. Hãy làm mới và chọn lại.</p>
+            : <div className="putaway-bulk-groups">{bulk.plan.groups.map((group) => {
+              const done = bulk.done[group.locationId];
+              const active = bulk.active === group.locationId;
+              return <label key={group.locationId} className={`putaway-bulk-group${active ? ' active' : ''}${done != null ? ' done' : ''}${group.blockedReason ? ' blocked' : ''}`}>
+                <input type="radio" name="bulk-bin" checked={active} disabled={done != null || !!group.blockedReason || busy}
+                  onChange={() => setBulk((current) => ({ ...current, active: group.locationId }))} />
+                <span><small>Ô ĐÍCH</small><strong>{locationName(group.locationCode)}</strong><code>{group.locationCode}</code></span>
+                <span>{group.skus.map((sku) => <em key={sku.skuId}>{sku.quantity} × {[sku.productName || sku.skuCode, sku.color, sku.size].filter(Boolean).join(' · ')}</em>)}</span>
+                <b>{done != null ? `✓ Đã xếp ${done} chiếc` : group.blockedReason || (bulk.placed?.[group.locationId]?.length
+                  ? `Đã xếp ${bulk.placed[group.locationId].length}/${group.barcodes.length} · quét lại ô để xếp tiếp` : `${group.barcodes.length} chiếc · chờ quét ô`)}</b>
+              </label>;
+            })}</div>}
+          {bulk.plan.groups.some((group) => !group.blockedReason && bulk.done[group.locationId] == null) && <div className="putaway-scan-columns"><div className="putaway-scan-left">
+            <div className="putaway-camera"><video ref={videoRef} muted playsInline className={cameraOn ? '' : 'hidden'} />
+              <div className="putaway-camera-top"><span>CAMERA QUÉT MÃ Ô</span>
+                <button type="button" className="putaway-button" disabled={busy}
+                  onClick={cameraOn ? stopCamera : () => { setError(''); camera.startCamera(); }}>{cameraOn ? 'Tắt camera' : 'Mở camera'}</button></div>
+              {!cameraOn && <div className="putaway-reticle" aria-hidden="true" />}
+              <p>{cameraOn ? 'Hướng camera vào QR của ô đang chọn.' : 'Camera chưa mở · Có thể dùng máy quét hoặc nhập mã ô bên dưới.'}</p></div>
+            <form className="putaway-scan-form" onSubmit={(event) => { event.preventDefault(); submitBulkLocation(bulk.code); }}>
+              <label htmlFor="putaway-bulk-code">Mã QR ô · {bulk.plan.groups.find((group) => group.locationId === bulk.active)?.locationCode || 'chọn ô ở trên'}</label>
+              <div><input id="putaway-bulk-code" autoComplete="off" value={bulk.code} disabled={busy || !bulk.active}
+                onChange={(event) => { const code = event.target.value; setBulk((current) => ({ ...current, code })); }}
+                placeholder="Quét hoặc nhập QR của ô" />
+                <button type="submit" className="putaway-button putaway-button-primary" disabled={busy || !bulk.active || !bulk.code.trim()}>
+                  Xếp cả nhóm vào ô</button></div></form>
+          </div></div>}
+        </>}
+      </div><div className="putaway-modal-foot"><span>{Object.values(bulk.done).reduce((sum, value) => sum + value, 0)} chiếc đã xếp trong lần này</span>
+        <div><button type="button" className="putaway-button" disabled={busy} onClick={closeBulk}>
+          {bulk.plan && bulk.plan.groups.every((group) => group.blockedReason || bulk.done[group.locationId] != null) ? 'Xong' : 'Đóng'}</button></div></div>
     </section></div>}
 
     {task && <div className="putaway-overlay" role="presentation" onMouseDown={(event) => {

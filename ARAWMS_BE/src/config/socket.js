@@ -160,9 +160,10 @@ export const emitSystemNotification = (notification) => {
   if (!io || !notification) return;
   const raw = notification.toObject ? notification.toObject() : notification;
 
-  // 1. Nếu có đích danh userId
+  // 1. Nếu có đích danh userId: chỉ người đó nhận (không phát cho cả role)
   if (raw.recipientUserId) {
     io.to(`user:${raw.recipientUserId}`).emit('new_notification', raw);
+    return;
   }
 
   // 2. Phát cho toàn bộ user thuộc Role

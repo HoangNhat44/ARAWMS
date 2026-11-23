@@ -132,6 +132,8 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
     category: 'BUTTON', unit: 'PIECE', unitCost: 0, color: '', widthCm: '' });
   const [putaway, setPutaway] = useState({ objectBarcode: '', locationBarcode: '', quantity: '' });
   const [availableLocations, setAvailableLocations] = useState(options.locations);
+  // Supplier names typed on earlier unplanned receipts (not in the supplier catalog), newest first.
+  const [externalSuppliers, setExternalSuppliers] = useState(options.externalSuppliers || []);
   const [locationOpen, setLocationOpen] = useState(false);
   const [newLocation, setNewLocation] = useState({ locationCode: '', rackCode: '', shelfCode: '',
     maxCapacity: '', capacityUnit: '' });
@@ -165,6 +167,7 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
       const latestLocations = result.data?.locations || [];
       setAvailableLocations((current) => [...new Map([...current, ...latestLocations]
         .map((item) => [id(item), item])).values()]);
+      if (Array.isArray(result.data?.externalSuppliers)) setExternalSuppliers(result.data.externalSuppliers);
     }).catch((failure) => { if (active) setError(failure.message); });
     return () => { active = false; };
   }, []);
@@ -341,7 +344,6 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
     onClose();
   };
   const confirm = () => run(async () => {
-    if (!requestMode && !form.purchaseSourceName.trim()) throw new Error('Cần nhập tên nhà cung cấp.');
     if (!form.receiptLines.length || form.receiptLines.some((line) => !qty(line.actualQty)))
       throw new Error('Mỗi dòng cần có số lượng thực nhận lớn hơn 0.');
     for (const line of form.receiptLines) {
@@ -398,12 +400,14 @@ export default function DirectMaterialReceiptModal({ target, options, user, onCl
                 <option key={id(item)} value={id(item)}>{rackBinOptionLabel(item)}</option>)}</optgroup>)}</select></label>}
           <label>Ngày nhận<input style={field} type="date" max={today()} value={form.receivedAt} disabled={locked}
             onChange={(event) => change({ receivedAt: event.target.value })} /></label>
-          {!requestMode && <label>Tên nhà cung cấp<input style={field} list="direct-supplier-options" value={form.purchaseSourceName} disabled={locked}
-            placeholder="Chọn nhà cung cấp hoặc nhập tên" onChange={(event) => {
-              const value = event.target.value; const supplier = options.suppliers.find((item) => item.supplierName === value);
+          {!requestMode && <label>Nhà cung cấp (không bắt buộc)<input style={field} list="direct-supplier-options" value={form.purchaseSourceName || ''} disabled={locked}
+            maxLength={160} placeholder="Chọn trong danh sách hoặc tự ghi tên NCC bên ngoài" onChange={(event) => {
+              const value = event.target.value; const key = value.trim().toLocaleLowerCase('vi');
+              const supplier = key && options.suppliers.find((item) => String(item.supplierName || '').trim().toLocaleLowerCase('vi') === key);
               change({ purchaseSourceName: value, supplierId: supplier ? id(supplier) : '' }); }} />
             <datalist id="direct-supplier-options">{options.suppliers.map((item) =>
-              <option key={id(item)} value={item.supplierName} />)}</datalist></label>}
+              <option key={id(item)} value={item.supplierName} />)}
+              {externalSuppliers.map((name) => <option key={`external:${name}`} value={name} label="NCC ngoài đã dùng" />)}</datalist></label>}
           <label>Ghi chú<input style={field} value={form.receiptNote || ''} disabled={locked}
             onChange={(event) => change({ receiptNote: event.target.value })} /></label>
         </div>

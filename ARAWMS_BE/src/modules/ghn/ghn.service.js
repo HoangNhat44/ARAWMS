@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { ENV } from '../../config/env.js';
+import { DEFAULT_GHN_REQUIRED_NOTE, carrierCodAmount } from '../../common/services/shippingLabelData.js';
 
 /**
  * Bảng ánh xạ đồng nhất trạng thái từ Giao Hàng Nhanh (GHN) sang trạng thái chuẩn của SalesOrder
@@ -180,14 +181,14 @@ class GhnService {
     const payload = {
       payment_type_id: 1,
       note: orderData.note || 'Đơn hàng thời trang ARAWMS',
-      required_note: orderData.required_note || 'KHONGCHOXEMHANG',
-      from_name: orderData.from_name || 'Kho Tổng ARAWMS',
-      from_phone: orderData.from_phone || '0973018102',
-      from_address: orderData.from_address || '72 Thành Thái, Phường 14, Quận 10, Hồ Chí Minh',
+      required_note: orderData.required_note || DEFAULT_GHN_REQUIRED_NOTE,
+      from_name: orderData.from_name || ENV.GHN.SENDER.NAME,
+      from_phone: orderData.from_phone || ENV.GHN.SENDER.PHONE,
+      from_address: orderData.from_address || ENV.GHN.SENDER.ADDRESS,
       from_district_id: Number(orderData.from_district_id || 1444),
       from_ward_code: String(orderData.from_ward_code || '20314'),
-      return_phone: orderData.return_phone || orderData.from_phone || '0973018102',
-      return_address: orderData.return_address || orderData.from_address || '72 Thành Thái, Phường 14, Quận 10, Hồ Chí Minh',
+      return_phone: orderData.return_phone || orderData.from_phone || ENV.GHN.SENDER.PHONE,
+      return_address: orderData.return_address || orderData.from_address || ENV.GHN.SENDER.ADDRESS,
       return_district_id: Number(orderData.return_district_id || orderData.from_district_id || 1444),
       return_ward_code: String(orderData.return_ward_code || orderData.from_ward_code || '20314'),
       client_order_code: orderData.client_order_code || '',
@@ -265,16 +266,11 @@ class GhnService {
     }
 
     const recipient = salesOrder.shippingRecipient || {};
-    const financial = salesOrder.financialSummary || {};
     const items = Array.isArray(salesOrder.items) ? salesOrder.items : [];
 
-    // Tiền hàng thuần (sau chiết khấu), TUYỆT ĐỐI KHÔNG cộng shippingFee (30k) đẩy lên GHN
-    const itemsSubtotal = Number(financial.itemsSubtotal || 0);
-    const discountAmount = Number(financial.discountAmount || 0);
-    const codForGhn =
-      salesOrder.paymentMethod === 'BANK_TRANSFER'
-        ? 0
-        : Math.max(0, itemsSubtotal - discountAmount);
+    // Tiền hàng thuần (sau chiết khấu), TUYỆT ĐỐI KHÔNG cộng shippingFee (30k) đẩy lên GHN.
+    // Tem đơn hàng in đúng số này để shipper thu khớp với GHN.
+    const codForGhn = carrierCodAmount(salesOrder);
 
     const ghnItems = items.map((it) => ({
       name: it.productName || it.skuCode || 'Sản phẩm thời trang AraStore',

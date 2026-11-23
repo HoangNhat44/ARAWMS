@@ -21,6 +21,7 @@ import RawMaterial from '../../../models/RawMaterial.model.js';
 import '../../../models/User.model.js';
 import SystemLog from '../../../models/SystemLog.model.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
+import { notifyWorkflow, ROLE_PAGES } from '../../../common/services/workflowNotify.js';
 import { code128DataUrl } from '../../../common/services/codeImageRenderer.js';
 import { remainingQuantity } from './allocation.service.js';
 
@@ -148,6 +149,77 @@ export async function verifyPutawayLocation(allocationId, lineId, barcode) {
 }
 
 /**
+ * Moves one physical unit from the unplaced area onto a line's target bin inside the caller's transaction.
+ * Shared by single-unit scanning and bulk putaway so both apply the same checks and counters.
+ * The caller has already loaded the allocation (document) and an ACTIVE, verified target bin.
+ */
+async function placeUnitInTransaction({ session, allocation, lineIndex, target, barcode, requestId, user, bulkRequestId = null }) {
+  const line = allocation.lines[lineIndex];
+  const unit = await ProductUnit.findOne({ barcode }).session(session);
+  if (!unit) fail('UNIT_NOT_FOUND', 'Không tìm thấy barcode sản phẩm', 404);
+  if (id(unit.skuId) !== id(line.skuId)) fail('WRONG_SKU', 'Sai sản phẩm hoặc biến thể của dòng cần xếp');
+  if (id(unit.receivingDocumentId) !== id(allocation.sourceReceiptId))
+    fail('WRONG_RECEIPT', 'Sản phẩm không thuộc phiếu nhập của dòng này');
+  if (unit.inventoryStatus !== 'AVAILABLE' || unit.packedOrderId)
+    fail('UNIT_UNAVAILABLE', 'Sản phẩm này hiện không thể xếp');
+  if (id(unit.warehouseId) === id(target._id) ||
+    await PutawayScanEvent.exists({ productUnitId: unit._id }).session(session))
+    fail('UNIT_ALREADY_PLACED', 'Chiếc này đã được xác nhận. Không cộng thêm.');
+  const source = await WarehouseLocation.findOne({ _id: unit.warehouseId,
+    warehouseType: 'FINISHED_GOODS', layoutBin: { $ne: true },
+    isDeleted: { $ne: true } }).session(session);
+  if (!source) fail('UNIT_NOT_IN_STAGING', 'Sản phẩm không còn ở khu chờ xếp');
+  let destinationBatchId = unit.batchId;
+  if (unit.batchId) {
+    const sourceBatch = await FinishedGoodsBatch.findOne({ _id: unit.batchId,
+      skuId: unit.skuId, locationId: source._id }).session(session);
+    if (!sourceBatch) fail('BATCH_SOURCE_MISMATCH', 'Lô hàng không khớp nguồn của barcode');
+    const batchMoved = await FinishedGoodsBatch.updateOne({ _id: sourceBatch._id,
+      $expr: { $gt: [{ $subtract: ['$currentOnHandQty',
+        { $ifNull: ['$reservedPickQty', 0] }] }, 0] } },
+    { $inc: { currentOnHandQty: -1 } }, { session });
+    if (!batchMoved.modifiedCount) fail('BATCH_CHANGED', 'Số hàng trong lô vừa thay đổi');
+    // A batch represents stock at one physical location. Split the received batch as scans place units.
+    const destinationBatch = await FinishedGoodsBatch.findOneAndUpdate({
+      batchCode: `FGP-${sourceBatch._id}-${target._id}`,
+    }, { $setOnInsert: { skuId: sourceBatch.skuId, skuBarcode: sourceBatch.skuBarcode,
+      locationId: target._id, fifoInboundTimestamp: sourceBatch.fifoInboundTimestamp },
+      $inc: { initialQty: 1, labeledQty: 1, currentOnHandQty: 1 } },
+    { upsert: true, new: true, session });
+    destinationBatchId = destinationBatch._id;
+  }
+  const moved = await ProductUnit.updateOne({ _id: unit._id, warehouseId: source._id,
+    inventoryStatus: 'AVAILABLE', packedOrderId: null },
+  { $set: { warehouseId: target._id,
+    ...(destinationBatchId ? { batchId: destinationBatchId } : {}) } }, { session });
+  if (!moved.modifiedCount) fail('UNIT_CHANGED', 'Sản phẩm vừa được xử lý ở thiết bị khác');
+  const from = await WarehouseLocation.updateOne({ _id: source._id,
+    currentOccupancy: { $gte: 1 } }, { $inc: { currentOccupancy: -1 } }, { session });
+  if (!from.modifiedCount) fail('SOURCE_MISMATCH', 'Số hàng ở khu chờ cần đối soát');
+  const to = await WarehouseLocation.updateOne({ _id: target._id, status: 'ACTIVE',
+    plannedReservedQty: { $gte: 1 },
+    $expr: { $lte: [{ $add: ['$currentOccupancy', '$plannedReservedQty'] }, '$maxCapacity'] } },
+  { $inc: { currentOccupancy: 1, plannedReservedQty: -1 } }, { session });
+  if (!to.modifiedCount) fail('BIN_CHANGED', 'Ô hoặc chỗ giữ đã thay đổi');
+  const progress = await PutawayAllocation.updateOne({ _id: allocation._id,
+    status: 'CONFIRMED', version: allocation.version,
+    [`lines.${lineIndex}.lineId`]: line.lineId },
+  { $inc: { [`lines.${lineIndex}.placedQuantity`]: 1, version: 1 } }, { session });
+  if (!progress.modifiedCount) fail('TASK_CHANGED', 'Tiến độ vừa thay đổi ở thiết bị khác');
+  // Cùng một giao dịch có thể xếp nhiều chiếc của phiếu: giữ bản sao cục bộ khớp với DB.
+  allocation.version += 1;
+  line.placedQuantity = Number(line.placedQuantity || 0) + 1;
+  await PutawayScanEvent.create([{ requestId, allocationId: allocation._id,
+    lineId: line.lineId, productUnitId: unit._id, barcode,
+    sourceLocationId: source._id, targetLocationId: target._id, actorId: user._id }], { session });
+  await SystemLog.create([{ actorId: user._id, actorRole: user.roleCode,
+    majorFeature: 'WAREHOUSE_PUTAWAY', subFeature: 'FINISHED_GOODS', action: bulkRequestId ? 'PLACE_UNIT_BULK' : 'PLACE_UNIT',
+    targetCollection: 'product_units', targetId: unit._id, targetCode: barcode,
+    beforeSnapshot: { warehouseId: source._id }, afterSnapshot: { warehouseId: target._id,
+      allocationId: allocation._id, lineId: line.lineId, ...(bulkRequestId ? { mode: 'BULK', bulkRequestId } : {}) } }], { session });
+}
+
+/**
  * Confirms one physical unit in a MongoDB transaction.
  * The request ID is stable across retries; the unit ID is unique across all accepted scans.
  * No stock is created here: receiving already created the unit and its SKU stock balance.
@@ -184,65 +256,7 @@ export async function scanPutawayUnit(user, allocationId, lineId, input) {
       if (String(target.barcode || '').trim().toUpperCase() !== locScanned &&
           String(target.locationCode || '').trim().toUpperCase() !== locScanned)
         fail('WRONG_LOCATION', `Sai ô. Hãy quét ${target.locationCode}.`);
-      const unit = await ProductUnit.findOne({ barcode }).session(session);
-      if (!unit) fail('UNIT_NOT_FOUND', 'Không tìm thấy barcode sản phẩm', 404);
-      if (id(unit.skuId) !== id(line.skuId)) fail('WRONG_SKU', 'Sai sản phẩm hoặc biến thể của dòng cần xếp');
-      if (id(unit.receivingDocumentId) !== id(allocation.sourceReceiptId))
-        fail('WRONG_RECEIPT', 'Sản phẩm không thuộc phiếu nhập của dòng này');
-      if (unit.inventoryStatus !== 'AVAILABLE' || unit.packedOrderId)
-        fail('UNIT_UNAVAILABLE', 'Sản phẩm này hiện không thể xếp');
-      if (id(unit.warehouseId) === id(target._id) ||
-        await PutawayScanEvent.exists({ productUnitId: unit._id }).session(session))
-        fail('UNIT_ALREADY_PLACED', 'Chiếc này đã được xác nhận. Không cộng thêm.');
-      const source = await WarehouseLocation.findOne({ _id: unit.warehouseId,
-        warehouseType: 'FINISHED_GOODS', layoutBin: { $ne: true },
-        isDeleted: { $ne: true } }).session(session);
-      if (!source) fail('UNIT_NOT_IN_STAGING', 'Sản phẩm không còn ở khu chờ xếp');
-      let destinationBatchId = unit.batchId;
-      if (unit.batchId) {
-        const sourceBatch = await FinishedGoodsBatch.findOne({ _id: unit.batchId,
-          skuId: unit.skuId, locationId: source._id }).session(session);
-        if (!sourceBatch) fail('BATCH_SOURCE_MISMATCH', 'Lô hàng không khớp nguồn của barcode');
-        const batchMoved = await FinishedGoodsBatch.updateOne({ _id: sourceBatch._id,
-          $expr: { $gt: [{ $subtract: ['$currentOnHandQty',
-            { $ifNull: ['$reservedPickQty', 0] }] }, 0] } },
-        { $inc: { currentOnHandQty: -1 } }, { session });
-        if (!batchMoved.modifiedCount) fail('BATCH_CHANGED', 'Số hàng trong lô vừa thay đổi');
-        // A batch represents stock at one physical location. Split the received batch as scans place units.
-        const destinationBatch = await FinishedGoodsBatch.findOneAndUpdate({
-          batchCode: `FGP-${sourceBatch._id}-${target._id}`,
-        }, { $setOnInsert: { skuId: sourceBatch.skuId, skuBarcode: sourceBatch.skuBarcode,
-          locationId: target._id, fifoInboundTimestamp: sourceBatch.fifoInboundTimestamp },
-          $inc: { initialQty: 1, labeledQty: 1, currentOnHandQty: 1 } },
-        { upsert: true, new: true, session });
-        destinationBatchId = destinationBatch._id;
-      }
-      const moved = await ProductUnit.updateOne({ _id: unit._id, warehouseId: source._id,
-        inventoryStatus: 'AVAILABLE', packedOrderId: null },
-      { $set: { warehouseId: target._id,
-        ...(destinationBatchId ? { batchId: destinationBatchId } : {}) } }, { session });
-      if (!moved.modifiedCount) fail('UNIT_CHANGED', 'Sản phẩm vừa được xử lý ở thiết bị khác');
-      const from = await WarehouseLocation.updateOne({ _id: source._id,
-        currentOccupancy: { $gte: 1 } }, { $inc: { currentOccupancy: -1 } }, { session });
-      if (!from.modifiedCount) fail('SOURCE_MISMATCH', 'Số hàng ở khu chờ cần đối soát');
-      const to = await WarehouseLocation.updateOne({ _id: target._id, status: 'ACTIVE',
-        plannedReservedQty: { $gte: 1 },
-        $expr: { $lte: [{ $add: ['$currentOccupancy', '$plannedReservedQty'] }, '$maxCapacity'] } },
-      { $inc: { currentOccupancy: 1, plannedReservedQty: -1 } }, { session });
-      if (!to.modifiedCount) fail('BIN_CHANGED', 'Ô hoặc chỗ giữ đã thay đổi');
-      const progress = await PutawayAllocation.updateOne({ _id: allocation._id,
-        status: 'CONFIRMED', version: allocation.version,
-        [`lines.${lineIndex}.lineId`]: line.lineId },
-      { $inc: { [`lines.${lineIndex}.placedQuantity`]: 1, version: 1 } }, { session });
-      if (!progress.modifiedCount) fail('TASK_CHANGED', 'Tiến độ vừa thay đổi ở thiết bị khác');
-      await PutawayScanEvent.create([{ requestId, allocationId: allocation._id,
-        lineId: line.lineId, productUnitId: unit._id, barcode,
-        sourceLocationId: source._id, targetLocationId: target._id, actorId: user._id }], { session });
-      await SystemLog.create([{ actorId: user._id, actorRole: user.roleCode,
-        majorFeature: 'WAREHOUSE_PUTAWAY', subFeature: 'FINISHED_GOODS', action: 'PLACE_UNIT',
-        targetCollection: 'product_units', targetId: unit._id, targetCode: barcode,
-        beforeSnapshot: { warehouseId: source._id }, afterSnapshot: { warehouseId: target._id,
-          allocationId: allocation._id, lineId: line.lineId } }], { session });
+      await placeUnitInTransaction({ session, allocation, lineIndex, target, barcode, requestId, user });
       result = { barcode, targetLocationId: id(target._id), alreadyAccepted: false };
     });
   const task = await getPutawayTask(allocationId, lineId);
@@ -264,6 +278,166 @@ export async function scanPutawayUnit(user, allocationId, lineId, input) {
     }
     throw error;
   } finally { await session.endSession(); }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Xếp hàng loạt: chọn các tem đã in của một phiếu, quét mã ô một lần, hệ thống xếp cả nhóm.
+// ---------------------------------------------------------------------------------------------
+// Xem trước nhận tới 2000 tem; mỗi lần xếp (một giao dịch) tối đa 200 chiếc, giao diện tự chia phần.
+const BULK_PLAN_LIMIT = 2000;
+const BULK_PLACE_LIMIT = 200;
+const upper = (value) => String(value || '').trim().toUpperCase();
+
+/** Validates the receipt ID and the selected barcodes (unique, 1..limit). */
+const bulkInput = (receiptId, barcodes, limit) => {
+  if (!mongoose.isValidObjectId(receiptId)) fail('INVALID_RECEIPT', 'Phiếu nhập không hợp lệ', 400);
+  if (!Array.isArray(barcodes) || !barcodes.length) fail('INVALID_BARCODES', 'Chọn ít nhất một tem để xếp', 400);
+  const list = [...new Set(barcodes.map((value) => String(value || '').trim()).filter(Boolean))];
+  if (!list.length || list.length !== barcodes.length) fail('INVALID_BARCODES', 'Danh sách tem có mã trống hoặc trùng', 400);
+  if (list.length > limit) fail('TOO_MANY_BARCODES', `Mỗi lần tối đa ${limit} chiếc`, 400);
+  return list;
+};
+
+/** Confirmed allocation lines of a receipt that can still take units (oldest allocation first). */
+const openReceiptLines = (allocations) => allocations.flatMap((allocation) => allocation.lines
+  .map((line, lineIndex) => ({ allocation, line, lineIndex }))
+  .filter(({ line }) => !pendingIssue(line) && remainingQuantity(line) > 0));
+
+/**
+ * Read-only plan: groups the selected units of a receipt by the bin they will go to.
+ * Units are spread over the SKU's open lines (the preferred bin first, then in order); units that cannot be placed are listed with a reason.
+ */
+export async function bulkPutawayPlan(receiptId, barcodes, preferredLocationCode = '') {
+  const list = bulkInput(receiptId, barcodes, BULK_PLAN_LIMIT);
+  const [allocations, units] = await Promise.all([
+    PutawayAllocation.find({ sourceReceiptId: receiptId, status: 'CONFIRMED' }).sort({ confirmedAt: 1, _id: 1 }).lean(),
+    ProductUnit.find({ barcode: { $in: list } }).select('barcode skuId receivingDocumentId warehouseId inventoryStatus packedOrderId').lean(),
+  ]);
+  if (!allocations.length) fail('RECEIPT_NOT_ASSIGNED', 'Phiếu chưa có hàng được giao xếp', 404);
+  const unitByBarcode = new Map(units.map((unit) => [unit.barcode, unit]));
+  const [placedEvents, stagingLocations] = await Promise.all([
+    PutawayScanEvent.find({ productUnitId: { $in: units.map((unit) => unit._id) } }).select('productUnitId').lean(),
+    WarehouseLocation.find({ _id: { $in: units.map((unit) => unit.warehouseId).filter(Boolean) },
+      warehouseType: 'FINISHED_GOODS', layoutBin: { $ne: true }, isDeleted: { $ne: true } }).select('_id').lean(),
+  ]);
+  const placed = new Set(placedEvents.map((event) => id(event.productUnitId)));
+  const staging = new Set(stagingLocations.map((location) => id(location._id)));
+  // Ô người xếp đã chọn (vd B-01-T2-O1) được nhận tem trước; phần dư mới rải sang các ô khác của SKU.
+  const preferred = preferredLocationCode ? await WarehouseLocation.findOne({ locationCode: upper(preferredLocationCode),
+    warehouseType: 'FINISHED_GOODS', isDeleted: { $ne: true } }).select('_id').lean() : null;
+  const lines = openReceiptLines(allocations).map((entry) => ({ ...entry, left: remainingQuantity(entry.line) }))
+    .sort((a, b) => Number(id(b.line.targetLocationId) === id(preferred?._id)) - Number(id(a.line.targetLocationId) === id(preferred?._id)));
+  const invalid = [];
+  const assigned = new Map(); // targetLocationId -> [{ barcode, skuId }]
+  for (const barcode of list) {
+    const unit = unitByBarcode.get(barcode);
+    const reject = (reason) => invalid.push({ barcode, reason });
+    if (!unit) { reject('Không tìm thấy barcode'); continue; }
+    if (id(unit.receivingDocumentId) !== id(receiptId)) { reject('Không thuộc phiếu nhập này'); continue; }
+    if (placed.has(id(unit._id))) { reject('Đã được xếp lên kệ'); continue; }
+    if (unit.inventoryStatus !== 'AVAILABLE' || unit.packedOrderId) { reject('Chiếc này hiện không thể xếp'); continue; }
+    if (!staging.has(id(unit.warehouseId))) { reject('Không còn ở khu chờ xếp'); continue; }
+    const slot = lines.find((entry) => entry.left > 0 && id(entry.line.skuId) === id(unit.skuId));
+    if (!slot) { reject('SKU này không còn số lượng cần xếp (hoặc đang chờ quản lý xử lý)'); continue; }
+    slot.left -= 1;
+    const key = id(slot.line.targetLocationId);
+    if (!assigned.has(key)) assigned.set(key, []);
+    assigned.get(key).push({ barcode, skuId: id(unit.skuId) });
+  }
+  const [locations, skus] = await Promise.all([
+    WarehouseLocation.find({ _id: { $in: [...assigned.keys()] } }).select('locationCode status isFrozenForStocktake').lean(),
+    Sku.find({ _id: { $in: [...new Set(units.map((unit) => id(unit.skuId)))] } })
+      .select('skuCode color size productId').populate('productId', 'productName').lean(),
+  ]);
+  const locationById = new Map(locations.map((location) => [id(location._id), location]));
+  const skuById = new Map(skus.map((sku) => [id(sku._id), sku]));
+  const groups = [...assigned.entries()].map(([locationId, items]) => {
+    const location = locationById.get(locationId);
+    const bySku = new Map();
+    for (const item of items) bySku.set(item.skuId, (bySku.get(item.skuId) || 0) + 1);
+    return {
+      locationId, locationCode: location?.locationCode || '',
+      blockedReason: !location || location.status !== 'ACTIVE' ? 'Ô hiện không hoạt động'
+        : location.isFrozenForStocktake ? 'Ô đang khóa để kiểm kê' : null,
+      barcodes: items.map((item) => item.barcode),
+      skus: [...bySku.entries()].map(([skuId, quantity]) => {
+        const sku = skuById.get(skuId);
+        return { skuId, quantity, skuCode: sku?.skuCode || '', productName: sku?.productId?.productName || '',
+          color: sku?.color || '', size: sku?.size || '' };
+      }),
+    };
+  }).sort((a, b) => a.locationCode.localeCompare(b.locationCode));
+  return { groups, invalid, total: list.length };
+}
+
+/**
+ * Places every selected unit onto the scanned bin in ONE transaction: one bin scan for the whole group.
+ * Units only fill lines whose target is the scanned bin. Any failing unit rolls back the whole group.
+ * Retrying with the same requestId never places a unit twice.
+ */
+export async function bulkPlaceUnits(user, receiptId, input = {}) {
+  const list = bulkInput(receiptId, input.barcodes, BULK_PLACE_LIMIT);
+  const requestId = String(input.requestId || '').trim();
+  const scanned = upper(input.locationBarcode);
+  if (requestId.length < 8 || requestId.length > 100 || !scanned) fail('INVALID_SCAN', 'Thông tin quét không hợp lệ', 400);
+  const unitRequestId = (barcode) => `${requestId}:${barcode}`;
+
+  // Gửi lại cùng requestId (mất mạng rồi thử lại): trả kết quả cũ, không xếp lần hai.
+  const prior = await PutawayScanEvent.find({ requestId: { $in: list.map(unitRequestId) } }).select('targetLocationId').lean();
+  if (prior.length) {
+    if (prior.length !== list.length) fail('REQUEST_REUSED', 'Yêu cầu xếp đã được dùng cho danh sách tem khác');
+    const location = await WarehouseLocation.findById(prior[0].targetLocationId).select('locationCode').lean();
+    return { placed: list.length, locationCode: location?.locationCode || '', alreadyAccepted: true };
+  }
+
+  const session = await mongoose.startSession();
+  let outcome;
+  try {
+    await session.withTransaction(async () => {
+      const allocations = await PutawayAllocation.find({ sourceReceiptId: receiptId, status: 'CONFIRMED' })
+        .sort({ confirmedAt: 1, _id: 1 }).session(session);
+      if (!allocations.length) fail('RECEIPT_NOT_ASSIGNED', 'Phiếu chưa có hàng được giao xếp', 404);
+      const lines = openReceiptLines(allocations);
+      const targets = await WarehouseLocation.find({ _id: { $in: [...new Set(lines.map(({ line }) => id(line.targetLocationId)))] },
+        layoutBin: true, warehouseType: 'FINISHED_GOODS', isDeleted: { $ne: true } }).session(session);
+      const target = targets.find((location) => upper(location.barcode) === scanned || upper(location.locationCode) === scanned);
+      if (!target) fail('WRONG_LOCATION', 'Mã ô này không thuộc các ô được phân bổ cho tem đã chọn.');
+      if (target.status !== 'ACTIVE' || target.isFrozenForStocktake) fail('BIN_UNAVAILABLE', `Ô ${target.locationCode} hiện không hoạt động`);
+      const units = await ProductUnit.find({ barcode: { $in: list } }).select('barcode skuId').session(session).lean();
+      const skuByBarcode = new Map(units.map((unit) => [unit.barcode, id(unit.skuId)]));
+      const touched = new Map();
+      for (const barcode of list) {
+        const skuId = skuByBarcode.get(barcode);
+        if (!skuId) fail('UNIT_NOT_FOUND', `${barcode}: không tìm thấy barcode sản phẩm`, 404);
+        const slot = lines.find(({ line }) => id(line.targetLocationId) === id(target._id)
+          && id(line.skuId) === skuId && remainingQuantity(line) > 0);
+        if (!slot) fail('NO_SLOT_IN_BIN', `${barcode}: ô ${target.locationCode} không còn chỗ được phân bổ cho sản phẩm này. Hãy kiểm tra lại các tem đã chọn.`);
+        try {
+          await placeUnitInTransaction({ session, allocation: slot.allocation, lineIndex: slot.lineIndex, target,
+            barcode, requestId: unitRequestId(barcode), user, bulkRequestId: requestId });
+        } catch (error) {
+          if (error.status) error.message = `${barcode}: ${error.message}`;
+          throw error;
+        }
+        touched.set(`${id(slot.allocation._id)}:${id(slot.line.lineId)}`,
+          { allocationId: id(slot.allocation._id), lineId: id(slot.line.lineId), skuId });
+      }
+      outcome = { placed: list.length, locationCode: target.locationCode, targetLocationId: id(target._id),
+        alreadyAccepted: false, lines: [...touched.values()] };
+    });
+  } catch (error) {
+    if (error.code === 11000) fail('UNIT_ALREADY_PLACED', 'Có chiếc trong danh sách vừa được xếp ở thiết bị khác. Hãy tải lại và chọn lại tem.');
+    throw error;
+  } finally { await session.endSession(); }
+
+  for (const line of outcome.lines) {
+    const event = { warehouseType: 'FINISHED_GOODS', ...line, targetLocationId: outcome.targetLocationId,
+      locationCode: outcome.locationCode, reason: 'PUTAWAY_BULK' };
+    publishRealtime('warehouse-putaway:changed', event);
+    publishRealtime('finished-goods:changed', { ...event, direction: 'PUTAWAY' });
+  }
+  const { lines, targetLocationId, ...result } = outcome;
+  return result;
 }
 
 /** Records a shortage for manager review without releasing reserved capacity yet. */
@@ -288,12 +462,18 @@ export async function reportPutawayShortage(user, allocationId, lineId, reason) 
     targetCollection: 'putaway_allocations', targetId: allocation._id,
     afterSnapshot: { lineId, quantity: remainingQuantity(line), reason: text } });
   publishRealtime('warehouse-putaway:changed', { allocationId: id(allocationId), lineId: id(lineId), reason: 'SHORTAGE_REPORTED' });
+  notifyWorkflow({ actor: user, type: 'STOCK_ALERT', priority: 'HIGH',
+    roles: { WAREHOUSE_MANAGER: '/warehouse/layout' },
+    title: `Báo thiếu khi xếp kệ: ${allocation.allocationCode || 'phiếu phân bổ'}`,
+    message: `${user?.fullName || 'Nhân viên kho'} báo thiếu ${remainingQuantity(line)} sản phẩm. Lý do: ${text}`,
+    metadata: { allocationId: id(allocationId), lineId: id(lineId) } });
   return getPutawayTask(allocationId, lineId);
 }
 
 /** Manager either waives the missing quantity or returns the task for scanning. */
 export async function resolvePutawayShortage(user, allocationId, lineId, accept) {
   const session = await mongoose.startSession();
+  let reporterId = null;
   try {
     await session.withTransaction(async () => {
       const allocation = await PutawayAllocation.findOne({ _id: allocationId,
@@ -301,6 +481,7 @@ export async function resolvePutawayShortage(user, allocationId, lineId, accept)
       const index = allocation?.lines.findIndex((line) => id(line.lineId) === id(lineId));
       if (index == null || index < 0) fail('TASK_NOT_FOUND', 'Không tìm thấy báo thiếu', 404);
       const line = allocation.lines[index];
+      reporterId = line.shortageReportedByUserId || null;
       if (!pendingIssue(line)) fail('ISSUE_NOT_FOUND', 'Dòng này không có báo thiếu đang chờ');
       const remaining = remainingQuantity(line);
       if (remaining !== line.reportedShortageQuantity) fail('TASK_CHANGED', 'Tiến độ đã đổi, cần đối soát');
@@ -331,6 +512,14 @@ export async function resolvePutawayShortage(user, allocationId, lineId, accept)
       allocationId: id(allocationId), lineId: id(lineId), reason: 'SHORTAGE_RESOLVED' });
     publishRealtime('finished-goods:changed', { warehouseType: 'FINISHED_GOODS', direction: 'PUTAWAY',
       allocationId: id(allocationId), lineId: id(lineId), reason: 'SHORTAGE_RESOLVED' });
+    notifyWorkflow({ actor: user, type: 'STOCK_ALERT',
+      users: reporterId ? [{ userId: reporterId, role: 'WAREHOUSE_STAFF', url: ROLE_PAGES.WAREHOUSE_STAFF.putaway }] : [],
+      roles: reporterId ? {} : { WAREHOUSE_STAFF: ROLE_PAGES.WAREHOUSE_STAFF.putaway },
+      title: `Quản lý đã xử lý báo thiếu: ${task.allocationCode || ''}`.trim(),
+      message: accept
+        ? `Quản lý kho chấp nhận thiếu ${task.skuCode || ''} ô ${task.locationCode || ''}; dòng này không cần xếp thêm.`
+        : `Quản lý kho không chấp nhận báo thiếu ${task.skuCode || ''} ô ${task.locationCode || ''}. Vui lòng tìm và xếp tiếp phần còn lại.`,
+      metadata: { allocationId: id(allocationId), lineId: id(lineId), accept: Boolean(accept) } });
     return task;
   } finally { await session.endSession(); }
 }
@@ -505,6 +694,12 @@ export async function reportPutawayIncident(user, allocationId, lineId, input) {
     majorFeature: 'WAREHOUSE_PUTAWAY', subFeature: 'INCIDENT', action: 'REPORT_INCIDENT',
     targetCollection: 'putaway_incidents', targetId: incident._id,
     afterSnapshot: { allocationId, lineId, barcode, reason } });
+  publishRealtime('warehouse-putaway:changed', { allocationId: id(allocationId), lineId: id(lineId), reason: 'INCIDENT_REPORTED' });
+  notifyWorkflow({ actor: user, type: 'STOCK_ALERT', priority: 'HIGH',
+    roles: { WAREHOUSE_MANAGER: '/warehouse/layout' },
+    title: 'Sự cố khi xếp kệ',
+    message: `${user?.fullName || 'Nhân viên kho'} báo sự cố${barcode ? ` (tem ${barcode})` : ''}: ${reason}`,
+    metadata: { incidentId: id(incident._id), allocationId: id(allocationId), lineId: id(lineId) } });
   return incident;
 }
 
@@ -531,6 +726,12 @@ export async function reviewPutawayIncident(user, incidentId, note) {
     majorFeature: 'WAREHOUSE_PUTAWAY', subFeature: 'INCIDENT', action: 'REVIEW_INCIDENT',
     targetCollection: 'putaway_incidents', targetId: incident._id,
     afterSnapshot: { reviewNote } });
+  publishRealtime('warehouse-putaway:changed', { allocationId: id(incident.allocationId), lineId: id(incident.lineId), reason: 'INCIDENT_REVIEWED' });
+  notifyWorkflow({ actor: user, type: 'STOCK_ALERT',
+    users: [{ userId: incident.reportedByUserId, role: 'WAREHOUSE_STAFF', url: ROLE_PAGES.WAREHOUSE_STAFF.putaway }],
+    title: 'Quản lý đã xử lý sự cố xếp kệ',
+    message: `Sự cố "${incident.reason}" đã được xử lý: ${reviewNote}`,
+    metadata: { incidentId: id(incident._id) } });
   return incident;
 }
 

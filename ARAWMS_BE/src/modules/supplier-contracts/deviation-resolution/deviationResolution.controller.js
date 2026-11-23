@@ -1,4 +1,5 @@
 import * as deviationResolutionService from './deviationResolution.service.js';
+import { announceInboundPlan } from '../inboundPlanNotify.js';
 
 export const getDeviations = async (req, res, next) => {
   try {
@@ -19,6 +20,7 @@ export const resolveDeviation = async (req, res, next) => {
       req.body,
       req.user?._id
     );
+    announceInboundPlan(data, 'DEVIATION_RESOLVED', req.user, String(req.body?.resolutionNotes || '').trim());
     res.status(200).json({
       success: true,
       message: 'Đã xác nhận xử lý sai lệch hợp đồng thành công. Trạng thái chuyển sang Đã xử lý.',

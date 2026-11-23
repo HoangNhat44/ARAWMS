@@ -40,6 +40,7 @@ import {
   translateColorVi,
   translateProductNameVi,
 } from '../../utils/garmentDisplayVi';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 const RANGE_OPTIONS = [
   { key: '7d', label: '7 ngày' },
@@ -244,6 +245,8 @@ export default function GarmentDashboardPage() {
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
 
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-technical-inbound-realtime', 'arawms-material-request-realtime', 'arawms-material-outbound-realtime', 'arawms-material-inbound-realtime', 'arawms-stocktake-realtime', 'arawms-remnant-return-realtime', 'arawms-inbound-plan-realtime'], () => loadDashboard());
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setError('');

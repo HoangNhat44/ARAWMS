@@ -50,6 +50,7 @@ import {
   translateProductNameVi,
   formatStatusVi,
 } from '../../utils/garmentDisplayVi';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 const ITEM_CONDITIONS = [
   { value: 'GOOD_INTACT', label: 'Nguyên vẹn, nguyên tem mác (Tốt)', isDefect: false },
@@ -324,6 +325,8 @@ export default function GarmentReturnInspectionPage() {
   }, []);
 
   // Load Phase 2: Pending review sessions
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-technical-inbound-realtime'], () => { fetchPendingReviews(); fetchHistory(); });
   const fetchPendingReviews = useCallback(async () => {
     setLoadingPending(true);
     try {

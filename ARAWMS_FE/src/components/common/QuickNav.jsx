@@ -14,7 +14,7 @@ const QuickNav = () => {
 
   const navItems = [
     { path: '/', label: 'Home', icon: Home },
-    { path: '/orders/qr', label: 'Order QR', icon: QrCode },
+    { path: '/orders/qr', label: 'Tem đơn hàng', icon: QrCode },
     { path: '/packing/qr', label: 'Packing', icon: Video },
     { path: '/warehouse/shipping', label: 'Vận chuyển', icon: Truck },
     { path: '/warehouse/finished-goods', label: 'Finished Goods', icon: Package },

@@ -29,6 +29,12 @@ export const ENV = {
     TOKEN: process.env.GHN_TOKEN || '',
     SHOP_ID: process.env.GHN_SHOP_ID ? Number(process.env.GHN_SHOP_ID) : 232136,
     CLIENT_ID: process.env.GHN_CLIENT_ID ? Number(process.env.GHN_CLIENT_ID) : 2542532,
+    // Người gửi in trên tem đơn và gửi lên GHN khi tạo vận đơn; hai nơi phải dùng cùng một thông tin.
+    SENDER: {
+      NAME: process.env.SHIPPING_SENDER_NAME || 'Kho Tổng ARAWMS',
+      PHONE: process.env.SHIPPING_SENDER_PHONE || '0973018102',
+      ADDRESS: process.env.SHIPPING_SENDER_ADDRESS || '72 Thành Thái, Phường 14, Quận 10, Hồ Chí Minh',
+    },
   },
 
   // Facebook Messenger API Configuration

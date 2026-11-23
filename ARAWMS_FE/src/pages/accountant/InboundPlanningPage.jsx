@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import accountantProcurementApi from '../../services/accountantProcurementApi.js';
 import { validateInboundPlanForm } from '../../utils/procurementValidation.js';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 const PLAN_STATUS_BADGE = {
   SCHEDULED: {
@@ -504,6 +505,8 @@ const InboundPlanningPage = () => {
   // Lightbox Preview for Fullsize Image
   const [lightboxImage, setLightboxImage] = useState(null);
 
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-inbound-plan-realtime', 'arawms-material-inbound-realtime'], () => loadData());
   const loadData = async () => {
     try {
       setLoading(true);

@@ -13,7 +13,7 @@ import {
   receiptLabels, rollTemplate, previewRolls, putaway,
   requestSupplierReturn, confirmSupplierReturn,
   createPlan, setupLegacyPlan, closeBatch, cancelBatch, reviseBatch, reviseBatchItems,
-  technicianRequests, createTechnicianRequest,
+  technicianRequests, createTechnicianRequest, technicianRequestPlacements,
   reportTechnicianRequestDiscrepancy,
   legacyReceiptDetails, updateLegacyReceipt, confirmLegacyReceipt,
 } from './inboundExecution.controller.js';
@@ -29,6 +29,7 @@ router.use((req, res, next) => {
 router.use(authenticate);
 router.post('/technician-requests', authorizeRole('GARMENT_TECHNICIAN'), createTechnicianRequest);
 router.get('/technician-requests', authorizeRole('OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'), technicianRequests);
+router.get('/technician-requests/:id/placements', authorizeRole('OWNER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'), technicianRequestPlacements);
 router.use(authorizeRole('OWNER', 'WAREHOUSE_MANAGER'));
 
 router.get('/options', options);

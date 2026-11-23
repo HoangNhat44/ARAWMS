@@ -169,7 +169,9 @@ const AccountantHeader = ({
     const socket = getSocket();
     if (socket) {
       const joinRoom = () => {
-        socket.emit('join_accountant_workspace', { role: 'ACCOUNTANT', userId: user?._id });
+        socket.emit('join_accountant_workspace', { role: 'ACCOUNTANT', userId: user?.id || user?._id });
+        // Phòng theo user để nhận cả thông báo gửi đích danh
+        socket.emit('join_workspace', { role: 'ACCOUNTANT', userId: user?.id || user?._id });
       };
 
       if (socket.connected) {
@@ -177,16 +179,23 @@ const AccountantHeader = ({
       }
       socket.on('connect', joinRoom);
 
+      // Cùng một thông báo đến qua cả 'accountant_notification' và 'new_notification': chỉ đếm một lần
+      const seen = new Set();
       const handleIncomingNotif = (newNotif) => {
         if (!newNotif) return;
+        if (newNotif.recipientRole && !['ACCOUNTANT', 'ALL'].includes(newNotif.recipientRole)) return;
+        const key = String(newNotif._id);
+        if (seen.has(key)) return;
+        seen.add(key);
         setNotifications((prev) => {
           const list = Array.isArray(prev) ? prev : [];
-          const exists = list.some((n) => String(n._id) === String(newNotif._id));
+          const exists = list.some((n) => String(n._id) === key);
           if (exists) return list;
           return [newNotif, ...list];
         });
         setUnreadCount((prev) => prev + 1);
         setToastNotif(newNotif);
+        window.dispatchEvent(new CustomEvent('arawms-notification-realtime', { detail: newNotif }));
       };
 
       socket.on('accountant_notification', handleIncomingNotif);

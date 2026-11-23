@@ -14,6 +14,7 @@ import FabricRoll from '../../../models/FabricRoll.model.js';
 import MaterialStockLot from '../../../models/MaterialStockLot.model.js';
 import Sku from '../../../models/Sku.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
+import { announceStocktakeStep, publishStocktakeChanged } from '../../inventory-auditing/stocktake-session/stocktakeNotice.service.js';
 
 // Báo cáo đã duyệt, đã bị trả về để kiểm lại hoặc đã hủy thì khóa: không quét, sửa hay nộp lại được nữa.
 const CLOSED_STATUSES = ['APPROVED_PENDING_ADJUSTMENT', 'APPROVED_COMPLETED', 'RECOUNT_REQUESTED', 'CANCELLED'];
@@ -165,6 +166,8 @@ export async function verifyShelfLocation(sessionId, shelfBarcode) {
   if (session.status === 'WAITING') {
     session.status = 'FROZEN_COUNTING';
     await session.save();
+    // Báo trang quản lý / dải thông báo nhân viên kho: phiên đã bắt đầu đếm (khóa đóng hàng nếu kho thành phẩm)
+    publishStocktakeChanged(session, 'COUNTING_STARTED');
   }
 
   // Freeze location
@@ -502,8 +505,8 @@ export async function submitSessionCompletion(sessionId, user, body = {}) {
   const hasIssues = records.length === 0 || totalDiscrepancies > 0 || uncounted > 0 || damagedLines > 0;
   const note = typeof body.note === 'string' ? body.note.normalize('NFC').trim() : '';
   fail(note.length <= 1000, 'Ghi chú tối đa 1000 ký tự');
-  fail(!hasIssues || note.length >= 10,
-    `Phiên có ${totalDiscrepancies} dòng lệch${uncounted ? `, ${uncounted} dòng chưa đếm` : ''}${damagedLines ? `, ${damagedLines} dòng có hàng hỏng` : ''}${records.length ? '' : ' (chưa ghi nhận dòng nào)'}. Vui lòng ghi rõ lý do (ít nhất 10 ký tự) trước khi gửi.`,
+  fail(!hasIssues || note.length > 0,
+    `Phiên có ${totalDiscrepancies} dòng lệch${uncounted ? `, ${uncounted} dòng chưa đếm` : ''}${damagedLines ? `, ${damagedLines} dòng có hàng hỏng` : ''}${records.length ? '' : ' (chưa ghi nhận dòng nào)'}. Vui lòng ghi lý do trước khi gửi.`,
     'SUBMISSION_NOTE_REQUIRED', 400);
 
   session.status = 'VARIANCE_REVIEW';
@@ -519,6 +522,8 @@ export async function submitSessionCompletion(sessionId, user, body = {}) {
       { $set: { isFrozenForStocktake: false } }
     );
   }
+
+  announceStocktakeStep(session, 'SUBMITTED', user, { hasIssues, discrepancies: totalDiscrepancies });
 
   return {
     session,
