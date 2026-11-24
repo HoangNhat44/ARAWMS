@@ -17,6 +17,9 @@ export const warehousePutawayService = {
   materialLocation: (data) => api.post(`${root}/material-tasks/location`, data),
   materialScan: (data) => api.post(`${root}/material-tasks/scan`, data),
   receiptLabels: (receiptId) => api.get(`${root}/receipts/${receiptId}/labels`),
+  // Xếp hàng loạt: xem nhóm theo ô, rồi quét mã ô một lần để xếp cả nhóm (requestId giữ nguyên khi thử lại).
+  bulkPlan: (receiptId, barcodes, locationCode = '') => api.post(`${root}/receipts/${receiptId}/bulk-plan`, { barcodes, locationCode }),
+  bulkPlace: (receiptId, data) => api.post(`${root}/receipts/${receiptId}/bulk-place`, data),
   task: (allocationId, lineId) => api.get(taskPath(allocationId, lineId)),
   location: (allocationId, lineId, barcode) => api.post(
     `${taskPath(allocationId, lineId)}/location`, { barcode }),

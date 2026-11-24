@@ -11,6 +11,7 @@ import MaterialStockLot from '../../../models/MaterialStockLot.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import Supplier from '../../../models/Supplier.model.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
+import { notifyWorkflow, ROLE_PAGES } from '../../../common/services/workflowNotify.js';
 import { ReceiptError } from './inboundExecution.service.js';
 import { isFractionalMaterialUnit } from '../../../common/constants/materialUnits.js';
 
@@ -141,6 +142,11 @@ export async function createTechnicianInboundRequest(input, user) {
     receivingLocationId: input.receivingLocationId || undefined, requestNote: note,
     requestLines: parsed });
   publishRealtime('material-inbound-request:changed', { requestId: id(request._id), status: request.status });
+  notifyWorkflow({ actor: user, type: 'INBOUND_REQUEST', priority: 'HIGH',
+    roles: { WAREHOUSE_MANAGER: ROLE_PAGES.WAREHOUSE_MANAGER.supplierInbound },
+    title: `Yêu cầu nhập NPL mới: ${ticketCode}`,
+    message: `${user?.fullName || 'Nhân viên kỹ thuật'} đã kiểm định và gửi yêu cầu nhập ${parsed.length} dòng nguyên phụ liệu. Cần lập phiếu nhận hàng.`,
+    metadata: { requestId: id(request._id), ticketCode } });
   return request;
 }
 
@@ -253,5 +259,12 @@ export async function reportInboundRequestDiscrepancy(requestId, input, user) {
   }, { new: true, runValidators: true });
   fail(updated, 'Yêu cầu vừa thay đổi; hãy tải lại trước khi báo sai lệch', 'REQUEST_VERSION_CONFLICT', 409);
   publishRealtime('material-inbound-request:changed', { requestId: id(request._id), status: 'DISCREPANCY_REPORTED' });
+  const technicianId = request.requestedByTechnicianId || (request.ticketType === 'INBOUND_REQUEST' ? request.createdByUserId : null);
+  notifyWorkflow({ actor: user, type: 'INBOUND_REQUEST', priority: 'HIGH',
+    users: technicianId ? [{ userId: technicianId, role: 'GARMENT_TECHNICIAN', url: ROLE_PAGES.GARMENT_TECHNICIAN.inboundVerification }] : [],
+    roles: technicianId ? {} : { GARMENT_TECHNICIAN: ROLE_PAGES.GARMENT_TECHNICIAN.inboundVerification },
+    title: `Kho báo sai lệch bàn giao: ${request.ticketCode}`,
+    message: `${user?.fullName || 'Kho'} báo sai lệch khi nhận yêu cầu ${request.ticketCode}: ${reason}. Vui lòng kiểm tra và gửi lại số liệu đúng.`,
+    metadata: { requestId: id(request._id), ticketCode: request.ticketCode } });
   return updated;
 }

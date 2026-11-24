@@ -15,12 +15,20 @@ import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
 import { createNotification } from '../../notifications/notification.service.js';
+import { notifyWorkflow, ROLE_PAGES } from '../../../common/services/workflowNotify.js';
 import GarmentLot from '../../../models/GarmentLot.model.js';
 import { buildLotQrValue, generateNextLotCode } from '../lot-management/lotManagement.service.js';
 
 // Tells the Warehouse Manager's request list to reload when a technician sends a new request.
-const notifyInboundRequestChanged = (ticket) => publishRealtime('material-inbound-request:changed',
-  { requestId: String(ticket._id), status: ticket.status });
+const notifyInboundRequestChanged = (ticket, user) => {
+  publishRealtime('material-inbound-request:changed',
+    { requestId: String(ticket._id), status: ticket.status });
+  notifyWorkflow({ actor: user, type: 'INBOUND_REQUEST', priority: 'HIGH',
+    roles: { WAREHOUSE_MANAGER: ROLE_PAGES.WAREHOUSE_MANAGER.supplierInbound },
+    title: `Yêu cầu nhập NPL mới: ${ticket.ticketCode}`,
+    message: `${user?.fullName || 'Nhân viên kỹ thuật'} đã kiểm định KCS và gửi phiếu ${ticket.ticketCode} (${(ticket.receiptLines || []).length} dòng). Cần xác nhận nhập kho.`,
+    metadata: { ticketId: String(ticket._id), ticketCode: ticket.ticketCode } });
+};
 
 /**
  * Generates sequential RAW_MATERIAL GarmentLots (LOT-NL-xxxxxx + LOT:RM:...) for accepted receipt lines
@@ -468,6 +476,14 @@ export const verifyInboundPlan = async (planId, payload = {}, user) => {
   }
 
   await plan.save();
+  publishRealtime('inbound-plan:changed', { planId: String(plan._id), planCode: plan.planCode, status: plan.status });
+  if (isMatchedWithPlan) {
+    notifyWorkflow({ actor: user, type: 'QC_INSPECTION',
+      roles: { ACCOUNTANT: `${ROLE_PAGES.ACCOUNTANT.inboundPlans}?planCode=${encodeURIComponent(plan.planCode)}` },
+      title: `KCS nghiệm thu đạt: ${plan.planCode}${targetBatch ? ` (Đợt ${targetBatch.batchNumber})` : ''}`,
+      message: `${user?.fullName || 'Nhân viên kỹ thuật'} đã nghiệm thu kế hoạch ${plan.planCode} khớp với kế hoạch, hàng được chuyển kho nhập.`,
+      metadata: { planId: String(plan._id), planCode: plan.planCode } });
+  }
 
   let createdTicket = null;
 
@@ -522,7 +538,7 @@ export const verifyInboundPlan = async (planId, payload = {}, user) => {
 
     await createdTicket.save();
     await attachLotsToMaterialTicket(createdTicket, user);
-    notifyInboundRequestChanged(createdTicket);
+    notifyInboundRequestChanged(createdTicket, user);
   }
 
   return {
@@ -626,7 +642,7 @@ export const createDirectInboundRequest = async (payload = {}, user) => {
 
   await ticket.save();
   await attachLotsToMaterialTicket(ticket, user);
-  notifyInboundRequestChanged(ticket);
+  notifyInboundRequestChanged(ticket, user);
 
   return ticket;
 };

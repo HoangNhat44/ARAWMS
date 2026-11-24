@@ -15,6 +15,7 @@ import RawMaterial from '../../../models/RawMaterial.model.js';
 import SystemSetting from '../../../models/SystemSetting.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
+import { notifyWorkflow, ROLE_PAGES } from '../../../common/services/workflowNotify.js';
 
 const fail = (ok, message, code = 'INVALID_INPUT', status = 400) => {
   if (!ok) {
@@ -119,6 +120,13 @@ export async function createOutboundRequest(payload, user) {
     ticketCode: ticket.ticketCode,
     status: ticket.status,
     action: 'CREATED',
+  });
+  notifyWorkflow({
+    roles: { WAREHOUSE_MANAGER: ROLE_PAGES.WAREHOUSE_MANAGER.outbound },
+    title: `Yêu cầu xuất NPL mới: ${ticket.ticketCode}`,
+    message: `${user?.fullName || 'Nhân viên kỹ thuật'} yêu cầu xuất ${lines.length} dòng nguyên phụ liệu (${ticket.purpose}). Cần duyệt và giao nhân viên lấy hàng.`,
+    type: 'OUTBOUND_REQUEST', priority: 'HIGH', actor: user,
+    metadata: { ticketId: String(ticket._id), ticketCode: ticket.ticketCode },
   });
 
   return ticket;

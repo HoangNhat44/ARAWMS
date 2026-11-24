@@ -259,6 +259,7 @@ export default function WarehouseManagerLayout({ children }) {
           onToggleCollapse={() => setCollapsed((p) => !p)}
           onToggleMobile={() => setMobileOpen((p) => !p)}
           profilePath="/account"
+          liveNotifications
         />
         <main className="wms-content-container">
           {children}

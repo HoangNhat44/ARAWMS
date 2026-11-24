@@ -16,6 +16,7 @@ import DirectMaterialReceiptModal from '../../components/warehouse/DirectMateria
 import LegacyMaterialReceiptForm from '../../components/warehouse/LegacyMaterialReceiptForm';
 import RemnantReturnReview from '../../components/warehouse/RemnantReturnReview';
 import '../../styles/supplierInbound.css';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 const statusConfig = {
   WAITING_RECEIPT: { label: 'Chờ nhập', color: '#9A5B06', bg: '#FEF0C7', border: '#F5B95F', icon: Clock },
@@ -87,6 +88,8 @@ export default function SupplierInboundPage() {
   }, [optionCacheKey]);
 
   // Load data
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-inbound-plan-realtime', 'arawms-material-inbound-realtime', 'arawms-remnant-return-realtime'], () => loadData());
   const loadData = useCallback(async () => {
     setBusy(true);
     setError('');

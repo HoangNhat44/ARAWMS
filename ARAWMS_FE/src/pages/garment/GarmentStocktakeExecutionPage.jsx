@@ -32,6 +32,7 @@ import {
 import { garmentTechnicalService } from '../../services/garmentTechnicalService';
 import { translateProductNameVi, translateColorVi, formatUnitVi } from '../../utils/garmentDisplayVi';
 import '../../styles/warehousePutaway.css';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 // Audio feedback helper for scanner beeps
 function playBeep(success = true) {
@@ -93,6 +94,8 @@ export default function GarmentStocktakeExecutionPage() {
   const manualInputRef = useRef(null);
 
   // Load assigned stocktake sessions
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-stocktake-realtime'], () => loadSessions());
   const loadSessions = async () => {
     try {
       setLoading(true);
@@ -356,8 +359,8 @@ export default function GarmentStocktakeExecutionPage() {
   const handleCompleteStocktake = async () => {
     if (!selectedSession) return;
     const note = submitNote.trim();
-    if (submitHasIssues && note.length < 10) {
-      setSubmitError('Phiên có chênh lệch hoặc còn dòng chưa đếm. Vui lòng ghi rõ lý do (ít nhất 10 ký tự).');
+    if (submitHasIssues && !note) {
+      setSubmitError('Phiên có chênh lệch hoặc còn dòng chưa đếm. Vui lòng ghi lý do.');
       return;
     }
     setSubmitError('');

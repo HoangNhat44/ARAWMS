@@ -95,10 +95,11 @@ test('manager can approve a report that still has uncounted lines', async () => 
 
 test('an unreasonable report is sent back and a recount is issued to the technician', async () => {
   const id = await seedSession('KK-T3', 10);
-  const short = await post(id, 'recount', { expectedVersion: 0, reason: 'ngắn' });
-  assert.equal(short.status, 400);
+  // Lý do chỉ cần có nội dung: trống thì từ chối, ngắn hay có xuống dòng vẫn nhận.
+  const empty = await post(id, 'recount', { expectedVersion: 0, reason: '   ' });
+  assert.equal(empty.status, 400);
 
-  const response = await post(id, 'recount', { expectedVersion: 0, reason: 'Số đếm lệch 90% so với hệ thống, cần đếm lại', durationHours: 4 });
+  const response = await post(id, 'recount', { expectedVersion: 0, reason: 'Lệch\nđếm lại', durationHours: 4 });
   assert.equal(response.status, 201, JSON.stringify(response.body));
   const original = await db().collection('stocktake_sessions').findOne({ sessionCode: 'KK-T3' });
   assert.equal(original.status, 'RECOUNT_REQUESTED');
@@ -140,7 +141,7 @@ test('technicians cannot use the review endpoints', async () => {
 test('a technician cannot edit or resubmit a report that was approved or sent back', async () => {
   const approvedId = await seedSession('KK-T6', 99);
   const detail = await get(approvedId);
-  assert.equal((await post(approvedId, 'approve', { expectedVersion: 0, reportHash: detail.body.data.reportHash, adjustmentReason: 'Lệch một đơn vị, chấp nhận' })).status, 200);
+  assert.equal((await post(approvedId, 'approve', { expectedVersion: 0, reportHash: detail.body.data.reportHash, adjustmentReason: 'ok' })).status, 200);
   const returnedId = await seedSession('KK-T7', 10);
   assert.equal((await post(returnedId, 'recount', { expectedVersion: 0, reason: 'Lệch quá lớn, cần đếm lại toàn bộ' })).status, 201);
 
@@ -179,15 +180,16 @@ test('a count with variance or uncounted lines needs a reason before it is submi
     const id = await seedCounting(code, actual, { scanned });
     const missing = await complete(id, {});
     assert.equal(missing.status, 400, JSON.stringify(missing.body));
-    assert.equal((await complete(id, { note: 'ngắn' })).status, 400);
+    assert.equal((await complete(id, { note: '   ' })).status, 400);
     assert.equal((await db().collection('stocktake_sessions').findOne({ sessionCode: code })).status, 'FROZEN_COUNTING');
 
-    const ok = await complete(id, { note: 'Ô A-01 thiếu hàng, đã tìm quanh kệ không thấy' });
+    // Lý do ngắn vẫn được nhận, chỉ cần có nội dung.
+    const ok = await complete(id, { note: 'thiếu' });
     assert.equal(ok.status, 200, JSON.stringify(ok.body));
     const saved = await db().collection('stocktake_sessions').findOne({ sessionCode: code });
     assert.equal(saved.status, 'VARIANCE_REVIEW');
     assert.equal(saved.submissionInfo.hasIssues, true);
-    assert.match(saved.submissionInfo.note, /thiếu hàng/);
+    assert.equal(saved.submissionInfo.note, 'thiếu');
     assert.equal((await get(id)).body.data.stocktake.submissionInfo.note, saved.submissionInfo.note);
   }
 });

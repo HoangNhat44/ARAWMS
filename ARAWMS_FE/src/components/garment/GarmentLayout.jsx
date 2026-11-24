@@ -221,6 +221,7 @@ export default function GarmentLayout({ children }) {
           onToggleCollapse={() => setCollapsed((p) => !p)}
           onToggleMobile={() => setMobileOpen((p) => !p)}
           profilePath="/account"
+          liveNotifications
         />
         <main className="wms-content-container">
           <StocktakeNoticeBanner role="GARMENT_TECHNICIAN" />

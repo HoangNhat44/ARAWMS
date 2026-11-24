@@ -528,3 +528,8 @@
     margin-left: 0;
   }
 }
+
+/* Dải báo lịch kiểm kê trên trang đóng hàng: vàng = sắp kiểm, đỏ = đang khóa đóng hàng. */
+.packing-stocktake-banner{display:grid;gap:4px;padding:12px 16px;border-radius:10px;border:1px solid #f0c36d;background:#fff8e6;color:#6b4a00;font-size:14px}
+.packing-stocktake-banner strong{font-size:15px}
+.packing-stocktake-banner.is-active{border-color:#e0a3a3;background:#fff1f1;color:#a52e2e}

@@ -9,6 +9,7 @@ import api from './api';
 export const materialInboundService = {
   options: () => api.get('/raw-material-inbound/options'),
   technicianRequests: () => api.get('/raw-material-inbound/technician-requests'),
+  technicianRequestPlacements: (requestId) => api.get(`/raw-material-inbound/technician-requests/${requestId}/placements`),
   reportTechnicianRequestDiscrepancy: (id, payload) => api.post(`/raw-material-inbound/technician-requests/${id}/discrepancies`, payload),
   legacyReceipt: (id) => api.get(`/raw-material-inbound/legacy-receipts/${id}`),
   updateLegacyReceipt: (id, values) => api.put(`/raw-material-inbound/legacy-receipts/${id}`, values),

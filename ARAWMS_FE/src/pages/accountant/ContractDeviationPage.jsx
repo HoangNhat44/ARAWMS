@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import accountantProcurementApi from '../../services/accountantProcurementApi';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 const ACTION_LABELS = {
   TERMINATE_CONTRACT: 'Chấm dứt hợp đồng mua bán',
@@ -76,6 +77,8 @@ const ContractDeviationPage = () => {
     );
   };
 
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-inbound-plan-realtime'], () => loadData());
   const loadData = async () => {
     try {
       setLoading(true);

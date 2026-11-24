@@ -27,6 +27,26 @@ import { code128DataUrl } from '../../../common/services/codeImageRenderer.js';
 import PutawayAllocation from '../../../models/PutawayAllocation.model.js';
 import { confirmReceiptAllocation, fingerprint, parseLines, remainingQuantity } from '../location-layout/allocation.service.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
+import { notifyWorkflow, ROLE_PAGES } from '../../../common/services/workflowNotify.js';
+
+/** Nhập thành phẩm xong: nhân viên kho có việc xếp kệ, kỹ thuật biết phiếu đã nhận, kế toán biết tồn thành phẩm đổi. */
+const announceFinishedGoodsReceipt = (document, sourceTicket, hasAllocation, actor) => {
+  const code = document.documentCode;
+  const metadata = { documentId: String(document._id), documentCode: code, totalQuantity: document.totalQuantity };
+  if (hasAllocation) notifyWorkflow({ actor, type: 'INBOUND_REQUEST', priority: 'HIGH', metadata,
+    roles: { WAREHOUSE_STAFF: ROLE_PAGES.WAREHOUSE_STAFF.putaway },
+    title: `Nhiệm vụ xếp kệ mới: ${code}`,
+    message: `Quản lý kho đã nhập ${document.totalQuantity} sản phẩm và phân bổ ô. Vui lòng quét và xếp lên kệ.` });
+  const technicianId = sourceTicket?.garmentInspection?.inspectedByTechId;
+  if (technicianId) notifyWorkflow({ actor, type: 'INBOUND_REQUEST', metadata,
+    users: [{ userId: technicianId, role: 'GARMENT_TECHNICIAN', url: ROLE_PAGES.GARMENT_TECHNICIAN.finishedInspection }],
+    title: `Kho đã nhận phiếu ${sourceTicket.ticketCode || code}`,
+    message: `Quản lý kho đã nhập kho ${document.totalQuantity} sản phẩm theo phiếu ${sourceTicket.ticketCode || ''} (chứng từ ${code}).` });
+  notifyWorkflow({ actor, type: 'INBOUND_REQUEST', metadata,
+    roles: { ACCOUNTANT: ROLE_PAGES.ACCOUNTANT.productValuation },
+    title: `Nhập kho thành phẩm: ${code}`,
+    message: `Kho thành phẩm vừa nhập ${document.totalQuantity} sản phẩm. Giá trị tồn kho thành phẩm đã thay đổi.` });
+};
 import { listWarehouseInboundProgress } from './warehouseInboundProgress.service.js';
 
 const router = express.Router();
@@ -768,7 +788,8 @@ router.get('/documents/:id', async (req, res, next) => {
     const document = await FinishedGoodsBulkDocument.findOne({ _id: req.params.id, isDeleted: { $ne: true } }).lean();
     if (!document) return sendError(res, 'Không tìm thấy phiếu', { code: 'DOCUMENT_NOT_FOUND' }, 404);
     const allocations = await PutawayAllocation.find({ sourceReceiptId: document._id, status: 'CONFIRMED' })
-      .select('allocationCode lines').populate('lines.targetLocationId', 'locationCode rackCode floorNo binNo').lean();
+      .select('allocationCode lines')
+      .populate('lines.targetLocationId', 'locationCode zoneCode rackCode rackName floorNo binNo').lean();
     return sendSuccess(res, 'Chi tiết phiếu kho', { document: receiptResponse(document),
       progress: document.items.map((item) => {
         const rows = allocations.flatMap((allocation) => allocation.lines.filter((line) =>
@@ -833,6 +854,11 @@ router.post('/documents/:id/allocations', authorizeRole('OWNER', 'WAREHOUSE_MANA
     });
     publishRealtime('warehouse-putaway:changed', { warehouseType: 'FINISHED_GOODS',
       receiptId: req.params.id, allocationId: String(allocation._id), reason: 'ALLOCATION_CONFIRMED' });
+    notifyWorkflow({ actor: req.user, type: 'INBOUND_REQUEST', priority: 'HIGH',
+      roles: { WAREHOUSE_STAFF: ROLE_PAGES.WAREHOUSE_STAFF.putaway },
+      title: `Nhiệm vụ xếp kệ mới: ${allocation.allocationCode || ''}`.trim(),
+      message: 'Quản lý kho vừa phân bổ ô cho hàng chờ xếp. Vui lòng quét và xếp lên kệ.',
+      metadata: { allocationId: String(allocation._id), receiptId: req.params.id } });
     return sendSuccess(res, 'Đã giữ chỗ chờ xếp', { allocation }, 201);
   } catch (error) {
     if (error.code === 11000) {
@@ -1251,6 +1277,8 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
         skuIds: saved.items.map((item) => String(item.skuId)) });
       if (allocations.length) publishRealtime('warehouse-putaway:changed', { warehouseType: 'FINISHED_GOODS',
         receiptId: String(saved._id), documentCode: saved.documentCode, reason: 'RECEIPT_AND_ALLOCATION_CONFIRMED' });
+      publishRealtime('technical-inbound:changed', { ticketId: String(sourceTicket?._id || ''), documentCode: saved.documentCode });
+      announceFinishedGoodsReceipt(saved, sourceTicket, allocations.length > 0, req.user);
     } else if (direction === 'OUT') {
       publishRealtime('finished-goods:changed', { warehouseType: 'FINISHED_GOODS', direction,
         status: saved.status,

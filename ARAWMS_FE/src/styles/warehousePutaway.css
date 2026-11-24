@@ -87,3 +87,23 @@
 @media(max-width:850px){.putaway-scan-overview{grid-template-columns:1fr 1fr}.putaway-scan-product{grid-column:1/-1}.putaway-scan-columns{grid-template-columns:1fr}.putaway-scan-right{min-height:170px}.putaway-scan-feed{max-height:130px}}
 @media(min-width:601px) and (max-width:1023px){.putaway-page{padding-right:24px;padding-left:24px}}
 @media(max-width:600px){.putaway-page{padding:20px 16px 60px;gap:18px}.putaway-page-head{align-items:start}.putaway-page-head .putaway-button{width:100%}.putaway-card{padding:16px}.putaway-section-title h2{font-size:20px}.putaway-filterbar,.putaway-task-controls{align-items:stretch;flex-direction:column}.putaway-search{min-width:0}.putaway-task-controls select{width:100%}.putaway-overlay{padding:6px}.putaway-modal{max-height:98vh;border-radius:12px}.putaway-modal-head,.putaway-modal-body,.putaway-modal-foot{padding:15px}.putaway-modal-head h2{font-size:23px}.putaway-scan-overview{grid-template-columns:1fr}.putaway-scan-product{grid-column:auto}.putaway-scan-form>div{flex-direction:column}.putaway-modal-foot>div,.putaway-modal-foot .putaway-button{width:100%}.putaway-camera{height:200px}.putaway-toast{right:12px;bottom:12px}}
+
+/* Xếp hàng loạt: dải "vừa in", danh sách nhóm theo ô và tem không hợp lệ. */
+.putaway-bulk-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 16px;padding:12px 16px;border:1px solid #e7c98f;border-radius:10px;background:#fff8ea;color:#5c4513;font-size:14px}
+.putaway-bulk-bar>div{display:flex;gap:8px;flex-wrap:wrap}
+.putaway-bulk-groups{display:grid;gap:8px;margin-bottom:16px}
+.putaway-bulk-group{display:grid;grid-template-columns:auto minmax(140px,1fr) minmax(0,2fr) auto;gap:12px;align-items:center;padding:12px 14px;border:1px solid #e9e1d8;border-radius:10px;background:#fff;cursor:pointer}
+.putaway-bulk-group>span{display:grid;gap:2px;min-width:0}
+.putaway-bulk-group small{font-size:10px;letter-spacing:.06em;color:#8a7a68}
+.putaway-bulk-group code{font-size:12px;color:#766759}
+.putaway-bulk-group em{font-style:normal;font-size:13px;overflow-wrap:anywhere}
+.putaway-bulk-group b{font-size:13px;white-space:nowrap}
+.putaway-bulk-group.active{border-color:#b27718;box-shadow:0 0 0 2px #b2771833;background:#fffaf2}
+.putaway-bulk-group.done{background:#eff8f3;border-color:#b7dcc7;cursor:default}
+.putaway-bulk-group.done b{color:#176044}
+.putaway-bulk-group.blocked{opacity:.6;cursor:not-allowed}
+.putaway-bulk-group.blocked b{color:#a52e2e}
+.putaway-bulk-invalid{margin-bottom:14px;padding:10px 14px;border-radius:9px;background:#fff4f3;color:#a52e2e;font-size:13px}
+.putaway-bulk-invalid ul{margin:6px 0 0;padding-left:18px;max-height:140px;overflow:auto}
+@media(max-width:700px){.putaway-bulk-group{grid-template-columns:auto 1fr}.putaway-bulk-group>span:nth-of-type(2),.putaway-bulk-group b{grid-column:2}}
+.putaway-bulk-bin-note{margin:0 0 12px;padding:10px 12px;border-radius:9px;background:#fff8ea;color:#5c4513;font-size:13px}

@@ -39,6 +39,7 @@ import {
   formatUnitVi,
   formatStatusVi,
 } from '../../utils/garmentDisplayVi';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 const DEFECT_CATEGORIES = [
   { value: 'SEWING_DEFECT', label: 'Lỗi đường may / bung chỉ' },
@@ -146,6 +147,8 @@ export default function GarmentLotManagementPage() {
   }, []);
 
   // Load lots list
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-technical-inbound-realtime', 'arawms-material-request-realtime'], () => fetchLots());
   const fetchLots = useCallback(async () => {
     setLoading(true);
     try {

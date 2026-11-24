@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { garmentTechnicalService } from '../services/garmentTechnicalService';
 import { translateColorVi, formatStatusVi } from '../utils/garmentDisplayVi';
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh';
 
 const amount = (value) => Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 3 });
 const inputStyle = { width: '100%', padding: '.65rem', border: '1px solid var(--ara-border)', borderRadius: 8 };
@@ -27,6 +28,8 @@ export default function RemnantReturnEntry({ prefill, onChanged, currentUserId }
   const videoRef = useRef(null);
   const cameraRef = useRef(null);
   const operationKey = useRef(crypto.randomUUID());
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-remnant-return-realtime', 'arawms-material-outbound-realtime'], () => loadRequests());
   const loadRequests = () => garmentTechnicalService.remnant.getReturnRequests().then((result) =>
     setMyRequests((result.data || []).filter((item) =>
       String(item.technicianId?._id || item.technicianId?.id || item.technicianId) === String(currentUserId))

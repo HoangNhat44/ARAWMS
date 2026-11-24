@@ -11,7 +11,7 @@ import { listMaterialPutawayTasks, listMaterialPutawayLocations, verifyMaterialP
   scanMaterialPutawayTask } from './materialPutaway.service.js';
 import { listPutawayTasks, getPutawayTask, verifyPutawayLocation, scanPutawayUnit, reportPutawayShortage,
   resolvePutawayShortage, rackContents, binUnits, listPutawayIssues, reportPutawayIncident, listPutawayIncidents,
-  reviewPutawayIncident, listUnplacedReceiptLabels } from './putawayExecution.service.js';
+  reviewPutawayIncident, listUnplacedReceiptLabels, bulkPutawayPlan, bulkPlaceUnits } from './putawayExecution.service.js';
 
 const putawayErrors = {
   invalidId: { message: 'ID không hợp lệ', code: 'INVALID_ID' },
@@ -34,6 +34,10 @@ export const receiptLabels = run('Tem của hàng còn chờ xếp', (req) => {
   assertReceiptId(req.params.receiptId);
   return listUnplacedReceiptLabels(req.params.receiptId);
 });
+// Xếp hàng loạt: xem trước nhóm theo ô, rồi quét mã ô một lần để xếp cả nhóm.
+export const bulkPlan = run('Kế hoạch xếp hàng loạt', (req) => bulkPutawayPlan(req.params.receiptId, req.body?.barcodes, req.body?.locationCode));
+export const bulkPlace = run('Đã xếp hàng loạt', async (req) => ({ result: await bulkPlaceUnits(req.user,
+  req.params.receiptId, req.body || {}) }));
 export const task = run('Dòng cần xếp', async (req) => ({ task: await getPutawayTask(req.params.allocationId, req.params.lineId) }));
 export const verifyLocation = run('Đúng vị trí cần xếp', async (req) => ({ location: await verifyPutawayLocation(
   req.params.allocationId, req.params.lineId, req.body?.barcode) }));

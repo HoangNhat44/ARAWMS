@@ -12,6 +12,7 @@ import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import GarmentLot from '../../../models/GarmentLot.model.js';
 import { buildLotQrValue, generateNextLotCode } from '../lot-management/lotManagement.service.js';
+import { announceTechnicalInbound } from '../../../common/services/workflowNotify.js';
 
 /**
  * Returns options for finished goods inspection (SKUs, Products, Finished Goods Shelves)
@@ -357,6 +358,7 @@ export const createFinishedGoodsInboundTicket = async (payload = {}, user) => {
     .populate('items.designatedFifoLocationId', 'locationCode barcode zoneCode')
     .lean();
 
+  announceTechnicalInbound({ ticketCodes: [savedTicket?.ticketCode], label: 'phiếu nhập thành phẩm đã kiểm định', actor: user });
   return savedTicket;
 };
 

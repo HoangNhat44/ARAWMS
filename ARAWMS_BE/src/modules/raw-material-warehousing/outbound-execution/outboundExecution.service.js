@@ -16,6 +16,7 @@ import InventoryTransaction from '../../../models/InventoryTransaction.model.js'
 import User from '../../../models/User.model.js';
 import WarehouseLayout from '../../../models/WarehouseLayout.model.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
+import { notifyWorkflow, ROLE_PAGES } from '../../../common/services/workflowNotify.js';
 import { canAccessLocation, hasWholeWarehouseAccess } from '../../../common/services/warehouseAccess.js';
 
 const id = (value) => String(value || '');
@@ -38,6 +39,41 @@ const safeTicket = (ticket) => {
   return plain;
 };
 const outboundTicketFilter = { ticketType: 'OUTBOUND_WAREHOUSE' };
+
+/** Thông báo chuyển bước xuất NPL giữa Quản lý kho, Nhân viên kho và Nhân viên kỹ thuật. */
+const notifyOutboundStep = (ticket, step, user, extra = '') => {
+  const code = ticket.ticketCode || 'phiếu xuất';
+  const fromTechnician = ticket.ticketType === 'OUTBOUND_FOR_CUTTING';
+  const technician = fromTechnician && ticket.createdByUserId
+    ? [{ userId: ticket.createdByUserId, role: 'GARMENT_TECHNICIAN', url: ROLE_PAGES.GARMENT_TECHNICIAN.outboundRequest }] : [];
+  const staff = ticket.assignedStaffId
+    ? [{ userId: ticket.assignedStaffId, role: 'WAREHOUSE_STAFF', url: ROLE_PAGES.WAREHOUSE_STAFF.outbound }] : [];
+  const manager = { WAREHOUSE_MANAGER: ROLE_PAGES.WAREHOUSE_MANAGER.outbound };
+  const metadata = { ticketId: id(ticket._id), ticketCode: code, status: ticket.status };
+  const messages = {
+    ASSIGNED: [
+      { users: staff, title: `Nhiệm vụ lấy hàng mới: ${code}`,
+        message: `Quản lý kho đã giao cho bạn lấy hàng phiếu xuất ${code}.`, priority: 'HIGH' },
+      { users: technician, title: `Yêu cầu xuất ${code} đã được duyệt`,
+        message: `Quản lý kho đã duyệt và giao ${ticket.assignedStaffName || 'nhân viên kho'} lấy hàng.` },
+    ],
+    SHORTAGE: [{ roles: manager, title: `Báo thiếu hàng: ${code}`, priority: 'HIGH',
+      message: `${user?.fullName || 'Nhân viên kho'} báo thiếu hàng khi lấy phiếu ${code}.${extra ? ` Lý do: ${extra}` : ''}` }],
+    SHORTAGE_RESOLVED: [{ users: staff, title: `Đã xử lý sai lệch: ${code}`,
+      message: `Quản lý kho đã xử lý báo thiếu của phiếu ${code}. Bạn có thể tiếp tục lấy hàng.` }],
+    REALLOCATED: [{ users: staff, title: `Nguồn lấy hàng thay đổi: ${code}`,
+      message: `Quản lý kho đã phân bổ lại nguồn lấy hàng cho phiếu ${code}. Vui lòng kiểm tra lại vị trí.` }],
+    COMPLETED: [
+      { users: technician, title: `Đã bàn giao NPL: ${code}`, priority: 'HIGH',
+        message: `Kho đã xuất và bàn giao nguyên phụ liệu phiếu ${code}${ticket.recipient ? ` cho ${ticket.recipient}` : ''}.` },
+      { roles: manager, title: `Hoàn tất xuất kho: ${code}`,
+        message: `${user?.fullName || 'Nhân viên kho'} đã xác nhận bàn giao và xuất kho phiếu ${code}.` },
+    ],
+  };
+  for (const item of messages[step] || []) {
+    notifyWorkflow({ type: 'OUTBOUND_REQUEST', metadata, actor: user, ...item });
+  }
+};
 
 /** Resolves friendly Vietnamese rack name ("Kệ vải", "Kệ hộp", etc.) avoiding repeating bare codes */
 export const resolveRackName = (rackName, rackCode, material, locationCode) => {
@@ -893,6 +929,7 @@ export async function approveAndAssignRequest(ticketId, input, user) {
     assignedStaffName: ticket.assignedStaffName,
   });
 
+  notifyOutboundStep(ticket, 'ASSIGNED', user);
   return getOutboundRequestDetail(ticket._id, user);
 }
 
@@ -1343,6 +1380,7 @@ export async function reportShortage(ticketId, input, user) {
     assignedStaffName: ticket.assignedStaffName,
   });
 
+  notifyOutboundStep(ticket, 'SHORTAGE', user, reason);
   return getOutboundRequestDetail(ticket._id, user);
 }
 
@@ -1389,6 +1427,7 @@ export async function resolveShortage(ticketId, input, user) {
     assignedStaffName: ticket.assignedStaffName,
   });
 
+  notifyOutboundStep(ticket, 'SHORTAGE_RESOLVED', user);
   return getOutboundRequestDetail(ticket._id, user);
 }
 
@@ -1443,6 +1482,7 @@ export async function reallocateSources(ticketId, input, user) {
     assignedStaffName: ticket.assignedStaffName,
   });
 
+  notifyOutboundStep(ticket, 'REALLOCATED', user);
   return getOutboundRequestDetail(ticket._id, user);
 }
 
@@ -1688,5 +1728,6 @@ export async function confirmHandoverAndOutbound(ticketId, input, user) {
     recipient: result.recipient,
   });
 
+  notifyOutboundStep(result, 'COMPLETED', user);
   return getOutboundRequestDetail(result._id, user);
 }

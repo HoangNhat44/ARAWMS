@@ -16,6 +16,7 @@ import { usablePickLocationFilter } from './orderReservation.service.js';
 import { ensurePackingIndexes } from '../packing-verification/packingIndexes.js';
 import { canViewOrder, canIssueQr } from '../../../common/services/orderAccessService.js';
 import { qrDataUrl } from '../../../common/services/codeImageRenderer.js';
+import { carrierCodAmount, requiredNoteLabel, shippingSender } from '../../../common/services/shippingLabelData.js';
 
 const QR_PREFIX = 'PACK:v1:';
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
@@ -42,14 +43,22 @@ const qrResponse = (token) => {
 /** Projects an order into customer-facing label and packing fields.
  * Resolves display values for SKU lines and omits internal cost and reservation details.
  */
-export const publicOrderDetail = (order) => ({
+export const publicOrderDetail = (order) => {
+  const fulfillment = order.warehouseFulfillment || {};
+  const financial = order.financialSummary || {};
+  // Đơn bán tại quầy không đi GHN nên không có vận đơn, thu hộ hay hướng dẫn giao hàng.
+  const shipsByCarrier = order.orderType !== 'POS_DIRECT';
+  const waybillCode = fulfillment.waybillCode || order.shipping?.carrierCode || null;
+  return {
   id: String(order._id),
   orderCode: order.orderCode,
+  orderType: order.orderType || null,
   status: order.status,
   channel: order.channel || null,
-  externalOrderNo: order.externalOrderNo || null,
+  externalOrderNo: order.externalOrderNo || order.sourceDetails?.externalOrderCode || null,
   createdAt: order.createdAt || null,
   confirmedAt: order.confirmedAt || null,
+  sender: shipsByCarrier ? shippingSender() : null,
   customer: order.customer ? {
     code: order.customer.code || null,
     name: order.customer.name || null,
@@ -62,27 +71,36 @@ export const publicOrderDetail = (order) => ({
     address: order.recipient
       ? [order.recipient.addressLine, order.recipient.ward, order.recipient.district, order.recipient.province].filter(Boolean).join(', ')
       : order.shippingRecipient.address,
+    // Khu vực giao (phường, quận) in riêng trên tem để shipper phân tuyến nhanh.
+    area: order.recipient ? [order.recipient.ward, order.recipient.district].filter(Boolean).join(', ') || null : null,
   } : null,
   paymentMethod: order.paymentMethod || null,
   paymentStatus: order.paymentStatus || null,
-  shipping: order.shipping ? {
-    carrierCode: order.shipping.carrierCode || null,
-    carrierName: order.shipping.marketplaceCarrierName || null,
-    feeCustomer: order.shipping.feeCustomer ?? null,
+  shipping: shipsByCarrier ? {
+    carrierName: fulfillment.carrierName || order.shipping?.marketplaceCarrierName || 'GHN',
+    waybillCode,
+    // Giữ tên cũ cho màn đóng hàng đang đọc carrierCode.
+    carrierCode: waybillCode,
+    carrierStatusName: fulfillment.ghnStatusName || null,
+    expectedDeliveryAt: fulfillment.ghnExpectedDeliveryTime || order.expectedDeliveryAt || null,
+    feeCustomer: financial.shippingFee ?? order.shipping?.feeCustomer ?? null,
+    requiredNote: requiredNoteLabel(),
   } : null,
   amounts: (order.amounts || order.financialSummary) ? {
-    subtotal: order.amounts?.subtotal ?? order.financialSummary?.itemsSubtotal ?? null,
-    discount: order.amounts?.discount ?? order.financialSummary?.discountAmount ?? null,
-    total: order.amounts?.total ?? order.financialSummary?.totalOrderAmount ?? null,
-    codAmount: order.amounts?.codAmount ?? order.financialSummary?.expectedCodAmount ?? null,
+    subtotal: order.amounts?.subtotal ?? financial.itemsSubtotal ?? null,
+    discount: order.amounts?.discount ?? financial.discountAmount ?? null,
+    shippingFee: financial.shippingFee ?? null,
+    total: order.amounts?.total ?? financial.totalOrderAmount ?? null,
+    // Số shipper thu phải khớp cod_amount đã gửi GHN (không gồm phí ship), không dùng expectedCodAmount.
+    codAmount: order.amounts?.codAmount ?? (shipsByCarrier && order.financialSummary ? carrierCodAmount(order) : null),
   } : null,
   items: order.items.map((item) => ({
     skuId: String(item.skuId),
     skuCode: item.skuCode || null,
-    name: item.name || order.variantDetails?.[String(item.skuId)]?.productName || null,
-    color: order.variantDetails?.[String(item.skuId)]?.color?.name ||
+    name: item.name || item.productName || order.variantDetails?.[String(item.skuId)]?.productName || null,
+    color: item.color || order.variantDetails?.[String(item.skuId)]?.color?.name ||
       order.variantDetails?.[String(item.skuId)]?.color || null,
-    size: order.variantDetails?.[String(item.skuId)]?.size?.name ||
+    size: item.size || order.variantDetails?.[String(item.skuId)]?.size?.name ||
       order.variantDetails?.[String(item.skuId)]?.size || null,
     quantity: item.quantity ?? item.orderedQty,
     unitPrice: item.unitPrice ?? item.unitSalePrice ?? null,
@@ -90,11 +108,13 @@ export const publicOrderDetail = (order) => ({
     lineTotal: item.lineTotal ?? ((item.orderedQty != null && item.unitSalePrice != null)
       ? item.orderedQty * item.unitSalePrice : null),
   })),
-  note: order.note || null,
+  // Model lưu ghi chú ở `notes`; `note` chỉ còn để tương thích dữ liệu cũ.
+  note: order.notes || order.note || null,
   packingStatus: order.warehouseFulfillment?.packagingVideoUrl || order.packing?.videoPublicId
     ? 'VIDEO_SAVED' : order.packing?.isComplete ? 'LEGACY_COMPLETE' : 'NOT_STARTED',
   packagingVideoUrl: order.warehouseFulfillment?.packagingVideoUrl || null,
-});
+  };
+};
 
 /** Finds an active MongoDB order and enriches its SKU display details. */
 export const findOrder = async (idOrCode) => {

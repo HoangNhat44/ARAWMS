@@ -12,26 +12,32 @@ const socketOrigin = () => {
   return undefined;
 };
 
+/** Sự kiện socket của server → sự kiện trình duyệt mà các trang đang mở lắng nghe để tự tải lại. */
+export const REALTIME_EVENTS = {
+  'finished-goods:changed': 'arawms-finished-goods-realtime',
+  'catalog:product-updated': 'arawms-product-description-realtime',
+  'warehouse-putaway:changed': 'arawms-putaway-realtime',
+  'material-inbound-request:changed': 'arawms-material-request-realtime',
+  'material-outbound:changed': 'arawms-material-outbound-realtime',
+  // Luồng giữa Kế toán / Quản lý kho / Nhân viên kho / Kỹ thuật
+  'material-inbound:changed': 'arawms-material-inbound-realtime',
+  'inbound-plan:changed': 'arawms-inbound-plan-realtime',
+  'technical-inbound:changed': 'arawms-technical-inbound-realtime',
+  'remnant-return:changed': 'arawms-remnant-return-realtime',
+  'stocktake:changed': 'arawms-stocktake-realtime',
+};
+
 /** Converts server warehouse events into app-wide browser events for active pages to refresh. */
 export default function RealtimeBridge() {
   useEffect(() => {
     const socket = io(socketOrigin(), { path: '/socket.io', transports: ['websocket', 'polling'] });
-    const onStock = (payload) => window.dispatchEvent(new CustomEvent('arawms-finished-goods-realtime', { detail: payload }));
-    const onProduct = (payload) => window.dispatchEvent(new CustomEvent('arawms-product-description-realtime', { detail: payload }));
-    const onPutaway = (payload) => window.dispatchEvent(new CustomEvent('arawms-putaway-realtime', { detail: payload }));
-    const onMaterialRequest = (payload) => window.dispatchEvent(new CustomEvent('arawms-material-request-realtime', { detail: payload }));
-    const onMaterialOutbound = (payload) => window.dispatchEvent(new CustomEvent('arawms-material-outbound-realtime', { detail: payload }));
-    socket.on('finished-goods:changed', onStock);
-    socket.on('catalog:product-updated', onProduct);
-    socket.on('warehouse-putaway:changed', onPutaway);
-    socket.on('material-inbound-request:changed', onMaterialRequest);
-    socket.on('material-outbound:changed', onMaterialOutbound);
+    const handlers = Object.entries(REALTIME_EVENTS).map(([serverEvent, browserEvent]) => {
+      const handler = (payload) => window.dispatchEvent(new CustomEvent(browserEvent, { detail: payload }));
+      socket.on(serverEvent, handler);
+      return [serverEvent, handler];
+    });
     return () => {
-      socket.off('finished-goods:changed', onStock);
-      socket.off('catalog:product-updated', onProduct);
-      socket.off('warehouse-putaway:changed', onPutaway);
-      socket.off('material-inbound-request:changed', onMaterialRequest);
-      socket.off('material-outbound:changed', onMaterialOutbound);
+      handlers.forEach(([serverEvent, handler]) => socket.off(serverEvent, handler));
       socket.disconnect();
     };
   }, []);

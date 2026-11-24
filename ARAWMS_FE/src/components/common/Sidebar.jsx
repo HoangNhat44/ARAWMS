@@ -172,12 +172,12 @@ const Sidebar = ({ collapsed, mobileOpen, onCloseMobile, onToggle, user, onLogou
                 to="/orders/qr"
                 onClick={handleLinkClick}
                 className={({ isActive }) => `ara-nav-item ${isActive ? 'active' : ''}`}
-                title="Chốt đơn & In QR"
+                title="Chốt đơn & In tem"
               >
                 <span className="ara-nav-icon">
                   <QrCode size={18} />
                 </span>
-                {(!collapsed || mobileOpen) && <span className="ara-nav-label">Chốt Đơn & QR</span>}
+                {(!collapsed || mobileOpen) && <span className="ara-nav-label">Chốt Đơn & In Tem</span>}
               </NavLink>
 
               {isRole('WAREHOUSE_STAFF', 'OWNER') && (

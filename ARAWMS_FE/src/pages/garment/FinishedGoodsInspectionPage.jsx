@@ -34,6 +34,7 @@ import {
   formatStatusVi,
   formatDefectActionVi,
 } from '../../utils/garmentDisplayVi';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 const DEFECT_CATEGORIES = [
   { value: 'SEWING_DEFECT', label: 'Lỗi đường may / bung chỉ' },
@@ -107,6 +108,8 @@ export default function FinishedGoodsInspectionPage() {
   }, []);
 
   // Fetch tickets
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-technical-inbound-realtime'], () => fetchTickets());
   const fetchTickets = async () => {
     setLoading(true);
     try {

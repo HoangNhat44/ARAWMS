@@ -11,6 +11,7 @@ import {
   User,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import RoleNotificationBell from './RoleNotificationBell';
 import '../../styles/wmsLayout.css';
 
 const normalize = (value) =>
@@ -33,6 +34,7 @@ export default function WmsHeader({
   notificationContent = null,
   profilePath = '/account',
   extraActions = null,
+  liveNotifications = false,
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -223,7 +225,8 @@ export default function WmsHeader({
           </Popover>
         </div>
 
-        {/* Chuông thông báo */}
+        {/* Chuông thông báo: bản realtime cho các role kho, bản tĩnh cho nơi khác */}
+        {liveNotifications ? <RoleNotificationBell /> : (
         <Popover
           trigger="click"
           placement="bottomRight"
@@ -256,6 +259,7 @@ export default function WmsHeader({
             </Badge>
           </Button>
         </Popover>
+        )}
 
         {/* Profile Dropdown */}
         <Dropdown menu={accountMenu} trigger={['click']} placement="bottomRight">

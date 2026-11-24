@@ -21,6 +21,7 @@ import { listDeliveryPlans, getDeliveryPlan, createDeliveryPlan, setupLegacyDeli
   reviseDeliveryWindow, reviseDeliveryItems } from './deliveryPlan.service.js';
 import { listTechnicianInboundRequests, createTechnicianInboundRequest,
   reportInboundRequestDiscrepancy } from './technicianInboundRequest.service.js';
+import { getInboundRequestPlacements } from './inboundRequestPlacement.service.js';
 
 /** Sends known validation and duplicate-code failures without hiding unexpected errors. */
 const respond = (error, res, next) => {
@@ -40,6 +41,8 @@ export const options = handle('Dữ liệu chọn cho phiếu nhập', (req) => 
 export const createLocation = handle('Đã tạo vị trí kho', async (req) => ({ location: await createReceiptLocation(req.body || {}, req.user) }), 201);
 export const createMaterial = handle('Đã tạo nguyên phụ liệu', async (req) => ({ material: await createSupplierMaterial(req.body || {}) }), 201);
 export const technicianRequests = handle('Yêu cầu nhập của kỹ thuật viên', async () => ({ requests: await listTechnicianInboundRequests() }));
+export const technicianRequestPlacements = handle('Thông tin xếp hàng của yêu cầu nhập',
+  (req) => getInboundRequestPlacements(req.params.id, req.user));
 export const legacyReceiptDetails = handle('Phiếu nhập theo kế hoạch', (req) => getMaterialReceipt(req.params.id, req.user));
 export const updateLegacyReceipt = handle('Đã lưu phiếu nhập theo kế hoạch', async (req) => ({ receipt:
   await updateMaterialReceiptDraft(req.params.id, req.body || {}, req.user) }));

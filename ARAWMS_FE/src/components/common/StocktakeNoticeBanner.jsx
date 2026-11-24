@@ -23,7 +23,9 @@ export default function StocktakeNoticeBanner({ role }) {
       .catch(() => {});
     load();
     const timer = setInterval(load, 60000);
-    return () => { alive = false; clearInterval(timer); };
+    // Quản lý phát / hủy / bắt đầu kiểm kê → dải thông báo cập nhật ngay, không chờ chu kỳ 1 phút
+    window.addEventListener('arawms-stocktake-realtime', load);
+    return () => { alive = false; clearInterval(timer); window.removeEventListener('arawms-stocktake-realtime', load); };
   }, []);
   if (!items.length) return null;
   return <div className="stocktake-notice-stack" role="status">{items.map((item) => {
@@ -34,7 +36,7 @@ export default function StocktakeNoticeBanner({ role }) {
       <span>{where} · {when}</span>
       {role === 'GARMENT_TECHNICIAN'
         ? <span>Bạn được giao kiểm kê đợt này. <Link to="/garment/stocktake-execution">Mở danh sách kiểm kê</Link></span>
-        : item.locksPacking && <span>{item.active ? 'Chức năng đóng hàng đang bị khóa.' : 'Đóng hàng sẽ bị khóa trong khung giờ này; đơn đang đóng dở lúc bắt đầu kiểm kê phải đóng lại.'}</span>}
+        : item.locksPacking && <span>{item.active ? 'Chức năng đóng hàng đang bị khóa; bàn giao đơn vẫn thực hiện bình thường.' : 'Đóng hàng sẽ bị khóa trong khung giờ này; đơn đang đóng dở lúc bắt đầu kiểm kê phải đóng lại. Bàn giao đơn vẫn thực hiện bình thường.'}</span>}
     </div>;
   })}</div>;
 }

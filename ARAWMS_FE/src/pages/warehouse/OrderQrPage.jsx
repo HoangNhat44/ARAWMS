@@ -5,12 +5,14 @@
  * Description: Lists real sales orders and prints their packing QR labels.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Code128Reader } from '@zxing/library';
 import { Link } from 'react-router-dom';
 import { orderQrService } from '../../services/orderQrService';
 import '../../styles/orderQr.css';
 import '../../styles/orderQrModal.css';
 import { useAuth } from '../../hooks/useAuth';
-import { formatOrderMoney as formatMoney, formatShortDateTime as formatDate } from '../../utils/warehouseFormat';
+import { formatOrderMoney as formatMoney } from '../../utils/warehouseFormat';
 
 const panel = {
   background: '#fff', border: '1px solid var(--ara-border)', borderRadius: 'var(--radius-md)',
@@ -24,78 +26,95 @@ const packedStatuses = new Set(['PACKED', 'HANDED_OVER_CARRIER', 'DELIVERED', 'R
 const statusLabel = (status) => statusNames[status] || status;
 const unplacedStockMessage = 'Hàng của SKU còn trong kho nhưng chưa đủ chiếc ở vị trí có thể soạn. Hãy xếp hàng vào kệ, rồi chốt đơn và tạo QR lại.';
 
-function LabelField({ label, value }) {
-  if (value == null || value === '') return null;
-  return <div className="order-label-field"><span>{label}</span><strong>{value}</strong></div>;
+const paymentMethodNames = { COD: 'Thu tiền khi giao (COD)', BANK_TRANSFER: 'Đã chuyển khoản', CASH: 'Tiền mặt', POS_CARD: 'Thẻ' };
+const formatNumber = (value) => (value == null ? '—' : `${new Intl.NumberFormat('vi-VN').format(value)} đ`);
+const labelTime = (value) => (value ? new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)) : null);
+const labelDate = (value) => (value ? new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(value)) : null);
+
+/** Code 128-B barcode drawn as SVG bars (quiet zone included); the label prints the text separately. */
+function Code128Barcode({ value }) {
+  if (!value || !/^[\x20-\x7E]{1,40}$/.test(value)) return null;
+  const patterns = Code128Reader.CODE_PATTERNS;
+  const codes = [104, ...Array.from(value, (char) => char.charCodeAt(0) - 32)];
+  // Code 128 weights each data symbol by its one-based position after the start code.
+  const checksum = codes.reduce((sum, code, index) => sum + (index === 0 ? code : code * index), 0) % 103;
+  codes.push(checksum, 106);
+  const quiet = 10;
+  let x = quiet;
+  const bars = [];
+  codes.flatMap((code) => Array.from(patterns[code])).forEach((run, index) => {
+    if (index % 2 === 0) bars.push(<rect key={index} x={x} y="0" width={run} height="1" />);
+    x += run;
+  });
+  return <svg className="order-label-barcode" viewBox={`0 0 ${x + quiet} 1`} preserveAspectRatio="none"
+    role="img" aria-label={`Mã vạch ${value}`}><g fill="#000">{bars}</g></svg>;
 }
 
-/** Formats a printable packing label from order details and its QR image.
- * Omits fields that the selected order has not populated. */
+/** Sender / recipient box: "Bên gửi" or "Bên nhận", then name - phone and the full address. */
+function LabelParty({ title, party }) {
+  return <section className="order-label-box order-label-party">
+    <span className="order-label-party-title">{title}</span>
+    <strong>{party ? [party.name || '—', party.phone].filter(Boolean).join(' - ') : '—'}</strong>
+    {party?.address && <p>{party.address}</p>}
+  </section>;
+}
+
+/** Printable 60 × 95 mm shipping label laid out like the carrier sticker: sender, recipient, waybill barcode,
+ * order code and QR with time and amount to collect, delivery area, customer note, item table and signature.
+ * Only fields ARAWMS has at print time are shown; missing optional values are omitted. */
 function OrderLabel({ card }) {
   const { order } = card;
   if (!order) return null;
   const shipping = order.shipping;
   const amounts = order.amounts;
+  const printedAt = order.confirmedAt || order.createdAt;
+  const barcodeValue = shipping?.waybillCode || order.orderCode;
+  // Shipper thu đúng cod_amount đã gửi GHN; đơn tại quầy thì in tổng đơn.
+  const collectAmount = shipping ? amounts?.codAmount : amounts?.total;
+  const lineTotal = (item) => item.lineTotal ?? (item.unitPrice != null ? Number(item.unitPrice) * Number(item.quantity || 0) : null);
   return <article className="order-print-label">
-    <header className="order-label-header">
-      <div><h2>TEM ĐƠN HÀNG</h2><strong className="order-label-code">{order.orderCode}</strong>
-        </div>
-      {card.image && <img src={card.image} alt={`QR đơn ${order.orderCode}`} />}
-    </header>
-    <div className="order-label-fields">
-      <LabelField label="Trạng thái" value={statusLabel(order.status)} />
-      <LabelField label="Kênh bán" value={order.channel} />
-      <LabelField label="Mã đơn sàn" value={order.externalOrderNo} />
-      <LabelField label="Ngày tạo" value={order.createdAt && formatDate(order.createdAt)} />
-      <LabelField label="Ngày chốt" value={order.confirmedAt && formatDate(order.confirmedAt)} />
+    <LabelParty title="Bên gửi" party={order.sender} />
+    <LabelParty title="Bên nhận" party={order.recipient} />
+    <div className="order-label-main">
+      <div className="order-label-main-left">
+        <Code128Barcode value={barcodeValue} />
+        <span className="order-label-barcode-text">{barcodeValue}</span>
+        {shipping && !shipping.waybillCode && <span className="order-label-muted">Chưa có vận đơn {shipping.carrierName}</span>}
+        {shipping?.waybillCode && <span className="order-label-carrier">{shipping.carrierName}</span>}
+        <strong className="order-label-code">{order.orderCode}</strong>
+        {order.externalOrderNo && <span className="order-label-muted">Mã sàn: {order.externalOrderNo}</span>}
+        <span className="order-label-payment">{paymentMethodNames[order.paymentMethod] || order.paymentMethod}</span>
+      </div>
+      <div className="order-label-main-right">
+        {card.image ? <img src={card.image} alt={`QR đơn ${order.orderCode}`} />
+          : <div className="order-label-noqr">Chưa cấp QR</div>}
+        {printedAt && <span>{labelTime(printedAt)}</span>}
+        {printedAt && <span>{labelDate(printedAt)}</span>}
+        {collectAmount != null && <strong className="order-label-amount">{formatMoney(collectAmount)}</strong>}
+      </div>
     </div>
-    {order.customer && <section className="order-label-section">
-      <h3>Khách hàng</h3>
-      <div className="order-label-fields">
-        <LabelField label="Mã khách" value={order.customer.code} />
-        <LabelField label="Tên" value={order.customer.name} />
-        <LabelField label="Điện thoại" value={order.customer.phone} />
+    {order.recipient?.area && <p className="order-label-area">{order.recipient.area}</p>}
+    <section className="order-label-box order-label-table-box">
+      <div className="order-label-note">
+        <span className="order-label-note-title">Ghi chú khách hàng</span>
+        {order.note && <p>{order.note}</p>}
+        {shipping?.requiredNote && <p>{shipping.requiredNote}</p>}
+        <p>CÓ VẤN ĐỀ GÌ GỌI SHOP. CẢM ƠN SHIPPER NHIỀU Ạ</p>
       </div>
-    </section>}
-    {order.recipient && <section className="order-label-section">
-      <h3>Người nhận</h3>
-      <div className="order-label-fields">
-        <LabelField label="Tên" value={order.recipient.name} />
-        <LabelField label="Điện thoại" value={order.recipient.phone} />
-        <LabelField label="Địa chỉ" value={order.recipient.address} />
-      </div>
-    </section>}
-    {shipping && <section className="order-label-section">
-      <h3>Vận chuyển</h3>
-      <div className="order-label-fields">
-        <LabelField label="Đơn vị" value={shipping.carrierName} />
-        <LabelField label="Mã vận chuyển" value={shipping.carrierCode} />
-        <LabelField label="Phí khách trả" value={shipping.feeCustomer != null && formatMoney(shipping.feeCustomer)} />
-      </div>
-    </section>}
-    <section className="order-label-section">
-      <h3>Sản phẩm ({order.items.reduce((sum, item) => sum + item.quantity, 0)})</h3>
-      <table className="order-label-items"><thead><tr><th>Sản phẩm / SKU</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead>
+      <table className="order-label-items"><thead><tr><th>STT</th><th>Mã mẫu</th><th>SL</th><th>Đơn giá</th><th>Chiết khấu</th><th>Thành tiền</th></tr></thead>
         <tbody>{order.items.map((item, index) => <tr key={`${item.skuId || item.skuCode}-${index}`}>
-          <td><strong>{[item.name, item.color, item.size].filter(Boolean).join(' · ') || item.skuCode || item.skuId}</strong><br />
-            <small>SKU: {item.skuCode || item.skuId || '—'}</small>
-            {item.discountAmount > 0 && <small>Giảm dòng: {formatMoney(item.discountAmount)}</small>}
-          </td><td>{item.quantity}</td><td>{formatMoney(item.unitPrice)}</td><td>{formatMoney(item.lineTotal)}</td>
+          <td>{index + 1}</td>
+          <td>{item.skuCode || item.skuId || '—'}</td>
+          <td>{item.quantity}</td>
+          <td>{formatNumber(item.unitPrice)}</td>
+          <td>{formatNumber(item.discountAmount ?? 0)}</td>
+          <td>{formatNumber(lineTotal(item))}</td>
         </tr>)}</tbody>
       </table>
+      <footer className="order-label-confirm">
+        <span>Kí tên</span><span>Xác nhận hàng nguyên vẹn</span><span>1/1</span>
+      </footer>
     </section>
-    {(order.paymentMethod || order.paymentStatus || amounts) && <section className="order-label-section">
-      <h3>Thanh toán</h3>
-      <div className="order-label-fields">
-        <LabelField label="Hình thức" value={order.paymentMethod} />
-        <LabelField label="Trạng thái" value={order.paymentStatus} />
-        <LabelField label="Tiền hàng" value={amounts?.subtotal != null && formatMoney(amounts.subtotal)} />
-        <LabelField label="Giảm giá" value={amounts?.discount != null && formatMoney(amounts.discount)} />
-        <LabelField label="Tổng thanh toán" value={amounts?.total != null && formatMoney(amounts.total)} />
-        <LabelField label="Tiền thu hộ (COD)" value={amounts?.codAmount != null && formatMoney(amounts.codAmount)} />
-      </div>
-    </section>}
-    {order.note && <section className="order-label-section"><h3>Ghi chú</h3><p>{order.note}</p></section>}
   </article>;
 }
 
@@ -208,7 +227,7 @@ export default function OrderQrPage() {
     image: qrImageUrl,
   });
 
-  /** Queues the selected order details for printing without issuing a QR. */
+  /** Queues the order label without issuing a QR (orders that cannot get a QR right now). */
   const queueOrderForPrinting = () => {
     if (!activeOrder) return;
     // Carry the QR shown in the dialog so the printed label includes it.
@@ -216,17 +235,28 @@ export default function OrderQrPage() {
       ? detailQr
       : { id: activeOrder.id, orderCode: activeOrder.orderCode, order: activeOrder, image: null };
     setQrCards((current) => ({ ...current, [card.id]: card.image ? card : current[card.id] || card }));
-    setDetailMessage(`Đã thêm ${activeOrder.orderCode} vào danh sách in ở cuối trang.`);
+    setDetailMessage(`Đã thêm tem ${activeOrder.orderCode} vào danh sách in ở cuối trang.`);
   };
 
-  /** Shows a single-order QR inside the open detail dialog. */
-  const showQrInDetail = (order, qrValue, qrImageUrl, text) => {
+  /** Shows the order label (with its QR) in the open dialog and adds it to the print list. */
+  const showLabelInDetail = (order, qrValue, qrImageUrl, text) => {
     const card = createQrPrintCard(order, qrValue, qrImageUrl);
     setDetailQr(card);
-    // Keep an already-queued print card in sync with the new QR (e.g. after replacing it).
-    setQrCards((current) => (current[card.id] ? { ...current, [card.id]: card } : current));
+    setQrCards((current) => ({ ...current, [card.id]: card }));
     setDetailMessage(text);
   };
+
+  /** Opens the browser print dialog after the detail dialog has closed.
+   * The body class switches print output to the 60 × 95 mm label sheet only. */
+  const printLabels = () => setTimeout(() => {
+    document.body.classList.add('printing-order-labels');
+    const cleanup = () => {
+      document.body.classList.remove('printing-order-labels');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    window.print();
+  }, 0);
 
   const runDetailAction = async (action) => {
     setBusy(true); setDetailActionError(''); setDetailMessage('');
@@ -235,15 +265,15 @@ export default function OrderQrPage() {
     finally { setBusy(false); }
   };
 
-  /** Issues or retrieves the selected order's current QR value. */
-  const issueQrForActiveOrder = () => runDetailAction(async () => {
+  /** Issues or retrieves the order QR and builds its full shipping label. */
+  const issueLabelForActiveOrder = () => runDetailAction(async () => {
     const response = await orderQrService.getOrderQr(activeOrder.id);
-    showQrInDetail(response.data.order, response.data.qrValue, response.data.qrImageUrl,
-      `Đã tạo / lấy QR cho ${activeOrder.orderCode}.`);
+    showLabelInDetail(response.data.order, response.data.qrValue, response.data.qrImageUrl,
+      `Đã tạo / lấy tem đơn ${activeOrder.orderCode} và thêm vào danh sách in.`);
   });
 
-  /** Issues QR values in batches of 100 and preserves per-order failures. */
-  const issueQrForSelectedOrders = async () => {
+  /** Issues labels (QR + order details) in batches of 100 and preserves per-order failures. */
+  const issueLabelsForSelectedOrders = async () => {
     if (!selectedIds.length) return;
     setBusy(true); setError(''); setMessage('');
     try {
@@ -258,9 +288,9 @@ export default function OrderQrPage() {
       setQrCards((current) => Object.assign({}, current,
         ...generated.map((card) => ({ [card.id]: card }))));
       setSelectedIds(results.filter((result) => result.error).map((result) => result.id));
-      setMessage(`Đã tạo / lấy ${successful.length} QR trên ${results.length} đơn đã chọn.`);
+      setMessage(`Đã tạo / lấy ${successful.length} tem trên ${results.length} đơn đã chọn. Tem nằm trong danh sách in ở cuối trang.`);
       const failed = results.filter((result) => result.error);
-      if (failed.length) setError(`Chưa cấp được QR: ${failed.map((result) => `${result.orderCode || result.id} (${result.error})`).join(', ')}`);
+      if (failed.length) setError(`Chưa tạo được tem: ${failed.map((result) => `${result.orderCode || result.id} (${result.error})`).join(', ')}`);
       await refreshOrders();
     } catch (err) { setError(err.message); }
     finally { setBusy(false); }
@@ -271,26 +301,26 @@ export default function OrderQrPage() {
     const response = await orderQrService.confirmOrder(activeOrder.id);
     setActiveOrder(response.data.order);
     if (response.data.qrValue) {
-      showQrInDetail(response.data.order, response.data.qrValue, response.data.qrImageUrl,
-        `Đã chốt đơn ${activeOrder.orderCode} và cấp QR.`);
+      showLabelInDetail(response.data.order, response.data.qrValue, response.data.qrImageUrl,
+        `Đã chốt đơn ${activeOrder.orderCode}, tạo tem và thêm vào danh sách in.`);
     } else setDetailMessage(`Đã chốt đơn ${activeOrder.orderCode}.`);
   });
 
-  /** Revokes the active order's printed QR and prepares its replacement. */
-  const replaceActiveOrderQr = () => {
-    if (!window.confirm('QR cũ sẽ ngừng hoạt động. Cấp QR mới cho đơn này?')) return;
+  /** Revokes the QR on the printed label and builds a replacement label. */
+  const replaceActiveOrderLabel = () => {
+    if (!window.confirm('QR trên tem cũ sẽ ngừng hoạt động. Tạo tem mới cho đơn này?')) return;
     runDetailAction(async () => {
       const response = await orderQrService.replaceOrderQr(activeOrder.id);
-      showQrInDetail(response.data.order, response.data.qrValue, response.data.qrImageUrl,
-        `Đã thu hồi QR cũ và cấp QR mới cho ${activeOrder.orderCode}.`);
+      showLabelInDetail(response.data.order, response.data.qrValue, response.data.qrImageUrl,
+        `Đã thu hồi tem cũ và tạo tem mới cho ${activeOrder.orderCode}. Hãy in lại tem.`);
     });
   };
 
   return (
     <main className="order-qr-page">
-      <p className="order-qr-crumb"><Link to="/">Trang chủ</Link><span>/</span>Đơn hàng và QR</p>
-      <header className="order-qr-heading"><div><p className="order-qr-eyebrow">QUẢN LÝ ĐƠN HÀNG</p><h1>{canConfirm ? 'Chốt đơn và cấp QR' : 'Xem, in đơn hàng và tạo QR'}</h1><p>Kiểm tra đơn hàng, chốt nội dung và in tem QR phục vụ đóng hàng.</p></div><div className="order-qr-actions"><span className="order-qr-warehouse">Kho Tổng TP.HCM</span></div></header>
-      <p className="order-qr-description">Chọn đơn để xem chi tiết, in tem hoặc tạo QR. Có thể chọn nhiều đơn đủ điều kiện để tạo QR hàng loạt.</p>
+      <p className="order-qr-crumb"><Link to="/">Trang chủ</Link><span>/</span>Đơn hàng và tem</p>
+      <header className="order-qr-heading"><div><p className="order-qr-eyebrow">QUẢN LÝ ĐƠN HÀNG</p><h1>{canConfirm ? 'Chốt đơn và tạo tem đơn hàng' : 'Xem đơn, tạo và in tem đơn hàng'}</h1><p>Kiểm tra đơn hàng, chốt nội dung và in tem đơn hàng (kèm QR) để dán lên kiện.</p></div><div className="order-qr-actions"><span className="order-qr-warehouse">Kho Tổng TP.HCM</span></div></header>
+      <p className="order-qr-description">Chọn đơn để xem chi tiết và tạo tem. Có thể chọn nhiều đơn đủ điều kiện để tạo tem hàng loạt rồi in một lần.</p>
       {error && <div role="alert" style={{ ...panel, color: 'var(--ara-error)', overflowWrap: 'anywhere' }}>
         {error}{error === unplacedStockMessage && <p style={{ margin: '.75rem 0 0' }}>
           <Link to="/warehouse/putaway">Mở danh sách hàng chờ xếp →</Link>
@@ -316,19 +346,19 @@ export default function OrderQrPage() {
             try { await refreshOrders(); } catch (err) { setError(err.message); }
             finally { setBusy(false); }
           }}>Tải lại danh sách</button>
-          {canIssue && <button className="btn-ara-primary" type="button" disabled={busy || selectedIds.length === 0} onClick={issueQrForSelectedOrders}>
-            Tạo / lấy QR hàng loạt ({selectedIds.length})
+          {canIssue && <button className="btn-ara-primary" type="button" disabled={busy || selectedIds.length === 0} onClick={issueLabelsForSelectedOrders}>
+            Tạo / lấy tem hàng loạt ({selectedIds.length})
           </button>}
         </div>
         {loading ? <p>Đang tải đơn hàng...</p> : <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 650 }}>
             <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--ara-border)' }}>
-              {canIssue && <th style={{ padding: '.7rem' }}><input type="checkbox" aria-label="Chọn tất cả đơn có thể cấp QR đang hiển thị"
+              {canIssue && <th style={{ padding: '.7rem' }}><input type="checkbox" aria-label="Chọn tất cả đơn có thể tạo tem đang hiển thị"
                 checked={allVisibleSelected} disabled={!eligibleVisibleIds.length || busy}
                 onChange={() => setSelectedIds((current) => allVisibleSelected
                   ? current.filter((id) => !eligibleVisibleIds.includes(id))
                   : [...new Set([...current, ...eligibleVisibleIds])])} /></th>}
-              <th>Mã đơn</th><th>Người nhận</th><th>Số món</th><th>Trạng thái</th><th>QR</th><th></th>
+              <th>Mã đơn</th><th>Người nhận</th><th>Số món</th><th>Trạng thái</th><th>Tem</th><th></th>
             </tr></thead>
             <tbody>{filteredOrders.map((order) => <tr key={order.id} style={{ borderBottom: '1px solid var(--ara-border)' }}>
               {canIssue && <td style={{ padding: '.7rem' }}><input type="checkbox" aria-label={`Chọn đơn ${order.orderCode}`}
@@ -337,13 +367,13 @@ export default function OrderQrPage() {
                   ? current.filter((id) => id !== order.id) : [...current, order.id])} /></td>}
               <td>{order.orderCode}</td>
               <td>{order.recipientName || '—'}</td><td>{order.itemCount}</td><td>{statusLabel(order.status)}{order.canPack && <><br /><small style={{ color: 'var(--ara-success)', fontWeight: 600 }}>Sẵn sàng đóng</small></>}</td>
-              <td>{order.hasQr ? 'Đã cấp' : 'Chưa cấp'}</td>
+              <td>{order.hasQr ? 'Đã tạo' : 'Chưa tạo'}</td>
               <td><button className="btn-ara-secondary" type="button" disabled={busy} onClick={(event) => selectOrderById(order.id, event)}>Xem đơn</button></td>
             </tr>)}</tbody>
           </table>
           {!filteredOrders.length && <p style={{ padding: '1rem 0' }}>Không có đơn hàng phù hợp.</p>}
         </div>}
-        <small>Đơn chờ chốt cần được chốt trước khi cấp QR. Đơn đã đóng xong hiển thị “Sẵn sàng vận chuyển”.</small>
+        <small>Đơn chờ chốt cần được chốt trước khi tạo tem. Đơn đã đóng xong hiển thị “Sẵn sàng vận chuyển”.</small>
       </section>
       {detailOpen && <div className="order-detail-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeOrderDetail(); }}>
         <section className="order-detail-modal" role="dialog" aria-modal="true" aria-labelledby="order-detail-title" tabIndex={-1} ref={dialogRef}>
@@ -356,44 +386,42 @@ export default function OrderQrPage() {
                 {detailActionError}{detailActionError === unplacedStockMessage && <> <Link to="/warehouse/putaway">Mở danh sách hàng chờ xếp →</Link></>}
               </div>}
               {detailMessage && <p role="status" style={{ margin: '0 0 .75rem', color: 'var(--ara-success, #18794e)', fontWeight: 600 }}>{detailMessage}</p>}
-              {detailQr?.id === activeOrder.id && <section className="order-detail-qr" style={{
-                display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap',
-                border: '1px solid var(--ara-border)', borderRadius: 8, padding: '1rem', marginBottom: '1rem',
-              }}>
-                {detailQr.image
-                  ? <img src={detailQr.image} alt={`QR đơn ${activeOrder.orderCode}`} width="200" height="200" style={{ background: '#fff' }} />
-                  : <p>Chưa có ảnh QR.</p>}
-                <div style={{ display: 'grid', gap: '.4rem' }}>
-                  <h3 style={{ margin: 0 }}>QR đơn {activeOrder.orderCode}</h3>
-                  <small style={{ color: 'var(--ara-text-secondary, #66717c)' }}>Quét QR này ở màn Đóng hàng. Chỉ nhân viên đã đăng nhập mới xem được đơn.</small>
-                  {detailQr.image && <a href={detailQr.image} download={`QR-${activeOrder.orderCode}.svg`}>Tải ảnh QR</a>}
+              {detailQr?.id === activeOrder.id && <section className="order-detail-label-preview">
+                <div className="order-detail-label-head">
+                  <h3>Tem đơn {activeOrder.orderCode}</h3>
+                  <small>QR trên tem dùng để quét ở màn Đóng hàng; chỉ nhân viên đã đăng nhập mới xem được đơn.</small>
+                  <div className="order-detail-label-actions">
+                    <button className="btn-ara-primary" type="button" onClick={() => { closeOrderDetail(); printLabels(); }}>In tem ({cards.length})</button>
+                    {detailQr.image && <a href={detailQr.image} download={`QR-${activeOrder.orderCode}.svg`}>Tải ảnh QR</a>}
+                  </div>
                 </div>
+                <div className="order-label-screen"><OrderLabel card={detailQr} /></div>
               </section>}
               <section className="order-detail-recipient"><h3>Thông tin người nhận</h3><dl><div><dt>Người nhận</dt><dd>{activeOrder.recipient?.name || activeOrder.recipientName || '—'}</dd></div><div><dt>Điện thoại</dt><dd>{activeOrder.recipient?.phone || '—'}</dd></div><div><dt>Địa chỉ</dt><dd>{activeOrder.recipient?.address || '—'}</dd></div></dl>{activeOrder.note && <p className="order-detail-note"><strong>Ghi chú:</strong> {activeOrder.note}</p>}{activeOrder.packagingVideoUrl && <p className="order-detail-note"><strong>Video đóng hàng:</strong> <a href={activeOrder.packagingVideoUrl} target="_blank" rel="noreferrer">Mở video</a></p>}</section>
               <section className="order-detail-products"><h3>Sản phẩm ({activeOrder.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)} chiếc)</h3><div className="order-detail-table-wrap"><table><thead><tr><th>Sản phẩm</th><th>Màu</th><th>Size</th><th>SKU</th><th>Số lượng</th></tr></thead><tbody>{activeOrder.items.map((item, index) => <tr key={`${item.skuId || item.skuCode}-${index}`}><td>{item.name || '—'}</td><td>{item.color || '—'}</td><td>{item.size || '—'}</td><td>{item.skuCode || item.skuId || '—'}</td><td>{item.quantity}</td></tr>)}</tbody></table></div></section>
               <p className="order-detail-hint">Barcode từng món được nhân viên kho gắn sau khi quét QR đơn.</p>
             </>}
           </div>
-          <footer className="order-detail-footer"><button className="btn-ara-secondary" type="button" onClick={closeOrderDetail}>Đóng</button><div className="order-detail-actions">{activeOrder && <button className="btn-ara-secondary" type="button" disabled={busy} onClick={queueOrderForPrinting}>Thêm đơn vào danh sách in</button>}{canConfirm && activeOrder?.status === 'PENDING' && <button className="btn-ara-primary" type="button" disabled={busy} onClick={confirmActiveOrder}>Chốt đơn và tạo QR</button>}{canIssue && activeCanIssue && <><button className="btn-ara-primary" type="button" disabled={busy} onClick={issueQrForActiveOrder}>Tạo / lấy QR đơn này</button><button className="btn-ara-secondary" type="button" disabled={busy} onClick={replaceActiveOrderQr}>Thu hồi và cấp QR mới</button></>}</div></footer>
+          <footer className="order-detail-footer"><button className="btn-ara-secondary" type="button" onClick={closeOrderDetail}>Đóng</button><div className="order-detail-actions">{activeOrder && !activeCanIssue && activeOrder.status !== 'PENDING' && <button className="btn-ara-secondary" type="button" disabled={busy} onClick={queueOrderForPrinting}>Thêm tem vào danh sách in</button>}{canConfirm && activeOrder?.status === 'PENDING' && <button className="btn-ara-primary" type="button" disabled={busy} onClick={confirmActiveOrder}>Chốt đơn và tạo tem</button>}{canIssue && activeCanIssue && <><button className="btn-ara-primary" type="button" disabled={busy} onClick={issueLabelForActiveOrder}>Tạo / lấy tem đơn này</button><button className="btn-ara-secondary" type="button" disabled={busy} onClick={replaceActiveOrderLabel}>Thu hồi và tạo tem mới</button></>}</div></footer>
         </section>
       </div>}
       {cards.length > 0 && <section className="packing-qr-print" style={panel}>
         <div className="qr-gallery-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          <h2>Đơn chờ in ({cards.length})</h2>
-          <button className="btn-ara-secondary" type="button" onClick={() => window.print()}>In tem các đơn đang hiển thị</button>
+          <h2>Tem chờ in ({cards.length})</h2>
+          <button className="btn-ara-primary" type="button" onClick={printLabels}>In {cards.length} tem</button>
           <button className="btn-ara-secondary" type="button" onClick={() => {
-            if (window.confirm('Xóa các thẻ QR đang hiển thị khỏi màn hình?')) setQrCards({});
-          }}>Xóa khỏi màn hình</button>
+            if (window.confirm('Bỏ tất cả tem khỏi danh sách in?')) setQrCards({});
+          }}>Xóa danh sách in</button>
         </div>
-        <div className="qr-gallery" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginTop: '1rem' }}>
-          {cards.map((card) => <article className="qr-gallery-card" key={card.id} style={{ border: '1px solid var(--ara-border)', padding: '1rem', display: 'grid', justifyItems: 'center', gap: '.5rem' }}>
-            <strong>{card.orderCode}</strong>
-            {card.image && <img src={card.image} alt={`QR đơn ${card.orderCode}`} width="240" height="240" />}
-            <small>{card.image ? 'Chỉ nhân viên đã đăng nhập mới xem được đơn.' : 'Tem đơn hàng không có mã QR.'}</small>
-          </article>)}
-        </div>
-        <div className="order-print-labels">{cards.map((card) => <OrderLabel key={card.id} card={card} />)}</div>
+        <div className="order-print-labels">{cards.map((card) => <div className="order-label-slot" key={card.id}>
+          <button className="order-label-remove" type="button" aria-label={`Bỏ tem ${card.orderCode} khỏi danh sách in`}
+            onClick={() => setQrCards((current) => { const next = { ...current }; delete next[card.id]; return next; })}>×</button>
+          <OrderLabel card={card} />
+        </div>)}</div>
       </section>}
+      {cards.length > 0 && createPortal(<div className="order-label-print-root" aria-hidden="true">
+        {cards.map((card) => <div className="order-label-page" key={card.id}><OrderLabel card={card} /></div>)}
+      </div>, document.body)}
     </main>
   );
 }

@@ -23,6 +23,7 @@ import Sku from '../../../models/Sku.model.js';
 import OrderQrToken from '../../../models/OrderQrToken.js';
 import ProductUnit from '../../../models/ProductUnit.js';
 import { getOrderStatusLabel } from '../../../common/constants/enums.js';
+import { announceTechnicalInbound } from '../../../common/services/workflowNotify.js';
 
 export const ALLOWED_RETURN_SCAN_STATUSES = ['EXCHANGE_REQUESTED', 'RETURN_REQUESTED', 'RETURNED'];
 
@@ -719,6 +720,7 @@ export const createReturnInboundTicket = async (payload = {}, user) => {
     }
   );
 
+  announceTechnicalInbound({ ticketCodes: [ticket.ticketCode], label: 'phiếu nhập hàng hoàn', detail: `${totalBatchQty} sản phẩm`, actor: user });
   return {
     ticket,
     inspectionsCount: inspections.length,
@@ -1335,6 +1337,8 @@ export const finalizeReturnInspectionsAndRequestInbound = async (payload = {}, u
       };
     });
 
+    announceTechnicalInbound({ ticketCodes: [responsePayload?.restockTicket?.ticketCode, responsePayload?.defectTicket?.ticketCode],
+      label: 'phiếu nhập hàng hoàn (nhập lại / hàng lỗi)', detail: `${responsePayload?.finalizedCount || 0} đơn`, actor: user });
     return responsePayload;
   } finally {
     await dbSession.endSession();

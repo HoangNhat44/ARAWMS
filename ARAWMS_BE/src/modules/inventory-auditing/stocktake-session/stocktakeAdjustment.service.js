@@ -21,6 +21,7 @@ import InventoryTransaction from '../../../models/InventoryTransaction.model.js'
 import { objectFields, versionField, objectId } from '../../../common/utils/ownerValidation.js';
 import { ownerTransaction, ownerAudit } from '../../../common/utils/ownerOperation.js';
 import { httpError } from '../../../common/utils/httpError.js';
+import { announceStocktakeStep } from './stocktakeNotice.service.js';
 
 const active = { isDeleted: { $ne: true } };
 const REASONS = ['DAMAGED', 'LOST'];
@@ -122,7 +123,7 @@ async function adjustLot({ req, session, stocktake, record, delta, reason, note 
 export async function adjustStocktakeInventory(req) {
   objectId(req.params.id);
   const input = validateInput(req.body || {});
-  return ownerTransaction(async (session) => {
+  const result = await ownerTransaction(async (session) => {
     const stocktake = await StocktakeSession.findOne({ _id: req.params.id, ...active }).session(session);
     if (!stocktake) throw httpError(404, 'Không tìm thấy phiên kiểm kê.');
     if (stocktake.status !== 'APPROVED_PENDING_ADJUSTMENT') throw httpError(409, 'Chỉ phiên đã duyệt, đang chờ điều chỉnh mới điều chỉnh được tồn kho.');
@@ -153,4 +154,6 @@ export async function adjustStocktakeInventory(req) {
       { status: stocktake.status, adjustmentInfo: stocktake.adjustmentInfo });
     return { stocktake, ...counts };
   });
+  announceStocktakeStep(result.stocktake, 'ADJUSTED', req.user, result);
+  return result;
 }

@@ -130,26 +130,28 @@ export const syncMissingDeviationNotifications = async () => {
 };
 
 /**
+ * Điều kiện người nhận: thông báo chung của role (không đích danh) hoặc thông báo đích danh cho user.
+ * Thông báo đích danh (vd. phiếu giao cho 1 nhân viên) không hiện cho người khác cùng role.
+ */
+const recipientConditions = (role, userId) => {
+  const conditions = [{ recipientRole: { $in: [role, 'ALL'] }, recipientUserId: null }];
+  if (userId) conditions.push({ recipientUserId: userId });
+  return conditions;
+};
+
+/**
  * Lấy danh sách thông báo theo vai trò và/hoặc userId
  */
 export const listNotifications = async (query = {}, currentUser = null) => {
-  // Tự động kiểm tra và đồng bộ sai lệch cũ nếu là kế toán truy vấn
-  await syncMissingDeviationNotifications();
-
   const role = query.role || currentUser?.roleCode || currentUser?.roles?.[0] || 'ACCOUNTANT';
+  // Đồng bộ sai lệch KCS cũ chỉ cần cho Kế toán / Owner
+  if (['ACCOUNTANT', 'OWNER'].includes(role)) await syncMissingDeviationNotifications();
+
   const userId = query.userId || currentUser?._id;
   const limit = Math.min(100, Math.max(1, Number(query.limit) || 30));
   const page = Math.max(1, Number(query.page) || 1);
 
-  const orConditions = [{ recipientRole: role }, { recipientRole: 'ALL' }];
-  if (userId) {
-    orConditions.push({ recipientUserId: userId });
-  }
-
-  const filter = {
-    $or: orConditions,
-    isDeleted: false,
-  };
+  const filter = { $or: recipientConditions(role, userId), isDeleted: false };
 
   if (query.type && query.type !== 'ALL') {
     filter.type = query.type;
@@ -197,11 +199,7 @@ export const markNotificationAsRead = async (notificationId, userId = null) => {
  * Đánh dấu toàn bộ thông báo của vai trò là đã đọc
  */
 export const markAllNotificationsAsRead = async (role = 'ACCOUNTANT', userId = null) => {
-  const filter = {
-    $or: [{ recipientRole: role }, { recipientRole: 'ALL' }],
-    isRead: false,
-    isDeleted: false,
-  };
+  const filter = { $or: recipientConditions(role, userId), isRead: false, isDeleted: false };
 
   await Notification.updateMany(filter, { isRead: true, readAt: new Date() });
   return { success: true, message: 'Đã đánh dấu tất cả thông báo là đã đọc' };

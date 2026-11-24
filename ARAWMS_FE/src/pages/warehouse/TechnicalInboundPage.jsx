@@ -35,6 +35,7 @@ import { useAuth } from '../../hooks/useAuth';
 import BulkStockForm from '../../components/warehouse/BulkStockForm';
 import WarehouseRequestDialog from '../../components/warehouse/WarehouseRequestDialog';
 import '../../styles/finishedGoods.css';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 export default function TechnicalInboundPage() {
   const { user } = useAuth();
@@ -59,6 +60,8 @@ export default function TechnicalInboundPage() {
   const [inboundDetail, setInboundDetail] = useState(null);
 
   // Tải danh mục sản phẩm (phục vụ chọn kệ kho thành phẩm)
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-technical-inbound-realtime', 'arawms-finished-goods-realtime'], () => loadRequests());
   const loadProducts = async () => {
     if (!navigator.onLine) return;
     try {

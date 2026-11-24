@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { stocktakeService as api } from '../../services/stocktakeService';
 import '../../styles/stocktake.css';
+import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh';
 
 const itemTypeForWarehouse = (warehouseType) => warehouseType === 'FINISHED_GOODS' ? 'SKU' : 'RAW_MATERIAL';
 const localDate = () => new Date().toLocaleDateString('sv-SE');
@@ -35,6 +36,8 @@ export default function StocktakePage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
+  useRealtimeRefresh(['arawms-stocktake-realtime'], () => load());
   const load = useCallback(async () => {
     const [list, choices] = await Promise.all([api.list(), api.options()]);
     setData(list.data); setOptions(choices.data);
@@ -95,7 +98,7 @@ export default function StocktakePage() {
     <header className="stocktake-hero"><div><nav><Link to="/">Trang chủ</Link> / Kiểm kê kho</nav><h1>Kiểm kê kho</h1>
       <p>Lập lịch, giao việc và xem xét kết quả kiểm kê.</p></div><div className="stocktake-actions"><span>Kho nguyên phụ liệu và thành phẩm</span>
         <button onClick={() => load().catch((e) => setError(e.message))}>Làm mới</button>{canManageStocktake && <button className="primary" disabled={busy} onClick={openCreate}>Tạo lệnh kiểm kê</button>}</div></header>
-    {error && <p className="stocktake-error" role="alert">{error}</p>}{notice && <p className="stocktake-notice">{notice}</p>}
+    {error && !open && <p className="stocktake-error" role="alert">{error}</p>}{notice && <p className="stocktake-notice">{notice}</p>}
     <nav className="stocktake-tabs"><button className={tab === 'sessions' ? 'active' : ''} onClick={() => setTab('sessions')}>Phiên kiểm kê</button>
       <button className={tab === 'schedules' ? 'active' : ''} onClick={() => setTab('schedules')}>Lịch định kỳ</button>
       <button className={tab === 'reports' ? 'active' : ''} onClick={() => setTab('reports')}>Báo cáo</button></nav>
@@ -110,6 +113,8 @@ export default function StocktakePage() {
       </tbody></table></div>{(tab === 'schedules' ? !data.schedules.length : !(tab === 'reports' ? sessions.some((x) => !['WAITING', 'FROZEN_COUNTING'].includes(x.status)) : sessions.length)) && <p className="stocktake-empty">Chưa có dữ liệu.</p>}</section>
     {open && <div className="stocktake-overlay"><form className="stocktake-modal" onSubmit={submit}>
       <header><div><h2>Tạo lệnh kiểm kê</h2><p>Chọn phạm vi, thời gian và người phụ trách.</p></div><button type="button" aria-label="Đóng" onClick={() => setOpen(false)}>×</button></header>
+      {/* Lỗi khi lưu phải hiện trong modal, nếu không sẽ bị lớp phủ che mất. */}
+      {error && <p className="stocktake-error" role="alert" style={{ margin: '0 1.25rem' }}>{error}</p>}
       <div className="stocktake-form-body"><section className="stocktake-card"><label className="wide">Tên lệnh *<input required minLength="2" maxLength="160" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
         <label className="wide">Phạm vi kiểm kê *<select required value={form.scopeType} onChange={(e) => { const scopeType = e.target.value; setForm({ ...form, scopeType, warehouseType: scopeType === 'WAREHOUSE' ? 'ALL' : '', itemType: '', zoneCode: '', rackId: '', itemId: '' }); }}><option value="">Chọn chính xác phạm vi</option><option value="WAREHOUSE">Toàn kho (nguyên phụ liệu + thành phẩm)</option><option value="ZONE">Một khu</option><option value="RACK">Một kệ</option></select></label>
         {['ZONE', 'RACK', 'ITEM'].includes(form.scopeType) && <label>Loại kho *<select required value={form.warehouseType} onChange={(e) => setForm({ ...form, warehouseType: e.target.value, itemType: itemTypeForWarehouse(e.target.value), zoneCode: '', rackId: '', itemId: '' })}><option value="">Chọn kho nguyên phụ liệu hoặc thành phẩm</option>{options.warehouses.map((warehouse) => <option key={warehouse.code} value={warehouse.code}>{warehouse.name}</option>)}</select></label>}
@@ -126,7 +131,7 @@ export default function StocktakePage() {
           <label>Đến giờ<input required type="time" min={form.startTime} value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} /></label>
           {form.recurrence !== 'ONCE' && <label>Ngừng lịch sau ngày<input type="date" min={form.startDate || localDate()} value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} /></label>}
           <p>{form.recurrence === 'ONCE' ? 'Kiểm kê' : 'Mỗi lần kiểm'} {form.startDate ? `ngày ${new Date(`${form.startDate}T00:00`).toLocaleDateString('vi-VN')} ` : ''}từ {form.startTime || '--:--'} đến {form.endTime || '--:--'}.
-            {['FINISHED_GOODS', 'ALL'].includes(form.warehouseType) && ' Trong khung giờ này chức năng đóng hàng bị khóa; đơn đang đóng dở sẽ không được ghi nhận và phải đóng lại.'}
+            {['FINISHED_GOODS', 'ALL'].includes(form.warehouseType) && ' Trong khung giờ này chỉ chức năng đóng hàng bị khóa (bàn giao đơn vẫn bình thường); đơn đang đóng dở sẽ không được ghi nhận và phải đóng lại.'}
             {' '}Nhân viên kỹ thuật được giao và nhân viên kho sẽ nhận thông báo.</p>
         </fieldset>
         <label>Người kiểm kê (Kỹ thuật xưởng) *<select required value={form.inspectorId} onChange={(e) => setForm({ ...form, inspectorId: e.target.value })}><option value="">Chọn nhân viên kỹ thuật xưởng</option>{options.inspectors.map((person) => <option key={person._id} value={person._id}>{person.employeeCode} · {person.fullName}</option>)}</select></label>
