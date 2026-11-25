@@ -12,9 +12,7 @@ import mongoose from 'mongoose';
 import { v2 as cloudinary } from 'cloudinary';
 import StocktakeSession from '../../../models/StocktakeSession.model.js';
 import PackingSession from '../../../models/PackingSession.js';
-import PackingVideo from '../../../models/PackingVideo.js';
 import ProductUnit from '../../../models/ProductUnit.js';
-import ProductUnitAllocation from '../../../models/ProductUnitAllocation.js';
 import PackingScanEvent from '../../../models/PackingScanEvent.js';
 import { PackingError } from './packingVerification.service.js';
 
@@ -50,9 +48,7 @@ export const resetPackingAttempt = async (packingId) => {
       if (!packing || !hasAttempt(packing)) return;
       droppedVideo = packing.pendingVideo?.cloudinaryPublicId || null;
       await ProductUnit.updateMany({ 'packingClaim.sessionId': packing._id }, { $unset: { packingClaim: '' } }, { session: dbSession });
-      await ProductUnitAllocation.deleteMany({ sessionId: packing._id }, { session: dbSession });
       await PackingScanEvent.deleteMany({ sessionId: packing._id }, { session: dbSession });
-      await PackingVideo.deleteMany({ sessionId: packing._id }, { session: dbSession });
       packing.scannedUnits = [];
       packing.state = 'SCANNING';
       packing.pendingVideo = undefined;

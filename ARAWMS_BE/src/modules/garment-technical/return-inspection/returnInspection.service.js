@@ -20,7 +20,6 @@ import FinishedGoodsTicket from '../../../models/FinishedGoodsTicket.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import Sku from '../../../models/Sku.model.js';
-import OrderQrToken from '../../../models/OrderQrToken.js';
 import ProductUnit from '../../../models/ProductUnit.js';
 import { getOrderStatusLabel } from '../../../common/constants/enums.js';
 import { announceTechnicalInbound } from '../../../common/services/workflowNotify.js';
@@ -131,7 +130,7 @@ export const lookupOrderByCode = async (rawCode) => {
   let order = null;
   let rma = null;
 
-  // Nếu là QR Token, tìm qua qr.token hoặc bảng OrderQrToken
+  // Nếu là QR Token, tìm qua qr.token nhúng trong đơn hàng
   if (qrToken) {
     order = await SalesOrder.findOne({ 'qr.token': qrToken, isDeleted: { $ne: true } })
       .populate('customerId', 'fullName phone email address deliveryAddress')
@@ -141,20 +140,6 @@ export const lookupOrderByCode = async (rawCode) => {
         populate: { path: 'productId', select: 'productCode productName category' },
       })
       .lean();
-
-    if (!order) {
-      const tokenDoc = await OrderQrToken.findOne({ token: qrToken, revokedAt: null }).lean();
-      if (tokenDoc?.orderId) {
-        order = await SalesOrder.findById(tokenDoc.orderId)
-          .populate('customerId', 'fullName phone email address deliveryAddress')
-          .populate({
-            path: 'items.skuId',
-            select: 'skuCode skuBarcode styleName color size retailPrice productId',
-            populate: { path: 'productId', select: 'productCode productName category' },
-          })
-          .lean();
-      }
-    }
   }
 
   // 2. Nếu chưa tìm thấy theo QR token, tìm trực tiếp theo mã đơn, mã vận đơn hoặc tracking

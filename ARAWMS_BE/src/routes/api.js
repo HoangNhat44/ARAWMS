@@ -23,8 +23,6 @@ import financialRoutes from '../modules/managerial-financial-analytics/financial
 import managerReportRoutes from '../modules/managerial-financial-analytics/manager-reports/managerReports.routes.js';
 import materialValuationRoutes from '../modules/raw-material-inventory/inventory-valuation/inventoryValuation.routes.js';
 import assetValuationRoutes from '../modules/finished-goods-warehousing/asset-valuation/assetValuation.routes.js';
-import productionReportRoutes from '../modules/production-operations/bom-plan-report/bomPlanReport.routes.js';
-import sampleRoutes from '../modules/bom/product-samples/productSamples.routes.js';
 import roleAssignmentRoutes from '../modules/user-management/role-assignment/roleAssignment.routes.js';
 import settingsRoutes from '../modules/system-administration/system-settings/systemSettings.routes.js';
 import stockAdjustmentRoutes from '../modules/inventory-auditing/stock-adjustment/stockAdjustment.routes.js';
@@ -61,8 +59,6 @@ router.use('/owner/financial-reports', financialRoutes);
 router.use('/owner/manager-reports', managerReportRoutes);
 router.use('/owner/material-valuation', materialValuationRoutes);
 router.use('/owner/asset-valuation', assetValuationRoutes);
-router.use('/owner/production-reports', productionReportRoutes);
-router.use('/owner/product-samples', sampleRoutes);
 router.use('/owner/employee-roles', roleAssignmentRoutes);
 router.use('/owner/system-settings', settingsRoutes);
 router.use('/owner/stock-adjustments', stockAdjustmentRoutes);

@@ -97,6 +97,7 @@ export default function MaterialInboundVerificationPage() {
   const [showDirectModal, setShowDirectModal] = useState(false);
   const [directForm, setDirectForm] = useState({
     supplierId: '',
+    supplierName: '',
     contractId: '',
     supplierDeliveryCode: '',
     note: '',
@@ -520,8 +521,9 @@ export default function MaterialInboundVerificationPage() {
 
   // Submit Direct Inbound Request
   const submitDirectRequest = async () => {
-    if (!directForm.supplierId) {
-      showAlert('error', 'Vui lòng chọn Nhà cung cấp');
+    const typedSupplierName = directForm.supplierName.trim();
+    if (!directForm.supplierId && !typedSupplierName) {
+      showAlert('error', 'Vui lòng nhập Nhà cung cấp (gõ tên mới hoặc chọn từ gợi ý)');
       return;
     }
     const validItems = directForm.items.filter((it) => it.rawMaterialId && (Number(it.acceptedQty) > 0 || Number(it.rejectedQty) > 0));
@@ -533,8 +535,10 @@ export default function MaterialInboundVerificationPage() {
     setActionLoading(true);
     try {
       const res = await garmentTechnicalService.inbound.createRequest({
-        supplierId: directForm.supplierId,
-        contractId: directForm.contractId || undefined,
+        // Chọn NCC trong danh mục thì gửi supplierId; nhập tên mới thì gửi supplierName (không kèm hợp đồng).
+        supplierId: directForm.supplierId || undefined,
+        supplierName: directForm.supplierId ? undefined : typedSupplierName,
+        contractId: directForm.supplierId ? directForm.contractId || undefined : undefined,
         supplierDeliveryCode: directForm.supplierDeliveryCode,
         note: directForm.note,
         items: validItems,
@@ -544,6 +548,7 @@ export default function MaterialInboundVerificationPage() {
       setShowDirectModal(false);
       setDirectForm({
         supplierId: '',
+        supplierName: '',
         contractId: '',
         supplierDeliveryCode: '',
         note: '',
@@ -1521,7 +1526,7 @@ export default function MaterialInboundVerificationPage() {
                         )}
                       </td>
                       <td style={{ padding: '1rem 1.1rem' }}>
-                        <div style={{ fontWeight: 600 }}>{ticket.supplierId?.supplierName || '—'}</div>
+                        <div style={{ fontWeight: 600 }}>{ticket.supplierId?.supplierName || ticket.purchaseSourceName || '—'}</div>
                       </td>
                       <td style={{ padding: '1rem 1.1rem' }}>
                         <div>
@@ -1665,7 +1670,7 @@ export default function MaterialInboundVerificationPage() {
 
             <div style={{ padding: '1.25rem 1.4rem', overflowY: 'auto', flex: 1 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', padding: '0.85rem', background: 'var(--ara-bg-surface)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.86rem' }}>
-                <div><strong>Nhà cung cấp:</strong> {selectedTicketForDetail.supplierId?.supplierName || '—'}</div>
+                <div><strong>Nhà cung cấp:</strong> {selectedTicketForDetail.supplierId?.supplierName || selectedTicketForDetail.purchaseSourceName || '—'}</div>
                 <div><strong>Kế hoạch gốc:</strong> {selectedTicketForDetail.inboundPlanId?.planCode || 'Không theo kế hoạch'}</div>
                 <div><strong>Ngày lập:</strong> {selectedTicketForDetail.createdAt ? new Date(selectedTicketForDetail.createdAt).toLocaleString('vi-VN') : '—'}</div>
                 <div><strong>Trạng thái:</strong> {formatStatusVi(selectedTicketForDetail.status)}</div>
@@ -2839,18 +2844,39 @@ export default function MaterialInboundVerificationPage() {
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.35rem' }}>
                     Nhà cung cấp <span style={{ color: '#DC2626' }}>*</span>
                   </label>
-                  <select
-                    value={directForm.supplierId}
-                    onChange={(e) => setDirectForm({ ...directForm, supplierId: e.target.value })}
+                  {/* Chọn NCC có sẵn trong danh mục hoặc gõ tên NCC mới (chỉ lưu tên trên phiếu). */}
+                  <input
+                    type="text"
+                    list="direct-request-supplier-options"
+                    maxLength={160}
+                    placeholder="Chọn hoặc nhập tên nhà cung cấp..."
+                    value={directForm.supplierName}
+                    onChange={(e) => {
+                      const text = e.target.value;
+                      const key = text.trim().toLocaleLowerCase('vi');
+                      const match = key ? options.suppliers?.find((s) =>
+                        `${s.supplierName} (${s.supplierCode})`.toLocaleLowerCase('vi') === key ||
+                        String(s.supplierName || '').toLocaleLowerCase('vi') === key ||
+                        String(s.supplierCode || '').toLocaleLowerCase('vi') === key) : null;
+                      setDirectForm({
+                        ...directForm,
+                        supplierName: text,
+                        supplierId: match?._id || '',
+                        contractId: match ? directForm.contractId : '',
+                      });
+                    }}
                     style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem' }}
-                  >
-                    <option value="">-- Chọn Nhà cung cấp --</option>
+                  />
+                  <datalist id="direct-request-supplier-options">
                     {options.suppliers?.map((s) => (
-                      <option key={s._id} value={s._id}>
-                        {s.supplierName} ({s.supplierCode})
-                      </option>
+                      <option key={s._id} value={`${s.supplierName} (${s.supplierCode})`} />
                     ))}
-                  </select>
+                  </datalist>
+                  {directForm.supplierName.trim() && (
+                    <div style={{ fontSize: '0.75rem', marginTop: '0.3rem', color: 'var(--ara-text-muted)' }}>
+                      {directForm.supplierId ? 'Nhà cung cấp trong danh mục' : 'Nhà cung cấp mới — chỉ lưu tên trên phiếu'}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -2859,6 +2885,8 @@ export default function MaterialInboundVerificationPage() {
                   </label>
                   <select
                     value={directForm.contractId}
+                    disabled={!directForm.supplierId}
+                    title={directForm.supplierId ? undefined : 'Hợp đồng chỉ áp dụng cho nhà cung cấp trong danh mục'}
                     onChange={(e) => setDirectForm({ ...directForm, contractId: e.target.value })}
                     style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--ara-border)', fontSize: '0.9rem' }}
                   >

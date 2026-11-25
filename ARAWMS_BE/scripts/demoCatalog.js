@@ -5,8 +5,6 @@
 import RawMaterial from '../src/models/RawMaterial.model.js';
 import Product from '../src/models/Product.model.js';
 import Sku from '../src/models/Sku.model.js';
-import Bom from '../src/models/Bom.model.js';
-import ProductSample from '../src/models/ProductSample.model.js';
 import ManagerReport from '../src/models/ManagerReport.model.js';
 import Supplier from '../src/models/Supplier.model.js';
 import SupplierContract from '../src/models/SupplierContract.model.js';
@@ -16,7 +14,6 @@ import FinishedGoodsTicket from '../src/models/FinishedGoodsTicket.model.js';
 import FinishedGoodsBatch from '../src/models/FinishedGoodsBatch.model.js';
 import FabricRoll from '../src/models/FabricRoll.model.js';
 import InventoryTransaction from '../src/models/InventoryTransaction.model.js';
-import ProductionOrder from '../src/models/ProductionOrder.model.js';
 import CashFlowVoucher from '../src/models/CashFlowVoucher.model.js';
 import StocktakeSession from '../src/models/StocktakeSession.model.js';
 import StocktakeRecord from '../src/models/StocktakeRecord.model.js';
@@ -37,7 +34,6 @@ export function catalogRecords(id, staffId, ownerId) {
     ['M', 'L'].forEach((size, j) => {
       const skuId = id(2100 + i * 10 + j), skuCode = `DEMO-TP-${i + 1}-${size}`, onHandQty = i === 2 ? 0 : 100 + i * 30 + j * 20;
       add(Sku, { _id: skuId, skuCode, skuBarcode: skuCode, productId, styleName: `${name} ${size}`, color: i % 2 ? 'Xanh' : 'Be', size, retailPrice: price, onHandQty, reservedQty: onHandQty ? 20 : 0, safetyStockThreshold: 30 });
-      add(Bom, { _id: id(2200 + i * 10 + j), bomCode: `DEMO-DM-${i + 1}-${size}`, skuId, skuCode, versionNo: 1, status: 'STANDARD', lines: [{ materialId, materialName: name.includes('linen') || i === 3 ? 'Vải linen' : i === 4 ? 'Vải nỉ' : i === 5 ? 'Vải cotton' : 'Vải kaki', qtyPerUnit: perUnit, unitCode: unit, wastageRate: 0.03 }] });
       if (onHandQty) {
         const ticketId = id(2400 + i * 10 + j);
         add(FinishedGoodsTicket, { _id: ticketId, ticketCode: `DEMO-PN-TP-BS-${i + 1}-${size}`, ticketType: 'INBOUND_FROM_SEWING', status: 'COMPLETED', createdByManagerId: staffId, items: [{ skuId, skuBarcode: skuCode, designatedFifoLocationId: id(41), expectedQty: onHandQty, scannedQty: onHandQty }] });
@@ -45,8 +41,6 @@ export function catalogRecords(id, staffId, ownerId) {
         add(FinishedGoodsBatch, { _id: id(2300 + i * 10 + j), batchCode: `DEMO-LO-${i + 1}-${size}`, skuId, skuBarcode: skuCode, inboundTicketId: ticketId, locationId: id(41), initialQty: onHandQty, currentOnHandQty: onHandQty, reservedPickQty: 20, fifoInboundTimestamp: date });
       }
     });
-    add(ProductSample, { _id: id(3000 + i), code: `DEMO-MAU-${i + 1}`, name, productCode: `DEMO-SP-BS-${i + 1}`, status: ['IN_DEVELOPMENT', 'SAMPLE_READY', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'UNDER_REVIEW'][i], description: `Mẫu ${name.toLocaleLowerCase('vi')} dành cho bộ sưu tập mới. Kiểm tra đường may, chất liệu và kích thước trước khi sản xuất.`, imageUrls: [`/demo/${image}.svg`], estimatedCost: Math.round(price * 0.4), proposedPrice: price, evaluationNote: i === 4 ? 'Cần chỉnh lại kích thước cổ áo trước khi làm mẫu tiếp theo.' : 'Đường may đều; cần đối chiếu màu vải và kiểm tra co rút.', createdBy: staffId });
-    add(ProductionOrder, { _id: id(3100 + i), code: `DEMO-SX-BS-${i + 1}`, status: ['IN_PROGRESS', 'PLANNED', 'MATERIAL_SHORTAGE', 'COMPLETED', 'RELEASED', 'PLANNED'][i], plannedStart: date, plannedEnd: new Date('2026-11-25T09:00:00+07:00'), items: [{ skuId: id(2100 + i * 10), skuCode: `DEMO-TP-${i + 1}-M`, bomId: id(2200 + i * 10), plannedQty: 200, completedQty: i === 3 ? 200 : i === 0 ? 80 : 0, defectiveQty: i === 0 ? 2 : 0 }], materialRequirements: [{ materialId, requiredQty: 200 * perUnit * 1.03 }], stages: [{ stage: 'CUTTING', status: i === 2 ? 'BLOCKED' : 'DONE', blockedReason: i === 2 ? 'Cần bổ sung vải và khóa kéo.' : '' }, { stage: 'SEWING', status: i === 3 ? 'DONE' : 'IN_PROGRESS' }, { stage: 'QC', status: i === 3 ? 'DONE' : 'NOT_STARTED' }] });
   });
   ['PRODUCTION', 'INVENTORY', 'SALES', 'MONTHLY', 'EXCEPTION', 'WEEKLY'].forEach((reportType, i) => add(ManagerReport, { _id: id(3200 + i), code: `DEMO-BC-${i + 1}`, reportType, title: ['Tiến độ sản xuất tháng 11', 'Tình hình tồn kho nguyên liệu', 'Tổng hợp đơn hàng và hoàn hàng', 'Báo cáo vận hành tháng 11', 'Nguyên liệu cần mua bổ sung', 'Kế hoạch nhập và xuất tuần này'][i], status: i % 2 ? 'REVIEWED' : 'SUBMITTED', periodStart: date, periodEnd: new Date('2026-11-30T16:59:59Z'), summary: 'Báo cáo mẫu phục vụ đối chiếu kế hoạch, số thực hiện và các việc cần xử lý.', content: '1. Kiểm tra vải linen dưới mức tồn tối thiểu.\n2. Theo dõi lô nhập còn thiếu và phân công người nhận.\n3. Đối chiếu sản lượng thành phẩm với kế hoạch.\n4. Tách hàng lỗi để xử lý, không đưa vào lượng bán được.', submittedBy: staffId, submittedAt: date, ...(i % 2 ? { reviewedBy: ownerId, reviewedAt: date, ownerComment: 'Đã xem, ưu tiên mua đủ nguyên liệu.' } : {}) }));
   // Phản hồi nhập hàng: Nhiều nhà cung cấp, mặt hàng và mức thanh toán để so sánh trong cùng kỳ.

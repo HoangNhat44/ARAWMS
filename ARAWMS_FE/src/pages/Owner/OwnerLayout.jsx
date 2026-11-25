@@ -25,8 +25,8 @@ const groups = [
 ];
 const pageTitles = Object.fromEntries(groups.flatMap((g) => g.items.map(([path, title]) => [`/owner/${path}`, title])));
 const detailTitle = (path) => path.startsWith('/owner/deviations') || path.startsWith('/owner/inbound-plans') || path.startsWith('/owner/plans/') || path.startsWith('/owner/plan-deviations/') ? 'Chi tiết sai lệch KCS' : path === '/owner/plan-deviations' ? 'Sai lệch kế hoạch' : /^\/owner\/contracts\/[^/]+\/materials\/[^/]+$/.test(path) ? 'Quy cách nguyên liệu' : /^\/owner\/contracts\/[^/]+\/plans\/[^/]+$/.test(path) ? 'Chi tiết kế hoạch nhập' : path.startsWith('/owner/contracts/') ? 'Chi tiết hợp đồng' : path.endsWith('/permissions') ? 'Phân quyền nhân viên' : path === '/owner/employees/new' ? 'Tạo nhân viên'
-  : path.startsWith('/owner/manager-reports/') ? 'Chi tiết báo cáo' : path.startsWith('/owner/production/') ? 'Chi tiết sản xuất'
-    : path.startsWith('/owner/samples/') ? 'Chi tiết mẫu sản phẩm' : path.startsWith('/owner/stock-adjustments/') ? 'Duyệt báo cáo kiểm kê'
+  : path.startsWith('/owner/manager-reports/') ? 'Chi tiết báo cáo'
+    : path.startsWith('/owner/stock-adjustments/') ? 'Duyệt báo cáo kiểm kê'
       : path.startsWith('/owner/settings/') ? 'Cấu hình vận hành' : path === '/owner/account' ? 'Tài khoản của tôi' : 'Khu vực chủ cửa hàng';
 
 export default function OwnerLayout() {

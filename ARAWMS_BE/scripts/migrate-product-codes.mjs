@@ -13,7 +13,7 @@
  *
  * Usage:   node scripts/migrate-product-codes.mjs            (dry-run: prints the plan, writes nothing)
  *          node scripts/migrate-product-codes.mjs --apply    (writes everything in one transaction)
- * Run scripts/backup-warehouse-collections.mjs before --apply.
+ * Back up the database before --apply.
  */
 import 'dotenv/config';
 import mongoose from 'mongoose';
@@ -175,8 +175,6 @@ const main = async () => {
           await db.collection('finished_goods_bulk_documents').updateMany({ 'items.productId': old._id },
             { $set: { 'items.$[item].productId': plan.primary._id } }, { arrayFilters: [{ 'item.productId': old._id }], session });
         }
-        await db.collection('product_samples').updateMany({ productCode: { $in: [plan.primary.productCode,
-          ...plan.merged.map((item) => item.productCode)] } }, { $set: { productCode: plan.code } }, { session });
       }
       for (const plan of skuPlans) {
         await skus$.updateOne({ _id: plan.sku._id }, { $set: { skuCode: plan.to, styleName: plan.to.split('-')[0],
