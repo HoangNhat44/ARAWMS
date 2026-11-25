@@ -45,6 +45,7 @@ export const applyGhnStatusToSalesOrder = async ({
   ghnStatus,
   waybillCode,
   codAmount,
+  reason = '',
   sendChatNotification = true,
 }) => {
   if (!order) return { order: null, chatMessage: null, statusChanged: false };
@@ -179,6 +180,7 @@ export const applyGhnStatusToSalesOrder = async ({
     ghnStatus: mapped.ghnStatus,
     ghnStatusName: mapped.ghnStatusName,
     ghnUpdatedAt: new Date(),
+    ...(reason ? { deliveryFailReason: reason, ghnReason: reason } : {}),
   };
 
   const currentInternalRank = WMS_INTERNAL_STATUS_RANK[previousOrderStatus] || 0;
@@ -200,7 +202,7 @@ export const applyGhnStatusToSalesOrder = async ({
         to: mapped.orderStatus,
         by: order.sellerId,
         at: new Date(),
-        note: `Đồng bộ từ GHN: ${mapped.ghnStatusName}`,
+        note: reason ? `Đồng bộ từ GHN: ${mapped.ghnStatusName} (${reason})` : `Đồng bộ từ GHN: ${mapped.ghnStatusName}`,
       },
     ];
     order.status = mapped.orderStatus;
@@ -262,6 +264,7 @@ export const handleGhnWebhook = async (req, res) => {
   const codAmount = Number(payload.CODAmount ?? payload.cod_amount ?? 0);
   const fee = Number(payload.Fee ?? payload.total_fee ?? payload.fee ?? 0);
   const eventTime = payload.Time || payload.time || receivedAt;
+  const reason = String(payload.Reason || payload.reason || payload.Description || payload.description || payload.Note || payload.note || '').trim();
 
   console.log('\n========================================================');
   console.log(`[GHN WEBHOOK RECEIVED] ${receivedAt}`);
@@ -310,6 +313,7 @@ export const handleGhnWebhook = async (req, res) => {
         ghnStatus: status,
         waybillCode: cleanCode,
         codAmount,
+        reason,
         sendChatNotification: true,
       });
       updatedOrderInfo = {
