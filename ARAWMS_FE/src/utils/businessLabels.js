@@ -32,7 +32,7 @@ const names = {
   DEACTIVATE_EMPLOYEE: 'Ngừng hoạt động nhân viên', REACTIVATE_EMPLOYEE: 'Cho nhân viên hoạt động lại',
   ASSIGN_EMPLOYEE_ROLE: 'Đổi vai trò nhân viên', ASSIGN_EMPLOYEE_PERMISSIONS: 'Phân quyền nhân viên',
   ADJUST_PRODUCTION_PLAN: 'Điều chỉnh kế hoạch sản xuất', PAY_SUPPLIER_DEBT: 'Trả nợ nhà cung cấp',
-  users: 'Nhân viên', production_orders: 'Lệnh sản xuất', supplier_contracts: 'Hợp đồng nhà cung cấp',
+  users: 'Nhân viên', supplier_contracts: 'Hợp đồng nhà cung cấp',
 };
 export const businessLabel = (value) => names[value] || 'Nghiệp vụ khác';
 export const permissionLabel = (code) => String(code).split('|').map(businessLabel).join(' / ');

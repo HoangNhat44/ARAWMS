@@ -42,3 +42,6 @@ dist-ssr
 
 # Design files (HTML prototypes and mockups in ARAWMS_FE root)
 /ARAWMS_FE/*.html
+
+# Tài liệu kiểm toán database và bản sao lưu dữ liệu (chỉ giữ ở máy)
+/ARAWMS_DOCS/db-audit/

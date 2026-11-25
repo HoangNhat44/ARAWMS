@@ -7,7 +7,6 @@ import mongoose from 'mongoose';
 import { isFractionalMaterialUnit } from '../../../common/constants/materialUnits.js';
 import FabricRoll from '../../../models/FabricRoll.model.js';
 import MaterialStockLot from '../../../models/MaterialStockLot.model.js';
-import MaterialOutbound from '../../../models/MaterialOutbound.model.js';
 import MaterialTicket from '../../../models/MaterialTicket.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
@@ -173,15 +172,8 @@ export async function listOutbounds(query, user) {
     if (query.to) filter.issueDate.$lte = new Date(`${query.to}T23:59:59Z`);
     requireRule(Object.values(filter.issueDate).every((date) => !Number.isNaN(date.getTime())), 'Ngày lọc không hợp lệ', 'INVALID_DATE');
   }
-  const [current, legacy] = await Promise.all([
-    MaterialTicket.find({ ...filter, ...outboundTicketFilter }).populate('createdByUserId', 'fullName')
-      .populate('confirmedByUserId', 'fullName').sort({ createdAt: -1 }).limit(200).lean(),
-    MaterialOutbound.find(filter).populate('createdByUserId', 'fullName')
-      .populate('confirmedByUserId', 'fullName').sort({ createdAt: -1 }).limit(200).lean(),
-  ]);
-  const currentIds = new Set(current.map((ticket) => id(ticket._id)));
-  const tickets = [...current, ...legacy.filter((ticket) => !currentIds.has(id(ticket._id)))]
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 200);
+  const tickets = await MaterialTicket.find({ ...filter, ...outboundTicketFilter }).populate('createdByUserId', 'fullName')
+    .populate('confirmedByUserId', 'fullName').sort({ createdAt: -1 }).limit(200).lean();
   const allowed = hasWholeWarehouseAccess(user) ? null : await WarehouseLocation.find({ _id: { $in: user.warehouseIds } }).select('zoneCode').lean();
   const zones = allowed && new Set(allowed.map((location) => location.zoneCode));
   const search = String(query.search || '').trim().toLocaleLowerCase('vi');
@@ -193,8 +185,7 @@ export async function listOutbounds(query, user) {
 /** Reads only tickets belonging to a warehouse the user can access. */
 export async function getOutbound(ticketId, user) {
   requireRule(mongoose.isValidObjectId(ticketId), 'Mã phiếu không hợp lệ', 'INVALID_TICKET');
-  const ticket = await MaterialTicket.findOne({ _id: ticketId, ...outboundTicketFilter }) ||
-    await MaterialOutbound.findById(ticketId);
+  const ticket = await MaterialTicket.findOne({ _id: ticketId, ...outboundTicketFilter });
   requireRule(ticket, 'Không tìm thấy phiếu xuất', 'TICKET_NOT_FOUND', 404);
   const locations = await WarehouseLocation.find({ warehouseType: 'RAW_MATERIAL', zoneCode: ticket.warehouseCode }).select('_id').lean();
   requireRule(locations.some((location) => access(location, user)), 'Không có quyền xem kho này', 'FORBIDDEN', 403);
@@ -319,8 +310,7 @@ export async function confirmOutbound(ticketId, input, user) {
   let result;
   try {
     await session.withTransaction(async () => {
-      const ticket = await MaterialTicket.findOne({ _id: ticketId, ...outboundTicketFilter }).session(session) ||
-        await MaterialOutbound.findById(ticketId).session(session);
+      const ticket = await MaterialTicket.findOne({ _id: ticketId, ...outboundTicketFilter }).session(session);
       requireRule(ticket, 'Không tìm thấy phiếu xuất', 'TICKET_NOT_FOUND', 404);
       if (ticket.status === 'COMPLETED' && ticket.confirmationKey === key) { result = ticket; return; }
       requireRule(ticket.status === 'DRAFT', 'Phiếu đã xác nhận hoặc hủy', 'TICKET_LOCKED', 409);
@@ -360,7 +350,7 @@ export async function confirmOutbound(ticketId, input, user) {
             rawMaterialId: line.rawMaterialId, ...(source.kind === 'ROLL'
               ? { fabricRollId: source.objectId } : { materialStockLotId: source.objectId }),
             locationId: location._id, transactionType: 'OUTBOUND_ISSUE_CUTTING',
-            referenceModel: ticket.ticketType === 'OUTBOUND_WAREHOUSE' ? 'MaterialTicket' : 'MaterialOutbound',
+            referenceModel: 'MaterialTicket',
             referenceId: ticket._id, quantityChange: -source.quantity, onHandBefore: before,
             onHandAfter: round(before - source.quantity), performedByUserId: user._id,
             note: `${ticket.ticketCode} · ${ticket.department} · ${source.barcode}` }], { session });

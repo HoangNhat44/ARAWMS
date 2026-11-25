@@ -3,11 +3,9 @@
  * Ngày thực hiện: 30-10-2026
  * Chức năng: OWNER-EXT-02..05; GBR-05/06/11/12/19 - Lưu cấu hình và ngưỡng từng mặt hàng.
  */
-import { randomUUID } from 'node:crypto';
 import SystemSetting from '../../../models/SystemSetting.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import Sku from '../../../models/Sku.model.js';
-import InventoryAlert from '../../../models/InventoryAlert.model.js';
 import { ENV } from '../../../config/env.js';
 import { ownerTransaction, ownerAudit } from '../../../common/utils/ownerOperation.js';
 import { objectId } from '../../../common/utils/ownerValidation.js';
@@ -82,22 +80,6 @@ export const listInventoryThresholds = async (req) => {
   return { items: items.map(inventoryProfile), total, page, limit };
 };
 
-// GBR-05: So sánh tồn khả dụng với ngưỡng, dùng lại được sau các giao dịch xuất kho của module nghiệp vụ.
-export const refreshSafetyAlert = async (item, type, req, session) => {
-  const referenceModel = type === 'materials' ? 'RawMaterial' : 'Sku';
-  const filter = { referenceModel, referenceId: item._id, alertType: 'LOW_SAFETY_STOCK', isResolved: false, ...active };
-  if (item.onHandQty - item.reservedQty < item.safetyStockThreshold) {
-    // Tạo/cập nhật cảnh báo đang mở, tránh thêm cảnh báo mới sau mỗi lần sửa cùng mặt hàng.
-    await InventoryAlert.updateOne(filter, { $set: {
-      title: `Tồn kho thấp ${item.materialCode || item.skuCode}`, message: 'Tồn khả dụng dưới ngưỡng an toàn.',
-      metadata: { currentQty: item.onHandQty - item.reservedQty, thresholdQty: item.safetyStockThreshold },
-    }, $setOnInsert: { alertCode: `LOW-${randomUUID()}`, targetRole: 'WAREHOUSE_MANAGER', severity: 'WARNING',
-      warehouseType: type === 'materials' ? 'RAW_MATERIAL' : 'FINISHED_GOODS' } }, { upsert: true, session, runValidators: true });
-  } else {
-    // Đủ tồn trở lại thì đánh dấu cảnh báo đã xử lý; giữ lịch sử để có thể truy vết.
-    await InventoryAlert.updateMany(filter, { $set: { isResolved: true, resolvedAt: new Date(), resolvedByUserId: req.user._id } }, { session });
-  }
-};
 export const updateInventoryThreshold = async (req) => {
   const Model = inventoryModel(req.params.type); objectId(req.params.id);
   const input = validateInventoryThreshold(req.body);
@@ -108,8 +90,6 @@ export const updateInventoryThreshold = async (req) => {
     const before = inventoryProfile(item);
     item.safetyStockThreshold = input.safetyStockThreshold; item.fifoAgingThresholdDays = input.fifoAgingThresholdDays;
     await item.save({ session });
-    // OWNER-EXT-04, GBR-05: Sau khi đổi ngưỡng, cập nhật ngay tình trạng cảnh báo của mặt hàng.
-    await refreshSafetyAlert(item, req.params.type, req, session);
     const after = inventoryProfile(item);
     await ownerAudit(req, session, 'System Administration', 'System Settings', 'CONFIGURE_INVENTORY_THRESHOLD',
       { collection: Model.collection.name, id: item._id, code: before.code }, before, after);

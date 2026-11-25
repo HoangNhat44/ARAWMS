@@ -16,7 +16,6 @@ import {
   XCircle,
   RotateCcw,
 } from 'lucide-react';
-import { useOwnerResource } from '../../hooks/useOwnerResource';
 import { WmsField, WmsSelect } from '../../components/ui/WmsControls';
 import { Columns, SeriesPlot } from './OwnerCharts';
 import { datetime, Metric, money, quantity, ResourceState, Table } from './OwnerUI';
@@ -52,25 +51,9 @@ const stepLabels = {
 const percentage = value => value === null ? 'Chưa có đơn giao vận chuyển' : `${quantity(value)}%`;
 const rateSeries = [{ key: 'refusalRate', label: 'Tỷ lệ bom hàng' }, { key: 'turnbackRate', label: 'Tỷ lệ đổi / trả' }];
 
-// Chỉ tải bộ số liệu mẫu khi Owner chọn trình diễn. Bộ lọc Tổng quan tiếp tục
-// áp dụng cho báo cáo thật; biểu đồ mẫu có khoảng tháng cố định.
-function DemoTrend({ threshold }) {
-  const resource = useOwnerResource('operations-report/return-trend-demo');
-  return <ResourceState resource={resource}>{resource.data &&
-    <>
-      <ReturnTrendChart points={resource.data} threshold={threshold} demo />
-      {resource.data.length > 0 && <section>
-        <h3>Hàng hoàn xử lý trễ</h3>
-        <SeriesPlot rows={resource.data} title="Hàng hoàn xử lý trễ" categoryLabel="Tháng" unitLabel="đơn hàng"
-          series={[{ key: 'lateInspection', label: 'Chờ kiểm hàng quá hạn' }, { key: 'lateRestock', label: 'Chờ nhập kho quá hạn' }]} />
-      </section>}
-    </>
-  }</ResourceState>;
-}
-
-function ReturnTrendChart({ points, threshold, demo = false }) {
+function ReturnTrendChart({ points, threshold }) {
   const periodsWithShipments = points.filter(point => point.shipped > 0);
-  if (!periodsWithShipments.length) return <p>{demo ? 'Chưa nạp dữ liệu trình diễn.' : 'Chưa có đơn bàn giao vận chuyển trong khoảng ngày đã chọn.'}</p>;
+  if (!periodsWithShipments.length) return <p>Chưa có đơn bàn giao vận chuyển trong khoảng ngày đã chọn.</p>;
 
   // Nếu chỉ có một mốc hoặc có khoảng trống rời nhau, cột đọc dễ hơn một
   // đường gồm toàn điểm rời. Giữ các mốc trống giữa những kỳ có dữ liệu.
@@ -82,30 +65,19 @@ function ReturnTrendChart({ points, threshold, demo = false }) {
   return <>
     <SeriesPlot rows={rows} kind={chartKind} title="Tỷ lệ theo thời gian bàn giao vận chuyển"
       categoryLabel="Kỳ bàn giao vận chuyển" unitLabel="phần trăm" valueSuffix="%" reference={threshold} series={rateSeries} />
-    <details open={demo || undefined}><summary>Xem tỷ lệ và số đơn theo thời gian</summary>
-      <Table headings={['Kỳ bàn giao', 'Đã bàn giao', 'Đơn quay đầu', 'Tỷ lệ quay đầu', 'Tỷ lệ bom hàng', ...(demo ? ['Chờ kiểm quá hạn', 'Chờ nhập quá hạn', 'Tình huống'] : [])]}>
+    <details><summary>Xem tỷ lệ và số đơn theo thời gian</summary>
+      <Table headings={['Kỳ bàn giao', 'Đã bàn giao', 'Đơn quay đầu', 'Tỷ lệ quay đầu', 'Tỷ lệ bom hàng']}>
         {points.map(row => <tr key={row.label}><td>{row.label}</td><td>{quantity(row.shipped)}</td>
-          <td>{quantity(row.turnedBack)}</td><td>{percentage(row.turnbackRate)}</td><td>{percentage(row.refusalRate)}</td>
-          {demo && <><td>{quantity(row.lateInspection)}</td><td>{quantity(row.lateRestock)}</td><td>{row.scenario}</td></>}</tr>)}
+          <td>{quantity(row.turnedBack)}</td><td>{percentage(row.turnbackRate)}</td><td>{percentage(row.refusalRate)}</td></tr>)}
       </Table>
     </details>
   </>;
 }
 
 function ReturnTrend({ points, threshold }) {
-  const [source, setSource] = useState('actual');
   return <section className="owner-content-panel">
     <h2>Xu hướng đơn quay đầu và bom hàng</h2>
-    <div className="owner-filters">
-      <WmsField>Nguồn dữ liệu biểu đồ<WmsSelect value={source} onChange={event => setSource(event.target.value)}>
-        <option value="actual">Dữ liệu thực tế</option>
-        <option value="demo">Dữ liệu trình diễn</option>
-      </WmsSelect></WmsField>
-    </div>
-    {source === 'demo' ? <>
-      <p className="owner-notice">Dữ liệu trình diễn từ tháng 1 đến ngày 14/11/2026.</p>
-      <DemoTrend threshold={threshold} />
-    </> : <ReturnTrendChart points={points} threshold={threshold} />}
+    <ReturnTrendChart points={points} threshold={threshold} />
   </section>;
 }
 

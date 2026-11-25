@@ -10,7 +10,6 @@
 
 // System & Configuration
 export { default as CounterSequence } from './CounterSequence.model.js';
-export { default as InventoryAlert } from './InventoryAlert.model.js';
 export { default as Role } from './Role.model.js';
 export { default as User } from './User.model.js';
 export { default as SystemSetting } from './SystemSetting.model.js';
@@ -20,13 +19,11 @@ export { default as WarehouseLayout } from './WarehouseLayout.model.js';
 export { default as WarehouseBarcodeHistory } from './WarehouseBarcodeHistory.model.js';
 export { default as WarehouseStockBarcode } from './WarehouseStockBarcode.model.js';
 export { default as PutawayAllocation } from './PutawayAllocation.model.js';
-export { default as DocumentTemplate } from './DocumentTemplate.model.js';
 export { default as ShippingCarrier } from './ShippingCarrier.model.js';
 
 // Materials & Products
 export { default as RawMaterial } from './RawMaterial.model.js';
 export { default as MaterialStockLot } from './MaterialStockLot.model.js';
-export { default as MaterialOutbound } from './MaterialOutbound.model.js';
 export { default as FabricRoll } from './FabricRoll.model.js';
 export { default as Product } from './Product.model.js';
 export { default as Sku } from './Sku.model.js';
@@ -56,13 +53,9 @@ export { default as ReturnRequest } from './ReturnRequest.model.js';
 export { default as CashFlowVoucher } from './CashFlowVoucher.model.js';
 export { default as CodReconciliationBatch } from './CodReconciliationBatch.model.js';
 export { default as CodReconciliationItem } from './CodReconciliationItem.model.js';
-export { default as CarrierDispute } from './CarrierDispute.model.js';
 export { default as Notification } from './Notification.model.js';
 
 // Packing & Fulfillment (custom models)
-export { default as OrderQrToken } from './OrderQrToken.js';
 export { default as ProductUnit } from './ProductUnit.js';
 export { default as PackingSession } from './PackingSession.js';
-export { default as ProductUnitAllocation } from './ProductUnitAllocation.js';
 export { default as PackingScanEvent } from './PackingScanEvent.js';
-export { default as PackingVideo } from './PackingVideo.js';
