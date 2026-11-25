@@ -72,7 +72,7 @@ const attachLotsToMaterialTicket = async (ticket, user) => {
         color: mat?.color || '',
         quantity: Number(line.acceptedQty),
         supplierId: ticket.supplierId || undefined,
-        supplierNameSnapshot: supplier?.supplierName || '',
+        supplierNameSnapshot: supplier?.supplierName || ticket.purchaseSourceName || '',
         inboundPlanId: ticket.inboundPlanId || null,
         contractId: ticket.contractId || null,
         note: line.inspectionNote || ticket.receiptNote || '',
@@ -586,6 +586,7 @@ export const listInboundRequests = async (query = {}, user) => {
 export const createDirectInboundRequest = async (payload = {}, user) => {
   const {
     supplierId,
+    supplierName,
     contractId,
     inboundPlanId,
     supplierDeliveryCode,
@@ -593,11 +594,34 @@ export const createDirectInboundRequest = async (payload = {}, user) => {
     items = [],
   } = payload;
 
-  if (!supplierId || !mongoose.Types.ObjectId.isValid(supplierId)) {
-    const err = new Error('Vui lòng chọn Nhà cung cấp');
+  // Nhà cung cấp: chọn từ danh mục (supplierId) hoặc nhập tên mới (chỉ lưu tên trên phiếu, không tạo hồ sơ NCC).
+  let catalogSupplier = null;
+  if (supplierId) {
+    if (!mongoose.Types.ObjectId.isValid(supplierId)) {
+      const err = new Error('Nhà cung cấp không hợp lệ');
+      err.status = 400;
+      throw err;
+    }
+    catalogSupplier = await Supplier.findOne({ _id: supplierId, isDeleted: { $ne: true } })
+      .select('_id supplierName').lean();
+    if (!catalogSupplier) {
+      const err = new Error('Nhà cung cấp không tồn tại hoặc đã bị xóa');
+      err.status = 400;
+      throw err;
+    }
+  }
+  const typedSupplierName = String(supplierName || '').trim().replace(/\s+/g, ' ');
+  if (!catalogSupplier && !typedSupplierName) {
+    const err = new Error('Vui lòng nhập Nhà cung cấp');
     err.status = 400;
     throw err;
   }
+  if (!catalogSupplier && typedSupplierName.length > 160) {
+    const err = new Error('Tên nhà cung cấp tối đa 160 ký tự');
+    err.status = 400;
+    throw err;
+  }
+  const supplierNameSnapshot = catalogSupplier?.supplierName || typedSupplierName;
 
   if (!items.length) {
     const err = new Error('Danh sách nguyên phụ liệu không được để trống');
@@ -610,6 +634,9 @@ export const createDirectInboundRequest = async (payload = {}, user) => {
   const receiptLines = items.map((item, idx) => ({
     clientLineId: `LINE-${idx + 1}-${Date.now()}`,
     rawMaterialId: item.rawMaterialId,
+    // Lưu NCC theo từng dòng để Quản lý kho thấy được khi lập phiếu nhận theo yêu cầu.
+    supplierId: catalogSupplier?._id,
+    supplierNameSnapshot,
     actualQty: Number(item.actualQty) || Number(item.acceptedQty) || 0,
     acceptedQty: Number(item.acceptedQty) || 0,
     rejectedQty: Number(item.rejectedQty) || 0,
@@ -627,8 +654,10 @@ export const createDirectInboundRequest = async (payload = {}, user) => {
   const ticket = new MaterialTicket({
     ticketCode,
     ticketType: 'INBOUND_FROM_PLAN',
-    supplierId,
-    contractId: contractId && mongoose.Types.ObjectId.isValid(contractId) ? contractId : undefined,
+    supplierId: catalogSupplier?._id,
+    purchaseSourceName: catalogSupplier ? undefined : typedSupplierName,
+    // Hợp đồng chỉ áp dụng khi NCC thuộc danh mục.
+    contractId: catalogSupplier && contractId && mongoose.Types.ObjectId.isValid(contractId) ? contractId : undefined,
     inboundPlanId: inboundPlanId && mongoose.Types.ObjectId.isValid(inboundPlanId) ? inboundPlanId : undefined,
     supplierDeliveryCode: uniqueDeliveryCode,
     receiptSource: inboundPlanId ? 'PLAN' : 'DIRECT',

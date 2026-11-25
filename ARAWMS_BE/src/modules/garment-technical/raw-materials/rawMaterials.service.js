@@ -21,7 +21,6 @@ import MaterialStockLot from '../../../models/MaterialStockLot.model.js';
 import FabricRoll from '../../../models/FabricRoll.model.js';
 import MaterialTicket from '../../../models/MaterialTicket.model.js';
 import MaterialInboundPlan from '../../../models/MaterialInboundPlan.model.js';
-import MaterialOutbound from '../../../models/MaterialOutbound.model.js';
 import CounterSequence from '../../../models/CounterSequence.model.js';
 import {
   MATERIAL_UNIT_OPTIONS,
@@ -557,7 +556,6 @@ export const updateRawMaterial = async (id, data = {}, user) => {
  * - Xóa hoàn toàn Document khỏi collection raw_materials (mất hẳn ở kho NPL).
  * - Xóa toàn bộ các lô tồn kho (MaterialStockLot) liên kết với NPL này.
  * - Xóa toàn bộ các cuộn vải (FabricRoll) liên kết với NPL này.
- * - Tự động rút sạch NPL này khỏi các dòng lệnh xuất (MaterialOutbound) trạng thái DRAFT.
  * - Tự động rút sạch NPL này khỏi các phiếu kho (MaterialTicket) trạng thái DRAFT.
  *
  * @param {string} id - ID nguyên phụ liệu
@@ -587,13 +585,7 @@ export const deleteRawMaterial = async (id, user) => {
   // 2. Cascade xóa toàn bộ cuộn vải của NPL này (giải phóng vị trí kho / ô kệ)
   const rollResult = await FabricRoll.deleteMany({ rawMaterialId: id });
 
-  // 3. Cascade loại bỏ dòng vật tư này khỏi các lệnh xuất NPL (MaterialOutbound) đang DRAFT
-  await MaterialOutbound.updateMany(
-    { status: 'DRAFT', 'lines.rawMaterialId': id },
-    { $pull: { lines: { rawMaterialId: id } } }
-  );
-
-  // 4. Cascade loại bỏ dòng vật tư này khỏi các phiếu nhập kho (MaterialTicket) đang DRAFT
+  // 3. Cascade loại bỏ dòng vật tư này khỏi các phiếu nhập kho (MaterialTicket) đang DRAFT
   await MaterialTicket.updateMany(
     { status: 'DRAFT', 'receiptLines.rawMaterialId': id },
     { $pull: { receiptLines: { rawMaterialId: id } } }

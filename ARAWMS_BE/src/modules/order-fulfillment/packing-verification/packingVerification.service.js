@@ -10,7 +10,6 @@ import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import PackingSession from '../../../models/PackingSession.js';
 import ProductUnit from '../../../models/ProductUnit.js';
-import ProductUnitAllocation from '../../../models/ProductUnitAllocation.js';
 import PackingScanEvent from '../../../models/PackingScanEvent.js';
 import { findProductUnit } from '../../../common/services/productUnitService.js';
 import { ensurePackingIndexes } from './packingIndexes.js';
@@ -234,7 +233,6 @@ export const discardPackingAttempt = async (sessionId, stationId, leaseVersion) 
       if (packing.video?.publicId) throw new PackingError('VIDEO_ALREADY_SAVED');
       await ProductUnit.updateMany({ 'packingClaim.sessionId': packing._id },
         { $unset: { packingClaim: '' } }, { session: dbSession });
-      await ProductUnitAllocation.deleteMany({ sessionId: packing._id }, { session: dbSession });
       await PackingScanEvent.deleteMany({ sessionId: packing._id }, { session: dbSession });
       packing.scannedUnits = [];
       packing.state = 'SCANNING';
@@ -279,11 +277,7 @@ export const removeScannedBarcodeFromPacking = async ({ sessionId, stationId, le
       if (!scan) throw new PackingError('BARCODE_NOT_SCANNED');
       const claim = await ProductUnit.updateOne({ barcode, 'packingClaim.sessionId': packing._id },
         { $unset: { packingClaim: '' } }, { session: dbSession });
-      const allocation = await ProductUnitAllocation.deleteOne({
-        sessionId: packing._id, barcode,
-      }, { session: dbSession });
-      if (claim.modifiedCount !== 1 && allocation.deletedCount !== 1)
-        throw new PackingError('BARCODE_ALLOCATION_MISSING');
+      if (claim.modifiedCount !== 1) throw new PackingError('BARCODE_ALLOCATION_MISSING');
       await PackingScanEvent.updateMany(
         { sessionId: packing._id, barcode, result: 'ACCEPTED', reversedAt: null },
         { $set: { reversedAt: new Date() } }, { session: dbSession }
@@ -338,8 +332,7 @@ export const scanProductBarcodeForPacking = async ({ sessionId, stationId, lease
       let reason = decision.reason;
       if (!reason) reason = await checkScannedUnitStock(packing, unit, decision.lineKey, dbSession) || undefined;
       if (!reason) {
-        const allocation = await ProductUnitAllocation.findOne({ barcode }).session(dbSession);
-        const claim = unit?.packingClaim || allocation;
+        const claim = unit?.packingClaim;
         if (claim) reason = claim.orderKey === packing.orderKey ? 'BARCODE_ALREADY_ASSIGNED' : 'BARCODE_ASSIGNED_OTHER_ORDER';
       }
       if (!reason) {

@@ -9,7 +9,6 @@ import { pipeline } from 'node:stream/promises';
 import { v2 as cloudinary } from 'cloudinary';
 import mongoose from 'mongoose';
 import PackingSession from '../../../models/PackingSession.js';
-import PackingVideo from '../../../models/PackingVideo.js';
 import SalesOrder from '../../../models/SalesOrder.model.js';
 import { consumePackedStock } from './packingStock.service.js';
 import { ARASTORE_CLOUDINARY_FOLDERS } from '../../../config/cloudinaryFolders.js';
@@ -244,8 +243,7 @@ export const syncPackingVideo = async ({ sessionId, recordingId, durationMs = 1 
     cloudinaryUrl: packing.video.url, mimeType: packing.video.mimeType,
     fileSize: packing.video.sizeBytes, durationMs: packing.video.durationMs,
     uploadedAt: packing.video.uploadedAt,
-  } : packing.pendingVideo?.recordingId === recordingId ? packing.pendingVideo :
-    await PackingVideo.findOne({ recordingId });
+  } : packing.pendingVideo?.recordingId === recordingId ? packing.pendingVideo : null;
   if (video?.sessionId && String(video.sessionId) !== sessionId) throw new PackingError('RECORDING_ID_CONFLICT');
   if (!video) {
     const resource = await cloudinaryResource(publicIdFor(orderCode)) ||
@@ -282,7 +280,7 @@ export const uploadPackingVideo = async ({ sessionId, recordingId, mimeType, dur
     return syncPackingVideo({ sessionId, recordingId, durationMs });
   }
   if (!['SCANNING', 'READY_TO_RECORD'].includes(existing.state)) throw new PackingError('SESSION_NOT_PACKABLE');
-  const known = existing.pendingVideo?.recordingId === recordingId || await PackingVideo.findOne({ recordingId });
+  const known = existing.pendingVideo?.recordingId === recordingId;
   if (known || await cloudinaryResource(publicIdFor(orderCode)) ||
       await cloudinaryResource(previousPublicIdFor(sessionId, recordingId)) ||
       await cloudinaryResource(legacyPublicIdFor(sessionId, recordingId))) {

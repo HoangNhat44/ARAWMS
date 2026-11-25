@@ -9,7 +9,6 @@ import SalesOrder from '../../../models/SalesOrder.model.js';
 import CodReconciliationItem from '../../../models/CodReconciliationItem.model.js';
 import MaterialInboundPlan from '../../../models/MaterialInboundPlan.model.js';
 import ReturnRequest from '../../../models/ReturnRequest.model.js';
-import CarrierDispute from '../../../models/CarrierDispute.model.js';
 import debtManagementService from '../debt-management/debtManagement.service.js';
 import { getValuationSummary as getProductValuationSummary } from '../product-inventory-valuation/productValuation.service.js';
 import { getRawMaterialValuationSummary } from '../raw-material-valuation/rawMaterialValuation.service.js';
@@ -470,9 +469,11 @@ export const getDashboardSummary = async ({ periodType = 'MONTH', fromDate = nul
         },
       },
     ]),
-    CarrierDispute.countDocuments({
+    // Tranh chấp COD với ĐVVC được lưu trực tiếp trên dòng đối soát (redFlagStatus), không có bảng riêng.
+    CodReconciliationItem.countDocuments({
       isDeleted: { $ne: true },
-      status: { $in: ['OPEN', 'UNDER_REVIEW', 'SUBMITTED'] },
+      isRedFlag: true,
+      redFlagStatus: { $in: ['ESCALATED_TO_DISPUTE', 'CARRIER_FEEDBACK_RECEIVED'] },
     }).catch(() => 0),
     MaterialInboundPlan.countDocuments({
       isDeleted: { $ne: true },

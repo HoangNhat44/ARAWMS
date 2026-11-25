@@ -4,11 +4,9 @@ import CarrierShipment from '../../models/CarrierShipment.model.js';
 import CarrierShipmentEvent from '../../models/CarrierShipmentEvent.model.js';
 import CarrierHandover from '../../models/CarrierHandover.model.js';
 import PackingSession from '../../models/PackingSession.js';
-import PackingVideo from '../../models/PackingVideo.js';
 import ProductUnit from '../../models/ProductUnit.js';
 import SalesOrder from '../../models/SalesOrder.model.js';
 import WarehouseLocation from '../../models/WarehouseLocation.model.js';
-import OrderQrToken from '../../models/OrderQrToken.js';
 
 export class ShippingError extends Error {
   constructor(code, status = 400) { super(code); this.code = code; this.status = status; }
@@ -24,9 +22,7 @@ const shipmentView = (row) => ({
 
 const completedVideoFor = async (session) => {
   if (!session?.video?.recordingId) return null;
-  if (session.video.status === 'COMPLETED') return session.video;
-  return PackingVideo.findOne({ sessionId: session._id,
-    recordingId: session.video.recordingId, status: 'COMPLETED' }).lean();
+  return session.video.status === 'COMPLETED' ? session.video : null;
 };
 
 export async function listShippingOrders() {
@@ -401,12 +397,7 @@ async function findOrderByScan(value) {
   if (value.startsWith('PACK:v1:')) {
     const token = value.slice('PACK:v1:'.length);
     if (!/^[a-f0-9]{64}$/.test(token)) throw new ShippingError('INVALID_ORDER_QR');
-    let order = await SalesOrder.findOne({ 'qr.token': token, 'qr.revokedAt': null, isDeleted: { $ne: true } });
-    if (!order) {
-      const legacy = await OrderQrToken.findOne({ token, revokedAt: null }).select('orderId').lean();
-      if (legacy) order = await SalesOrder.findOne({ _id: legacy.orderId, isDeleted: { $ne: true } });
-    }
-    return order;
+    return SalesOrder.findOne({ 'qr.token': token, 'qr.revokedAt': null, isDeleted: { $ne: true } });
   }
   return SalesOrder.findOne({ orderCode: value.toUpperCase(), isDeleted: { $ne: true } });
 }

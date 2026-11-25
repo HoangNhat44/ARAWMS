@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 import MaterialTicket from '../../../models/MaterialTicket.model.js';
-import MaterialOutbound from '../../../models/MaterialOutbound.model.js';
 import RemnantRecoveryRequest from '../../../models/RemnantRecoveryRequest.model.js';
 import FabricRoll from '../../../models/FabricRoll.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
@@ -58,8 +57,7 @@ async function sourceTicket(ticketId, session) {
   fail(mongoose.isValidObjectId(ticketId), 'Phiếu xuất không hợp lệ', 'INVALID_ISSUE');
   const query = MaterialTicket.findById(ticketId);
   if (session) query.session(session);
-  const ticket = await query || await (session
-    ? MaterialOutbound.findById(ticketId).session(session) : MaterialOutbound.findById(ticketId));
+  const ticket = await query;
   fail(ticket?.status === 'COMPLETED' && (!ticket.ticketType ||
     ['OUTBOUND_FOR_CUTTING', 'OUTBOUND_WAREHOUSE'].includes(ticket.ticketType)),
   'Cây vải chưa có phiếu xuất đã xác nhận', 'ISSUE_NOT_CONFIRMED', 409);
@@ -116,15 +114,15 @@ export async function lookupRemnantSources(barcode, outboundTicketId) {
   const ticketFilter = { status: 'COMPLETED', $or: [{ 'lines.sources.objectId': roll._id },
     { 'items.fabricRollId': roll._id }],
     ...(outboundTicketId ? { _id: outboundTicketId } : {}) };
-  const [current, legacy, material, supplier, inbound] = await Promise.all([
+  const [current, material, supplier, inbound] = await Promise.all([
     MaterialTicket.find({ ...ticketFilter, ticketType: { $in: ['OUTBOUND_FOR_CUTTING',
-      'OUTBOUND_WAREHOUSE'] } }).lean(), MaterialOutbound.find(ticketFilter).lean(),
+      'OUTBOUND_WAREHOUSE'] } }).lean(),
     RawMaterial.findById(roll.rawMaterialId).select('materialCode materialName color widthCm gsm unit').lean(),
     roll.supplierId ? Supplier.findById(roll.supplierId).select('supplierCode supplierName').lean() : null,
     roll.inboundTicketId ? MaterialTicket.findById(roll.inboundTicketId).select('ticketCode').lean() : null,
   ]);
   const candidates = [];
-  for (const ticket of [...current, ...legacy]) {
+  for (const ticket of current) {
     (ticket.lines || []).forEach((line, lineIndex) => (line.sources || []).forEach((source, sourceIndex) => {
       if (source.kind === 'ROLL' && id(source.objectId) === id(roll._id) &&
           source.barcode === roll.rollBarcode) candidates.push({ ticket, lineIndex, sourceIndex });

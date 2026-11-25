@@ -9,7 +9,6 @@ import mongoose from 'mongoose';
 import SalesOrder from '../../../models/SalesOrder.model.js';
 import Sku from '../../../models/Sku.model.js';
 import Product from '../../../models/Product.model.js';
-import OrderQrToken from '../../../models/OrderQrToken.js';
 import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import { usablePickLocationFilter } from './orderReservation.service.js';
@@ -166,14 +165,8 @@ export const listOrdersForQr = async (user) => {
   const qrOrders = visibleRealOrders.length ? await SalesOrder.find({
     _id: { $in: visibleRealOrders.map((order) => order._id) },
   }).select('_id qr.revokedAt +qr.token').lean() : [];
-  const embeddedIds = new Set(qrOrders.filter((order) => order.qr?.token).map((order) => String(order._id)));
-  const tokens = realOrders.length ? await OrderQrToken.find({
-    orderId: { $in: visibleRealOrders.map((order) => order._id) }, revokedAt: null,
-  }).select('orderId').lean() : [];
-  const issuedReal = new Set([
-    ...qrOrders.filter((order) => order.qr?.token && !order.qr.revokedAt).map((order) => String(order._id)),
-    ...tokens.filter((token) => !embeddedIds.has(String(token.orderId))).map((token) => String(token.orderId)),
-  ]);
+  const issuedReal = new Set(
+    qrOrders.filter((order) => order.qr?.token && !order.qr.revokedAt).map((order) => String(order._id)));
   const shelfStock = await availableShelfStockBySku(visibleRealOrders);
   return visibleRealOrders.map((order) => {
     // ADMIN can issue QR for any eligible status
@@ -208,9 +201,7 @@ export const issueQr = async (order, userId) => {
   await ensurePackingIndexes();
   let record = (await embeddedQr(order._id))?.qr;
   if (!record?.token) {
-    const legacy = await OrderQrToken.findOne({ orderId: order._id }).select('+token').lean();
-    const initial = legacy ? { token: legacy.token, revokedAt: legacy.revokedAt, issuedBy: legacy.issuedBy } :
-      { token, revokedAt: null, issuedBy: userId };
+    const initial = { token, revokedAt: null, issuedBy: userId };
     await SalesOrder.updateOne({ _id: order._id, 'qr.token': { $exists: false } },
       { $set: { qr: initial } }, { timestamps: false });
     record = (await embeddedQr(order._id))?.qr;
@@ -242,14 +233,9 @@ export const replaceQr = async (order, userId) => {
 export const resolveQr = async (value) => {
   const token = parseQrValue(value);
   if (!token) return { error: 'INVALID_QR' };
-  let order = await SalesOrder.findOne({ 'qr.token': token, 'qr.revokedAt': null,
+  const order = await SalesOrder.findOne({ 'qr.token': token, 'qr.revokedAt': null,
     isDeleted: { $ne: true } }).lean();
-  if (!order) {
-    const legacy = await OrderQrToken.findOne({ token, revokedAt: null }).select('orderId');
-    if (!legacy) return { error: 'QR_NOT_FOUND' };
-    order = await SalesOrder.findOne({ _id: legacy.orderId, isDeleted: { $ne: true } }).select('+qr.token').lean();
-    if (order?.qr?.token) return { error: 'QR_NOT_FOUND' };
-  }
-  if (!order || blockedStatuses.has(order.status)) return { error: 'ORDER_NOT_PACKABLE' };
+  if (!order) return { error: 'QR_NOT_FOUND' };
+  if (blockedStatuses.has(order.status)) return { error: 'ORDER_NOT_PACKABLE' };
   return { order: publicOrderDetail(order) };
 };

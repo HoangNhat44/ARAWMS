@@ -19,7 +19,6 @@ const apply = process.argv.includes('--apply');
 // Raw collection names are used because the fields were removed from the Mongoose schemas.
 const TARGETS = [
   { collection: 'sales_orders', fields: ['qr.qrImagePublicId'] },
-  { collection: 'order_qr_tokens', fields: ['qrImagePublicId'] },
   { collection: 'product_units', fields: ['barcodeImageUrl', 'barcodeImagePublicId'] },
   { collection: 'fabric_rolls', fields: ['barcodeImageUrl', 'barcodeImagePublicId'] },
   { collection: 'material_stock_lots', fields: ['barcodeImageUrl', 'barcodeImagePublicId'] },

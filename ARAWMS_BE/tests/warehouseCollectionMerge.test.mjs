@@ -1,6 +1,6 @@
 /*
  * File: warehouseCollectionMerge.test.mjs
- * Description: Exercises QR compatibility and server-authoritative packing claims after collection consolidation.
+ * Description: Exercises embedded order QR, server-authoritative packing claims and session videos after collection consolidation.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,11 +9,9 @@ import { Writable } from 'node:stream';
 import { v2 as cloudinary } from 'cloudinary';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import SalesOrder from '../src/models/SalesOrder.model.js';
-import OrderQrToken from '../src/models/OrderQrToken.js';
 import ProductUnit from '../src/models/ProductUnit.js';
 import PackingSession from '../src/models/PackingSession.js';
 import PackingScanEvent from '../src/models/PackingScanEvent.js';
-import PackingVideo from '../src/models/PackingVideo.js';
 import Sku from '../src/models/Sku.model.js';
 import FinishedGoodsBatch from '../src/models/FinishedGoodsBatch.model.js';
 import WarehouseLocation from '../src/models/WarehouseLocation.model.js';
@@ -40,7 +38,7 @@ const makeOrder = async (code, token) => {
   return { _id, skuId, batchId, locationId, updatedAt: now };
 };
 
-test('embedded QR supersedes a stale legacy token while legacy-only orders remain readable', async () => {
+test('embedded order QR resolves, lists, issues and replaces tokens on the sales order', async () => {
   const repl = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(repl.getUri());
   const oldCloudinary = [process.env.CLOUDINARY_CLOUD_NAME, process.env.CLOUDINARY_API_KEY,
@@ -56,21 +54,16 @@ test('embedded QR supersedes a stale legacy token while legacy-only orders remai
   cloudinary.uploader.destroy = async () => ({ result: 'ok' });
   try {
     const currentToken = 'a'.repeat(64);
-    const oldToken = 'b'.repeat(64);
+    const unknownToken = 'b'.repeat(64);
     const order = await makeOrder('QR-MERGE-1', currentToken);
-    await OrderQrToken.create({ orderId: order._id, token: oldToken, issuedBy: oid() });
     assert.equal((await resolveQr(`PACK:v1:${currentToken}`)).order.orderCode, 'QR-MERGE-1');
-    assert.equal((await resolveQr(`PACK:v1:${oldToken}`)).error, 'QR_NOT_FOUND');
+    assert.equal((await resolveQr(`PACK:v1:${unknownToken}`)).error, 'QR_NOT_FOUND');
     const listed = await listOrdersForQr({ _id: oid(), roles: ['ADMIN'] });
     assert.equal(listed.find((row) => row.orderCode === 'QR-MERGE-1').hasQr, true);
-    const oldOnly = await makeOrder('QR-MERGE-2');
-    await OrderQrToken.create({ orderId: oldOnly._id, token: 'c'.repeat(64), issuedBy: oid() });
-    assert.equal((await resolveQr(`PACK:v1:${'c'.repeat(64)}`)).order.orderCode, 'QR-MERGE-2');
-    const issued = await issueQr({ _id: oldOnly._id, orderCode: 'QR-MERGE-2',
+    // Issuing again keeps the token already embedded on the order.
+    const existing = await issueQr({ _id: order._id, orderCode: 'QR-MERGE-1',
       status: 'CONFIRMED_RESERVED' }, oid());
-    assert.equal(issued.qrValue, `PACK:v1:${'c'.repeat(64)}`);
-    assert.equal((await SalesOrder.findById(oldOnly._id).select('+qr.token')).qr.token, 'c'.repeat(64));
-    assert.equal((await SalesOrder.findById(oldOnly._id)).updatedAt.getTime(), oldOnly.updatedAt.getTime());
+    assert.equal(existing.qrValue, `PACK:v1:${currentToken}`);
     const fresh = await makeOrder('QR-MERGE-3');
     const firstQr = await issueQr({ _id: fresh._id, orderCode: 'QR-MERGE-3',
       status: 'CONFIRMED_RESERVED' }, oid());
@@ -141,7 +134,7 @@ test('one physical barcode can be claimed, reversed, and claimed by another sess
   }
 });
 
-test('shipping sees a completed embedded video and still accepts a completed legacy recording', async () => {
+test('shipping lists only orders whose packing session video is completed', async () => {
   const repl = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(repl.getUri());
   try {
@@ -156,17 +149,14 @@ test('shipping sees a completed embedded video and still accepts a completed leg
     const embedded = await PackingSession.create({ ...base(first), recordingId: 'video_merge_001',
       video: { recordingId: 'video_merge_001', publicId: 'video/one', url: 'https://example.com/one',
         status: 'COMPLETED' } });
-    const legacy = await PackingSession.create({ ...base(second),
+    // A session whose video was never completed is not ready for shipping.
+    await PackingSession.create({ ...base(second),
       video: { recordingId: 'video_merge_002', publicId: 'video/two', url: 'https://example.com/two' } });
-    await PackingVideo.create({ recordingId: 'video_merge_002', sessionId: legacy._id,
-      orderId: String(second._id), cloudinaryPublicId: 'video/two', cloudinaryAssetId: 'asset-two',
-      cloudinaryUrl: 'https://example.com/two', mimeType: 'video/mp4', fileSize: 2,
-      durationMs: 1000, status: 'COMPLETED', uploadedAt: new Date() });
     let rows = await listShippingOrders();
-    assert.deepEqual(new Set(rows.map((row) => row.orderCode)), new Set(['VIDEO-MERGE-1', 'VIDEO-MERGE-2']));
+    assert.deepEqual(rows.map((row) => row.orderCode), ['VIDEO-MERGE-1']);
     await PackingSession.updateOne({ _id: embedded._id }, { $unset: { 'video.status': '' } });
     rows = await listShippingOrders();
-    assert.deepEqual(rows.map((row) => row.orderCode), ['VIDEO-MERGE-2']);
+    assert.deepEqual(rows.map((row) => row.orderCode), []);
   } finally {
     await mongoose.disconnect();
     await repl.stop();

@@ -6,7 +6,7 @@ import {
   CodReconciliationItem,
   User,
 } from '../../../models/index.js';
-import { ghnService } from '../../../services/ghn.service.js';
+import { ghnService } from '../../ghn/ghn.service.js';
 
 /**
  * Helper: Lấy userId của Kế toán

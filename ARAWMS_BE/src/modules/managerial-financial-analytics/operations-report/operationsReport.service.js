@@ -89,24 +89,6 @@ export function salesSummary(orders, returns) {
     returnReasons: ['CUSTOMER_REFUSED', 'INVALID_ORDER', 'PRODUCT_DEFECT', 'OTHER', 'UNKNOWN'].map((reason) => ({ reason, count: returns.filter((r) => (r.reasonCode || 'UNKNOWN') === reason).length })),
     returnStatuses: ['REQUESTED', 'UNBOXED_INSPECTED', 'ACCOUNTANT_APPROVED', 'COMPLETED', 'REJECTED'].map((status) => ({ status, count: returns.filter((r) => r.status === status).length })) };
 }
-// UC-19: So sánh nhu cầu với tồn khả dụng thực tế; không lấy số tồn ghi sẵn trên lệnh làm nguồn.
-export function productionRows(orders, materials, boms = []) {
-  const byId = new Map(materials.map((r) => [String(r._id), r]));
-  return orders.map((order) => {
-    // UC-19: Khi chưa lưu bảng nhu cầu, tính từ đúng phiên bản định mức gắn với từng sản phẩm; không lấy bản mới nhất.
-    const derived = new Map();
-    for (const item of order.items || []) for (const line of boms.find((b) => String(b._id) === String(item.bomId))?.lines || []) {
-      const key = String(line.materialId || line.rawMaterialId); const row = derived.get(key) || { materialId: line.materialId || line.rawMaterialId, requiredQty: 0 };
-      row.requiredQty += num(item.plannedQty) * num(line.qtyPerUnit) * (1 + num(line.wastageRate)); derived.set(key, row);
-    }
-    const source = order.materialRequirements?.length ? order.materialRequirements : [...derived.values()];
-    return { ...order, id: String(order._id), requirements: source.map((r) => {
-    const material = byId.get(String(r.rawMaterialId || r.materialId)) || (r.materialCode ? materials.find((m) => m.materialCode === r.materialCode) : undefined);
-    const required = num(r.requiredQty ?? r.plannedQty); const available = material ? Math.max(0, num(material.onHandQty) - num(material.reservedQty)) : null;
-    return { ...r, name: material?.materialName || 'Chưa có thông tin nguyên liệu', unit: material?.unit, required, available,
-      shortage: available === null ? null : Math.max(0, required - available), cause: available === null ? 'Chưa có dữ liệu tồn kho' : available < required ? `Tồn thực tế ${num(material.onHandQty)}, đã giữ chỗ ${num(material.reservedQty)}; không đủ cho nhu cầu ${required}.` : 'Đủ nguyên liệu' };
-  }) }; });
-}
 /**
  * Nguồn dữ liệu chính của Tổng quan/Báo cáo doanh thu và các danh sách nhập, tồn kho.
  * sales_orders + return_requests: chỉ số bán hàng theo kỳ; raw_materials + skus: tồn hiện tại.
@@ -121,11 +103,11 @@ export async function operationsReport(query) {
   const { range: previousRange } = reportPeriod(query.compareFrom, query.compareTo, today);
   const salesScope = salesReportScope(query);
   // Các truy vấn độc lập chạy song song; đọc cả kỳ đang xem và kỳ đối chiếu để dùng cùng công thức.
-  const [current, old, materials, skus, plans, contracts, suppliers, production, sessions, movements, employees, tasks, targets] = await Promise.all([
+  const [current, old, materials, skus, plans, contracts, suppliers, sessions, movements, employees] = await Promise.all([
     readSalesPeriod(salesRange, salesScope), readSalesPeriod(previousRange, salesScope),
     read('raw_materials'), read('skus'), read('material_inbound_plans', query.scope === 'all' ? {} : { scheduledDeliveryDate: range }), read('supplier_contracts'), read('suppliers'),
-    read('production_orders', { plannedStart: range }), read('stocktake_sessions', { createdAt: range }), read('inventory_transactions', { createdAt: range }),
-    read('users', { status: 'ACTIVE', roleCode: { $ne: 'OWNER' } }, { fullName: 1, employeeCode: 1 }), read('work_assignments', { dueDate: range }), read('owner_targets', { year: Number(query.from.slice(0, 4)) }),
+    read('stocktake_sessions', { createdAt: range }), read('inventory_transactions', { createdAt: range }),
+    read('users', { status: 'ACTIVE', roleCode: { $ne: 'OWNER' } }, { fullName: 1, employeeCode: 1 }),
   ]);
   // Defective finished goods are counted per unit (ProductUnit), not stored on the SKU.
   const defectBySku = await defectQtyBySku();
@@ -161,12 +143,10 @@ export async function operationsReport(query) {
   const sewingTickets = await read('finished_goods_tickets', { _id: { $in: movements.filter((m) => m.referenceModel === 'FinishedGoodsTicket').map((m) => m.referenceId) }, ticketType: 'INBOUND_FROM_SEWING' });
   const sewingIds = new Set(sewingTickets.map((t) => String(t._id)));
   const output = sum(movements.filter((m) => m.warehouseType === 'FINISHED_GOODS' && m.transactionType === 'INBOUND_PUTAWAY' && m.referenceModel === 'FinishedGoodsTicket' && sewingIds.has(String(m.referenceId))), (m) => m.quantityChange);
-  const target = targets[0]?.revenue ?? null;
-  const boms = await read('boms', { _id: { $in: production.flatMap((p) => (p.items || []).map((i) => i.bomId)).filter(Boolean) } });
   const outboundMaterial = await read('material_tickets', { createdAt: range, ticketType: { $in: ['OUTBOUND_FOR_CUTTING', 'OUTBOUND_SUPPLEMENTARY'] } });
   const outboundSales = await read('sales_orders', { expectedDeliveryAt: range }, { orderCode: 1, status: 1, expectedDeliveryAt: 1, items: 1 });
   const outboundPlans = [...outboundMaterial.map((r) => ({ id: String(r._id), code: r.ticketCode, type: 'RAW_MATERIAL', date: r.createdAt, status: r.status, quantity: sum(r.items || [], (i) => i.expectedQty) })), ...outboundSales.map((r) => ({ id: String(r._id), code: r.orderCode, type: 'FINISHED_GOODS', date: r.expectedDeliveryAt, status: r.status, quantity: sum(r.items || [], (i) => i.orderedQty) }))];
-  return { sales, previous, returnStatuses: sales.returnStatuses, change: percent(sales.revenue, previous.revenue), orderValueChange: percent(sales.orderValue, previous.orderValue), target, targetPercent: target > 0 ? sales.revenue / target * 100 : null,
-    purchases, debts, inventory, production: productionRows(production, materials, boms), outboundPlans, sessions, movements, employees: employees.map((r) => ({ id: String(r._id), name: r.fullName })), tasks, output,
-    generatedAt: new Date(), basis: 'Doanh thu theo ngày đóng gói, trừ hàng trả đã duyệt trong kỳ. Tồn kho và công nợ là số hiện tại; số nhập và sản lượng theo sổ kho trong kỳ. Chỉ tiêu là doanh thu cả năm, không tự phân bổ theo kỳ.' };
+  return { sales, previous, returnStatuses: sales.returnStatuses, change: percent(sales.revenue, previous.revenue), orderValueChange: percent(sales.orderValue, previous.orderValue),
+    purchases, debts, inventory, outboundPlans, sessions, movements, employees: employees.map((r) => ({ id: String(r._id), name: r.fullName })), output,
+    generatedAt: new Date(), basis: 'Doanh thu theo ngày đóng gói, trừ hàng trả đã duyệt trong kỳ. Tồn kho và công nợ là số hiện tại; số nhập và sản lượng theo sổ kho trong kỳ.' };
 }

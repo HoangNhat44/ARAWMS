@@ -44,7 +44,7 @@ const inventoryTransactionSchema = new Schema(
     },
     referenceModel: {
       type: String,
-      enum: ['MaterialTicket', 'MaterialOutbound', 'FinishedGoodsTicket', 'SalesOrder', 'ReturnRequest', 'StocktakeSession', 'Sku', 'FinishedGoodsBulkDocument'],
+      enum: ['MaterialTicket', 'FinishedGoodsTicket', 'SalesOrder', 'ReturnRequest', 'StocktakeSession', 'Sku', 'FinishedGoodsBulkDocument'],
     },
     referenceId: { type: Schema.Types.ObjectId, required: true, index: true },
     quantityChange: { type: Number, required: true },
