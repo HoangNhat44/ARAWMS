@@ -394,7 +394,7 @@ const AccountantHeader = ({
         key: 'account-profile',
         icon: <User size={15} />,
         label: 'Xem hồ sơ cá nhân',
-        onClick: () => navigate('/accountant'),
+        onClick: () => navigate('/account'),
       },
       {
         key: 'account-logout',
