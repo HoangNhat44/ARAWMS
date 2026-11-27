@@ -204,16 +204,22 @@
 1. User chọn kệ đã active → bấm tab "Hàng trong kệ"
 2. Render component `<WarehouseRackContents rackId={selectedRackId} />` ở `components/warehouse/WarehouseRackContents.jsx`
 3. Component mount → gọi API: **GET** `/api/warehouse/layout/rack/:rackId/contents`
-4. Backend: `layoutController.getRackContents()` ở `layout.controller.js`:
-   - Query `WarehouseLocation` với `rackId`
-   - Populate thông tin SKU, Product
+4. Backend: `putaway.controller.js` dòng ~60 export `rack` handler → gọi `rackContents(rackId)` ở `putawayExecution.service.js` dòng ~528:
+   - Query `WarehouseLayout` lấy thông tin kệ từ `active.racks`
+   - Query `WarehouseLocation` lấy danh sách bins trong kệ
+   - Aggregate `ProductUnit` group by `binId` + `skuId` để đếm số lượng thực tế
+   - Query `PutawayAllocation` với `status='CONFIRMED'` để tính số hàng chờ xếp
+   - Query `FabricRoll` và `MaterialStockLot` nếu là kệ nguyên phụ liệu
+   - Populate thông tin SKU từ `Sku` collection
+   - Populate thông tin Product từ `Product` collection
    - Trả về danh sách ô với:
-     - `locationCode`
-     - `capacity`, `currentOccupancy`, `plannedReservedQty`
-     - `contents`: array của { skuCode, productName, quantity, barcodes }
+     - `locationCode`, `floorNo`, `binNo`
+     - `capacity`, `actual` (tồn thực tế), `pending` (chờ xếp), `available` (còn trống)
+     - `products`: array [{ skuCode, productName, color, size, actual, pending }]
+     - `materials`: array [{ materialCode, materialName, rollCount, lotCount }] (nếu kệ nguyên phụ liệu)
 5. Frontend hiển thị table:
-   - Mỗi dòng: Ô kệ | SKU | Số lượng | % sử dụng
-   - User có thể expand row để xem từng barcode
+   - Mỗi dòng: Ô kệ | Tầng | Ô | Tồn thực tế | Chờ xếp | Còn trống | Sử dụng %
+   - User có thể expand row để xem chi tiết SKU/material trong ô
 6. Có nút "Xem barcode" cho mỗi SKU trong ô
 
 ---
