@@ -510,6 +510,22 @@ const ChatBox = ({
     }
   };
 
+  /** Xoá thẻ tuỳ chỉnh (chỉ áp dụng cho thẻ !isDefault) */
+  const handleDeleteTag = async (e, tag) => {
+    e.stopPropagation();
+    if (tag.isDefault) return;
+    if (!window.confirm(`Bạn có chắc muốn xóa thẻ "${tag.name}"?`)) return;
+    try {
+      const res = await sellerService.deleteCustomTag(tag._id);
+      if (res.success) {
+        if (onTagsRefresh) await onTagsRefresh();
+        showSuccess(`Đã xóa thẻ "${tag.name}"`, 'Xóa thẻ');
+      }
+    } catch (err) {
+      showError(err.message, 'Lỗi xóa thẻ');
+    }
+  };
+
   if (!conversation) {
     return (
       <div className="d-flex flex-column align-items-center justify-content-center h-100 p-5 text-center bg-body-tertiary">
@@ -655,7 +671,22 @@ const ChatBox = ({
               title={isActive ? `Bỏ thẻ "${tag.name}"` : `Gắn thẻ "${tag.name}"`}
             >
               {isActive && <Icon name="check2" className="me-0.5" />}
-              {tag.name}
+              <span>{tag.name}</span>
+              {!tag.isDefault && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="ms-1 d-inline-flex align-items-center text-danger"
+                  title={`Xóa thẻ "${tag.name}"`}
+                  onClick={(e) => handleDeleteTag(e, tag)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') handleDeleteTag(e, tag);
+                  }}
+                  style={{ lineHeight: 1 }}
+                >
+                  <Icon name="x" />
+                </span>
+              )}
             </button>
           );
         })}
