@@ -42,3 +42,7 @@ dist-ssr
 
 # Design files (HTML prototypes and mockups in ARAWMS_FE root)
 /ARAWMS_FE/*.html
+
+# SonarQube / SonarScanner local cache & Jest coverage reports
+.scannerwork/
+coverage/
