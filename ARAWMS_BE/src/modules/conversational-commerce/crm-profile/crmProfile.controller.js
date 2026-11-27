@@ -15,7 +15,7 @@ export const createCustomer = async (req, res) => {
     const customer = await crmProfileService.createCustomer(req.body, req.user, req);
     return successResponse(res, customer, 'Tạo hồ sơ khách hàng thành công', 201);
   } catch (error) {
-    return errorResponse(res, error.message, 400);
+    return errorResponse(res, error.message, error.statusCode || 400);
   }
 };
 
@@ -28,7 +28,7 @@ export const updateCustomer = async (req, res) => {
     const customer = await crmProfileService.updateCustomer(req.params.id, req.body, req.user, req);
     return successResponse(res, customer, 'Cập nhật hồ sơ khách hàng thành công');
   } catch (error) {
-    return errorResponse(res, error.message, 400);
+    return errorResponse(res, error.message, error.statusCode || 400);
   }
 };
 

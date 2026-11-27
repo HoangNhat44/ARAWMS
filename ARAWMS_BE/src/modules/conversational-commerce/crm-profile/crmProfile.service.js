@@ -43,6 +43,31 @@ const recordSystemLog = async ({ actor, majorFeature, subFeature, action, target
   }
 };
 
+const VN_PHONE_REGEX = /^0\d{9}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const createHttpError = (message, statusCode = 400) => {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+};
+
+const validateContactFields = ({ phone, email }) => {
+  if (phone !== undefined && phone !== null && String(phone).trim() !== '') {
+    const normalizedPhone = String(phone).trim();
+    if (!VN_PHONE_REGEX.test(normalizedPhone)) {
+      throw createHttpError('Số điện thoại không đúng định dạng (10 chữ số bắt đầu bằng 0)', 400);
+    }
+  }
+
+  if (email !== undefined && email !== null && String(email).trim() !== '') {
+    const normalizedEmail = String(email).trim();
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      throw createHttpError('Email không đúng định dạng', 400);
+    }
+  }
+};
+
 /**
  * UC-70: Cập nhật thông tin hồ sơ của khách hàng trong hệ thống (Edit Customer Information)
  */
@@ -59,9 +84,26 @@ export const updateCustomer = async (customerId, updateData, user, req) => {
     throw new Error('Không thể thay đổi định danh Facebook PSID');
   }
 
+  validateContactFields({ phone: updateData.phone, email: updateData.email });
+
+  if (updateData.phone !== undefined) {
+    const normalizedPhone = updateData.phone === null ? '' : String(updateData.phone).trim();
+    if (normalizedPhone) {
+      const duplicate = await Customer.findOne({
+        phone: normalizedPhone,
+        _id: { $ne: customer._id },
+      }).lean();
+      if (duplicate) {
+        throw createHttpError('Số điện thoại khách hàng đã tồn tại trong hệ thống', 409);
+      }
+    }
+    customer.phone = normalizedPhone;
+  }
+
   if (updateData.fullName) customer.fullName = updateData.fullName.trim();
-  if (updateData.phone !== undefined) customer.phone = updateData.phone;
-  if (updateData.email !== undefined) customer.email = updateData.email;
+  if (updateData.email !== undefined) {
+    customer.email = updateData.email === null ? '' : String(updateData.email).trim();
+  }
   if (Array.isArray(updateData.addresses)) customer.addresses = updateData.addresses;
 
   if (Array.isArray(updateData.tags)) {
@@ -116,13 +158,30 @@ export const updateCustomer = async (customerId, updateData, user, req) => {
  * UC-71: Tạo hồ sơ khách hàng mới khi tiếp nhận khách lạ qua khung chat (Create New Customer Profile)
  */
 export const createCustomer = async (customerData, user, req) => {
+  validateContactFields({ phone: customerData.phone, email: customerData.email });
+
+  const normalizedPhone =
+    customerData.phone !== undefined && customerData.phone !== null
+      ? String(customerData.phone).trim()
+      : undefined;
+
+  if (normalizedPhone) {
+    const existingCustomer = await Customer.findOne({ phone: normalizedPhone }).lean();
+    if (existingCustomer) {
+      throw createHttpError('Số điện thoại khách hàng đã tồn tại trong hệ thống', 409);
+    }
+  }
+
   const customerCode = await CounterSequence.getNextSequence('CUSTOMER_CODE', 'CUST', 5);
 
   const customer = await Customer.create({
     customerCode,
     fullName: customerData.fullName?.trim() || 'Khách hàng mới',
-    phone: customerData.phone,
-    email: customerData.email,
+    phone: normalizedPhone,
+    email:
+      customerData.email !== undefined && customerData.email !== null
+        ? String(customerData.email).trim()
+        : undefined,
     facebookPsid: customerData.facebookPsid || undefined,
     addresses: customerData.addresses || [],
     tags: customerData.tags || ['Khách mới'],
