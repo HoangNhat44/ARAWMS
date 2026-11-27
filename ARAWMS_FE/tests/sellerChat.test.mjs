@@ -234,3 +234,37 @@ test('parseOrderReceiptDetails: Trích xuất đúng mã đơn có dấu # và M
   assert.equal(details.codAmount, '628.000 đ');
 });
 
+// ============================================================================
+// 8. Các ca biên & bất thường bổ sung (Boundary & Abnormal Cases)
+// ============================================================================
+test('[B] validateOutgoingMessage: Chấp nhận đúng biên 2000 ký tự và từ chối attachment thiếu URL', () => {
+  const exactMax = validateOutgoingMessage({ text: 'a'.repeat(2000) });
+  assert.equal(exactMax.isValid, true);
+
+  const badAttachment = validateOutgoingMessage({ text: '', attachments: [{ type: 'image' }] });
+  assert.equal(badAttachment.isValid, false);
+  assert.match(badAttachment.error, /thiếu đường dẫn URL/);
+});
+
+test('[A][B] filterConversations & parseOrderReceiptDetails: Xử lý input không phải mảng, object customerId lồng nhau, và input rỗng', () => {
+  assert.deepEqual(filterConversations(null, { search: 'abc' }), []);
+  assert.deepEqual(filterConversations('invalid', {}), []);
+
+  const nested = [
+    {
+      _id: 'c_nested',
+      customerId: { fullName: 'Đỗ Thu Trang', phone: '0909888777' },
+      lastMessage: { text: 'Cho mình đặt size S' },
+      tags: ['Chờ chốt'],
+      status: 'ACTIVE',
+    },
+  ];
+  assert.equal(filterConversations(nested, { search: 'Thu Trang' }).length, 1);
+  assert.equal(filterConversations(nested, { search: '0909888' }).length, 1);
+  assert.equal(filterConversations(nested, { search: 'size s' }).length, 1);
+  assert.equal(filterConversations(nested, { tag: 'Không có' }).length, 0);
+
+  assert.deepEqual(parseOrderReceiptDetails(''), { orderCode: null, waybillCode: null, codAmount: null });
+  assert.deepEqual(parseOrderReceiptDetails(null), { orderCode: null, waybillCode: null, codAmount: null });
+});
+
