@@ -1,0 +1,21 @@
+{
+ "createdAt": "2026-11-25T14:18:23.325Z",
+ "counts": {
+  "codreconciliationbatches": 0,
+  "config": 0,
+  "owner_daily_reviews": 0,
+  "document_templates": 1,
+  "product_samples": 0,
+  "production_orders": 0,
+  "owner_targets": 0,
+  "work_assignments": 0,
+  "inventory_alerts": 0,
+  "carrier_disputes": 0,
+  "material_outbounds": 0,
+  "order_qr_tokens": 0,
+  "product_unit_allocations": 0,
+  "packing_videos": 0,
+  "owner_return_trend_demo": 0,
+  "inventoryTransactionsReferencingMaterialOutbound": 0
+ }
+}

@@ -1,0 +1,83 @@
+{
+ "name": "document_templates",
+ "indexes": [
+  {
+   "v": {
+    "$numberInt": "2"
+   },
+   "key": {
+    "_id": {
+     "$numberInt": "1"
+    }
+   },
+   "name": "_id_"
+  },
+  {
+   "v": {
+    "$numberInt": "2"
+   },
+   "key": {
+    "templateCode": {
+     "$numberInt": "1"
+    }
+   },
+   "name": "templateCode_1",
+   "background": true,
+   "unique": true
+  },
+  {
+   "v": {
+    "$numberInt": "2"
+   },
+   "key": {
+    "isDeleted": {
+     "$numberInt": "1"
+    }
+   },
+   "name": "isDeleted_1",
+   "background": true
+  }
+ ],
+ "docs": [
+  {
+   "_id": {
+    "$oid": "6ad7b45f6b093f9f763e48f5"
+   },
+   "templateCode": "TPL-SKU-50X30",
+   "templateType": "SKU_BARCODE",
+   "templateName": "Tem dán mã vạch SKU 50x30mm",
+   "dimensionsMm": {
+    "width": {
+     "$numberInt": "50"
+    },
+    "height": {
+     "$numberInt": "30"
+    }
+   },
+   "htmlContent": "<div class=\"barcode-label\"><h3>{{styleName}}</h3><img src=\"{{barcodeSvg}}\"/><p>{{skuBarcode}} - {{retailPrice}}đ</p></div>",
+   "includedFields": [
+    "skuBarcode",
+    "styleName",
+    "retailPrice",
+    "color",
+    "size"
+   ],
+   "isDefault": true,
+   "isDeleted": false,
+   "deletedAt": null,
+   "createdAt": {
+    "$date": {
+     "$numberLong": "1792521311417"
+    }
+   },
+   "updatedAt": {
+    "$date": {
+     "$numberLong": "1792521311417"
+    }
+   },
+   "__v": {
+    "$numberInt": "0"
+   }
+  }
+ ]
+}

@@ -25,6 +25,7 @@ dist-ssr
 
 # Documentation and support files (not part of source code)
 /*.md
+!/README.md
 /docs/
 /image/
 /.migration-backups/
@@ -45,3 +46,14 @@ dist-ssr
 
 # Tài liệu kiểm toán database và bản sao lưu dữ liệu (chỉ giữ ở máy)
 /ARAWMS_DOCS/db-audit/
+
+# Tài liệu test cá nhân (chỉ giữ ở máy, không thuộc mã nguồn chung)
+/ARAWMS_BE/gear_test/
+/ARAWMS_BE/tests/
+/ARAWMS_BE/jest.finishedGoodsInbound.config.cjs
+
+# Allow ARAWMS_DOCS for test cases and documentation
+!/ARAWMS_DOCS/
+!ARAWMS_DOCS/*.md
+!ARAWMS_DOCS/*.csv
+!ARAWMS_DOCS/*.xlsx
