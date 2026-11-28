@@ -117,9 +117,14 @@ export async function openDraft(user) {
       });
     }
   }
-  if (layout.draft) return presentLayout(layout);
+  if (layout.draft && layout.draftBaseVersion === layout.activeVersion) {
+    return presentLayout(layout);
+  }
+  const filter = layout.draft
+    ? { _id: layout._id, activeVersion: layout.activeVersion, draftVersion: layout.draftVersion }
+    : { _id: layout._id, draft: null };
   const updated = await WarehouseLayout.findOneAndUpdate(
-    { _id: layout._id, draft: null },
+    filter,
     {
       $set: {
         draft: snap(layout.active),
@@ -133,10 +138,10 @@ export async function openDraft(user) {
   if (updated)
     await audit(
       user,
-      "OPEN_DRAFT",
+      layout.draft ? "RESET_DRAFT" : "OPEN_DRAFT",
       layout,
-      { activeVersion: layout.activeVersion },
-      { draftVersion: updated.draftVersion },
+      { activeVersion: layout.activeVersion, draftBaseVersion: layout.draftBaseVersion },
+      { draftVersion: updated.draftVersion, draftBaseVersion: updated.draftBaseVersion },
     );
   return presentLayout(updated || await WarehouseLayout.findById(layout._id));
 }

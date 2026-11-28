@@ -22,6 +22,7 @@ import FinishedGoodsTicket from '../../../models/FinishedGoodsTicket.model.js';
 import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
 import ProductUnit from '../../../models/ProductUnit.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
+import { assertWarehouseUnlockedForStocktake, findFrozenStocktake } from '../../../common/services/stocktakeLockGuard.js';
 import { sendError, sendSuccess } from '../../../common/utils/responseHandler.js';
 import { code128DataUrl } from '../../../common/services/codeImageRenderer.js';
 import PutawayAllocation from '../../../models/PutawayAllocation.model.js';
@@ -586,6 +587,7 @@ router.post('/outbound-documents/:id/confirm', async (req, res, next) => {
 
     session = await mongoose.startSession();
     await session.withTransaction(async () => {
+      await assertWarehouseUnlockedForStocktake('FINISHED_GOODS', 'xác nhận xuất kho', session);
       const allBarcodesToMark = [];
 
       for (const line of document.items) {
@@ -994,6 +996,16 @@ router.post('/documents', authorizeRole('OWNER', 'WAREHOUSE_MANAGER'), async (re
     if (prior) return prior.confirmationHash === confirmationHash && String(prior.createdByUserId) === String(req.user._id)
       ? sendSuccess(res, 'Phiếu kho đã được xác nhận', { document: receiptResponse(prior) })
       : sendError(res, 'Khóa xác nhận đã dùng cho nội dung khác', { code: 'CONFIRMATION_REUSED' }, 409);
+
+    const activeStocktake = await findFrozenStocktake('FINISHED_GOODS');
+    if (activeStocktake) {
+      return sendError(
+        res,
+        `Kho thành phẩm đang khóa kiểm kê (${activeStocktake.sessionCode}); tạm dừng nhập/xuất kho.`,
+        { code: 'STOCKTAKE_LOCKED' },
+        409,
+      );
+    }
   }
   let sourceTicket = null;
   const ticketUnitBarcodesBySku = new Map();

@@ -396,39 +396,78 @@ export const getRefundRequests = async (filters = {}) => {
  * bắt buộc gắn tham chiếu chứng từ gốc (salesOrderId & returnRequestId).
  */
 export const approveRefundRequest = async (rmaId, { paymentMethod = 'BANK_TRANSFER', note } = {}, accountant, req) => {
-  const rma = await ReturnRequest.findById(rmaId);
+  const ALLOWED_PAYMENT_METHODS = ['BANK_TRANSFER', 'CASH', 'COD_BALANCE_OFFSET'];
+  if (!ALLOWED_PAYMENT_METHODS.includes(paymentMethod)) {
+    throw new Error('Phương thức thanh toán không hợp lệ (chỉ chấp nhận BANK_TRANSFER, CASH hoặc COD_BALANCE_OFFSET).');
+  }
+
+  const rma = await ReturnRequest.findById(rmaId)
+    .populate('customerId', 'fullName phone')
+    .populate('originalOrderId', 'orderCode shippingRecipient');
   if (!rma) throw new Error('Không tìm thấy phiếu RMA. Hướng dẫn: tải lại danh sách yêu cầu hoàn tiền.');
 
   if (rma.refundRequest?.status !== 'PENDING_ACCOUNTANT') {
     throw new Error(`Phiếu ${rma.rmaCode} không ở trạng thái chờ Kế toán duyệt (hiện tại: ${rma.refundRequest?.status || 'NONE'}). Hướng dẫn: yêu cầu Seller gửi yêu cầu hoàn tiền trước.`);
   }
 
+  const salesOrderId = rma.originalOrderId?._id || rma.originalOrderId;
   // [GBR-14] Mandatory Voucher Source Document Reference
-  if (!rma.originalOrderId || !rma._id) {
+  if (!salesOrderId || !rma._id) {
     throw new Error('[BR: GBR-14] Không thể lập phiếu chi hoàn tiền do thiếu chứng từ gốc tham chiếu (originalOrderId / returnRequestId).');
   }
 
   const amount = Number(rma.refundRequest.requestedAmount) || 0;
+  if (amount <= 0) {
+    throw new Error(`Số tiền hoàn của phiếu ${rma.rmaCode} phải lớn hơn 0.`);
+  }
+
+  const bankHolder = (rma.refundBanking?.accountHolder || '').toUpperCase().trim();
+  const recipientName =
+    rma.customerId?.fullName?.trim() ||
+    rma.originalOrderId?.shippingRecipient?.name?.trim() ||
+    bankHolder ||
+    'Khách hàng';
+  const orderCodeLabel = rma.originalOrderId?.orderCode ? ` (Đơn ${rma.originalOrderId.orderCode})` : '';
+  const paymentReason =
+    note?.trim() ||
+    `[GBR-14] Hoàn tiền khách theo phiếu ${rma.rmaCode}${orderCodeLabel} - ${rma.refundBanking?.bankName || ''} ${rma.refundBanking?.accountNumber || ''} ${bankHolder}`.trim();
+
   const voucherCode = await CounterSequence.getNextSequence('CASH_OUT_VOUCHER', 'PC', 5);
+  const now = new Date();
   const voucher = await CashFlowVoucher.create({
     voucherCode,
     flowType: 'CASH_OUT',
     category: 'CUSTOMER_RETURN_REFUND',
+    paymentReason,
+    recipient: {
+      name: recipientName,
+      phone: rma.customerId?.phone || rma.originalOrderId?.shippingRecipient?.phone || '',
+      address: rma.originalOrderId?.shippingRecipient?.address || '',
+      recipientType: 'CUSTOMER',
+    },
     amount,
     paymentMethod,
-    salesOrderId: rma.originalOrderId,
+    bankInfo: {
+      bankName: rma.refundBanking?.bankName || '',
+      accountNo: rma.refundBanking?.accountNumber || '',
+      accountHolder: bankHolder,
+    },
+    status: 'CONFIRMED',
+    salesOrderId,
     returnRequestId: rma._id,
     createdByAccountantId: accountant._id,
-    note: note || `[GBR-14] Hoàn tiền khách theo phiếu ${rma.rmaCode} - ${rma.refundBanking?.bankName || ''} ${rma.refundBanking?.accountNumber || ''} ${(rma.refundBanking?.accountHolder || '').toUpperCase()}`.trim(),
+    confirmedByAccountantId: accountant._id,
+    confirmedAt: now,
+    notes: paymentReason,
   });
 
   rma.refundRequest.status = 'APPROVED';
   rma.refundRequest.reviewedByAccountantId = accountant._id;
-  rma.refundRequest.reviewedAt = new Date();
+  rma.refundRequest.reviewedAt = now;
   rma.refundRequest.voucherId = voucher._id;
   rma.status = 'ACCOUNTANT_APPROVED';
   rma.financialAccounting.approvedByAccountantId = accountant._id;
-  rma.financialAccounting.approvedAt = new Date();
+  rma.financialAccounting.approvedAt = now;
   await rma.save();
 
   await recordSystemLog({

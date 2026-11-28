@@ -71,6 +71,12 @@ export const resolveContractDeviation = async (planId, payload, currentUserId) =
     throw err;
   }
 
+  if (plan.deviationResolution?.status === 'RESOLVED' || ['RESOLVED_SUPERSEDED', 'CANCELLED'].includes(plan.status)) {
+    const err = new Error('Hồ sơ sai lệch này đã được xử lý trước đó, không thể xử lý trùng lặp.');
+    err.statusCode = 409;
+    throw err;
+  }
+
   const notes = String(payload.resolutionNotes || '').trim();
   if (!notes) {
     const err = new Error('Vui lòng nhập ghi chú mô tả phương án đã xử lý sai lệch');
