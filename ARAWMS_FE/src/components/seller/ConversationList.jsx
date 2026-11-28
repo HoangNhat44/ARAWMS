@@ -61,7 +61,19 @@ const ConversationList = ({ conversations = [], selectedId, onSelect, onTagFilte
         </InputGroup>
       </div>
 
-      {/* Quick Tag Pills Bar - Horizontal scrollable single clean row */}
+      {/*
+       * ====================================================================================================================================
+       * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & BỘ LỌC - PANE 1: DANH SÁCH HỘI THOẠI (UC-72)]
+       * ====================================================================================================================================
+       * | STT | Mục trên UI (Bộ lọc / Số liệu)  | Hàm FE & Trường hiển thị                | API, Hàm BE & Nguồn DB (Collection.field)                           | Nghiệp vụ / Công thức / Điều kiện                 |
+       * |-----|---------------------------------|-----------------------------------------|---------------------------------------------------------------------|---------------------------------------------------|
+       * | 1   | Ô tìm kiếm hội thoại / SĐT      | state searchTerm -> filteredConversations| Lọc client trên props.conversations[]                               | Khớp fullName, phone, customerCode, lastPreview   |
+       * | 2   | Pill "Tất cả (N)"               | conversations.length                    | GET /api/conversations -> chatInterface.service.js:getConversations | Tổng hội thoại thuộc Seller đang mở               |
+       * | 3   | Dải Pill lọc theo Tag (allTags) | activeFilterTag -> onTagFilter(tag.name)| GET /api/conversations/tags/list -> tagManagement.service.js (tags) | Lọc hội thoại có c.tags.includes(activeFilterTag) |
+       * | 4   | Badge đỏ số tin chưa đọc        | conv.unreadCount                        | chat_conversations.unreadCount (chatRouting.service.js / markAsRead)| +1 khi có tin khách đến; 0 khi Seller mở xem      |
+       * | 5   | Badge "+N" thẻ ẩn trên dòng     | conv.tags.length - 2                    | chat_conversations.tags[]                                           | Hiện tối đa 2 tag đầu, gộp phần dư thành +N       |
+       * ====================================================================================================================================
+       */}
       <div
         className="d-flex align-items-center gap-1.5 px-2 py-2 border-bottom flex-shrink-0 overflow-x-auto text-nowrap"
         style={{

@@ -57,13 +57,13 @@ export const sellerService = {
   switchOrderGhnStatus: (id, ghnStatus) => api.post(`/orders/${id}/ghn-status`, { ghnStatus }),
   cancelOrder: (id, cancelReason) => api.post(`/orders/${id}/cancel`, { cancelReason }),
 
-  // === REVERSE LOGISTICS RMA (UC-82, UC-83 - GBR-11, GBR-12, GBR-13, GBR-23) ===
+  // === REVERSE LOGISTICS RMA (UC-82, UC-83 - [BR: GBR-14], [BR: GBR-15], [BR: GBR-16], [BR: GBR-26]) ===
   getRmaList: (params) => api.get('/returns/rma', { params }),
   getRmaById: (id) => api.get(`/returns/rma/${id}`),
   createReturnRequest: (data) => api.post('/returns/rma', data),
   createExchangeOrder: (rmaId, data) => api.post(`/returns/rma/${rmaId}/create-exchange-order`, data),
 
-  // === HOÀN TIỀN: Seller gửi yêu cầu -> Kế toán duyệt -> lập phiếu chi (GBR-14) ===
+  // === HOÀN TIỀN: Seller gửi yêu cầu -> Kế toán duyệt -> lập phiếu chi gắn chứng từ gốc ([BR: GBR-17]) ===
   submitRefundRequest: (rmaId, data) => api.post(`/returns/rma/${rmaId}/refund-request`, data),
   getRefundRequests: (params) => api.get('/returns/rma/refund-requests', { params }),
   approveRefundRequest: (rmaId, data) => api.post(`/returns/rma/${rmaId}/refund-approve`, data),

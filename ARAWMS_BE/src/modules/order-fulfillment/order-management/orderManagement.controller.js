@@ -30,8 +30,10 @@ export const createDirectOrder = async (req, res) => {
 };
 
 /**
- * UC-79: Xác nhận đơn hàng & Kích hoạt giữ chỗ tồn kho
+ * UC-79: Xác nhận đơn hàng & Kích hoạt giữ chỗ tồn kho (+reservedQty)
  * POST /api/orders/:id/confirm
+ * @businessRule GBR-10 Chuyển số lượng SKU từ tồn khả dụng sang tồn giữ chỗ khi xác nhận đơn
+ * @businessRule GBR-13 Tự động khởi tạo/đồng bộ mã vận đơn GHN
  */
 export const confirmOrderReserve = async (req, res) => {
   try {
@@ -43,8 +45,9 @@ export const confirmOrderReserve = async (req, res) => {
 };
 
 /**
- * UC-81: Hủy đơn hàng & Giải phóng tồn kho giữ chỗ
+ * UC-81: Hủy đơn hàng & Giải phóng tồn kho giữ chỗ (-reservedQty)
  * POST /api/orders/:id/cancel
+ * @businessRule GBR-11 Tự động giải phóng tồn kho giữ chỗ về tồn khả dụng khi hủy đơn
  */
 export const cancelOrder = async (req, res) => {
   try {
@@ -83,9 +86,9 @@ export const getOrderById = async (req, res) => {
 };
 
 /**
- * Chỉnh sửa sản phẩm và chi tiết đơn hàng khi đang ở trạng thái PENDING
+ * Chỉnh sửa sản phẩm và chi tiết đơn hàng khi đang ở trạng thái PENDING (chưa khóa giữ chỗ)
  * PUT /api/orders/:id/items
- * @businessRule GBR-08 Đơn hàng chỉ được phép sửa sản phẩm khi ở PENDING
+ * @businessRule GBR-10 Sau khi xác nhận chốt đơn và giữ chỗ kho (CONFIRMED_RESERVED), khóa sửa danh sách sản phẩm
  */
 export const updateOrderItems = async (req, res) => {
   try {

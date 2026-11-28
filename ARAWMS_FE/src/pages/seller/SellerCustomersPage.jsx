@@ -124,7 +124,7 @@ const SellerCustomersPage = () => {
   }, [searchQuery, channelFilter, tagFilter, sortBy, page]);
 
   useEffect(() => {
-    fetchCustomers();
+    void fetchCustomers();
   }, [fetchCustomers]);
 
   const handleToggleCreateTag = (tag) => {
@@ -174,7 +174,7 @@ const SellerCustomersPage = () => {
         showSuccess(`Đã tạo hồ sơ khách hàng ${res.data?.fullName || ''}!`, 'Thêm khách hàng');
         setCreateOpen(false);
         setNewForm({ fullName: '', phone: '', email: '', address: '', tags: ['Khách mới'] });
-        fetchCustomers();
+        void fetchCustomers();
       }
     } catch (err) {
       setCreateError(err.message || 'Không thể tạo hồ sơ khách hàng');
@@ -219,7 +219,26 @@ const SellerCustomersPage = () => {
         </Button>
       </div>
 
-      {/* KPI Cards */}
+      {/*
+       * ====================================================================================================================================
+       * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU, BỘ LỌC & HÀM XỬ LÝ - MÀN HÌNH 1: QUẢN LÝ KHÁCH HÀNG (SELLER CRM)]
+       * ====================================================================================================================================
+       * | STT | Mục trên UI (KPI / Bộ lọc / Cột)  | Hàm FE & Trường hiển thị                       | API, Hàm BE & Nguồn DB (Collection.field)                          | Nghiệp vụ / Công thức / Điều kiện                 |
+       * |-----|-----------------------------------|------------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------|
+       * | 1   | KPI: Tổng khách hàng              | fetchCustomers() -> summary.totalCustomers     | GET /api/conversations/customers -> getCustomerList() (customers)  | $sum: 1 toàn bộ khách chưa xóa (isDeleted!=true)  |
+       * | 2   | KPI: Liên kết Facebook Messenger  | fetchCustomers() -> summary.messengerLinkedCount| crmProfile.service.js:getCustomerList() <- customers.facebookPsid | Đếm KH có facebookPsid khác null/rỗng             |
+       * | 3   | KPI: Khách hàng VIP               | fetchCustomers() -> summary.vipCount           | crmProfile.service.js:getCustomerList() <- customers.tags          | Đếm KH có 'Khách VIP' trong mảng tags             |
+       * | 4   | KPI: Tổng chi tiêu tích lũy       | formatVnd(summary.totalRevenue)                | crmProfile.service.js:getCustomerList() <- customers.totalSpent    | Σ customers.totalSpent (cộng khi tạo/trừ khi hủy) |
+       * | 5   | Bộ lọc: Tìm kiếm (debounce 300ms) | searchInput -> searchQuery -> fetchCustomers() | crmProfile.service.js:getCustomerList({ search })                  | Regex $or: fullName, phone, customerCode, email   |
+       * | 6   | Bộ lọc: Nguồn khách (Tất cả/FB/..)| channelFilter -> fetchCustomers({ channel })   | crmProfile.service.js:getCustomerList({ channel })                 | MESSENGER: có facebookPsid; DIRECT: không PSID    |
+       * | 7   | Bộ lọc: Thẻ phân loại (Tags)      | tagFilter, mergedTagOptions <- availableTags   | crmProfile.service.js:getCustomerList() <- customers.tags + tags   | Lọc customers.tags chứa tag đã chọn               |
+       * | 8   | Bộ lọc: Sắp xếp (Mới nhất/...)    | sortBy -> fetchCustomers({ sortBy, sortDir })  | crmProfile.service.js:getCustomerList() <- .sort({ [sortBy] })     | createdAt/totalSpent/totalOrders (desc), tên(asc) |
+       * | 9   | Cột: Khách hàng & Badge Messenger | row.fullName, row.customerCode, row.facebookPsid| customers.{fullName, customerCode, facebookPsid}                   | Hiện badge Messenger khi có facebookPsid          |
+       * | 10  | Cột: SĐT, Địa chỉ, Phân loại Tags | row.phone, row.addresses[0].fullAddress, tags  | customers.{phone, addresses, tags}                                 | Đồng bộ 2 chiều với chat_conversations.tags       |
+       * | 11  | Cột: Tổng đơn & Tổng chi tiêu     | row.totalOrders, formatVnd(row.totalSpent)     | customers.{totalOrders, totalSpent} (cập nhật tại orderManagement) | +1/+totalOrderAmount khi đặt; -1/-tổng khi hủy    |
+       * | 12  | Phân trang (Hiển thị X / Y KH)    | page, pagination.{total, page, totalPages}     | getCustomerList({ page, limit: 10 }) -> skip/limit + countDocuments| Phân trang server-side (10 khách/trang)           |
+       * ====================================================================================================================================
+       */}
       <Row className="g-3 mb-3">
         <Col xs={6} lg={3}>
           <Card className="h-100 shadow-sm bg-white" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
@@ -606,7 +625,7 @@ const SellerCustomersPage = () => {
                 }}
                 onOrderConfirmed={() => {
                   setHistoryRefreshKey((k) => k + 1);
-                  fetchCustomers();
+                  void fetchCustomers();
                 }}
               />
             )}
@@ -712,7 +731,7 @@ const SellerCustomersPage = () => {
         onStatusUpdated={(updatedOrder) => {
           setSelectedOrderDetail(updatedOrder);
           setHistoryRefreshKey((k) => k + 1);
-          fetchCustomers();
+          void fetchCustomers();
         }}
         onOpenRma={(ord) => {
           setSelectedOrderForRma(ord);

@@ -39,14 +39,27 @@ const SkuStockLookupWidget = ({ onAttachSku, onAddToOrder }) => {
   };
 
   useEffect(() => {
-    fetchStock();
+    void fetchStock();
   }, []);
 
   const handleSearch = (e) => {
     e.preventDefault();
-    fetchStock(searchTerm);
+    void fetchStock(searchTerm);
   };
 
+  /**
+   * ====================================================================================================================================
+   * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & TRẠNG THÁI - WIDGET TRA CỨU TỒN KHO REALTIME (UC-77)]
+   * ====================================================================================================================================
+   * | STT | Mục trên UI (Số liệu / Trạng thái)      | Hàm FE & Trường hiển thị          | API, Hàm BE & Nguồn DB (Collection.field)                           | Nghiệp vụ / Công thức / Điều kiện                 |
+   * |-----|-----------------------------------------|-----------------------------------|---------------------------------------------------------------------|---------------------------------------------------|
+   * | 1   | Ô tìm kiếm SKU / mẫu / màu / size       | searchTerm -> fetchStock()        | GET /api/conversations/inventory/sku-lookup -> lookupRealtimeStock  | Tìm đa trường trên skus + products (isActive=true)|
+   * | 2   | Trạng thái "Hết hàng (0)"               | getStatusBadge(sku) (<= 0)        | skus.{onHandQty, reservedQty}                                       | availableQty = max(0, onHand - reserved) <= 0     |
+   * | 3   | Trạng thái "Sắp hết (X)"                | getStatusBadge(sku) (1..10)       | skus.{onHandQty, reservedQty, safetyStockThreshold}                 | [BR: GBR-08] 0 < availableQty <= 10               |
+   * | 4   | Trạng thái "Khả dụng (X)"               | getStatusBadge(sku) (> 10)        | skus.{onHandQty, reservedQty}                                       | [BR: GBR-10] availableQty > 10 (đủ hàng bán ngay) |
+   * | 5   | Giá bán lẻ                              | formatVnd(sku.retailPrice)        | skus.retailPrice (fallback products.basePrice)                      | Đơn giá bán chuẩn khi đẩy vào đơn nhanh           |
+   * ====================================================================================================================================
+   */
   const getStatusBadge = (sku) => {
     if (sku.availableQty <= 0) {
       return (

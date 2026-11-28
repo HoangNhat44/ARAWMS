@@ -3,15 +3,15 @@
  * @title        : Return Merchandise Authorization (RMA) Service
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-11-06
+ * @lastModified : 2026-11-29
  * @description  : Xử lý quy trình tiếp nhận yêu cầu đổi/trả hàng từ khách hàng (UC-82)
- *                 của Seller. Áp dụng chính xác các Business Rules chuẩn trong BR.md:
- *                 - GBR-11: Phụ phí 10% đối với đổi/trả do lỗi khách hàng
- *                 - GBR-12: Miễn 100% phụ phí và phí ship đối với lỗi cửa hàng/xưởng
- *                 - GBR-13: Cách ly hàng lỗi vào khu vực DEFECT_QUARANTINE
- *                 - GBR-14: Phiếu chi hoàn tiền (CashFlowVoucher) bắt buộc do Kế toán lập
+ *                 của Seller. Áp dụng chính xác các Business Rules chuẩn trong BR.md mới:
+ *                 - [BR: GBR-14]: Phụ phí 10% đối với đổi/trả do lỗi khách hàng
+ *                 - [BR: GBR-15]: Miễn 100% phụ phí và phí ship đối với lỗi cửa hàng/xưởng
+ *                 - [BR: GBR-16]: Cách ly hàng lỗi vào khu vực DEFECT_QUARANTINE
+ *                 - [BR: GBR-17]: Phiếu chi hoàn tiền (CashFlowVoucher) bắt buộc do Kế toán lập
  *                           kèm tham chiếu chứng từ gốc (salesOrderId, returnRequestId)
- *                 - GBR-23: Đối chiếu mã vận đơn hoàn & video mở hộp kiểm hàng
+ *                 - [BR: GBR-26]: Đối chiếu mã vận đơn hoàn & video mở hộp kiểm hàng
  * @module       : Reverse Logistics / Return Merchandise Authorization
  * @layer        : Service
  * ============================================================================
@@ -56,8 +56,16 @@ const recordSystemLog = async ({ actor, majorFeature, subFeature, action, target
 };
 
 /**
- * UC-82: Tiếp nhận phản hồi và tạo yêu cầu đổi/trả hàng (Create Merchandise Return Request - RMA)
- * Áp dụng chuẩn GBR-11, GBR-12, GBR-13, GBR-14, GBR-23 từ BR.md
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & TRẠNG THÁI - BE: TẠO YÊU CẦU ĐỔI / TRẢ HÀNG RMA (UC-82)]
+ * ====================================================================================================================================
+ * | STT | Mục kiểm tra / Trạng thái    | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Nghiệp vụ / Công thức / BR                        |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | Điều kiện đơn gốc đủ quyền   | CreateRmaModal.jsx                       | sales_orders.status                               | Chỉ cho tạo RMA khi đơn DELIVERED hoặc COMPLETED  |
+ * | 2   | Số lượng còn được trả        | Giới hạn SL từng dòng (CreateRmaModal)   | return_requests (status !== 'REJECTED')           | remaining = orderedQty - Σ alreadyReturned        |
+ * | 3   | Tiền hàng trả & Hoàn ròng    | Tóm tắt hoàn tiền (CreateRmaModal)       | calculateRefundFinancialsByBR -> return_requests  | [BR: GBR-14] 10% khách; [BR: GBR-15] 0% lỗi shop  |
+ * | 4   | Trạng thái phiếu & Đơn gốc   | SellerOrdersPage.jsx & Hàng hoàn Kho     | return_requests.status='REQUESTED'; sales_orders  | Đơn gốc -> RETURN_REQUESTED / EXCHANGE_REQUESTED  |
+ * ====================================================================================================================================
  */
 export const createReturnRequest = async (rmaData, user, req) => {
   const {
@@ -128,7 +136,7 @@ export const createReturnRequest = async (rmaData, user, req) => {
     }
   }
 
-  // Phân loại lỗi theo GBR-11 (Lỗi khách hàng) vs GBR-12 (Lỗi cửa hàng/xưởng)
+  // Phân loại lỗi theo [BR: GBR-14] (Lỗi khách hàng - phụ phí 10%) vs [BR: GBR-15] (Lỗi cửa hàng/xưởng - miễn 100%)
   const faultClassification = classifyReturnFaultByBR(reasonDescription, faultType);
 
   const inspectedItems = [];
@@ -159,8 +167,8 @@ export const createReturnRequest = async (rmaData, user, req) => {
     calculatedReturnedValue += retQty * orderItem.unitSalePrice;
     totalReturnedQty += retQty;
 
-    // [GBR-13] Defective Garment Quarantine Isolation:
-    // Nếu hàng lỗi xưởng hoặc tình trạng bẩn/hư hỏng -> tự động định tuyến vào QUARANTINE_DEFECT
+    // [BR: GBR-16] Defective Garment Quarantine Isolation:
+    // Nếu hàng lỗi xưởng hoặc tình trạng bẩn/hư hỏng -> tự động định tuyến vào QUARANTINE_DEFECT (cô lập khỏi tồn bán được)
     const itemCondition = rItem.condition || (faultClassification.isStoreFault ? 'DIRTY_OR_DAMAGED' : 'GOOD_INTACT');
     const itemDisposition =
       itemCondition === 'DIRTY_OR_DAMAGED' || faultClassification.isStoreFault
@@ -176,7 +184,7 @@ export const createReturnRequest = async (rmaData, user, req) => {
     });
   }
 
-  // Tính toán hoàn tiền theo GBR-11 (khấu trừ 10% nếu lỗi khách) hoặc GBR-12 (hoàn 100% nếu lỗi shop)
+  // Tính toán hoàn tiền theo [BR: GBR-14] (khấu trừ 10% nếu lỗi khách) hoặc [BR: GBR-15] (hoàn 100% nếu lỗi shop)
   const financials = calculateRefundFinancialsByBR({
     returnedMerchandiseValue: calculatedReturnedValue,
     isStoreFault: faultClassification.isStoreFault,
@@ -217,7 +225,7 @@ export const createReturnRequest = async (rmaData, user, req) => {
   originalOrder.linkedReturnRequestId = newRma._id;
   await originalOrder.save();
 
-  // Phát thông báo Realtime tự động gửi đến Kho (Warehouse) qua Socket.io (chuẩn bị đối chiếu theo GBR-23)
+  // Phát thông báo Realtime tự động gửi đến Kho (Warehouse) qua Socket.io (chuẩn bị đối chiếu video mở hộp theo [BR: GBR-26])
   emitRmaAlert({
     rmaCode: newRma.rmaCode,
     originalOrderCode: originalOrder.orderCode,
@@ -314,7 +322,8 @@ export const getRmaById = async (rmaId) => {
 };
 
 /**
- * [GBR-14] Seller gửi YÊU CẦU HOÀN TIỀN cho Kế toán duyệt lập phiếu chi (CashFlowVoucher).
+ * [BR: GBR-17] Seller gửi YÊU CẦU HOÀN TIỀN cho Kế toán duyệt lập phiếu chi (CashFlowVoucher).
+ * Trạng thái `refundRequest.status` chuyển sang `PENDING_ACCOUNTANT` (đang chờ Kế toán kiểm tra chứng từ & lập phiếu chi).
  */
 export const submitRefundRequest = async (rmaId, { note } = {}, user, req) => {
   const rma = await ReturnRequest.findById(rmaId).populate('originalOrderId', 'orderCode');
@@ -392,7 +401,7 @@ export const getRefundRequests = async (filters = {}) => {
 };
 
 /**
- * [GBR-14] Kế toán DUYỆT yêu cầu hoàn tiền và tạo PHIẾU CHI (CashFlowVoucher)
+ * [BR: GBR-17] Kế toán DUYỆT yêu cầu hoàn tiền và tạo PHIẾU CHI (CashFlowVoucher)
  * bắt buộc gắn tham chiếu chứng từ gốc (salesOrderId & returnRequestId).
  */
 export const approveRefundRequest = async (rmaId, { paymentMethod = 'BANK_TRANSFER', note } = {}, accountant, req) => {
@@ -403,7 +412,7 @@ export const approveRefundRequest = async (rmaId, { paymentMethod = 'BANK_TRANSF
     throw new Error(`Phiếu ${rma.rmaCode} không ở trạng thái chờ Kế toán duyệt (hiện tại: ${rma.refundRequest?.status || 'NONE'}). Hướng dẫn: yêu cầu Seller gửi yêu cầu hoàn tiền trước.`);
   }
 
-  // [GBR-14] Mandatory Voucher Source Document Reference
+  // [BR: GBR-17] Mandatory Voucher Source Document Reference: bắt buộc có đơn gốc và phiếu RMA tham chiếu
   if (!rma.originalOrderId || !rma._id) {
     throw new Error('[BR: GBR-14] Không thể lập phiếu chi hoàn tiền do thiếu chứng từ gốc tham chiếu (originalOrderId / returnRequestId).');
   }

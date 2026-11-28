@@ -102,7 +102,7 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
       });
       setTags(customer.tags || []);
       const custId = customer._id || customer.id;
-      if (custId) fetchInteractionHistory(custId);
+      if (custId) void fetchInteractionHistory(custId);
     }
   }, [customer]);
 
@@ -211,7 +211,18 @@ const CustomerProfilePanel = ({ customer, conversationId, onCustomerUpdated }) =
             </Button>
           </div>
 
-          {/* Quick Customer Metrics */}
+          {/*
+           * ====================================================================================================================================
+           * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & HÀM XỬ LÝ - TAB HỒ SƠ KHÁCH HÀNG (CRM PANEL)]
+           * ====================================================================================================================================
+           * | STT | Mục trên UI (Số liệu / Trường)  | Hàm FE & Trường hiển thị               | API, Hàm BE & Nguồn DB (Collection.field)                           | Nghiệp vụ / Công thức / Điều kiện                 |
+           * |-----|---------------------------------|----------------------------------------|---------------------------------------------------------------------|---------------------------------------------------|
+           * | 1   | Thẻ "Tổng đơn hàng"             | customer.totalOrders                   | GET /api/conversations/customers/:id -> customers.totalOrders       | +1 khi createDirectOrder/POS; -1 khi cancelOrder  |
+           * | 2   | Thẻ "Tổng chi tiêu"             | formatVnd(customer.totalSpent)         | GET /api/conversations/customers/:id -> customers.totalSpent        | +totalOrderAmount khi đặt; -tổng khi hủy đơn      |
+           * | 3   | Thông tin liên hệ & Địa chỉ     | formData.{fullName,phone,email,address}| PUT /api/conversations/customers/:id -> crmProfile.updateCustomer() | Lưu địa chỉ mặc định vào customers.addresses[0]   |
+           * | 4   | Thẻ phân loại khách (Tags)      | formData.tags -> handleSave()          | customers.tags[] <-> chat_conversations.tags[]                      | Đồng bộ 2 chiều khi thêm/gỡ tag ở hồ sơ           |
+           * ====================================================================================================================================
+           */}
           <Row className="g-2 mt-2 text-center">
             <Col xs={6}>
               <Card body className="py-2.5 bg-white" style={{ border: '1px solid var(--wms-border, #C8B9A6)', borderRadius: '8px' }}>

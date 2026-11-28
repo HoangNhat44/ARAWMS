@@ -179,7 +179,21 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
     ['PACKED', 'HANDED_OVER_CARRIER', 'CARRIER_PICKED_UP', 'DELIVERED', 'COMPLETED', 'RETURN_REQUESTED', 'EXCHANGE_REQUESTED', 'RETURNED', 'RETURN_COMPLETED'].includes(status);
   const isCancelable = ['PENDING', 'CONFIRMED_RESERVED', 'PICKING'].includes(status) && !isShipperPicked && status !== 'CANCELLED';
 
-  // Tính toán tổng tiền realtime theo items hiện tại
+  /*
+   * ====================================================================================================================================
+   * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU, TRẠNG THÁI & ĐIỀU KIỆN - MODAL CHI TIẾT ĐƠN HÀNG (UC-80 / UC-81)]
+   * ====================================================================================================================================
+   * | STT | Mục trên UI (Số liệu / Trạng thái / Nút)| Hàm FE & Trường hiển thị                        | API, Hàm BE & Nguồn DB (Collection.field)                           | Nghiệp vụ / Công thức / Điều kiện                 |
+   * |-----|-----------------------------------------|-------------------------------------------------|---------------------------------------------------------------------|---------------------------------------------------|
+   * | 1   | Trạng thái đơn hàng & Lịch sử mốc       | status, currentStatusObj, statusHistoryList[]   | GET /api/orders/:id -> sales_orders.{status, statusHistory[]}       | Ánh xạ nhãn từ ORDER_STATUSES                     |
+   * | 2   | Mã vận đơn & Trạng thái GHN realtime    | waybillCode, ghnStatus, ghnStatusName           | POST /api/orders/:id/sync-ghn -> sales_orders.warehouseFulfillment  | Đồng bộ GHN [BR: GBR-13]; bỏ qua với đơn POS      |
+   * | 3   | Tiền hàng / Phí ship / Giảm giá / Tổng  | currentSubtotal, shippingFee, discount, total   | sales_orders.{items[], financialSummary}                            | sub=Σ(qty*price); total=sub+ship-discount         |
+   * | 4   | Quyền sửa sản phẩm trong đơn            | isPending (status === 'PENDING')                | PUT /api/orders/:id/items -> updateOrderItemsAndDetails             | [BR: GBR-10] Chỉ sửa khi PENDING (chưa giữ kho)   |
+   * | 5   | Quyền sửa thông tin người nhận          | canEditRecipient, handleSaveRecipient()         | PATCH /api/orders/:id/recipient -> updateOrderRecipient             | Cho sửa khi chưa lấy hàng (ghnStatus=ready_to_pick)|
+   * | 6   | Quyền hủy đơn hàng                      | isCancelable, isShipperPicked                   | POST /api/orders/:id/cancel -> orderManagement.service.js:cancelOrder| [BR: GBR-11] Chưa lấy hàng -> nhả reservedQty    |
+   * | 7   | Nút gửi tin nhắn xác nhận / hủy qua FB  | isFacebookOrder (channel FACEBOOK/FANPAGE)      | POST /api/orders/:id/send-confirmation & /send-cancel-inquiry       | Chỉ bật với đơn kênh Facebook (ẩn với sàn/POS)    |
+   * ====================================================================================================================================
+   */
   const financial = order.financialSummary || {};
   const currentSubtotal = items.reduce((sum, it) => sum + (it.orderedQty || 1) * (it.unitSalePrice || 0), 0);
   const shippingFee = Number(financial.shippingFee) || 0;
@@ -428,7 +442,7 @@ const OrderDetailModal = ({ isOpen, order, onClose, onStatusUpdated, onOpenRma }
     if (!promptDialog.value.trim() || !cancelConfirmedWithCustomer) return;
     const { value } = promptDialog;
     setPromptDialog({ ...promptDialog, isOpen: false });
-    executeCancelOrder(value.trim());
+    void executeCancelOrder(value.trim());
   };
 
   const formatDate = (dateStr) => {

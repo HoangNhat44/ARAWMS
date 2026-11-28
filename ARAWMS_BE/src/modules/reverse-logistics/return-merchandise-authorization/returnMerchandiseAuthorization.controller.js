@@ -46,7 +46,7 @@ export const getRmaById = async (req, res) => {
 };
 
 /**
- * [GBR-14] Seller gửi yêu cầu hoàn tiền cho Kế toán
+ * [BR: GBR-17] Seller gửi yêu cầu hoàn tiền cho Kế toán duyệt lập phiếu chi gắn chứng từ gốc
  * POST /api/returns/rma/:id/refund-request
  */
 export const submitRefundRequest = async (req, res) => {

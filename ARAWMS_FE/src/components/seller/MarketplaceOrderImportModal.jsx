@@ -48,7 +48,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
   // Tải danh sách cấu hình đa kênh từ Backend
   useEffect(() => {
     if (isOpen) {
-      loadChannels();
+      void loadChannels();
       setPreviewData(null);
       setError('');
       setSuccessInfo(null);
@@ -155,7 +155,7 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
     const firstWord = rawName.trim().split(/\s+/)[0] || '';
     const query = firstWord.length >= 2 ? firstWord : rawName.slice(0, 20);
     setSkuSearchQuery(query);
-    triggerSearchSku(query);
+    void triggerSearchSku(query);
   };
 
   const triggerSearchSku = async (query) => {
@@ -240,6 +240,19 @@ const MarketplaceOrderImportModal = ({ isOpen, onClose, onImportSuccess }) => {
       };
     });
 
+    /*
+     * ====================================================================================================================================
+     * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & TRẠNG THÁI - MODAL IMPORT ĐƠN SÀN TMĐT (SHOPEE / TIKTOK / EXCEL)]
+     * ====================================================================================================================================
+     * | STT | Mục trên UI (Số liệu / Trạng thái)      | Hàm FE & Trường hiển thị                        | API, Hàm BE & Nguồn DB (Collection.field)                           | Nghiệp vụ / Công thức / Điều kiện                 |
+     * |-----|-----------------------------------------|-------------------------------------------------|---------------------------------------------------------------------|---------------------------------------------------|
+     * | 1   | Danh sách đơn xem trước từ file Excel   | previewData.orders[]                            | POST /api/orders/marketplace/preview-excel -> parseExcelFile()      | Gom dòng Excel theo mã đơn sàn + đối chiếu skus   |
+     * | 2   | Số đơn hợp lệ / Số đơn lỗi              | previewData.{validOrdersCount,invalidOrdersCount}| Tính từ previewData.orders[].isValid sau khi parse / ghép tay SKU   | Đếm ord.isValid === true / false                  |
+     * | 3   | Trạng thái dòng hợp lệ (isValid)        | ord.isValid, ord.warningMessage                 | Đối chiếu skus.{isActive,onHandQty,reservedQty} & sales_orders      | [BR: GBR-06]/[GBR-10] Đủ SKU + đủ tồn + không trùng|
+     * | 4   | Ghép SKU thủ công khi tên sàn khác tên  | handlePickSkuForItem() -> lookupRealtimeStock() | GET /api/conversations/inventory/sku-lookup (skus)                  | Tính lại isValidSku, isStockSufficient & bộ đếm   |
+     * | 5   | Nút "Xử lý đơn" (Import chính thức)     | handleProcessOrders()                           | POST /api/orders/marketplace/process-orders -> processImportOrders()| Chỉ import đơn isValid, lưu sales_orders & giữ kho|
+     * ====================================================================================================================================
+     */
     const validCount = updatedOrders.filter((o) => o.isValid).length;
     const invalidCount = updatedOrders.filter((o) => !o.isValid).length;
 

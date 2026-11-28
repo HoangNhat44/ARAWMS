@@ -20,7 +20,18 @@ import { SkeletonOrderHistoryCard } from '../common/Skeleton';
 import { Icon, EmptyState, formatVnd, ORDER_STATUS_CLASS } from './SellerUi';
 
 /**
- * Nhãn + icon hiển thị cho từng trạng thái đơn trong lịch sử mua hàng (100% thuần tiếng Việt).
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & TRẠNG THÁI - TAB ĐƠN CŨ / LỊCH SỬ MUA HÀNG (UC-76)]
+ * ====================================================================================================================================
+ * | STT | Mục trên UI (Số liệu / Trạng thái / Nút)| Hàm FE & Trường hiển thị                        | API, Hàm BE & Nguồn DB (Collection.field)                           | Nghiệp vụ / Công thức / Điều kiện                 |
+ * |-----|-----------------------------------------|-------------------------------------------------|---------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | Danh sách thẻ đơn cũ của khách          | fetchOrderHistory() -> orders[]                 | GET /api/conversations/customers/:id/purchase-history (sales_orders)| Lọc theo customerId, sort createdAt giảm dần      |
+ * | 2   | Nhãn & màu trạng thái đơn               | HISTORY_STATUS_META[ord.status], ORDER_STATUS...| sales_orders.status                                                 | 15 trạng thái chuẩn hóa 100% tiếng Việt           |
+ * | 3   | Số lượng & thành tiền từng dòng SP      | item.orderedQty, item.subtotalAmount            | sales_orders.items[]                                                | subtotalAmount = orderedQty * unitSalePrice       |
+ * | 4   | Tổng tiền đơn hàng                      | formatVnd(ord.financialSummary.totalOrderAmount)| sales_orders.financialSummary                                       | itemsSubtotal + shippingFee - discountAmount      |
+ * | 5   | Nút "Xác nhận đơn"                      | handleConfirmOrder(ord) (khi status==='PENDING')| POST /api/orders/:id/confirm -> confirmOrderReserve()               | [BR: GBR-10] Chuyển CONFIRMED_RESERVED & giữ kho  |
+ * | 6   | Nút "Đổi / Trả"                         | onRequestRma(ord) (DELIVERED hoặc COMPLETED)    | Mở CreateRmaModal -> POST /api/returns/rma                          | [BR: GBR-14], [BR: GBR-15] Chỉ đơn đã giao/POS    |
+ * ====================================================================================================================================
  * @constant {Object<string,{label:string, icon:string}>}
  */
 const HISTORY_STATUS_META = {
@@ -60,7 +71,7 @@ const CustomerOrderHistory = ({ customerId, onRequestRma, onViewDetail, onOrderC
 
   useEffect(() => {
     if (customerId) {
-      fetchOrderHistory();
+      void fetchOrderHistory();
     }
   }, [customerId, refreshKey]);
 

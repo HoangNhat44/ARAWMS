@@ -177,13 +177,27 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
     }));
   };
 
-  // Tính tổng tiền hàng trả lại
+  /*
+   * ====================================================================================================================================
+   * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & CÔNG THỨC - MODAL TẠO PHIẾU ĐỔI / TRẢ HÀNG RMA (UC-82 / UC-83)]
+   * ====================================================================================================================================
+   * | STT | Mục trên UI (Số liệu / Trạng thái / Lọc)| Hàm FE & Trường hiển thị                        | API, Hàm BE & Nguồn DB (Collection.field)                           | Nghiệp vụ / Công thức / Điều kiện                 |
+   * |-----|-----------------------------------------|-------------------------------------------------|---------------------------------------------------------------------|---------------------------------------------------|
+   * | 1   | Tìm kiếm đơn đủ điều kiện đổi/trả       | orderSearch -> foundOrders[] -> currentOrder    | GET /api/orders -> sales_orders (DELIVERED / COMPLETED)             | Chỉ đơn đã giao / hoàn thành mới tạo được RMA     |
+   * | 2   | Giá trị hàng trả                        | calculatedReturnedValue (selectedItems)         | sales_orders.items[].unitSalePrice                                  | Σ (selectedQty * item.unitSalePrice)              |
+   * | 3   | Phân loại lỗi (Shop vs Khách)           | isStoreFault (regex trên reasonDescription)     | BE: returnMerchandiseAuthorization.rules.js:classifyReturnFaultByBR | [BR: GBR-15] Lỗi shop/xưởng vs [BR: GBR-14] Khách |
+   * | 4   | Phụ phí khấu trừ (0% hoặc 10%)          | surchargeAmount                                 | return_requests.financialAccounting.surchargeAmount                 | Lỗi shop: 0đ; Lỗi khách: round(returnedVal * 10%) |
+   * | 5   | Số tiền hoàn ròng cho khách             | netRefundAmount                                 | return_requests.financialAccounting.netRefundAmount                 | max(0, calculatedReturnedValue - surchargeAmount) |
+   * | 6   | Tìm SKU đổi mới & Chênh lệch đổi hàng   | handleSearchExchangeSkus(), priceDifference     | GET /api/conversations/inventory/sku-lookup (skus.retailPrice)      | exchangeVal - returnedVal (>0 khách bù; <0 hoàn)  |
+   * | 7   | Trạng thái phiếu & Đơn gốc sau khi gửi  | handleSubmit() -> POST /api/returns/rma         | return_requests.status='PENDING_RECEIPT'; sales_orders.status=...   | RETURN_REQUESTED / EXCHANGE_REQUESTED             |
+   * ====================================================================================================================================
+   */
   const calculatedReturnedValue = (currentOrder?.items || []).reduce((sum, item) => {
     const qty = selectedItems[skuKeyOf(item)] || 0;
     return sum + qty * (Number(item.unitSalePrice) || 0);
   }, 0);
 
-  // Phân loại lỗi theo chuẩn BR.md: GBR-12 (Lỗi cửa hàng/xưởng -> miễn 100% phí) vs GBR-11 (Lỗi khách hàng -> phụ phí 10%)
+  // Phân loại lỗi theo chuẩn BR.md mới: [BR: GBR-15] (Lỗi cửa hàng/xưởng -> miễn 100% phí) vs [BR: GBR-14] (Lỗi khách hàng -> phụ phí 10%)
   const isStoreFault = /lỗi vải|sút chỉ|đứt nút|lỗi xưởng|nhà sản xuất|giao nhầm|sai mẫu|sai màu|nhầm màu|nhầm mã|hư hỏng/i.test(
     reasonDescription || ''
   );
@@ -450,7 +464,7 @@ const CreateRmaModal = ({ isOpen, onClose, order: initialOrder, onRmaCreated }) 
                       placeholder="Nhập mã đơn hàng hoặc SĐT khách hàng cũ..."
                       value={orderSearch}
                       onChange={(e) => setOrderSearch(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSearchOldOrders(); } }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleSearchOldOrders(); } }}
                     />
                     <Button variant="dark" onClick={handleSearchOldOrders} disabled={searchingOrders}>
                       {searchingOrders ? <Spinner animation="border" size="sm" /> : <><Icon name="search" /> Tìm đơn</>}

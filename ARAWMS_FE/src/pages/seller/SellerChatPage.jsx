@@ -36,7 +36,21 @@ let memoryTags = [];
 let memoryFetchTime = 0;
 
 /**
- * Trang chính Không gian làm việc bán hàng (Seller Chat Workspace) của Seller.
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU, BỘ LỌC & HÀM XỬ LÝ - MÀN HÌNH 3: HỘI THOẠI & CSKH (SELLER CHAT WORKSPACE)]
+ * ====================================================================================================================================
+ * | STT | Khu vực / Mục trên UI              | Hàm FE & Trường hiển thị                           | API, Hàm BE & Nguồn DB (Collection.field)                           | Nghiệp vụ / Công thức / Điều kiện                 |
+ * |-----|------------------------------------|----------------------------------------------------|---------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | Pane 1: Danh sách hội thoại        | fetchAllData() -> conversations[] (ConversationList)| GET /api/conversations -> chatInterface.service.js:getConversations | Lọc chat_conversations theo Seller, sort mới nhất |
+ * | 2   | Pane 1: Bộ lọc tìm kiếm & Tag      | searchTerm, activeFilterTag -> filteredConversations| GET /api/conversations/tags/list -> tagManagement.service.js (tags) | Lọc client trên conversations[] & allTags[]       |
+ * | 3   | Pane 1: Số tin chưa đọc (badge đỏ) | conv.unreadCount (reset về 0 trong handleSelect...) | PATCH /api/conversations/:id/read -> chat_conversations.unreadCount | +1 khi khách nhắn (chatRouting); 0 khi Seller mở  |
+ * | 4   | Pane 2: Luồng tin nhắn & Thẻ đơn   | ChatBox -> fetchMessages() -> messages[]           | GET /api/conversations/:id/messages -> chat_messages[]              | Phân loại thẻ tự động qua getOrderNotification... |
+ * | 5   | Pane 2: Gắn/Tạo/Xóa thẻ nhanh      | handleToggleTag / handleCreateTag / DeleteTag      | POST/DELETE /api/conversations/:id/tags & /tags/create (tags)       | Đồng bộ 2 chiều tags giữa conversation & customer |
+ * | 6   | Pane 2: Gửi chữ / Tệp / Ctrl+V ảnh | handleSendMessage / handlePaste / appendChatFiles  | POST /api/conversations/:id/messages & /attachments (chat_messages) | Hỗ trợ tối đa 5 tệp × 8MB + Meta Send API + Socket|
+ * | 7   | Pane 3 - Tab Hồ sơ (CRM)           | CustomerProfilePanel (totalOrders, totalSpent, ...) | GET/PUT /api/conversations/customers/:id -> customers               | Xem/sửa SĐT, địa chỉ, tags, KPI đơn & chi tiêu    |
+ * | 8   | Pane 3 - Tab Tạo đơn (QuickOrder)  | QuickOrderPanel (stockFilter, subtotal, total, ...) | GET /api/conversations/inventory/sku-lookup & POST /api/orders      | Lọc Tất cả/Còn hàng/Hết hàng, giữ chỗ [BR: GBR-10]|
+ * | 9   | Pane 3 - Tab Đơn cũ (History)      | CustomerOrderHistory (orders[], historyRefreshKey) | GET /api/conversations/customers/:id/purchase-history (sales_orders)| Chốt đơn PENDING / Mở chi tiết / Tạo Đổi-Trả RMA  |
+ * ====================================================================================================================================
  *
  * @component
  * @returns {JSX.Element} Toàn bộ giao diện 3-pane bán hàng phong cách Pancake.
@@ -132,7 +146,7 @@ const SellerChatPage = () => {
   };
 
   useEffect(() => {
-    fetchAllData();
+    void fetchAllData();
 
     // Kết nối Socket.io và tham gia phòng Seller Workspace
     const socket = getSocket();
@@ -177,7 +191,7 @@ const SellerChatPage = () => {
 
     // Đồng bộ nền dự phòng (45s một lần phòng khi ngắt kết nối mạng)
     const interval = setInterval(() => {
-      fetchAllData(true);
+      void fetchAllData(true);
     }, 45000);
 
     return () => {
@@ -282,7 +296,7 @@ const SellerChatPage = () => {
     });
 
     // Đồng bộ lại ngầm từ server
-    fetchAllData(true);
+    void fetchAllData(true);
   };
 
   const handleOpenRma = (order) => {
@@ -487,9 +501,11 @@ const SellerChatPage = () => {
 
           {/* Splitter Left (Desktop Only when pane1 is visible) */}
           {isDesktop && pane1Visible && (
-            <div
-              className="ara-pane-splitter border-start border-end"
+            <button
+              type="button"
+              className="ara-pane-splitter border-start border-end p-0 border-top-0 border-bottom-0"
               onMouseDown={(e) => startDrag('left', e)}
+              aria-label="Kéo để thay đổi chiều rộng danh sách hội thoại"
               title="Kéo để thay đổi chiều rộng"
             />
           )}
@@ -520,9 +536,11 @@ const SellerChatPage = () => {
 
           {/* Splitter Right (Desktop Only when pane3 is visible) */}
           {isDesktop && pane3Visible && (
-            <div
-              className="ara-pane-splitter border-start border-end"
+            <button
+              type="button"
+              className="ara-pane-splitter border-start border-end p-0 border-top-0 border-bottom-0"
               onMouseDown={(e) => startDrag('right', e)}
+              aria-label="Kéo để thay đổi chiều rộng bảng tác nghiệp"
               title="Kéo để thay đổi chiều rộng"
             />
           )}

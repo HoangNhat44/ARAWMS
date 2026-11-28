@@ -1,40 +1,44 @@
 /**
  * ============================================================================
- * @title        : RMA Business Rules (Theo tài liệu chuẩn BR.md: GBR-11..GBR-14, GBR-23)
- * @description  : Áp dụng trực tiếp các Global Business Rules từ BR.md cho phân hệ
+ * @title        : RMA Business Rules (Theo tài liệu chuẩn BR.md mới: GBR-14..GBR-17, GBR-26)
+ * @author       : Nguyễn Quang Huy
+ * @createdDate  : 2026-10-27
+ * @lastModified : 2026-11-29
+ * @description  : Áp dụng trực tiếp các Global Business Rules từ BR.md mới cho phân hệ
  *                 Đổi / Trả hàng (Reverse Logistics) & Kế toán hoàn tiền.
- *                 Không tự đặt mã BR ngoài BR.md.
+ * @module       : Reverse Logistics / Return Merchandise Authorization
+ * @layer        : Service / Rules
  * ============================================================================
  *
- * Quy chiếu trực tiếp từ BR.md:
- * - GBR-11 (Customer-Fault Return Surcharge):
+ * Quy chiếu trực tiếp từ BR.md (phiên bản GBR-01..GBR-28):
+ * - [BR: GBR-14] (Customer-Fault Return Surcharge):
  *     Đổi/trả do lỗi khách hàng (mất tag, bẩn vải, khách chọn nhầm size, đổi ý)
  *     chịu phụ phí hoàn trả 10%:
  *     Refund Amount = Product Value * 90% - Shipping Fee (if any)
  *
- * - GBR-12 (Store-Fault Return Waiver):
+ * - [BR: GBR-15] (Store-Fault Return Waiver):
  *     Đổi/trả do lỗi cửa hàng/xưởng (MANUFACTURING_DEFECT hoặc WRONG_ITEM_DELIVERED)
  *     được miễn 100% phụ phí hoàn trả và phí vận chuyển:
  *     Refund Amount = 100% Product Value
  *
- * - GBR-13 (Defective Garment Quarantine Isolation):
+ * - [BR: GBR-16] (Defective Garment Quarantine Isolation):
  *     Sản phẩm trả về bị lỗi/hư hỏng (DIRTY_OR_DAMAGED / MANUFACTURING_DEFECT)
  *     bắt buộc cách ly vào khu vực DEFECT_QUARANTINE (disposition = QUARANTINE_DEFECT),
  *     không được cộng vào tồn kho khả dụng (RESTOCK_SALEABLE).
  *
- * - GBR-14 (Mandatory Voucher Source Document Reference):
+ * - [BR: GBR-17] (Mandatory Voucher Source Document Reference):
  *     Mọi phiếu thu/chi (CashFlowVoucher) do Kế toán lập bắt buộc phải tham chiếu
  *     đến chứng từ gốc hợp lệ (salesOrderId, returnRequestId). Seller không tự chi tiền;
  *     Seller gửi yêu cầu hoàn tiền để Kế toán duyệt và lập phiếu chi CASH_OUT.
  *
- * - GBR-23 (Return Unboxing Video & Barcode Audit):
+ * - [BR: GBR-26] (Garment Technician Unboxing Scan & Video Evidence):
  *     Khi mở kiện hàng hoàn tại kho, bắt buộc quét mã vận đơn chiều về (returnWaybillCode)
- *     và đính kèm video mở hộp (unboxingVideoUrl) trước khi xác nhận kiểm hàng.
+ *     và đính kèm video mở hộp (unboxingVideoUrl) trước khi phân loại hàng hoàn.
  * ============================================================================
  */
 
 export const RMA_BUSINESS_RULES = Object.freeze({
-  /** GBR-11: Phụ phí 10% khi đổi/trả do lỗi khách hàng */
+  /** [BR: GBR-14] Phụ phí 10% khi đổi/trả do lỗi khách hàng */
   CUSTOMER_FAULT_SURCHARGE_PERCENT: 10,
   REASON_MIN_LENGTH: 5,
 });
@@ -56,7 +60,7 @@ export const RMA_ACTIVE_STATUSES = Object.freeze([
   'ACCOUNTANT_APPROVED',
 ]);
 
-/** GBR-14: Trạng thái yêu cầu hoàn tiền gửi Kế toán duyệt lập phiếu chi */
+/** [BR: GBR-17] Trạng thái yêu cầu hoàn tiền gửi Kế toán duyệt lập phiếu chi */
 export const REFUND_REQUEST_STATUS = Object.freeze({
   NONE: 'NONE',
   PENDING_ACCOUNTANT: 'PENDING_ACCOUNTANT',
@@ -65,11 +69,11 @@ export const REFUND_REQUEST_STATUS = Object.freeze({
 });
 
 /**
- * Phân loại lý do đổi/trả theo GBR-11 (Lỗi khách hàng - thu phí 10%) và GBR-12 (Lỗi cửa hàng - miễn phí 100%).
+ * Phân loại lý do đổi/trả theo [BR: GBR-14] (Lỗi khách hàng - thu phí 10%) và [BR: GBR-15] (Lỗi cửa hàng - miễn phí 100%).
  *
  * @param {string} reasonDescription - Mô tả lý do đổi/trả
  * @param {string} [faultType] - 'STORE_FAULT' | 'CUSTOMER_FAULT' nếu truyền tường minh
- * @returns {{ isStoreFault: boolean, ruleCode: 'GBR-12' | 'GBR-11', faultLabel: string }}
+ * @returns {{ isStoreFault: boolean, ruleCode: string, faultLabel: string }}
  */
 export const classifyReturnFaultByBR = (reasonDescription = '', faultType = '') => {
   const normalizedFault = String(faultType || '').toUpperCase().trim();
@@ -120,20 +124,18 @@ export const classifyReturnFaultByBR = (reasonDescription = '', faultType = '') 
 };
 
 /**
- * Tính toán giá trị hoàn tiền ròng theo đúng công thức GBR-11 và GBR-12 trong BR.md
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU CÔNG THỨC TÍNH TIỀN HOÀN RMA THEO BR.md (calculateRefundFinancialsByBR)]
+ * ====================================================================================================================================
+ * | STT | Trường hợp / Biến số         | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Công thức & Quy tắc BR                            |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | returnedMerchandiseValue     | Giá trị hàng trả (CreateRmaModal)        | return_requests.financialAccounting               | Σ (returnedQty * sales_orders.items.unitSalePrice)|
+ * | 2   | Lỗi cửa hàng / xưởng         | Miễn 100% phụ phí (isStoreFault = true)  | return_requests.financialAccounting               | [BR: GBR-15] surcharge=0; netRefund=100% * value  |
+ * | 3   | Lỗi khách hàng               | Phụ phí 10% (isStoreFault = false)       | return_requests.financialAccounting               | [BR: GBR-14] sur=round(val*10%); net=max(0,val-sur-ship)|
+ * ====================================================================================================================================
  *
- * @param {Object} params
- * @param {number} params.returnedMerchandiseValue - Tổng giá trị sản phẩm trả lại
- * @param {boolean} params.isStoreFault - True nếu thuộc GBR-12, False nếu thuộc GBR-11
- * @param {number} [params.shippingFeeDeduction=0] - Phí vận chuyển khấu trừ (nếu có)
- * @returns {{
- *   returnedMerchandiseValue: number,
- *   apply10PercentSurcharge: boolean,
- *   surcharge10PercentAmount: number,
- *   shippingFeeDeduction: number,
- *   finalNetRefundOrCollect: number,
- *   appliedRule: 'GBR-11' | 'GBR-12'
- * }}
+ * @businessRule GBR-14 Khấu trừ 10% phụ phí hoàn trả khi lỗi do khách hàng
+ * @businessRule GBR-15 Miễn 100% phụ phí và phí ship khi lỗi do xưởng/cửa hàng
  */
 export const calculateRefundFinancialsByBR = ({
   returnedMerchandiseValue = 0,
@@ -143,7 +145,7 @@ export const calculateRefundFinancialsByBR = ({
   const productValue = Math.max(0, Number(returnedMerchandiseValue) || 0);
 
   if (isStoreFault) {
-    // [GBR-12] Store-Fault Return Waiver: Refund Amount = 100% Product Value
+    // [BR: GBR-15] Store-Fault Return Waiver: Refund Amount = 100% Product Value
     return {
       returnedMerchandiseValue: productValue,
       apply10PercentSurcharge: false,
@@ -154,7 +156,7 @@ export const calculateRefundFinancialsByBR = ({
     };
   }
 
-  // [GBR-11] Customer-Fault Return Surcharge: Refund Amount = Product Value * 90% - Shipping Fee (if any)
+  // [BR: GBR-14] Customer-Fault Return Surcharge: Refund Amount = Product Value * 90% - Shipping Fee (if any)
   const surcharge = Math.round((productValue * RMA_BUSINESS_RULES.CUSTOMER_FAULT_SURCHARGE_PERCENT) / 100);
   const shipDeduction = Math.max(0, Number(shippingFeeDeduction) || 0);
   const netRefund = Math.max(0, productValue - surcharge - shipDeduction);

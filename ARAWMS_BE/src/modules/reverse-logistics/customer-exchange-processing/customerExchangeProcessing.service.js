@@ -19,8 +19,7 @@ import SystemLog from '../../../models/SystemLog.model.js';
 import { ghnService } from '../../ghn/ghn.service.js';
 
 /**
- * Ghi SystemLog kiểm toán
- * @businessRule GBR-23 Ghi log kiểm toán cho dữ liệu trọng yếu
+ * Ghi SystemLog kiểm toán nội bộ cho thao tác tạo đơn đổi sản phẩm mới.
  */
 const recordSystemLog = async ({ actor, majorFeature, subFeature, action, targetCollection, targetId, targetCode, beforeSnapshot, afterSnapshot, req }) => {
   try {
@@ -44,7 +43,19 @@ const recordSystemLog = async ({ actor, majorFeature, subFeature, action, target
 };
 
 /**
- * UC-83: Tạo đơn hàng đổi sản phẩm mới (chọn mã SKU thay thế) cho khách (Create Customer Exchange Order)
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & CÔNG THỨC - BE: TẠO ĐƠN ĐỔI HÀNG MỚI (UC-83)]
+ * ====================================================================================================================================
+ * | STT | Trường tính toán             | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Nghiệp vụ / Công thức / BR                        |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | available (kiểm tồn đổi mới) | CreateRmaModal.jsx                       | skus.{onHandQty, reservedQty}                     | [BR: GBR-10] onHandQty - reservedQty >= orderedQty|
+ * | 2   | itemsSubtotal, totalAmount   | CreateRmaModal.jsx & SellerOrdersPage    | sales_orders.financialSummary                     | sub=Σ(qty*price); total=sub+shippingFee           |
+ * | 3   | varianceAmount & expectedCod | Chênh lệch bù / hoàn (CreateRmaModal)    | return_requests.financialAccounting.returnedValue | variance=total-returnedVal; COD=max(0, variance)  |
+ * | 4   | Giữ chỗ & Vận đơn GHN mới    | Đơn đổi CONFIRMED_RESERVED               | skus.reservedQty (+=qty), warehouseFulfillment    | [BR: GBR-10] giữ kho; [BR: GBR-13] mã GHN riêng   |
+ * ====================================================================================================================================
+ *
+ * @businessRule GBR-10 Giữ chỗ tồn kho ngay cho đơn đổi mới (CONFIRMED_RESERVED)
+ * @businessRule GBR-13 Tạo mã vận đơn GHN mới độc lập cho kiện hàng đổi
  */
 export const createExchangeOrder = async (rmaId, exchangeData, user, req) => {
   const { newItems, shippingRecipient } = exchangeData;
@@ -82,7 +93,9 @@ export const createExchangeOrder = async (rmaId, exchangeData, user, req) => {
       throw new Error(`Sản phẩm ${sku.skuCode} không đủ tồn khả dụng (Còn ${available}, yêu cầu ${qty})`);
     }
 
-    const salePrice = Number(item.unitSalePrice) !== undefined ? Number(item.unitSalePrice) : sku.retailPrice;
+    const salePrice = item.unitSalePrice !== undefined && item.unitSalePrice !== null && !Number.isNaN(Number(item.unitSalePrice))
+      ? Number(item.unitSalePrice)
+      : sku.retailPrice;
     itemsSubtotal += qty * salePrice;
 
     processedItems.push({
@@ -164,12 +177,12 @@ export const createExchangeOrder = async (rmaId, exchangeData, user, req) => {
     codReconciliationStatus: 'UNRECONCILED',
   });
 
-  // Tự động giữ chỗ tồn kho cho sản phẩm trong đơn đổi mới
+  // [BR: GBR-10] Tự động giữ chỗ tồn kho cho sản phẩm trong đơn đổi mới
   for (const it of processedItems) {
     await Sku.findByIdAndUpdate(it.skuId, { $inc: { reservedQty: it.orderedQty } });
   }
 
-  // Tự động tạo mã vận đơn GHN mới độc lập cho đơn đổi mới (GBR-10)
+  // [BR: GBR-13] Tự động tạo mã vận đơn GHN mới độc lập cho đơn đổi mới
   try {
     const ghnRes = await ghnService.createShippingOrderFromSalesOrder(exchangeOrder);
     if (ghnRes?.waybillCode) {

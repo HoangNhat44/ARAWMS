@@ -50,7 +50,43 @@ const detectTelco = (phone = '') => {
 };
 
 /**
- * Danh sách trạng thái Pancake và cấu hình nhãn đếm
+ * ====================================================================================================================================
+ * [BẢNG 1 - TRA CỨU NGUỒN GỐC SỐ LIỆU, BỘ LỌC & CỘT DỮ LIỆU - MÀN HÌNH 2: QUẢN LÝ ĐƠN HÀNG (SELLER ORDERS)]
+ * ====================================================================================================================================
+ * | STT | Mục trên UI (Bộ lọc / Cột / Số)   | Hàm FE & Trường hiển thị                         | API, Hàm BE & Nguồn DB (Collection.field)                            | Nghiệp vụ / Công thức / Điều kiện                 |
+ * |-----|-----------------------------------|--------------------------------------------------|----------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | Ô tìm kiếm đơn hàng               | state search -> fetchOrders()                    | GET /api/orders -> orderManagement.service.js:getOrderList({search}) | Regex: orderCode, waybillCode, tên/SĐT, skuCode   |
+ * | 2   | Bộ lọc Kênh bán (Tất cả/Shopee/..)| state channelFilter -> fetchOrders({ channel })  | getOrderList() <- sales_orders.{channel, orderType, sourceDetails}   | Lọc theo kênh bán & sellerId của Seller đăng nhập |
+ * | 3   | Tab nhanh (Tất cả/Cần xử lý/Đổi..)| state subTab -> setStatusFilter() -> fetchOrders | getOrderList({ status }) <- sales_orders.status                      | Cần xử lý: PENDING; Đổi/Trả: RETURN_REQUESTED     |
+ * | 4   | Dải đếm Status (Tất cả 10, ...)   | statusCounts[st.countKey] (PANCAKE_STATUSES)     | getOrderList() -> SalesOrder.aggregate($group by '$status')          | statusCounts.ALL = Σ statusCounts[status]         |
+ * | 5   | Cột Mã đơn & Kênh                 | ord.orderCode, ord.channel, ord.sourceDetails    | sales_orders.{orderCode, channel, sourceDetails.sourceType}          | Sinh tự động qua CounterSequence (ORD-xxxxx)      |
+ * | 6   | Cột Mã vận đơn & GHN status       | ord.warehouseFulfillment.{waybillCode,ghnStatus} | sales_orders.warehouseFulfillment (từ ghn.service.js / webhook GHN)  | Tự tạo khi chốt đơn [BR: GBR-13]; POS không có    |
+ * | 7   | Cột Thời gian / Khách hàng / SĐT  | renderDateTimeCell(), ord.shippingRecipient,     | sales_orders.{createdAt, updatedAt, shippingRecipient, customerId}   | Nhận diện nhà mạng qua detectTelco(phone) ở FE    |
+ * | 8   | Cột Sản phẩm & Phân loại          | ord.items[].{productName, skuCode, orderedQty}   | sales_orders.items[] (snapshot từ skus khi tạo đơn [BR: GBR-06])     | Hiển thị từng dòng SKU + số lượng đặt             |
+ * | 9   | Cột Tổng tiền                     | formatVnd(ord.financialSummary.totalOrderAmount) | sales_orders.financialSummary.{itemsSubtotal,shippingFee,discount}   | itemsSubtotal + shippingFee - discountAmount      |
+ * | 10  | Cột Trạng thái đơn & GHN          | ord.status + ORDER_STATUS_CLASS + ghnStatus      | sales_orders.{status, warehouseFulfillment.ghnStatus}                | Ánh xạ nhãn & màu theo Bảng 2 bên dưới            |
+ * | 11  | Phân trang (Tổng số X đơn)        | currentPage, pageSize, pagination.{total,...}    | getOrderList({ page, limit }) -> skip/limit + countDocuments         | Mặc định 20 đơn/trang (10/20/50/100)              |
+ * ====================================================================================================================================
+ *
+ * ====================================================================================================================================
+ * [BẢNG 2 - NGUỒN GỐC & Ý NGHĨA NGHIỆP VỤ 14 TRẠNG THÁI ĐƠN HÀNG (sales_orders.status)]
+ * ====================================================================================================================================
+ * | STT | Mã Status (DB)        | Nhãn hiển thị trên UI           | Hàm cập nhật ở BE & Điều kiện chuyển trạng thái                                       |
+ * |-----|-----------------------|---------------------------------|---------------------------------------------------------------------------------------|
+ * | 1   | PENDING               | Chờ xác nhận                    | createDirectOrder(autoConfirm=false): chờ khách chốt, CHƯA giữ reservedQty/CHƯA GHN   |
+ * | 2   | CONFIRMED_RESERVED    | Đã xác nhận, đã giữ hàng        | confirmOrderReserve / createDirectOrder(autoConfirm=true): +reservedQty [BR: GBR-10]  |
+ * | 3   | PICKING               | Đang soạn hàng                  | Kho nhận đơn soạn hàng theo lô FIFO [BR: GBR-23] hoặc GHN status = picking            |
+ * | 4   | PACKED                | Đã đóng hàng, chờ bàn giao      | Kho quét mã vạch + video đóng gói, trừ tồn vật lý onHandQty [BR: GBR-12]              |
+ * | 5   | HANDED_OVER_CARRIER   | Đã bàn giao cho bên vận chuyển  | Kho bàn giao kiện cho GHN [BR: GBR-13]                                                |
+ * | 6   | CARRIER_PICKED_UP     | Đã lấy hàng                     | ghn.webhook.controller.js:applyGhnStatusToSalesOrder (picked/delivering/storing...)   |
+ * | 7   | DELIVERED             | Đã giao thành công              | GHN webhook status = delivered -> đủ điều kiện tạo phiếu Đổi/Trả RMA                  |
+ * | 8   | EXCHANGE_REQUESTED    | Đang đổi hàng                   | returnMerchandiseAuthorization.service.js:createReturnRequest (requestType=EXCHANGE)  |
+ * | 9   | RETURN_REQUESTED      | Khách yêu cầu trả hàng          | returnMerchandiseAuthorization.service.js:createReturnRequest (requestType=RETURN)    |
+ * | 10  | COMPLETED             | Hoàn thành (Bán tại quầy)       | orderManagement.service.js:createPosDirectOrder (trừ thẳng onHandQty tại quầy POS)    |
+ * | 11  | CANCELLED             | Đã hủy                          | orderManagement.service.js:cancelOrder (chưa lấy hàng -> nhả reservedQty [BR: GBR-11])|
+ * | 12  | RETURNED              | Đã hoàn về kho                  | GHN chuyển hoàn về kho (ghnStatus = returned) / kho nhập lại hàng hoàn                |
+ * | 13  | RETURN_COMPLETED      | Hoàn thành công                 | Hoàn tất kiểm hàng & hoàn tiền/nhập kho RMA ([BR: GBR-14], [BR: GBR-15], [BR: GBR-16])|
+ * ====================================================================================================================================
  */
 const PANCAKE_STATUSES = [
   { key: '',                    label: 'Tất cả',                            countKey: 'ALL' },
@@ -152,7 +188,7 @@ const SellerOrdersPage = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-    fetchOrders(1);
+    void fetchOrders(1);
   }, [statusFilter, channelFilter, subTab, pageSize]);
 
   /**
@@ -192,7 +228,7 @@ const SellerOrdersPage = () => {
     const totalP = pagination.totalPages || 1;
     if (newPage < 1 || newPage > totalP || newPage === currentPage) return;
     setCurrentPage(newPage);
-    fetchOrders(newPage);
+    void fetchOrders(newPage);
   };
 
   /**
@@ -288,7 +324,7 @@ const SellerOrdersPage = () => {
     setOrders((prev) =>
       prev.map((ord) => ((ord._id === updatedOrder._id || ord.id === updatedOrder._id) ? updatedOrder : ord))
     );
-    fetchOrders();
+    void fetchOrders();
   };
 
   /**
@@ -483,7 +519,7 @@ const SellerOrdersPage = () => {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   setCurrentPage(1);
-                  fetchOrders(1);
+                  void fetchOrders(1);
                 }
               }}
             />
@@ -570,7 +606,7 @@ const SellerOrdersPage = () => {
         </div>
       </div>
 
-      {/* ── Pancake Status Pill Counters Bar ─── */}
+      {/* ── Pancake Status Pill Counters Bar (chi tiết nguồn gốc xem Bảng 1 mục 4 & Bảng 2 ở đầu file) ─── */}
       <div
         className="ara-status-pills-container px-3 py-2 d-flex align-items-center gap-1 overflow-x-auto flex-shrink-0"
         style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}
@@ -733,7 +769,7 @@ const SellerOrdersPage = () => {
                                     ? `Đã lấy mã vận đơn GHN: ${waybill} và đã gửi tin nhắn cho khách!`
                                     : `Đã lấy mã vận đơn GHN: ${waybill}`;
                                   showSuccess(msg, 'Đồng bộ GHN');
-                                  fetchOrders(currentPage);
+                                  void fetchOrders(currentPage);
                                 }
                               } catch (err) {
                                 showWarning(err.message || 'Không lấy được mã vận đơn GHN');
@@ -974,21 +1010,24 @@ const SellerOrdersPage = () => {
               <div
                 key={id}
                 className={`ara-mobile-order-card bg-white border rounded p-3 mb-2 shadow-sm ${isSelected ? 'border-primary' : ''}`}
-                style={{ borderColor: 'var(--wms-border, #C8B9A6)', cursor: 'pointer' }}
-                onClick={() => handleOpenDetail(ord)}
+                style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
               >
                 {/* Header: Checkbox, Order Code, Channel badge, Status badge */}
                 <div className="d-flex align-items-center justify-content-between mb-2">
                   <div className="d-flex align-items-center gap-2">
-                    <span onClick={(e) => e.stopPropagation()}>
-                      <Form.Check
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleSelectOrder(id)}
-                        aria-label={`Chọn đơn ${ord.orderCode || id}`}
-                      />
-                    </span>
-                    <span className="fw-bold text-dark fs-6 font-monospace">#{ord.orderCode || id.slice(-8).toUpperCase()}</span>
+                    <Form.Check
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelectOrder(id)}
+                      aria-label={`Chọn đơn ${ord.orderCode || id}`}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-link p-0 text-decoration-none fw-bold text-dark fs-6 font-monospace"
+                      onClick={() => handleOpenDetail(ord)}
+                    >
+                      #{ord.orderCode || id.slice(-8).toUpperCase()}
+                    </button>
                     <span
                       className="badge rounded-pill fw-normal"
                       style={{
@@ -1072,7 +1111,7 @@ const SellerOrdersPage = () => {
                     <div className="text-secondary" style={{ fontSize: '11px' }}>Tổng tiền</div>
                     <div className="fw-bold fs-6" style={{ color: 'var(--wms-text-primary, #141210)' }}>{formatVnd(totalAmount)}</div>
                   </div>
-                  <div className="d-flex align-items-center gap-1 ms-auto" onClick={(e) => e.stopPropagation()}>
+                  <div className="d-flex align-items-center gap-1 ms-auto">
                     <Button
                       size="sm"
                       variant="outline-dark"
@@ -1201,7 +1240,7 @@ const SellerOrdersPage = () => {
         isOpen={createOrderModalOpen}
         onClose={() => setCreateOrderModalOpen(false)}
         onOrderCreated={() => {
-          fetchOrders();
+          void fetchOrders();
           setCreateOrderModalOpen(false);
         }}
       />
@@ -1223,7 +1262,7 @@ const SellerOrdersPage = () => {
         onRmaCreated={() => {
           showSuccess('Phiếu RMA đã được tạo thành công!', 'Tạo RMA');
           setRmaModalOpen(false);
-          fetchOrders();
+          void fetchOrders();
         }}
       />
 
@@ -1238,7 +1277,7 @@ const SellerOrdersPage = () => {
             ? `Đã import ${result.totalCreated} đơn. ${rejected.length} đơn bị bỏ qua (${rejected.map((item) => item.externalOrderCode).join(', ')}) vì có sản phẩm chưa khớp SKU hoặc đã ngừng bán.`
             : 'Đã import đơn hàng từ sàn thành công!', 'Import TMĐT');
           setImportModalOpen(false);
-          fetchOrders();
+          void fetchOrders();
         }}
       />
     </div>
