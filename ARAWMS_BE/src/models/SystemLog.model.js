@@ -10,6 +10,7 @@ import { ROLES } from '../common/constants/enums.js';
 
 const { Schema } = mongoose;
 
+/** Lưu nhật ký cho UC-017. Thông tin người thực hiện và mã đối tượng cho phép truy vết lại thay đổi qua các module. */
 const systemLogSchema = new Schema(
   {
     actorId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
@@ -20,6 +21,7 @@ const systemLogSchema = new Schema(
     targetCollection: { type: String },
     targetId: { type: Schema.Types.ObjectId, index: true },
     targetCode: { type: String, index: true },
+    // Ảnh chụp trước và sau có cấu trúc tùy đối tượng nghiệp vụ. API nhật ký lọc trường cần bảo mật trước khi trả kết quả.
     beforeSnapshot: { type: Schema.Types.Mixed },
     afterSnapshot: { type: Schema.Types.Mixed },
     ipAddress: { type: String },

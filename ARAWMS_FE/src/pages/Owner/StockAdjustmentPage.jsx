@@ -1,7 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: OWNER-EXT-06; GBR-18/19 - Owner xem và duyệt chênh lệch kiểm kê lớn.
+ * Report 3 — UC-070, UC-073, UC-075. Xem phiên kiểm kê, báo cáo chênh lệch và duyệt các phiên thuộc thẩm quyền Owner.
  */
 import { WmsField, WmsInput, WmsSelect, WmsButton, WmsTextArea, WmsLinkButton } from '../../components/ui/WmsControls';
 import { useState } from 'react';
@@ -11,6 +11,7 @@ import { useOwnerQuery } from '../../hooks/useOwnerQuery';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
 import { ownerService } from '../../services/ownerService';
 import { ResourceState, Table, Pagination, Notice, Status, Metric, money, quantity, datetime, labels } from './OwnerUI';
+/** Tải các phiên kiểm kê theo mã, kho và trạng thái. Bảo toàn URL danh sách để người dùng quay lại đúng bộ lọc sau khi xem một phiên. */
 export default function StockAdjustmentPage() {
   const [query, setQuery] = useOwnerQuery({ page: 1, search: '', status: '', warehouseType: '' }); const [search, setSearch] = useState(query.search); const location = useLocation();
   const resource = useOwnerResource('stock-adjustments', query);
@@ -18,26 +19,30 @@ export default function StockAdjustmentPage() {
     <form className="owner-filters" onSubmit={(e) => { e.preventDefault(); setQuery({ ...query, page: 1, search: search.trim() }); }}><WmsField>Mã phiên<WmsInput maxLength={100} value={search} onChange={(e) => setSearch(e.target.value)} /></WmsField><WmsField>Loại kho<WmsSelect value={query.warehouseType} onChange={(e) => setQuery({ ...query, page: 1, warehouseType: e.target.value })}><option value="">Tất cả kho</option><option value="RAW_MATERIAL">Nguyên liệu</option><option value="FINISHED_GOODS">Thành phẩm</option></WmsSelect></WmsField><WmsField>Trạng thái<WmsSelect value={query.status} onChange={(e) => setQuery({ ...query, page: 1, status: e.target.value })}><option value="">Tất cả trạng thái</option><option value="FROZEN_COUNTING">Đang kiểm đếm</option><option value="CANCELLED">Đã hủy</option><option value="VARIANCE_REVIEW">Chờ duyệt</option><option value="APPROVED_PENDING_ADJUSTMENT">Đã duyệt, chờ điều chỉnh</option><option value="APPROVED_COMPLETED">Đã hoàn tất</option></WmsSelect></WmsField><WmsButton>Tìm kiếm</WmsButton></form>
     <ResourceState resource={resource}>{resource.data && <><Table paginated={false} headings={['Phiên', 'Loại kho', 'Trạng thái', 'Số mặt hàng', 'Dòng chênh lệch', 'Ngày tạo', 'Chi tiết']} empty={!resource.data.items.length}>{resource.data.items.map((row) => <tr key={row.id}><td>{row.sessionCode}</td><td>{labels[row.warehouseType] || row.warehouseType}</td><td><Status value={row.status} /></td><td>{quantity(row.totalItemsExpected)}</td><td>{quantity(row.totalDiscrepancyCount)}</td><td>{datetime(row.createdAt)}</td><td><WmsLinkButton to={`/owner/stock-adjustments/${row.id}`} state={{ from: location.pathname + location.search }}>Xem báo cáo</WmsLinkButton></td></tr>)}</Table><Pagination data={resource.data} onPage={(page) => setQuery({ ...query, page })} /></>}</ResourceState></>;
 }
+/** Tải bản báo cáo theo mã phiên và chuyển dữ liệu cùng trạng thái tải sang form phê duyệt. */
 export function StocktakeDetail({ id, setBusy, onDone }) {
   // Luôn tải báo cáo mới nhất khi mở; dấu báo cáo bảo đảm duyệt đúng dữ liệu Owner vừa xem.
   const resource = useOwnerResource(`stock-adjustments/${id}`);
   return <ResourceState resource={resource}>{resource.data && <ApprovalForm data={resource.data} setBusy={setBusy} onDone={onDone} />}</ResourceState>;
 }
+/** Hiển thị tồn chốt, thực đếm và chênh lệch từng dòng. Kiểm tra thẩm quyền, kết quả kiểm đếm và nội dung xác nhận trước khi gửi duyệt. */
 function ApprovalForm({ data, setBusy, onDone }) {
   const [confirming, setConfirming] = useState(false);
   const [reason, setReason] = useState(''); const [plan, setPlan] = useState(data.stocktake.approvalInfo?.agingStockActionPlan || '');
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const { stocktake, records, summary } = data;
-  // GBR-19: Phiên có hàng tồn lâu cũng cần Owner, dù chênh lệch số lượng/giá trị còn nhỏ.
+  // [BR: GBR-22] Phiên có hàng tồn lâu cũng cần Owner xem xét, kể cả khi lượng và giá trị chênh lệch đều nhỏ.
   const ownerRequired = summary.requiresOwner || stocktake.approvalInfo?.approvalLevelRequired === 'MAJOR_OWNER';
-  // GBR-18: Giá trị thực đếm mặc định bằng 0 chưa chứng minh dòng đã được kiểm đếm.
+  // Dùng thời điểm quét để biết dòng đã được đếm vì số thực đếm mặc định có thể bằng 0.
   const counted = records.length > 0 && records.every((row) => row.scannedAt);
+  /** Kiểm tra lý do và kế hoạch tồn lâu trước khi mở hộp thoại xác nhận. */
   const submit = async (event) => {
     event.preventDefault(); setError('');
-    // GBR-19: Có hàng tồn lâu thì phải nhập rõ kế hoạch Owner đã xem, không chỉ bấm duyệt trống.
+    // [BR: GBR-22] Yêu cầu nhập nội dung kế hoạch cho các phiên có hàng tồn lâu.
     if (reason.trim().length < 10 || reason.length > 2000 || (summary.hasAging && plan.trim().length < 10) || plan.length > 2000) { setError('Lý do cần 10–2000 ký tự; kế hoạch tồn lâu cần ít nhất 10 ký tự khi bắt buộc.'); return; }
     setConfirming(true);
   };
   // Quyết định quan trọng có hộp thoại xác nhận cuối; chỉ lúc này mới gọi API duyệt.
+  /** Gửi phiên bản phê duyệt và dấu băm báo cáo để API kiểm tra lại đúng bản Owner vừa xem. */
   const approve = async () => {
     setSaving(true); setBusy(true); setError('');
     try { const response = await ownerService.approveStocktake(stocktake.id, { expectedVersion: stocktake.approvalRevision || 0, reportHash: data.reportHash, adjustmentReason: reason, agingStockActionPlan: plan }); onDone(response.message); }

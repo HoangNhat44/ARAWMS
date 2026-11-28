@@ -1,16 +1,18 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-12 - Kiểm tra khoảng ngày báo cáo, tối đa 366 ngày.
+ * Bộ lọc ngày theo múi giờ Việt Nam dùng cho dashboard và các API đọc theo kỳ.
  */
 import { httpError } from '../../../common/utils/httpError.js';
 import { objectFields } from '../../../common/utils/ownerValidation.js';
+/** Chuẩn hóa khoảng ngày, dùng mốc báo cáo mặc định nếu không nhập và trả hai cận để truy vấn theo giờ Việt Nam. */
 export const dashboardRange = (query, now = new Date()) => {
   objectFields(query, ['from', 'to']);
-  // UC-12/13/14/17: Không chọn ngày thì mặc định từ đầu tháng đến hôm nay theo giờ Việt Nam.
+  // Khi thiếu bộ lọc, mặc định lấy từ đầu tháng đến hôm nay theo giờ Việt Nam.
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
   const to = query.to ?? today;
   const from = query.from ?? `${today.slice(0, 7)}-01`;
+  /** Kiểm tra ngày có thật trên lịch và tạo cận truy vấn ở giờ Việt Nam. Khi chuyển ngày kết thúc, dùng đầu ngày kế tiếp. */
   const date = (value, end = false) => {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw httpError(400, 'Ngày cần theo định dạng YYYY-MM-DD.');
     // Kiểm tra lại ngày sau khi chuyển đổi để loại ngày không tồn tại như 30/02.

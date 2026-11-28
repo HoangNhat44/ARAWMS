@@ -9,17 +9,18 @@ import baseSchemaPlugin from './plugins/baseSchema.plugin.js';
 
 const { Schema } = mongoose;
 
+/** Lưu một cấu hình toàn hệ thống theo khóa GLOBAL_CONFIG, gồm các ngưỡng nghiệp vụ và thiết lập tích hợp do Owner quản lý. */
 const systemSettingSchema = new Schema(
   {
     settingKey: { type: String, default: 'GLOBAL_CONFIG', unique: true },
     // Nguyễn Ngọc Huy-HE171157, 30-10-2026: OWNER-EXT-02..05 - Phiên bản chặn ghi đè cấu hình vừa được người khác sửa.
     revision: { type: Number, default: 0, min: 0 },
-    // GBR-06: Chiều dài bằng ngưỡng cũng phải thu hồi; ngưỡng mặc định là 2 mét.
+    // Ngưỡng mặc định là 2 m, dùng để phân loại vải dư theo GBR-09 của Report 3.
     defaultFabricLeftoverThresholdMeters: { type: Number, default: 2.0, min: 0.01, max: 10000 },
-    // GBR-11/12: Phụ phí lỗi khách là 10%; lỗi cửa hàng miễn phụ phí và phí vận chuyển.
+    // [BR: GBR-14] Schema chỉ chấp nhận mức phụ phí lỗi khách 10%.
     returnSurchargePercent: { type: Number, default: 10, enum: [10] },
     returnPolicyNotes: { type: String, default: '', maxlength: 2000 },
-    // GBR-19: Chênh lệch vượt một trong hai ngưỡng phải chuyển Owner duyệt.
+    // Hai ngưỡng là đầu vào phân cấp phê duyệt chênh lệch theo GBR-22 của Report 3.
     minorStocktakeVarianceLimitQty: { type: Number, default: 5, min: 0, max: 1e9 },
     minorStocktakeVarianceLimitValue: { type: Number, default: 1000000, min: 0, max: 1e12 },
     defaultFifoAgingAlertDays: { type: Number, default: 60, min: 1, max: 3650 },

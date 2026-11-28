@@ -1,6 +1,6 @@
 /* Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 2-11-2026
  * Báo cáo Owner: bộ lọc thời gian, so sánh tùy chọn, nhập hàng và tồn kho.
- * GBR-01/13: Gọi API xác thực; tồn cách ly riêng, không tính giá vốn hoặc lợi nhuận.
+ * Report 3 — UC-009, UC-103, UC-104, UC-113, UC-114. Dùng chung bộ lọc cho báo cáo điều hành và các màn hình tra cứu liên quan.
  */
 import { useState } from 'react';
 import { comparisonDates, quarterDates } from '../../utils/reportFilters';
@@ -30,7 +30,8 @@ const previousYear = (s) => {
 };
 // Khởi tạo từ đầu năm đến hôm nay theo giờ Việt Nam; ngày đối chiếu chỉ dùng khi bật so sánh.
 const initial = () => { const dates = defaultOwnerDates(); return { ...dates, compareFrom: previousYear(dates.from), compareTo: previousYear(dates.to) }; };
-// UC-13: Các lựa chọn tuần/tháng/quý/năm đều chuyển thành ngày rõ ràng, cho phép chọn kỳ lịch sử bất kỳ.
+// Quy đổi đơn vị thời gian người dùng chọn thành hai ngày để API có thể truy vấn.
+/** Tính ngày đầu và cuối của ngày, tuần, tháng, quý hoặc năm chứa mốc được chọn. */
 function preset(kind, anchor) {
   if (kind === 'day') return { from: anchor, to: anchor };
   const d = new Date(`${anchor}T00:00:00Z`); const y = d.getUTCFullYear(); const m = d.getUTCMonth();
@@ -50,6 +51,7 @@ function PeriodFilter({ value, onChange, showComparison = true }) {
   const [comparing, setComparing] = useState(value.comparison === 'on');
   const [kind, setKind] = useState(value.periodKind); const [mode, setMode] = useState(value.compareMode || 'previous-year'); const [error, setError] = useState('');
   const [quarters, setQuarters] = useState({ current: Math.floor((Number(value.from.slice(5, 7)) - 1) / 3) + 1, previous: Math.floor((Number(value.compareFrom.slice(5, 7)) - 1) / 3) + 1 });
+  /** Đổi hai lựa chọn quý thành các khoảng ngày của cùng năm đang xem. */
   const changeQuarters = (next) => {
     setQuarters(next);
     const year = Number(draft.from.slice(0, 4));
@@ -57,6 +59,7 @@ function PeriodFilter({ value, onChange, showComparison = true }) {
     const previous = quarterDates(year, next.previous);
     setDraft({ ...draft, ...current, compareFrom: previous.from, compareTo: previous.to });
   };
+  /** Kiểm tra kỳ hiện tại và kỳ đối chiếu, tính lại khoảng ngày theo chế độ so sánh rồi chuyển bộ lọc đã xác nhận cho trang cha. */
   const apply = (e) => {
     e.preventDefault();
     // Chặn ngày không tồn tại, ngày kết thúc trước ngày bắt đầu hoặc kỳ dài quá 366 ngày.
@@ -132,6 +135,7 @@ export default function OperationsPage({ mode = 'dashboard' }) {
   const match = (row) => (!status || !row.status || row.status === status) && `${JSON.stringify(row)} ${labels[row.status] || ''}`.toLocaleLowerCase('vi').includes(search.toLocaleLowerCase('vi'));
   // Thao tác ghi (ví dụ lập phiếu chi) đi qua API xác thực; thành công mới tải lại báo cáo.
   const action = async (path, body, method = 'patch') => { setError(''); setSuccess(''); try { await api[method](`/owner/operations-report/${path}`, body); setSuccess('Đã lưu thay đổi.'); resource.reload(); } catch (e) { setError(e.message); } };
+  /** Tải lại báo cáo tổng hợp. Ở dashboard, đồng thời dựng lại các phần báo cáo con để chúng tải số liệu mới. */
   const reload = () => {
     resource.reload();
     if (mode === 'dashboard') setDashboardRevision(revision => revision + 1);
@@ -180,6 +184,7 @@ export default function OperationsPage({ mode = 'dashboard' }) {
     </>}</ResourceState>}</>;
 }
 
+/** Dựng các khối doanh thu, trạng thái vận hành và dữ liệu đối chiếu dựa trên bộ lọc đang dùng. */
 function DashboardReports({ query, resource }) {
   const { from, to, compareFrom, compareTo, comparison, salesChannel, paymentStatus } = query;
   const activity = useOwnerResource('operations-report/business-activity', {
@@ -224,6 +229,7 @@ function DashboardReports({ query, resource }) {
 }
 
 // Tỷ trọng tính từ tổng giá trị đơn, cùng chỉ số mặc định của biểu đồ nguồn bán.
+/** Hiển thị kết quả bán hàng theo nguồn, thu hẹp bảng khi có kênh được chọn. */
 function SalesByChannel({ sales, selectedChannel }) {
   const rows = sales.channels.filter(row => !selectedChannel || row.channel === selectedChannel);
   const showShare = sales.orderValue > 0 && rows.every(row => row.orderValue >= 0);
@@ -232,7 +238,8 @@ function SalesByChannel({ sales, selectedChannel }) {
       <td>{showShare ? `${quantity(row.orderValue / sales.orderValue * 100)}%` : '—'}</td><td>{money(row.refunded)}</td><td>{money(row.shipping)}</td></tr>)}
   </Table>;
 }
-// Phản hồi 8; GBR-14: Phiếu chi trả nợ ở cuối thanh điều hướng, luôn gắn hợp đồng nguồn.
+// [BR: GBR-17] Form chọn hợp đồng nguồn cho phiếu chi trả nợ nhà cung cấp.
+/** Thu thập hợp đồng còn nợ, số tiền, phương thức và ghi chú rồi gọi thao tác lập phiếu chi. */
 function PaymentForm({ debts, action }) {
   const [form, setForm] = useState({ contractId: '', amount: '', paymentMethod: 'BANK_TRANSFER', note: '' }); const [busy, setBusy] = useState(false);
   // Lấy dư nợ của hợp đồng đang chọn để đặt giới hạn nhập tiền; BE vẫn kiểm tra lại khi lưu.
@@ -243,12 +250,14 @@ function PaymentForm({ debts, action }) {
 }
 // rows là tồn hiện tại đã lọc; movements là các bút toán nhập/xuất phát sinh trong khoảng ngày.
 // Giữ hai phần riêng để không hiểu nhầm rằng số tồn hiện tại là tồn lịch sử ở cuối kỳ.
+/** Hiển thị số tồn hiện tại và biến động theo kỳ. Giữ số lượng và đơn vị của từng loại hàng. */
 function Inventory({ rows, movements }) {
   return <><Columns title="Tình trạng mặt hàng trong kho hiện tại" allowDonut defaultKind="donut" unitLabel="mã hàng" rows={['AVAILABLE', 'LOW_STOCK', 'OUT_OF_STOCK'].map((s) => ({ label: labels[s], value: rows.filter((r) => r.status === s).length }))} />
     <Table headings={['Mã hàng', 'Tên hàng', 'Đơn vị', 'Tồn thực tế', 'Giữ chỗ', 'Khả dụng', 'Cách ly', 'Đơn giá']} empty={!rows.length}>{rows.map((r) => <tr key={r.id}><td>{r.code}</td><td>{r.name}</td><td>{labels[r.unit]}</td><td>{quantity(r.onHand)}</td><td>{quantity(r.reserved)}</td><td>{quantity(r.available)}</td><td>{quantity(r.quarantine)}</td><td>{money(r.price)}</td></tr>)}</Table>
     <h2>Lịch sử nhập và xuất trong kỳ</h2><Table headings={['Mã giao dịch', 'Ngày', 'Nghiệp vụ', 'Thay đổi', 'Tồn trước', 'Tồn sau']} empty={!movements.length}>{movements.map((r) => <tr key={r._id}><td>{r.transactionCode}</td><td>{datetime(r.createdAt)}</td><td>{labels[r.transactionType] || 'Chưa cập nhật'}</td><td>{quantity(r.quantityChange)}</td><td>{quantity(r.onHandBefore)}</td><td>{quantity(r.onHandAfter)}</td></tr>)}</Table></>;
 }
 // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13 - Tròn thể hiện hai phần thanh toán không trùng nhau trong tổng giá trị hợp đồng.
+/** Dựng biểu đồ tỷ trọng đã trả và còn nợ từ số liệu hợp đồng. */
 function DebtShare({ rows }) {
  return <Columns title="Tỷ trọng thanh toán nhà cung cấp" currency allowDonut defaultKind="donut" rows={[{ label: 'Đã thanh toán', value: rows.reduce((s, r) => s + r.paid, 0) }, { label: 'Còn nợ', value: rows.reduce((s, r) => s + r.debt, 0) }]} />;
 }

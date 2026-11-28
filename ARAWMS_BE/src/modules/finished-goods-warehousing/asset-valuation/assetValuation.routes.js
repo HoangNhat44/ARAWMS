@@ -1,7 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-16; GBR-13 - Tổng tài sản kho gồm vật liệu, thành phẩm và phần hàng cách ly.
+ * Report 3 — UC-102, UC-109, UC-110. API tổng tài sản kho và định giá theo loại mặt hàng.
  */
 import { ownerRouter } from '../../../common/middlewares/ownerRouter.js';
 import { asyncHandler } from '../../../common/utils/httpError.js';
@@ -9,6 +9,7 @@ import { valuationReport } from '../../raw-material-inventory/inventory-valuatio
 import { objectFields } from '../../../common/utils/ownerValidation.js';
 const router = ownerRouter();
 // Đọc tổng giá trị toàn kho trong nhóm định giá tài sản kho; lỗi xử lý được chuyển về bộ xử lý lỗi chung.
+/** Tổng hợp giá trị nguyên liệu, thành phẩm và phần cách ly từ báo cáo của từng loại. */
 router.get('/summary', asyncHandler(async (req, res) => {
   objectFields(req.query, []);
   const [materials, skus] = await Promise.all([valuationReport({ type: 'materials', limit: '1' }), valuationReport({ type: 'skus', limit: '1' })]);
@@ -16,5 +17,6 @@ router.get('/summary', asyncHandler(async (req, res) => {
     quarantineValue: skus.totals.quarantineValue, totalValue: materials.totals.totalValue + skus.totals.totalValue } });
 }));
 // Đọc dữ liệu tổng hợp hoặc danh sách trong nhóm định giá tài sản kho; lỗi xử lý được chuyển về bộ xử lý lỗi chung.
+/** Trả bảng định giá phân trang cho loại mặt hàng yêu cầu. */
 router.get('/', asyncHandler(async (req, res) => res.json({ success: true, data: await valuationReport(req.query) })));
 export default router;

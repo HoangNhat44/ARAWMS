@@ -2,10 +2,11 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-06 đến UC-20 - Validation FE, BE tiếp tục kiểm tra độc lập.
+ * Kiểm tra form nhân viên và bộ lọc thời gian của Owner để phản hồi nhanh tại giao diện.
  */
 import { fullNameError } from './accountValidation';
 // UC-06: Báo lỗi ngay tại form; cùng giới hạn mã/tên/email/điện thoại với BE.
+/** Trả lỗi đầu tiên về thông tin tài khoản mới theo UC-010, hoặc chuỗi rỗng nếu có thể gửi form. */
 export const employeeError = (form) => {
   if (!/^[A-Z0-9][A-Z0-9_-]{1,29}$/i.test(form.employeeCode.trim())) return 'Mã nhân viên cần 2–30 chữ cái, số, gạch nối hoặc gạch dưới.';
   const nameError = fullNameError(form.fullName); if (nameError) return nameError;
@@ -18,12 +19,15 @@ export const employeeError = (form) => {
   return '';
 };
 // UC-07/08/09: Lý do phải đủ để hiểu vì sao tài khoản hoặc quyền bị thay đổi.
+/** Yêu cầu lý do quản trị có nội dung, giới hạn độ dài và loại ký tự điều khiển. */
 export const reasonError = (value) => value.trim().length < 5 || value.length > 500 || /[\u0000-\u001f\u007f]/u.test(value)
   ? 'Lý do cần từ 5 đến 500 ký tự, không chứa ký tự điều khiển.' : '';
 // Lấy ngày theo giờ Việt Nam, không dùng múi giờ mặc định của thiết bị.
 export const todayOwner = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+/** Chọn kỳ mặc định từ đầu năm đến hôm nay theo giờ Việt Nam. */
 export const defaultOwnerDates = () => { const to = todayOwner(); return { from: `${to.slice(0, 4)}-01-01`, to }; };
 // UC-12/13/14/17: Kiểm tra ngày tồn tại, đúng thứ tự và không quá 366 ngày trước khi gọi API.
+/** Kiểm tra ngày thực trên lịch, thứ tự hai mốc và độ dài của kỳ báo cáo. Trả chuỗi rỗng khi hợp lệ. */
 export const dateRangeError = ({ from, to }) => {
   const date = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`))
     && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;

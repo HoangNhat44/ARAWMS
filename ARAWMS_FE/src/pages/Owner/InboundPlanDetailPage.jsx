@@ -1,3 +1,6 @@
+/**
+ * Chi tiết kế hoạch trong một hợp đồng theo UC-044. Đối chiếu danh mục dự kiến, lượng kiểm đạt và các đợt giao đã ghi nhận.
+ */
 import { useEffect } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import { Result } from 'antd';
@@ -8,6 +11,7 @@ import { ResourceState, Table, Status, labels, quantity, datetime } from './Owne
 
 // Dùng cùng dữ liệu kế hoạch đã được API hợp đồng ghép từ material_inbound_plans và raw_materials.
 // Không cộng số lượng các đơn vị khác nhau; mỗi nguyên liệu được thể hiện trên một dòng riêng.
+/** Hiển thị từng nguyên liệu và cuộn đi kèm. Giữ đơn vị, lượng dự kiến, lượng kiểm đạt và lượng lỗi/thiếu của từng dòng. */
 function PlanItems({ items }) {
   return <Table headings={['Mã / tên nguyên liệu', 'Đơn vị', 'Số lượng dự kiến', 'Kiểm đạt', 'Lỗi / thiếu']} empty={!items.length}>
     {items.map((item, index) => {
@@ -41,6 +45,7 @@ function PlanItems({ items }) {
   </Table>;
 }
 
+/** Tải hợp đồng theo mã trên URL rồi tìm kế hoạch thuộc hợp đồng đó. Chuyển trạng thái tải, lỗi hoặc không tìm thấy về giao diện. */
 export default function InboundPlanDetailPage() {
   const { id, planId } = useParams(); const location = useLocation();
   // Tải mới khi mở trực tiếp URL; chỉ chấp nhận kế hoạch nằm trong hợp đồng đang xem.

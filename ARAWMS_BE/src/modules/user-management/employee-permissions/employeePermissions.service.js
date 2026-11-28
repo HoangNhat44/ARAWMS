@@ -1,7 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-09; GBR-01 - Gán/hủy quyền ngoại lệ, thu hồi phiên và ghi nhật ký.
+ * Report 3 — UC-011. Đọc và lưu quyền ngoại lệ của nhân viên.
  */
 import User from '../../../models/User.model.js';
 import Role from '../../../models/Role.model.js';
@@ -14,6 +14,7 @@ import { employeeProfile } from '../employee-management/employeeManagement.servi
 import { validatePermissions } from './employeePermissions.validation.js';
 
 // UC-09: Gom quyền của các vai trò nhân viên thành một danh mục để Owner lựa chọn.
+/** Gom vai trò hoạt động và khử trùng các mã quyền được cấp cho nhân viên. Trả kèm quyền mặc định của từng vai trò. */
 export const permissionCatalog = async (session = null) => {
   const roles = await Role.find({ roleCode: { $in: employeeRoles }, isActive: true, isDeleted: { $ne: true } }).select('roleCode roleName permissions').session(session);
   // Mỗi mã quyền chỉ xuất hiện một lần dù nhiều vai trò cùng sử dụng.
@@ -32,6 +33,7 @@ export const permissionCatalog = async (session = null) => {
     permissions: [...catalog.values()].sort((a, b) => a.code.localeCompare(b.code)) };
 };
 // UC-09: Đọc cả quyền theo vai trò và quyền cấp/thu hồi riêng của nhân viên.
+/** Tìm hồ sơ theo mã nhân viên rồi trả quyền được tính sau khi áp dụng quyền cấp hoặc thu hồi riêng. */
 export const getPermissions = async (id) => {
   objectId(id);
   const user = await User.findOne({ _id: id, roleCode: { $in: employeeRoles }, isDeleted: { $ne: true } }).populate('roleId');
@@ -39,6 +41,7 @@ export const getPermissions = async (id) => {
   return { employee: employeeProfile(user), effectivePermissions: effectivePermissions(user) };
 };
 // UC-09: Kiểm tra ID, phiên bản và toàn bộ danh sách quyền trước khi ghi thay đổi.
+/** Đối chiếu phiên bản và danh mục quyền, thay danh sách ngoại lệ, thu hồi phiên cũ và ghi nhật ký thay đổi. */
 export const assignPermissions = async (req) => {
   objectId(req.params.id); const input = validatePermissions(req.body);
   return ownerTransaction(async (session) => {
@@ -52,7 +55,7 @@ export const assignPermissions = async (req) => {
     const before = employeeProfile(user);
     // Gắn người cấp và thời điểm để truy được nguồn của từng quyền ngoại lệ.
     user.permissionOverrides = input.permissionOverrides.map((entry) => ({ ...entry, by: req.user._id, at: new Date() }));
-    // UC-09, GBR-01: Yêu cầu đăng nhập mới để nhận quyền thay đổi; không mở khóa nhân viên.
+    // Phiên cũ kết thúc để nhân viên đăng nhập lại với quyền mới. Giữ nguyên trạng thái tài khoản.
     user.sessions = []; user.isOnlineForChat = false; user.managementVersion = input.expectedVersion + 1;
     await user.save({ session });
     const after = employeeProfile(user);

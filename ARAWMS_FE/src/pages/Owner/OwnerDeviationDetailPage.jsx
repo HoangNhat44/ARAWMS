@@ -1,3 +1,6 @@
+/**
+ * Chi tiết kế hoạch sai lệch KCS theo UC-042 và UC-044. Owner đối chiếu kết quả giao nhận, thông tin trình báo, hợp đồng và hướng xử lý.
+ */
 import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import {
@@ -26,6 +29,7 @@ import OwnerDetailHeading from './OwnerDetailHeading';
 import { Status, labels, money, quantity, datetime } from './OwnerUI';
 import ContractLegalDocumentModal from '../../components/common/ContractLegalDocumentModal';
 
+/** Tải kế hoạch theo mã trên route hoặc query string, hiển thị kết quả kiểm định và các lựa chọn được mô tả trên trang. */
 export default function OwnerDeviationDetailPage() {
   const { planId: paramPlanId } = useParams();
   const [searchParams] = useSearchParams();
@@ -42,6 +46,7 @@ export default function OwnerDeviationDetailPage() {
   const [fullContractDetail, setFullContractDetail] = useState(null);
   const [loadingContractDetail, setLoadingContractDetail] = useState(false);
 
+  /** Tải thêm hợp đồng để mở bản toàn văn. Nếu không tải được, dùng dữ liệu hợp đồng đã gắn trong kế hoạch. */
   const handleOpenContractModal = async () => {
     const cId = plan?.contractId?._id || plan?.contractId?.id || plan?.contractId;
     if (!cId) return;
@@ -61,6 +66,7 @@ export default function OwnerDeviationDetailPage() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
+    /** Lấy hồ sơ theo mã kế hoạch và đưa lỗi API về trạng thái hiển thị của trang. */
     const fetchPlanDetail = async () => {
       try {
         setLoading(true);
@@ -108,6 +114,7 @@ export default function OwnerDeviationDetailPage() {
     );
   }
 
+  // Tách dữ liệu KCS, trình báo, nhà cung cấp và hướng xử lý để từng phần có thể hiển thị khi hồ sơ cũ thiếu dữ liệu.
   const contract = plan.contractId || {};
   const supplier = plan.supplierId || {};
   const verification = plan.technicianVerification || {};
@@ -557,7 +564,7 @@ export default function OwnerDeviationDetailPage() {
         </div>
       </section>
 
-      {/* KHỐI 3: ĐỊNH HƯỚNG VÀ CÁC PHƯƠNG ÁN XỬ LÝ DOANH NGHIỆP */}
+      {/* Hiển thị kết quả ghi nhận hoặc hướng xử lý tham khảo của hồ sơ. */}
       <section
         style={{
           border: '1px solid #CBD5E1',

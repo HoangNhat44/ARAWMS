@@ -7,17 +7,20 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import { httpError } from '../../../common/utils/httpError.js';
 
 // Khóa phải ổn định giữa các lần khởi động; không dùng JWT_SECRET ngẫu nhiên của môi trường dev.
+/** Tạo khóa dẫn xuất ổn định từ cấu hình máy chủ để có thể đọc dữ liệu sau khi ứng dụng khởi động lại. */
 const key = () => {
   const secret = process.env.SETTINGS_ENCRYPTION_KEY || process.env.JWT_SECRET;
   if (!secret || secret.length < 32) throw httpError(503, 'Cần SETTINGS_ENCRYPTION_KEY hoặc JWT_SECRET ổn định từ 32 ký tự để lưu khóa API.');
   return createHash('sha256').update(`arawms-integrations:${secret}`).digest();
 };
+/** Mã hóa giá trị tích hợp và gói dữ liệu theo phiên bản cùng thông tin xác thực phục vụ giải mã. */
 export const encryptSecret = (value) => {
   // Mỗi lần lưu có IV riêng; GCM phát hiện được dữ liệu mã hóa đã bị sửa.
   const iv = randomBytes(12); const cipher = createCipheriv('aes-256-gcm', key(), iv);
   const data = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
   return ['enc', 'v1', iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), data.toString('base64url')].join(':');
 };
+/** Đọc khóa cũ hoặc giải mã giá trị theo định dạng phiên bản hiện tại. Báo lỗi cấu hình nếu dữ liệu mã hóa không thể được đọc. */
 export const decryptSecret = (value) => {
   if (!value) return '';
   // Cho phép đọc khóa cũ dạng thường; các lần cập nhật mới luôn lưu dạng mã hóa.

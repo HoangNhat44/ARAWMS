@@ -1,7 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-09; GBR-01 - Xem quyền hiệu lực và xác nhận thay đổi quyền ngoại lệ.
+ * Report 3 — UC-011. Xem quyền hiệu lực và lưu các ngoại lệ so với quyền của vai trò.
  */
 import { WmsField, WmsSelect, WmsTextArea, WmsButton } from '../../components/ui/WmsControls';
 import { useState } from 'react';
@@ -10,18 +10,21 @@ import { ownerService } from '../../services/ownerService';
 import { reasonError } from '../../utils/ownerValidation';
 import { ResourceState, Notice, labels } from './OwnerUI';
 import { businessLabel, permissionLabel } from '../../utils/businessLabels';
+/** Tải cấu hình quyền mới nhất của nhân viên khi mở. Khởi tạo lại trình chỉnh sửa nếu phiên bản quản trị thay đổi. */
 export default function EmployeePermissionsForm({ employee, catalog, onDone, setBusy }) {
-  // UC-09: Đọc quyền mới nhất khi mở form, không dùng bản tóm tắt có thể đã cũ trong bảng nhân viên.
+  // Đọc quyền chi tiết từ API vì bảng nhân viên chỉ chứa dữ liệu tóm tắt.
   const resource = useOwnerResource(`employee-permissions/${employee.id}`);
   return <ResourceState resource={resource}>{resource.data && <PermissionEditor key={resource.data.employee.managementVersion} data={resource.data} catalog={catalog} onDone={onDone} setBusy={setBusy} />}</ResourceState>;
 }
 // Tách phần nhập liệu để khởi tạo lại form khi phiên bản tài khoản thay đổi.
+/** Kết hợp quyền mặc định của vai trò với lựa chọn cấp hoặc thu hồi riêng của Owner. Hiển thị quyền hiệu lực tại thời điểm tải. */
 function PermissionEditor({ data, catalog, onDone, setBusy }) {
   const employee = data.employee;
   const [overrides, setOverrides] = useState(Object.fromEntries(employee.permissionOverrides.map((p) => [p.code, p.granted ? 'grant' : 'deny'])));
   const [reason, setReason] = useState(''); const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
   // Phân biệt quyền có từ vai trò với quyền Owner cấp/thu hồi riêng.
   const inherited = new Set(catalog.roles.find((role) => role.roleCode === employee.roleCode)?.permissions || []);
+  /** Tạo danh sách ngoại lệ theo danh mục quyền đang hoạt động, gửi kèm lý do và phiên bản tài khoản rồi phản hồi kết quả cho trang cha. */
   const submit = async (event) => {
     event.preventDefault(); const message = reasonError(reason); setError(message); if (message) return;
     setSaving(true); setBusy(true);
@@ -36,7 +39,7 @@ function PermissionEditor({ data, catalog, onDone, setBusy }) {
     <Notice error={error} />
     {!catalog.permissions.length && <p className="owner-notice">Chưa có danh mục quyền của các vai trò nhân viên. Cần thiết lập quyền theo vai trò trước khi cấp quyền riêng.</p>}
     {employee.permissionOverrides.some((entry) => !catalog.permissions.some((p) => p.code === entry.code)) && <p className="owner-notice">Có quyền ngoại lệ đã ngừng hoạt động. Các quyền đó sẽ được loại khi lưu.</p>}
-    {/* UC-09: Ba lựa chọn phân biệt quyền theo vai trò, quyền cấp riêng và quyền thu hồi riêng. */}
+    {/* Mỗi quyền có thể lấy theo vai trò, cấp riêng hoặc thu hồi riêng. */}
     <div className="owner-permissions">{catalog.permissions.map((permission) => <WmsField key={permission.code}><span>{businessLabel(permission.majorFeature)} / {businessLabel(permission.subFeature)} / {businessLabel(permission.action)}<small>Vai trò mặc định: {inherited.has(permission.code) ? 'Có quyền' : 'Không có quyền'}</small></span>
       <WmsSelect disabled={saving} value={overrides[permission.code] || 'inherit'} onChange={(event) => setOverrides({ ...overrides, [permission.code]: event.target.value })}>
         <option value="inherit">Theo vai trò</option><option value="grant">Cấp riêng</option><option value="deny">Thu hồi riêng</option></WmsSelect></WmsField>)}</div>

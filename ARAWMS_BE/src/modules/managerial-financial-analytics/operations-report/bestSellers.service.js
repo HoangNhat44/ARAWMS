@@ -5,7 +5,8 @@
  */
 import { read, period, num } from './operationsReport.service.js';
 import { salesReportScope } from './salesReportScope.js';
-// Quantity is taken from actual order lines, never from inventory balances or catalogue prices.
+// Số lượng và giá bán lấy từ dòng đơn đã ghi nhận trong kỳ.
+/** Gom theo sản phẩm và SKU, cộng số lượng, đếm số đơn riêng biệt và xếp theo lượng bán. Giữ dòng lịch sử khi SKU thiếu liên kết danh mục. */
 export function bestSellerRows(orders, products, skus) {
   const bySku = new Map(skus.map(s => [String(s._id), s]));
   const byCode = new Map(skus.map(s => [s.skuCode, s]));
@@ -25,14 +26,16 @@ export function bestSellerRows(orders, products, skus) {
     for (const [map, id, info] of groups) {
       const row = map.get(id) || { id, ...info, quantity: 0, grossAmount: 0, orderIds: new Set() };
       row.quantity += qty;
-      // A missing historical price stays unknown rather than falling back to today's catalogue price.
+      // Thiếu giá của một dòng khiến tổng tiền hàng của nhóm chưa xác định được.
       row.grossAmount = row.grossAmount === null || amount === null ? null : row.grossAmount + amount;
       row.orderIds.add(String(order._id)); map.set(id, row);
     }
   }
+  /** Chốt số đơn từ tập ID và xếp hạng theo số lượng, dùng mã để ổn định thứ tự khi bằng nhau. */
   const finish = (map) => [...map.values()].map(({ orderIds, ...row }) => ({ ...row, orders: orderIds.size })).sort((a,b) => b.quantity - a.quantity || String(a.code).localeCompare(String(b.code)));
   return { products: finish(productRows), skus: finish(skuRows), packedOrders: orders.length, missingProductLinks };
 }
+/** Lọc đơn đã đóng gói, bỏ đơn hủy và tải thông tin danh mục phục vụ xếp hạng theo UC-104. */
 export async function bestSellersReport(query) {
   const range = period(query.from, query.to);
   const scope = salesReportScope(query);

@@ -1,13 +1,14 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-06..09, UC-18, OWNER-EXT-01..06 - Ghi thay đổi và nhật ký cùng giao dịch.
+ * Dùng chung giao dịch MongoDB và cách ghi nhật ký cho thao tác ghi của Owner.
  */
 import mongoose from 'mongoose';
 import SystemLog from '../../models/SystemLog.model.js';
 import { httpError } from './httpError.js';
 
 // Giao dịch chỉ thành công khi cả dữ liệu nghiệp vụ và nhật ký đều ghi được.
+/** Chạy callback trong transaction và đổi lỗi trùng dữ liệu hoặc xung đột phiên bản thành HTTP 409 để giao diện có thể yêu cầu tải lại. */
 export const ownerTransaction = async (work) => {
   try { return await mongoose.connection.transaction(work); }
   catch (error) {
@@ -16,7 +17,8 @@ export const ownerTransaction = async (work) => {
     throw error;
   }
 };
-// Nhật ký kỹ thuật: không gán GBR-23 cho audit log; GBR-23 là video kiểm hàng trả.
+// Truyền cùng session với thao tác nghiệp vụ để nhật ký được lưu hoặc hủy theo giao dịch.
+/** Ghi người thao tác, đối tượng, dữ liệu trước/sau và ngữ cảnh yêu cầu để tra cứu trong UC-017. */
 export const ownerAudit = (req, session, feature, subFeature, action, target, before, after) => SystemLog.create([{
   actorId: req.user._id, actorRole: req.user.roleCode, majorFeature: feature, subFeature, action,
   targetCollection: target.collection, targetId: target.id, targetCode: target.code,

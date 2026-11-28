@@ -24,17 +24,20 @@ const groups = [
   { title: 'Quản lý và nhân sự', items: [['manager-reports', 'Báo cáo quản lý', FileText], ['employees', 'Nhân viên', Users], ['activity', 'Nhật ký hoạt động', History]] },
 ];
 const pageTitles = Object.fromEntries(groups.flatMap((g) => g.items.map(([path, title]) => [`/owner/${path}`, title])));
+/** Suy ra tiêu đề cho đường dẫn chi tiết động dựa trên loại bản ghi và cấu trúc URL. */
 const detailTitle = (path) => path.startsWith('/owner/deviations') || path.startsWith('/owner/inbound-plans') || path.startsWith('/owner/plans/') || path.startsWith('/owner/plan-deviations/') ? 'Chi tiết sai lệch KCS' : path === '/owner/plan-deviations' ? 'Sai lệch kế hoạch' : /^\/owner\/contracts\/[^/]+\/materials\/[^/]+$/.test(path) ? 'Quy cách nguyên liệu' : /^\/owner\/contracts\/[^/]+\/plans\/[^/]+$/.test(path) ? 'Chi tiết kế hoạch nhập' : path.startsWith('/owner/contracts/') ? 'Chi tiết hợp đồng' : path.endsWith('/permissions') ? 'Phân quyền nhân viên' : path === '/owner/employees/new' ? 'Tạo nhân viên'
   : path.startsWith('/owner/manager-reports/') ? 'Chi tiết báo cáo' : path.startsWith('/owner/production/') ? 'Chi tiết sản xuất'
     : path.startsWith('/owner/samples/') ? 'Chi tiết mẫu sản phẩm' : path.startsWith('/owner/stock-adjustments/') ? 'Duyệt báo cáo kiểm kê'
       : path.startsWith('/owner/settings/') ? 'Cấu hình vận hành' : path === '/owner/account' ? 'Tài khoản của tôi' : 'Khu vực chủ cửa hàng';
 
+/** Kiểm tra người dùng thuộc vai trò Owner rồi dựng không gian làm việc dành cho chủ cửa hàng. */
 export default function OwnerLayout() {
   const { user } = useAuth();
-  // GBR-01: Kiểm tra quyền cả ở giao diện và BE; không cấp Owner bằng cách sửa URL.
+  // Điều hướng ngoài khu vực Owner nếu phiên hiện tại thuộc vai trò khác.
   if (user?.roleCode !== 'OWNER') return <Result status="403" title={<h1>Không có quyền truy cập</h1>} subTitle="Khu vực này chỉ dành cho chủ cửa hàng." extra={<Link to="/">Về trang chủ</Link>} />;
   return <OwnerWorkspace user={user} />;
 }
+/** Dựng menu, thanh đầu trang và vùng route con. Đồng bộ tiêu đề và trạng thái menu với đường dẫn hiện tại. */
 function OwnerWorkspace({ user }) {
   const { logout } = useAuth(); const navigate = useNavigate(); const location = useLocation(); const screens = Grid.useBreakpoint();
   const [drawer, setDrawer] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
@@ -53,6 +56,7 @@ function OwnerWorkspace({ user }) {
   useEffect(() => {
     if (desktop) setDrawer(false);
   }, [desktop]);
+  /** Đóng menu trên di động và trả tiêu điểm về nút mở menu. */
   const closeDrawer = useCallback(() => {
     if (!drawer) return;
     setDrawer(false);
@@ -66,6 +70,7 @@ function OwnerWorkspace({ user }) {
     document.addEventListener('keydown', closeOnEscape);
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [drawer, desktop, closeDrawer]);
+  /** Kết thúc phiên đang dùng và đưa người dùng về trang đăng nhập. */
   const signOut = async () => {
     setBusy(true); setError('');
     try { await logout(); navigate('/login', { replace: true }); } catch (err) { setError(err.message); } finally { setBusy(false); }

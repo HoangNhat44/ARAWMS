@@ -1,7 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: OWNER-EXT-06; GBR-18/19 - Đọc báo cáo và phê duyệt chênh lệch kiểm kê lớn.
+ * Report 3 — UC-070, UC-073, UC-075. Tạo báo cáo chênh lệch và ghi nhận quyết định của Owner.
  */
 import { createHash } from 'node:crypto';
 import StocktakeSession from '../../../models/StocktakeSession.model.js';
@@ -18,6 +18,7 @@ import { httpError } from '../../../common/utils/httpError.js';
 import { validateApproval, varianceSummary, assertApprovalAllowed } from './stockAdjustment.validation.js';
 const active = { isDeleted: { $ne: true } };
 
+/** Lọc phiên theo mã, trạng thái và loại kho. Trả một trang kết quả cùng tổng số phiên thỏa bộ lọc. */
 export const listStocktakes = async (query) => {
   const { filter, page, limit } = readQuery(query, { fields: ['sessionCode'],
     statuses: ['FROZEN_COUNTING', 'VARIANCE_REVIEW', 'APPROVED_PENDING_ADJUSTMENT', 'APPROVED_COMPLETED', 'CANCELLED'], extra: ['warehouseType'] });
@@ -30,6 +31,7 @@ export const listStocktakes = async (query) => {
   return { items, total, page, limit };
 };
 
+/** Ghép dòng kiểm đếm với đơn giá, tính chênh lệch và tạo dấu băm của báo cáo. session được truyền khi đọc trong giao dịch duyệt. */
 const reportData = async (id, session = null) => {
   const stocktake = await StocktakeSession.findOne({ _id: id, ...active }).session(session);
   if (!stocktake) throw httpError(404, 'Không tìm thấy phiên kiểm kê.');
@@ -62,12 +64,18 @@ const reportData = async (id, session = null) => {
   if (rows.some((row) => typeof row.unitCost !== 'number' || !Number.isFinite(row.unitCost))) throw httpError(409, 'Có dòng thiếu đơn giá. Cần bổ sung dữ liệu kiểm kê trước khi duyệt.');
   const config = settings || new SystemSetting();
   const summary = varianceSummary(rows, config, stocktake.approvalInfo?.agingStockActionPlan);
+  // Dấu băm phát hiện thay đổi tập dòng kể từ lúc Owner mở báo cáo.
   const reportHash = createHash('sha256').update(JSON.stringify(rows)).digest('hex');
   return { stocktake, records: rows, summary, reportHash, thresholds: {
     quantity: config.minorStocktakeVarianceLimitQty, value: config.minorStocktakeVarianceLimitValue } };
 };
+/** Kiểm tra mã phiên từ route rồi tải báo cáo chi tiết có yêu cầu đầy đủ đơn giá. */
 export const stocktakeDetail = async (id) => { objectId(id); return reportData(id); };
 
+/**
+ * Đọc lại báo cáo trong giao dịch, kiểm tra bản đã xem và lưu quyết định. Ghi lý do, người duyệt và nhật ký trong cùng giao dịch.
+ * @param {import('express').Request} req Yêu cầu chứa mã phiên, dữ liệu xác nhận và danh tính Owner.
+ */
 export const approveStocktake = async (req) => {
   objectId(req.params.id); const input = validateApproval(req.body);
   return ownerTransaction(async (session) => {
@@ -77,7 +85,7 @@ export const approveStocktake = async (req) => {
     // Chặn dữ liệu bất thường đã ghi điều chỉnh nhưng vẫn ở trạng thái chưa duyệt, cần đối soát trước.
     if (await InventoryTransaction.exists({ referenceId: stocktake._id, transactionType: 'STOCKTAKE_ADJUSTMENT', ...active }).session(session)) throw httpError(409, 'Phiên đã có bút toán điều chỉnh. Cần đối soát trước khi duyệt.');
     const before = { status: stocktake.status, approvalInfo: stocktake.approvalInfo };
-    // GBR-18: Duyệt không đồng nghĩa đã ghi sổ; chỉ Manager hoàn tất điều chỉnh mới được đóng phiên.
+    // [BR: GBR-21] Chuyển sang chờ điều chỉnh. Phiên chỉ hoàn tất sau bước xử lý điều chỉnh tồn kho.
     stocktake.status = 'APPROVED_PENDING_ADJUSTMENT'; stocktake.approvalRevision = input.expectedVersion + 1;
     stocktake.approvalInfo = { approvalLevelRequired: 'MAJOR_OWNER', approvedByUserId: req.user._id, approvedAt: new Date(),
       adjustmentReason: input.adjustmentReason, agingStockActionPlan: input.agingStockActionPlan,

@@ -1,3 +1,6 @@
+/**
+ * Bảng sản phẩm bán chạy trong UC-104. Bộ lọc ngày, nguồn bán và trạng thái thanh toán được truyền từ trang báo cáo.
+ */
 import { useState } from 'react';
 import { Select } from 'antd';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
@@ -5,6 +8,7 @@ import { WmsField, WmsSelect } from '../../components/ui/WmsControls';
 import { ResourceState, Table, money, quantity } from './OwnerUI';
 import { Columns } from './OwnerCharts';
 const metricLabels = { quantity: 'Số lượng bán (cái)', grossAmount: 'Tiền hàng trước giảm giá / hoàn', orders: 'Số đơn có mặt hàng' };
+/** Tải xếp hạng sản phẩm theo kỳ đã chọn rồi trình bày số liệu và các biến thể do API tổng hợp. */
 export default function BestSellers({ from, to, salesChannel, paymentStatus }) {
   const resource = useOwnerResource('operations-report/best-sellers', { from, to, salesChannel, paymentStatus });
   const [group, setGroup] = useState('products'); const [metric, setMetric] = useState('quantity'); const [show, setShow] = useState('sold');
@@ -12,6 +16,7 @@ export default function BestSellers({ from, to, salesChannel, paymentStatus }) {
   const all = resource.data?.[group] || [];
   const sorted = [...all].sort((a,b) => (b[metric] ?? -Infinity) - (a[metric] ?? -Infinity) || a.code.localeCompare(b.code, 'vi'));
   const selected = selection[group].filter(id => all.some(r => r.id === id));
+  // Khi chưa chọn mã để so sánh, biểu đồ lấy tối đa 10 mặt hàng đã bán theo chỉ số đang xếp hạng.
   const chartRows = selected.length ? sorted.filter(r => selected.includes(r.id)) : sorted.filter(r => r.quantity > 0).slice(0,10);
   const tableRows = sorted.filter(r => selected.length ? selected.includes(r.id) : show === 'all' || r.quantity > 0);
   return <section className="owner-content-panel owner-best-sellers"><h2>Sản phẩm nào bán chạy hơn?</h2>

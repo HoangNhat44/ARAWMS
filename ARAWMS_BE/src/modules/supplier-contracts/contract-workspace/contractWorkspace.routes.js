@@ -61,10 +61,11 @@ router.post(
   contractWorkspaceController.terminateContract
 );
 
-// Support Owner contract detail view mounted at /api/owner/contracts/:id
+// UC-103. Route /api/owner/contracts/:id cung cấp dữ liệu hợp đồng đã tổng hợp riêng cho trang Owner.
 router.get(
   '/:id',
   asyncHandler(async (req, res, next) => {
+    // Bỏ qua segment không phải mã MongoDB để các đường dẫn cùng router tiếp tục được xử lý.
     if (!mongoose.Types.ObjectId.isValid(req.params.id) || ['suppliers', 'materials-catalog', 'contracts'].includes(req.params.id)) {
       return next();
     }

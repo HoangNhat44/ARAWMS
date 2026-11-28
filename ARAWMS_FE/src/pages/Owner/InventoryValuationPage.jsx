@@ -1,22 +1,23 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-15/16; GBR-13 - Định giá kho, tách tồn bán được và hàng cách ly.
+ * Report 3 — UC-102, UC-109, UC-110. Định giá tồn kho nguyên liệu và thành phẩm.
  */
 import { WmsField, WmsSelect, WmsInput, WmsButton } from '../../components/ui/WmsControls';
 import { useState } from 'react';
 import { useOwnerQuery } from '../../hooks/useOwnerQuery';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
 import { ResourceState, Table, Pagination, Metric, money, quantity, datetime, labels } from './OwnerUI';
+/** Chọn báo cáo nguyên liệu hoặc thành phẩm, hiển thị tổng giá trị toàn kho và bảng chi tiết. Phân trang và lọc bảng theo nhóm hoặc từ khóa. */
 export default function InventoryValuationPage({ assets = false }) {
-  // UC-15 chỉ nguyên liệu; UC-16 cho chuyển giữa nguyên liệu và thành phẩm.
+  // Chế độ tài sản cho phép chuyển giữa nguyên liệu và thành phẩm.
   const [options, setOptions] = useOwnerQuery({ type: assets ? 'skus' : 'materials', page: 1, search: '' }); const { type, ...query } = options;
   const [search, setSearch] = useState(query.search); const setQuery = (next) => setOptions({ ...next, type });
   // Bảng chi tiết chịu bộ lọc/tìm kiếm; tổng tài sản toàn kho được tải bằng API riêng.
   const resource = useOwnerResource(assets ? 'asset-valuation' : 'material-valuation', { ...query, type });
   const summary = useOwnerResource('asset-valuation/summary');
   return <><header className="owner-page-heading"><div><p className="owner-eyebrow">{assets ? 'Kho thành phẩm' : 'Tồn kho nguyên vật liệu'}</p><h1>{assets ? 'Định giá tài sản kho' : 'Giá trị tồn kho nguyên liệu'}</h1><p>Số lượng tồn và đơn giá đã ghi nhận tại thời điểm xem.</p></div></header>
-    {/* UC-16: Tổng toàn kho độc lập với nhóm/từ khóa của bảng đang lọc bên dưới. */}
+    {/* Chỉ số toàn kho giữ phạm vi tổng hợp khi lọc bảng chi tiết. */}
     {assets && <ResourceState resource={summary}>{summary.data && <div className="owner-metrics"><Metric label="Tổng tài sản kho" value={money(summary.data.totalValue)} /><Metric label="Nguyên vật liệu" value={money(summary.data.materialValue)} /><Metric label="Thành phẩm bán được" value={money(summary.data.finishedGoodsValue)} /><Metric label="Hàng cách ly" value={money(summary.data.quarantineValue)} /></div>}</ResourceState>}
     <form className="owner-filters" onSubmit={(e) => { e.preventDefault(); setQuery({ page: 1, search: search.trim() }); }}>
       {assets && <WmsField>Nhóm hàng<WmsSelect value={type} onChange={(e) => { setOptions({ type: e.target.value, page: 1, search: '' }); setSearch(''); }}><option value="materials">Nguyên vật liệu</option><option value="skus">Thành phẩm</option></WmsSelect></WmsField>}

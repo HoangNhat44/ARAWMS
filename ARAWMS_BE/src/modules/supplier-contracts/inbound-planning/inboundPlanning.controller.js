@@ -1,5 +1,6 @@
 import * as inboundPlanningService from './inboundPlanning.service.js';
 
+/** Trả danh sách kế hoạch đã ghép thông tin mà màn sai lệch dùng để lọc. */
 export const getInboundPlans = async (req, res, next) => {
   try {
     const data = await inboundPlanningService.listInboundPlans(req.query);
@@ -9,6 +10,7 @@ export const getInboundPlans = async (req, res, next) => {
   }
 };
 
+/** Trả kế hoạch theo mã URL để dựng chi tiết sai lệch và KCS. */
 export const getInboundPlanById = async (req, res, next) => {
   try {
     const data = await inboundPlanningService.getInboundPlanById(req.params.id);
@@ -107,6 +109,7 @@ export const verifyInboundPlanDelivery = async (req, res, next) => {
   }
 };
 
+/** Chuyển mã hồ sơ, người thao tác và ghi chú cho service trình báo. */
 export const reportDeviationToOwner = async (req, res, next) => {
   try {
     const data = await inboundPlanningService.reportDeviationToOwner(

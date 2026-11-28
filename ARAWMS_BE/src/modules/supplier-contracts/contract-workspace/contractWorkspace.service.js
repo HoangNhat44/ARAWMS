@@ -291,6 +291,7 @@ export const listContracts = async (filters = {}) => {
   });
 };
 
+/** Đọc hợp đồng từ workspace mua hàng cùng dữ liệu liên quan. Trang Owner dùng kết quả này khi mở văn bản hợp đồng từ hồ sơ sai lệch. */
 export const getContractById = async (contractId) => {
   await checkAndAutoTerminateExpiredContracts();
   const contract = await SupplierContract.findById(contractId)
@@ -833,6 +834,7 @@ export const draftContractFramework = async (payload, currentUserId) => {
 
 /**
  * UC 04: Amend Contract - Create Next Version from an Active/Existing Contract
+ * Tạo bản bổ sung và kế hoạch giao theo nội dung đã sửa. Giữ liên kết tới bản gốc để tra lại lịch sử thay đổi.
  */
 export const amendContractVersion = async (contractId, payload, currentUserId) => {
   const origContract = await SupplierContract.findById(contractId);
@@ -998,7 +1000,7 @@ export const amendContractVersion = async (contractId, payload, currentUserId) =
     contractedMaterials: normalizedMaterials,
   });
 
-  // Cập nhật hợp đồng gốc sang trạng thái SUPERSEDED (Đã thay thế)
+  // [BR: GBR-28] Đánh dấu bản gốc SUPERSEDED sau khi tạo bản bổ sung để giữ quá trình thay đổi hợp đồng.
   origContract.status = 'SUPERSEDED';
   if (!origContract.rootContractId) {
     origContract.rootContractId = rootId;
@@ -1168,6 +1170,7 @@ export const amendContractVersion = async (contractId, payload, currentUserId) =
 
 /**
  * UC 04: Update Draft Contract Framework
+ * Cập nhật nội dung hợp đồng còn cho phép sửa và tính lại chi tiết nguyên liệu. Với hợp đồng đã có hiệu lực hoặc đã thay thế, dùng luồng phụ lục.
  */
 export const updateContractFramework = async (contractId, payload, currentUserId) => {
   const contract = await SupplierContract.findById(contractId);
@@ -1177,7 +1180,7 @@ export const updateContractFramework = async (contractId, payload, currentUserId
     throw err;
   }
 
-  // Business Rule: Hợp đồng đã có trạng thái ACTIVE, DEVIATION_FLAGGED hoặc SUPERSEDED thì KHÔNG cho phép chỉnh sửa thông thường trực tiếp.
+  // [BR: GBR-28] Chặn chỉnh trực tiếp hợp đồng đang có hiệu lực. Nhánh này cũng bảo vệ bản đang có sai lệch và bản đã thay thế.
   // Mọi sửa đổi phải lưu thành phiên bản tiếp theo (Version mới).
   if (
     contract.status === 'ACTIVE' ||
@@ -1382,11 +1385,12 @@ export const terminateContract = async (contractId, payload, currentUserId) => {
 const active = { isDeleted: { $ne: true } };
 const read = (name, filter, projection) => mongoose.connection.collection(name).find({ ...active, ...filter }, { projection }).toArray();
 
+/** UC-103 và UC-044. Ghép hợp đồng với nhà cung cấp, kế hoạch và phiếu chi để Owner xem điều khoản, KCS và dư nợ. */
 export async function contractDetail(id) {
   objectId(id);
   const [contract] = await read('supplier_contracts', { _id: new mongoose.Types.ObjectId(id) });
   if (!contract) throw httpError(404, 'Không tìm thấy hợp đồng.');
-  // Native collection reads preserve the historical contract fields absent from the older Mongoose schema.
+  // Đọc trực tiếp collection để giữ các trường lịch sử có thể chưa tồn tại trong schema Mongoose cũ.
   const [suppliers, plans, payments] = await Promise.all([
     read('suppliers', { _id: contract.supplierId }, { supplierCode: 1, supplierName: 1, taxCode: 1, contactName: 1, representativeName: 1, phone: 1, email: 1, address: 1 }),
     read('material_inbound_plans', { contractId: contract._id }),
@@ -1399,7 +1403,9 @@ export async function contractDetail(id) {
   ]);
   const materialMap = new Map(materials.map(m => [String(m._id), m]));
   const name = (id) => users.find(u => String(u._id) === String(id))?.fullName || null;
+  /** Ưu tiên mã, tên và đơn vị chốt trên chứng từ, dùng danh mục hiện tại khi dữ liệu trước đây chưa lưu snapshot. */
   const item = (line) => { const material = materialMap.get(String(line.rawMaterialId)); return { materialId: String(line.rawMaterialId || ''), code: line.materialCodeSnapshot || material?.materialCode || null, name: line.materialNameSnapshot || material?.materialName || null, unit: line.unitSnapshot || material?.unit || null }; };
+  /** Chuẩn hóa dòng kế hoạch, hỗ trợ cả tên trường cuộn cũ và mới để hiển thị lượng dự kiến, kiểm đạt và thiếu/lỗi. */
   const planItems = (lines) => (lines || []).map(line => ({
     ...item(line),
     plannedQty: line.plannedQty,

@@ -2,7 +2,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-06 đến UC-09; GBR-01/02 - Danh sách, tạo, khóa/mở khóa và phân quyền nhân viên.
+ * Report 3 — UC-010, UC-011, UC-012. Danh sách nhân viên, tạo tài khoản, thay đổi vai trò và trạng thái.
  */
 import { WmsButton, WmsField, WmsInput, WmsSelect, WmsTextArea, WmsLinkButton } from '../../components/ui/WmsControls';
 import { useState } from 'react';
@@ -14,14 +14,16 @@ import { employeeError, reasonError } from '../../utils/ownerValidation';
 import { Table, Status, ResourceState, Pagination, Modal, Notice, labels, datetime } from './OwnerUI';
 // Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi nhân viên - Không hiển thị phân quyền/gán lại vai trò trong phạm vi hiện tại.
 const blank = { employeeCode: '', fullName: '', email: '', phone: '', password: '', confirmPassword: '', roleCode: '' };
+/** Điều phối danh sách nhân viên, bộ lọc đã áp dụng và các hộp thoại thao tác. Sau mỗi lần lưu, tải lại danh sách để hiển thị dữ liệu mới nhất. */
 export default function EmployeesPage() {
-  // UC-06..09: Giữ bộ lọc đã áp dụng tách khỏi ô tìm kiếm đang nhập.
+  // Giữ từ khóa đang nhập riêng với từ khóa đã áp dụng để chỉ tải lại khi gửi bộ lọc.
   const location = useLocation();
   const [query, setQuery] = useOwnerQuery({ page: 1, search: '', status: '', roleCode: '' }); const [search, setSearch] = useState(query.search);
   const [modal, setModal] = useState(null); const [busy, setBusy] = useState(false); const [success, setSuccess] = useState(location.state?.message || '');
   // Tải danh sách nhân viên và danh mục quyền/vai trò để dùng chung cho các hộp thoại.
   const employees = useOwnerResource('employees', query); const catalog = useOwnerResource('employee-permissions');
   // Chỉ đóng form sau khi BE báo thành công; tải lại danh sách để thấy trạng thái thật.
+  /** Đóng hộp thoại, thông báo kết quả và tải lại danh sách sau thao tác thành công. */
   const done = (message) => { setModal(null); setSuccess(message); employees.reload(); };
   return <><header className="owner-page-heading"><div><h1>Quản lý nhân viên</h1></div>
     <WmsLinkButton className="btn-ara-primary" disabled={!catalog.data || catalog.loading} to="/owner/employees/new" state={{ from: location.pathname + location.search }}>Tạo nhân viên</WmsLinkButton></header>
@@ -44,7 +46,8 @@ export default function EmployeesPage() {
       <EmployeeStatusAction employee={modal.employee} action={modal.type} onDone={done} setBusy={setBusy} /></Modal>}
   </>;
 }
-// UC-06: Form tạo nhân viên; không cung cấp lựa chọn tạo thêm Owner.
+// Danh sách vai trò được phép tạo do API trả về.
+/** Nhận các vai trò từ API, thu thập hồ sơ và mật khẩu tạm rồi gửi yêu cầu tạo tài khoản. Gọi onDone sau khi lưu thành công. */
 export function CreateEmployee({ roles, onDone, setBusy }) {
   const [form, setForm] = useState(blank); const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
   const submit = async (event) => {
@@ -62,14 +65,15 @@ export function CreateEmployee({ roles, onDone, setBusy }) {
     {!roles.length && <p>Chưa có vai trò nhân viên đang hoạt động.</p>}<p>Mật khẩu cần ít nhất 8 ký tự, tối đa 72 byte. Không thể tạo thêm chủ cửa hàng tại đây.</p>
     <WmsButton className="btn-ara-primary" disabled={saving || !roles.length}>{saving ? 'Đang tạo…' : 'Xác nhận tạo tài khoản'}</WmsButton></form>;
 }
-// Nguyễn Ngọc Huy-HE171157, 2-11-2026: GBR-01/02 - Thao tác theo trạng thái, không sửa vai trò hoặc quyền.
+// Các thao tác khả dụng được xác định theo trạng thái hiện tại của tài khoản.
 const statusActions = {
   lock: { label: 'Khóa', confirm: 'Xác nhận khóa tài khoản', note: 'Tạm chặn đăng nhập và kết thúc các phiên hiện có.' },
   unlock: { label: 'Mở khóa', confirm: 'Xác nhận mở khóa', note: 'Nhân viên cần đăng nhập lại; yêu cầu đặt lại mật khẩu trước đó vẫn được giữ.' },
   deactivate: { label: 'Ngừng hoạt động', confirm: 'Xác nhận ngừng hoạt động', note: 'Dùng khi nhân viên nghỉ hoặc ngừng làm việc. Tài khoản không thể đăng nhập.' },
   reactivate: { label: 'Cho hoạt động lại', confirm: 'Xác nhận cho hoạt động lại', note: 'Nhân viên được làm việc lại theo vị trí hiện có và phải đăng nhập lại.' },
 };
-// UC-07/08, GBR-01/02: Yêu cầu xác nhận và lý do; mở khóa không bỏ yêu cầu đổi mật khẩu.
+// Mỗi thao tác kèm lý do và phiên bản quản trị của tài khoản đang hiển thị.
+/** Xác nhận thao tác khóa, mở khóa, ngừng hoạt động hoặc kích hoạt lại tài khoản. Gửi lý do và phiên bản để máy chủ phát hiện dữ liệu cũ. */
 function EmployeeStatusAction({ employee, action, onDone, setBusy }) {
   const [reason, setReason] = useState(''); const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
   const submit = async (event) => {

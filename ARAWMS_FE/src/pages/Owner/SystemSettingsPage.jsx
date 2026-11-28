@@ -2,7 +2,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: OWNER-EXT-02..05; GBR-05/06/11/12/19 - Giao diện cấu hình Owner.
+ * Report 3 — UC-013 đến UC-016. Cấu hình tích hợp, ngưỡng vải dư, tồn kho an toàn và chính sách đổi trả.
  */
 import { WmsButton, WmsField, WmsInput, WmsTextArea, WmsSelect } from '../../components/ui/WmsControls';
 import { useState } from 'react';
@@ -13,6 +13,7 @@ import { useOwnerResource } from '../../hooks/useOwnerResource';
 import { ownerService } from '../../services/ownerService';
 import { ResourceState, Notice, Table, Pagination, Modal, quantity, labels } from './OwnerUI';
 const sections = { api: 'Kết nối dịch vụ', fabric: 'Ngưỡng vải dư', inventory: 'Ngưỡng tồn kho', returns: 'Chính sách đổi trả' };
+/** Chọn màn hình theo nhóm cấu hình. Các ngưỡng theo mặt hàng có danh sách và phân trang riêng. */
 export default function SystemSettingsPage({ section = 'api' }) {
   const resource = useOwnerResource('system-settings'); const [success, setSuccess] = useState(''); const navigate = useNavigate();
   const screens = Grid.useBreakpoint();
@@ -24,6 +25,7 @@ export default function SystemSettingsPage({ section = 'api' }) {
     {section === 'inventory' && <InventoryThresholds />}</>;
 }
 
+/** Khởi tạo dữ liệu chỉnh sửa theo nhóm tích hợp, vải dư, kho hoặc đổi trả. Gửi kèm phiên bản cấu hình để phát hiện thay đổi kể từ lúc mở form. */
 function SettingsForm({ section, data, onDone }) {
   // Mỗi nhóm có bản nháp riêng; khóa API luôn là ô trống, không nạp khóa đã lưu xuống FE.
   const initial = section === 'api' ? { ...data.integrations, ghnToken: '', facebookVerifyToken: '', facebookPageAccessToken: '' }
@@ -31,6 +33,7 @@ function SettingsForm({ section, data, onDone }) {
       : section === 'inventory' ? { defaultFifoAgingAlertDays: data.defaultFifoAgingAlertDays, minorStocktakeVarianceLimitQty: data.minorStocktakeVarianceLimitQty, minorStocktakeVarianceLimitValue: data.minorStocktakeVarianceLimitValue }
         : { returnSurchargePercent: 10, returnPolicyNotes: data.returnPolicyNotes };
   const [form, setForm] = useState(initial); const [resetKeys, setResetKeys] = useState({}); const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
+  /** Tạo ô nhập số với ràng buộc riêng cho từng ngưỡng cấu hình. */
   const numeric = (key, title, min, max, step = '1') => <WmsField key={key}>{title}<WmsInput type="number" required min={min} max={max} step={step} disabled={saving} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} /></WmsField>;
   const submit = async (event) => {
     event.preventDefault(); setError('');
@@ -64,6 +67,7 @@ function SettingsForm({ section, data, onDone }) {
 }
 
 // OWNER-EXT-04: Bảng ngưỡng riêng của từng mặt hàng, tách khỏi cấu hình mặc định của hệ thống.
+/** Tải các mã nguyên liệu hoặc SKU theo loại và bộ lọc. Mở form ngưỡng bằng dữ liệu của mặt hàng đang chọn. */
 function InventoryThresholds() {
   const [options, setOptions] = useOwnerQuery({ type: 'materials', page: 1, search: '' }); const { type, ...query } = options;
   const setQuery = (next) => setOptions({ ...next, type }); const [search, setSearch] = useState(query.search);
@@ -74,7 +78,8 @@ function InventoryThresholds() {
     <ResourceState resource={resource}>{resource.data && <><Table headings={['Mặt hàng', 'Đơn vị', 'Khả dụng', 'Ngưỡng an toàn', 'Ngày tồn lâu', 'Thao tác']} empty={!resource.data.items.length}>{resource.data.items.map((row) => <tr key={row.id}><td>{row.code}<small>{row.name}</small></td><td>{labels[row.unit] || row.unit}</td><td>{quantity(row.availableQty)}</td><td>{quantity(row.safetyStockThreshold)}</td><td>{row.fifoAgingThresholdDays}</td><td><WmsButton onClick={() => setSelected(row)}>Sửa ngưỡng</WmsButton></td></tr>)}</Table><Pagination data={resource.data} onPage={(page) => setQuery({ ...query, page })} /></>}</ResourceState>
     {selected && <Modal title={`Ngưỡng ${selected.code}`} busy={busy} onClose={() => setSelected(null)}><ThresholdForm type={type} item={selected} setBusy={setBusy} onDone={(message) => { setSuccess(message); setSelected(null); resource.reload(); }} /></Modal>}</>;
 }
-// GBR-05: Kiểm tra ngưỡng không âm và ngày nguyên trước khi gửi cùng phiên bản mặt hàng.
+// Kiểm tra ngưỡng số lượng và số ngày trước khi gửi cùng phiên bản mặt hàng.
+/** Cho cập nhật ngưỡng tồn an toàn và số ngày tồn lâu của một mặt hàng. Giữ form mở nếu máy chủ từ chối dữ liệu hoặc phát hiện phiên bản cũ. */
 function ThresholdForm({ type, item, setBusy, onDone }) {
   const [threshold, setThreshold] = useState(item.safetyStockThreshold); const [days, setDays] = useState(item.fifoAgingThresholdDays); const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
   const submit = async (event) => {

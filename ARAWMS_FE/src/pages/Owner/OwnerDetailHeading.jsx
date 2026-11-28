@@ -6,6 +6,7 @@
 import { useLocation } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { WmsLinkButton } from '../../components/ui/WmsControls';
+/** Hiển thị tiêu đề và nút quay về ở các trang chi tiết. Dùng backState để trang đích nhận lại ngữ cảnh trước đó. */
 export default function OwnerDetailHeading({ title, description, backTo, backState, backLabel = 'Quay lại danh sách', disabled = false }) {
   const location = useLocation(); const previous = location.state?.from;
   const destination = typeof previous === 'string' && previous.startsWith('/owner/') ? previous : backTo;

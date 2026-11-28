@@ -1,11 +1,12 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-10, UC-11 - Kiểm tra bộ lọc nhật ký và khóa truy vết.
+ * Report 3 — UC-017. Kiểm tra bộ lọc và lọc nội dung nhật ký trước khi trả cho Owner.
  */
 import { objectFields, objectId, textField, pagination, escapedSearch } from '../../../common/utils/ownerValidation.js';
 import { httpError } from '../../../common/utils/httpError.js';
 import { dashboardRange } from '../../managerial-financial-analytics/executive-dashboard/executiveDashboard.validation.js';
+/** Tạo bộ lọc theo kỳ, người thực hiện và đối tượng. Nếu bật truy vết, bắt buộc có khóa để xác định đối tượng hoặc người thao tác. */
 export const activityFilter = (query, trace = false) => {
   // UC-10/11: Chỉ cho lọc bằng các trường hỗ trợ; không chuyển thẳng query của FE vào MongoDB.
   objectFields(query, ['page', 'limit', 'from', 'to', 'actorId', 'targetId', 'targetCode', 'action', 'majorFeature', 'search']);
@@ -29,6 +30,7 @@ export const activityFilter = (query, trace = false) => {
   return { filter, page, limit };
 };
 // UC-10/11: Các nhật ký cũ có thể chứa snapshot; ẩn khóa bảo mật trước khi trả FE.
+/** Chuẩn hóa dữ liệu nhật ký lồng nhau và loại trường chứa thông tin xác thực. Giới hạn số phần tử và độ sâu trả về. */
 export const redactActivity = (value, depth = 0) => {
   // Giới hạn độ sâu và độ dài mảng của dữ liệu cũ để phản hồi không phình quá lớn.
   if (depth > 8) return '[Nội dung lồng sâu]';

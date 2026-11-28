@@ -1,10 +1,11 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-10, UC-11 - Đọc nhật ký có phân trang và truy vết theo đối tượng.
+ * Report 3 — UC-017. Đọc nhật ký có phân trang và trả ảnh chụp dữ liệu đã lọc.
  */
 import SystemLog from '../../../models/SystemLog.model.js';
 import { activityFilter, redactActivity } from './systemActivity.validation.js';
+/** Kiểm tra bộ lọc thường hoặc bộ lọc truy vết, ghép tên người thực hiện và che trường nhạy cảm ở cả bản ghi trước lẫn sau. */
 export const listActivity = async (query, trace = false) => {
   const { filter, page, limit } = activityFilter(query, trace);
   // UC-10/11: Xếp mới nhất trước; dùng thêm ID để thứ tự ổn định khi hai log cùng thời điểm.

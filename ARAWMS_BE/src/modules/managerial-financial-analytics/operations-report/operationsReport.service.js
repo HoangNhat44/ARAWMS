@@ -1,31 +1,38 @@
 /* Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 2-11-2026
- * UC-12/13/19 và phản hồi 1–7: Báo cáo nhập hàng, doanh thu theo kỳ, nhu cầu nguyên liệu.
- * GBR-01/13: Chỉ đọc dữ liệu chưa xóa; hàng cách ly tách khỏi tồn dùng được. Không tính giá vốn/lợi nhuận.
+ * Report 3 — UC-009, UC-103, UC-104, UC-114. Báo cáo bán hàng theo kỳ, nguồn nhập, tồn hiện tại và công nợ.
+ * Tách dữ liệu theo kỳ khỏi ảnh chụp vận hành tại thời điểm truy vấn.
  */
 import mongoose from 'mongoose';
 import { httpError } from '../../../common/utils/httpError.js';
 import { channels, paymentStatusOf, salesChannelOf, salesReportScope } from './salesReportScope.js';
 
+/** Quy giá trị thiếu hoặc không chuyển được sang số về 0 khi tổng hợp chỉ số báo cáo. */
 export const num = (v) => Number(v) || 0;
+/** Cộng giá trị do callback lấy từ từng dòng sau khi chuyển về số. */
 export const sum = (rows, fn) => rows.reduce((a, r) => a + num(fn(r)), 0);
 const active = { isDeleted: { $ne: true } };
 // Đọc collection thật trên kết nối MongoDB đang dùng; mọi truy vấn mặc định loại bản ghi xóa mềm.
 // projection giới hạn trường cần đọc ở những truy vấn chỉ dùng ID hoặc thông tin tóm tắt.
+/** Đọc dữ liệu collection, mặc định bỏ bản ghi xóa mềm và cho bên gọi chọn trường cần lấy. */
 export const read = (name, filter = {}, projection) => mongoose.connection.collection(name).find({ ...active, ...filter }, { projection }).toArray();
 // UC-13: Ngày Việt Nam, khoảng kết thúc mở; kiểm tra ngày thực, tối đa một năm mỗi kỳ.
+/** Kiểm tra khoảng ngày rồi tạo mốc truy vấn UTC+7. Dùng mốc đầu ngày hôm sau làm cận trên để lấy trọn ngày kết thúc. */
 export function period(from, to) {
   const valid = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v;
   if (!valid(from) || !valid(to) || to < from || Date.parse(to) - Date.parse(from) >= 366 * 86400000) throw httpError(400, 'Chọn khoảng ngày hợp lệ, tối đa 366 ngày.');
   // Khoảng [đầu ngày from, đầu ngày sau to) theo UTC+7 bao gồm trọn ngày kết thúc.
   return { $gte: new Date(`${from}T00:00:00+07:00`), $lt: new Date(Date.parse(`${to}T00:00:00+07:00`) + 86400000) };
 }
+/** Tính tỷ lệ chênh lệch so với độ lớn của kỳ gốc. Trả null khi kỳ gốc bằng 0. */
 export const percent = (current, previous) => previous === 0 ? null : (current - previous) / Math.abs(previous) * 100;
+/** Lấy ngày báo cáo hiện tại ở múi giờ Việt Nam theo dạng YYYY-MM-DD. */
 export const ownerToday = (now = new Date()) => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(now);
 
 // Kiểm tra khoảng gốc rồi giới hạn thống kê ở ngày Việt Nam hiện tại.
 // Khoảng hoàn toàn trong tương lai trả về tập rỗng.
+/** Giới hạn dữ liệu đến hôm nay. Kỳ hoàn toàn trong tương lai nhận khoảng truy vấn rỗng. */
 export function reportPeriod(from, to, today = ownerToday()) {
   period(from, to);
   return { to: to < today ? to : today, range: from > today
@@ -33,6 +40,7 @@ export function reportPeriod(from, to, today = ownerToday()) {
     : period(from, to < today ? to : today) };
 }
 // Ghép phiếu hoàn với đơn gốc ngay ở MongoDB. Đơn có thể được đóng gói ở kỳ trước.
+/** Lấy đơn và hồ sơ hoàn theo mốc ghi nhận của mỗi loại. Áp dụng bộ lọc bán hàng cho đơn gốc của hồ sơ hoàn. */
 export async function readSalesPeriod(range, scope) {
   const [orders, returns] = await Promise.all([
     read('sales_orders', { ...scope, $or: [
@@ -61,6 +69,7 @@ export async function readSalesPeriod(range, scope) {
   return { orders, returns };
 }
 // UC-13: Doanh thu ghi nhận khi đóng gói, trừ giá trị hàng trả được duyệt trong kỳ; thanh toán đếm theo trường riêng.
+/** Tổng hợp doanh thu, giá trị đơn và tình trạng thanh toán theo kênh. Chỉ trừ giá trị hàng hoàn đã được duyệt hoặc hoàn tất. */
 export function salesSummary(orders, returns) {
   const refundsByChannel = new Map();
   for (const request of returns) {
@@ -137,6 +146,7 @@ export async function operationsReport(query) {
   const tickets = await read('material_tickets', { inboundPlanId: { $in: plans.map((p) => p._id) }, ticketType: 'INBOUND_FROM_PLAN' });
   const ticketMap = new Map(tickets.map((t) => [String(t._id), String(t.inboundPlanId)]));
   const allReceipts = await read('inventory_transactions', { referenceId: { $in: tickets.map((t) => t._id) }, referenceModel: 'MaterialTicket', transactionType: 'INBOUND_PUTAWAY' });
+  // Chỉ cộng lượng đã ghi sổ cho đúng kế hoạch và mã nguyên liệu của dòng đang tổng hợp.
   const receiptQty = (rows, p, item) => sum(rows.filter((m) => ticketMap.get(String(m.referenceId)) === String(p._id) && String(m.rawMaterialId) === String(item.rawMaterialId)), (m) => m.quantityChange);
   // Phản hồi 3: Tiền hợp đồng chỉ cộng một lần dù có nhiều đợt nhập. Lượng đã nhập lấy sổ kho, không lấy số kiểm đạt.
   const purchases = plans.flatMap((p) => (p.expectedItems?.length ? p.expectedItems : [{}]).map((item) => {
@@ -150,7 +160,7 @@ export async function operationsReport(query) {
       receiver: employees.find((r) => String(r._id) === String(p.assignedReceiverId))?.fullName || 'Chưa phân công', scheduledDeliveryDate: p.scheduledDeliveryDate };
   }));
   const debts = contracts.filter((c) => query.scope !== 'period' || (c.createdAt >= range.$gte && c.createdAt < range.$lt) || plans.some((p) => String(p.contractId) === String(c._id))).map((c) => ({ id: String(c._id), code: c.contractCode, status: c.status, planCount: plans.filter((p) => String(p.contractId) === String(c._id)).length, supplier: supplierMap.get(String(c.supplierId))?.supplierName || 'Chưa rõ nhà cung cấp', total: num(c.totalContractAmount), paid: num(c.totalPaidAmount), debt: Math.max(0, num(c.totalContractAmount) - num(c.totalPaidAmount)) }));
-  // Tồn khả dụng = tồn thực tế - giữ chỗ. Thành phẩm cách ly được trả riêng, không cộng vào tồn bán được.
+  // [BR: GBR-16] Số lượng hàng lỗi nằm riêng ở chỉ số cách ly. Tồn khả dụng lấy tồn dùng được trừ giữ chỗ.
   const inventory = [...materials.map((r) => ({ id: String(r._id), code: r.materialCode, name: r.materialName, type: 'RAW_MATERIAL', unit: r.unit, onHand: num(r.onHandQty), reserved: num(r.reservedQty), available: num(r.onHandQty) - num(r.reservedQty), quarantine: 0, price: r.unitCost })),
     ...skus.map((r) => ({ id: String(r._id), code: r.skuCode, name: r.styleName, type: 'FINISHED_GOODS', unit: 'PIECE', onHand: num(r.onHandQty), reserved: num(r.reservedQty), available: num(r.onHandQty) - num(r.reservedQty), quarantine: num(r.defectQuarantineQty), price: r.unitCogs ?? null }))];
   // Phân loại theo ngưỡng riêng của từng mã: hết hàng, dưới ngưỡng an toàn hoặc còn đủ hàng.

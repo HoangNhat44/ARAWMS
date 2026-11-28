@@ -1,3 +1,6 @@
+/**
+ * Danh sách sai lệch kế hoạch nhập của Owner theo UC-042. Đọc chung dữ liệu kế hoạch mua hàng để hiển thị lịch sử KCS và trạng thái xử lý.
+ */
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
@@ -24,6 +27,7 @@ import { Skeleton, Tag, Empty, Button } from 'antd';
 import accountantProcurementApi from '../../services/accountantProcurementApi';
 import { Status, labels, money, quantity, datetime } from './OwnerUI';
 
+/** Tải, phân nhóm và tìm kiếm các kế hoạch có dấu hiệu sai lệch. Mỗi dòng liên kết tới biên bản KCS và thông tin hợp đồng. */
 export default function OwnerPlanDeviationsPage() {
   const navigate = useNavigate();
   const [plans, setPlans] = useState([]);
@@ -34,6 +38,7 @@ export default function OwnerPlanDeviationsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL'); // ALL | UNRESOLVED | RESOLVED_SUPERSEDED | TERMINATED
 
+  /** Lấy kế hoạch từ API dùng chung, giữ các hồ sơ sai lệch hoặc đã có kết quả xử lý rồi sắp xếp hồ sơ cập nhật gần nhất lên đầu. */
   const fetchDeviations = async () => {
     try {
       setLoading(true);
@@ -68,7 +73,7 @@ export default function OwnerPlanDeviationsPage() {
     fetchDeviations();
   }, []);
 
-  // Filtered plans
+  // Kết hợp khớp từ khóa với nhóm trạng thái suy ra từ kế hoạch và hợp đồng.
   const filteredPlans = useMemo(() => {
     return plans.filter((p) => {
       const matchSearch =
@@ -91,7 +96,7 @@ export default function OwnerPlanDeviationsPage() {
     });
   }, [plans, searchTerm, statusFilter]);
 
-  // KPIs
+  // Các ô tổng hợp lấy toàn bộ danh sách sai lệch đã tải, trước khi áp dụng bộ lọc trên bảng.
   const totalDeviations = plans.length;
   const pendingCount = plans.filter((p) => p.status === 'DEVIATION_REPORTED' || p.contractId?.status === 'DEVIATION_FLAGGED').length;
   const amendedCount = plans.filter((p) => p.status === 'RESOLVED_SUPERSEDED' || p.contractId?.status === 'SUPERSEDED').length;

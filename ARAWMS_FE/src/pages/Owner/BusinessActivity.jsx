@@ -27,6 +27,7 @@ const stepLabels = {
   WAIT_INSPECTION: 'Chờ kiểm hàng', WAIT_RESTOCK: 'Chờ nhập lại kho',
   FAILED_INSPECTION: 'Hàng kiểm không đạt', RESTOCKED: 'Đã nhập lại kho',
 };
+/** Hiển thị tỷ lệ phần trăm. Giá trị null biểu thị kỳ không có đơn giao vận chuyển làm mẫu số. */
 const percentage = value => value === null ? 'Chưa có đơn giao vận chuyển' : `${quantity(value)}%`;
 const rateSeries = [{ key: 'turnbackRate', label: 'Tỷ lệ quay đầu' }, { key: 'refusalRate', label: 'Tỷ lệ bom hàng đã xác định' }];
 
@@ -46,6 +47,7 @@ function DemoTrend({ threshold }) {
   }</ResourceState>;
 }
 
+/** Vẽ tỷ lệ quay đầu và bom hàng theo kỳ có đơn bàn giao. Chế độ trình diễn bổ sung các cột tình huống. */
 function ReturnTrendChart({ points, threshold, demo = false }) {
   const periodsWithShipments = points.filter(point => point.shipped > 0);
   if (!periodsWithShipments.length) return <p>{demo ? 'Chưa nạp dữ liệu trình diễn.' : 'Chưa có đơn bàn giao vận chuyển trong khoảng ngày đã chọn.'}</p>;
@@ -70,6 +72,7 @@ function ReturnTrendChart({ points, threshold, demo = false }) {
   </>;
 }
 
+/** Hiển thị biểu đồ tỷ lệ hoàn kèm ngưỡng cảnh báo lấy từ báo cáo. */
 function ReturnTrend({ points, threshold }) {
   const [source, setSource] = useState('actual');
   return <section className="owner-content-panel">
@@ -89,6 +92,7 @@ function ReturnTrend({ points, threshold }) {
 
 // Bảng phân tích chỉ dùng lý do được ghi nhận trên phiếu. Chủ cửa hàng có thể
 // lọc trường hợp Facebook không hợp lệ để rà soát mã đơn mà không lộ thông tin cá nhân.
+/** Lọc các đơn quay đầu theo kênh hoặc nguyên nhân và trình bày số lượng cùng danh sách chi tiết. */
 function ReturnReasons({ rows }) {
   const [channel, setChannel] = useState('');
   const [reason, setReason] = useState('');
@@ -117,6 +121,7 @@ function ReturnReasons({ rows }) {
   </section>;
 }
 
+/** Trình bày các đơn đang trong quy trình hoàn hàng và lọc hồ sơ quá hạn theo lựa chọn trên trang. */
 function ReturnWorklist({ rows, initialOverdueOnly }) {
   const [overdueOnly, setOverdueOnly] = useState(initialOverdueOnly);
   const visible = overdueOnly ? rows.filter(row => row.overdue) : rows;
@@ -143,6 +148,7 @@ function ReturnWorklist({ rows, initialOverdueOnly }) {
   </section>;
 }
 
+/** Trình bày tình trạng vận chuyển, khách hàng và đơn quay đầu. Mở đúng mục khi URL có phần đánh dấu. */
 export default function BusinessActivity({ resource, salesChannel }) {
   const location = useLocation();
   const data = resource.data;

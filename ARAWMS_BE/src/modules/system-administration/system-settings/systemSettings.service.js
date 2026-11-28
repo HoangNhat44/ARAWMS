@@ -1,7 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: OWNER-EXT-02..05; GBR-05/06/11/12/19 - Lưu cấu hình và ngưỡng từng mặt hàng.
+ * Report 3 — UC-013 đến UC-016. Đọc và cập nhật cấu hình chung, tích hợp và ngưỡng theo mặt hàng.
  */
 import { randomUUID } from 'node:crypto';
 import SystemSetting from '../../../models/SystemSetting.model.js';
@@ -19,6 +19,7 @@ import { encryptSecret, decryptSecret } from './integrationSecrets.js';
 const active = { isDeleted: { $ne: true } };
 const selection = secretFields.map((field) => `+integrations.${field}`).join(' ');
 // Chỉ trả dấu hiệu đã cấu hình; không đưa khóa API vào phản hồi hoặc nhật ký trước/sau.
+/** Tạo dữ liệu công khai cho form và nhật ký. Với khóa API, chỉ trả trạng thái đã cấu hình. */
 export const publicSettings = (doc) => ({ revision: doc.revision || 0,
   defaultFabricLeftoverThresholdMeters: doc.defaultFabricLeftoverThresholdMeters,
   defaultFifoAgingAlertDays: doc.defaultFifoAgingAlertDays,
@@ -31,8 +32,10 @@ export const publicSettings = (doc) => ({ revision: doc.revision || 0,
     facebookVerifyTokenConfigured: Boolean(doc.integrations?.facebookVerifyToken),
     facebookPageAccessTokenConfigured: Boolean(doc.integrations?.facebookPageAccessToken) } });
 
+/** Đọc cấu hình toàn hệ thống đang hoạt động. Nếu chưa lưu cấu hình, dùng giá trị mặc định từ model. */
 export const readSettings = async () => publicSettings(await SystemSetting.findOne({ settingKey: 'GLOBAL_CONFIG', ...active }).select(selection) || new SystemSetting());
 
+/** Kiểm tra thay đổi theo nhóm, đối chiếu phiên bản cấu hình, mã hóa các khóa tích hợp rồi lưu dữ liệu và nhật ký trong cùng giao dịch. */
 export const updateSettings = async (req) => {
   const { expectedVersion, data } = validateSettings(req.params.section, req.body);
   return ownerTransaction(async (session) => {
@@ -58,6 +61,7 @@ export const updateSettings = async (req) => {
 };
 
 // OWNER-EXT-02: GHN đọc cấu hình mới ở mỗi yêu cầu, không cần restart để dùng khóa vừa lưu.
+/** Ghép cấu hình GHN trong hệ thống với giá trị môi trường. Từ chối gọi GHN khi Owner đã tắt tích hợp. */
 export const runtimeGhnConfig = async () => {
   const doc = await SystemSetting.findOne({ settingKey: 'GLOBAL_CONFIG', ...active }).select('+integrations.ghnToken');
   if (doc?.integrations?.ghnEnabled === false) throw httpError(503, 'Tích hợp GHN đang được Owner tắt.');
@@ -65,15 +69,18 @@ export const runtimeGhnConfig = async () => {
     SHOP_ID: doc?.integrations?.ghnShopId || ENV.GHN.SHOP_ID };
 };
 
+/** Chọn model nguyên liệu hoặc SKU theo loại mặt hàng của yêu cầu. */
 const inventoryModel = (type) => {
   if (type === 'materials') return RawMaterial;
   if (type === 'skus') return Sku;
   throw httpError(400, 'Loại mặt hàng phải là materials hoặc skus.');
 };
+/** Chuẩn hóa danh mục ngưỡng và tồn khả dụng cho cả SKU lẫn nguyên liệu. */
 const inventoryProfile = (item) => ({ id: String(item._id), code: item.materialCode || item.skuCode, name: item.materialName || item.styleName,
   unit: item.unit || 'PIECE', availableQty: item.onHandQty - item.reservedQty, safetyStockThreshold: item.safetyStockThreshold,
   fifoAgingThresholdDays: item.fifoAgingThresholdDays, version: item.version || 0 });
 
+/** Đọc danh sách mặt hàng hoạt động có phân trang để chỉnh ngưỡng hoặc đối chiếu tồn khả dụng. */
 export const listInventoryThresholds = async (req) => {
   const Model = inventoryModel(req.params.type);
   const { filter, page, limit } = readQuery(req.query, { fields: req.params.type === 'materials' ? ['materialCode', 'materialName'] : ['skuCode', 'styleName'] });
@@ -82,7 +89,7 @@ export const listInventoryThresholds = async (req) => {
   return { items: items.map(inventoryProfile), total, page, limit };
 };
 
-// GBR-05: So sánh tồn khả dụng với ngưỡng, dùng lại được sau các giao dịch xuất kho của module nghiệp vụ.
+// [BR: GBR-08] So sánh tồn khả dụng với ngưỡng để mở, làm mới hoặc đóng cảnh báo tồn thấp của mặt hàng.
 export const refreshSafetyAlert = async (item, type, req, session) => {
   const referenceModel = type === 'materials' ? 'RawMaterial' : 'Sku';
   const filter = { referenceModel, referenceId: item._id, alertType: 'LOW_SAFETY_STOCK', isResolved: false, ...active };
@@ -98,6 +105,8 @@ export const refreshSafetyAlert = async (item, type, req, session) => {
     await InventoryAlert.updateMany(filter, { $set: { isResolved: true, resolvedAt: new Date(), resolvedByUserId: req.user._id } }, { session });
   }
 };
+
+/** Kiểm tra phiên bản, lưu ngưỡng, làm mới cảnh báo tồn thấp và ghi nhật ký giá trị trước/sau. */
 export const updateInventoryThreshold = async (req) => {
   const Model = inventoryModel(req.params.type); objectId(req.params.id);
   const input = validateInventoryThreshold(req.body);
@@ -106,6 +115,7 @@ export const updateInventoryThreshold = async (req) => {
     if (!item) throw httpError(404, 'Không tìm thấy mặt hàng đang hoạt động.');
     if ((item.version || 0) !== input.expectedVersion) throw httpError(409, 'Mặt hàng đã thay đổi. Vui lòng tải lại.');
     const before = inventoryProfile(item);
+    // Với SKU, ngưỡng này là cấu hình đầu vào cho cảnh báo tồn thấp theo GBR-08 của Report 3.
     item.safetyStockThreshold = input.safetyStockThreshold; item.fifoAgingThresholdDays = input.fifoAgingThresholdDays;
     await item.save({ session });
     // OWNER-EXT-04, GBR-05: Sau khi đổi ngưỡng, cập nhật ngay tình trạng cảnh báo của mặt hàng.

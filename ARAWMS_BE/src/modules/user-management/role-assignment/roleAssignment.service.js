@@ -1,7 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: OWNER-EXT-01; GBR-01 - Gán vai trò nhân viên theo danh sách Word.
+ * Report 3 — UC-011. Thay đổi vai trò được gán cho tài khoản nhân viên.
  */
 import User from '../../../models/User.model.js';
 import Role from '../../../models/Role.model.js';
@@ -11,12 +11,14 @@ import { ownerTransaction, ownerAudit } from '../../../common/utils/ownerOperati
 import { validateEmployeeAction, employeeRoles } from '../employee-management/employeeManagement.validation.js';
 import { employeeProfile } from '../employee-management/employeeManagement.service.js';
 
-// OWNER-EXT-01: Khác UC-09; thao tác này đổi vai trò, còn UC-09 sửa quyền cấp/thu hồi riêng.
+// Dùng kiểm tra thao tác chung rồi xác thực thêm mã vai trò đích.
+/** Kiểm tra phiên bản và lý do. Mã vai trò đích phải thuộc nhóm vai trò nhân viên. */
 export const validateRoleAssignment = (body) => {
   const input = validateEmployeeAction(body, ['roleCode']);
   if (!employeeRoles.includes(body.roleCode)) throw httpError(400, 'Chỉ được gán vai trò nhân viên, không được cấp Owner.');
   return { ...input, roleCode: body.roleCode };
 };
+/** Đọc lại nhân viên và vai trò đích, kiểm tra phiên bản rồi đổi vai trò và ghi nhật ký trong cùng giao dịch. */
 export const assignEmployeeRole = async (req) => {
   objectId(req.params.id); const input = validateRoleAssignment(req.body);
   return ownerTransaction(async (session) => {
@@ -28,7 +30,7 @@ export const assignEmployeeRole = async (req) => {
     const role = await Role.findOne({ roleCode: input.roleCode, isActive: true, isDeleted: { $ne: true } }).session(session);
     if (!role) throw httpError(400, 'Vai trò đã ngừng hoạt động hoặc chưa được thiết lập.');
     const before = employeeProfile(user);
-    // GBR-01: Quyền cũ và phiên cũ không được đi theo vai trò mới; tài khoản đang khóa vẫn giữ khóa.
+    // Xóa quyền ngoại lệ cũ và thu hồi phiên để vai trò mới được áp dụng từ lần đăng nhập sau.
     user.roleCode = role.roleCode; user.roleId = role._id; user.permissionOverrides = [];
     user.sessions = []; user.isOnlineForChat = false; user.managementVersion = input.expectedVersion + 1;
     await user.save({ session });

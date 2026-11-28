@@ -8,6 +8,7 @@ import { WmsField, WmsSelect } from '../../components/ui/WmsControls';
 import { ResourceState, Table, money, quantity } from './OwnerUI';
 import { SeriesPlot, Columns } from './OwnerCharts';
 const metrics = { revenue: 'Tiền hàng sau giảm giá và trả hàng', orderValue: 'Tổng giá trị đơn hàng', orders: 'Số đơn hàng', returns: 'Số yêu cầu hoàn', shipping: 'Phí vận chuyển', paid: 'Số đơn đã thanh toán', unpaid: 'Số đơn chưa thanh toán', late: 'Số đơn giao trễ' };
+/** Đổi hai mốc ISO thành nhãn ngày theo thứ tự ngày, tháng, năm dùng trên biểu đồ. */
 const dateRange = (from, to) => [from, to].map(date => date.split('-').reverse().join('/')).join(' – ');
 const channelColors = { FACEBOOK: '#315d48', SHOPEE: '#a66c28', TIKTOK: '#466c9b', UNKNOWN: '#626b75' };
 /**
@@ -31,6 +32,7 @@ export default function AnnualAnalytics({ from, to, salesChannel, paymentStatus 
 }
 // UC-13: Tỷ trọng chỉ dùng số không âm; tên đầy đủ trên thanh ngang, các số tiền vẫn có đơn vị đồng.
 // Bộ chọn chỉ số nằm trong thẻ biểu đồ; tiêu đề cố định giúp hai thẻ cạnh nhau thẳng hàng.
+/** Hiển thị chỉ số bán hàng được chọn theo từng nguồn. Chuyển cách hiển thị theo dữ liệu của chỉ số. */
 export function SalesSourceChart({ channels, labels }) {
   const [metric, setMetric] = useState('orderValue');
   const options = { revenue: metrics.revenue, orderValue: metrics.orderValue, refunded: 'Giá trị hàng trả đã duyệt', orders: metrics.orders, paid: metrics.paid, unpaid: metrics.unpaid, late: metrics.late, shipping: metrics.shipping };
@@ -39,6 +41,7 @@ export function SalesSourceChart({ channels, labels }) {
 }
 
 // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13 - Chủ cửa hàng chọn chỉ số để đối chiếu hai kỳ trên cùng đơn vị.
+/** Cho chọn một chỉ số để xem kết quả của hai kỳ trên cùng đơn vị và chuyển sang biểu đồ xu hướng. */
 export function PeriodComparison({ data, dates }) {
   const [metric, setMetric] = useState('orderValue');
   const options = { revenue: metrics.revenue, orderValue: metrics.orderValue, orders: metrics.orders, paid: metrics.paid, unpaid: metrics.unpaid, returns: metrics.returns, shipping: metrics.shipping };
@@ -60,6 +63,7 @@ export function PeriodComparison({ data, dates }) {
 
 // Khi chọn cả năm, gom thành bốn nhóm quý và vẽ hai cột cạnh nhau trong mỗi nhóm.
 // Năm đối chiếu dùng cùng bộ lọc nguồn bán và trạng thái thanh toán.
+/** Gọi API báo cáo năm theo cùng bộ lọc bán hàng rồi trình bày số liệu hiện tại và đối chiếu theo tháng hoặc quý. */
 export function QuarterlyRevenue({ year, compareYear, salesChannel, paymentStatus }) {
   const resource = useOwnerResource('operations-report/annual', { year, compareYear, salesChannel, paymentStatus });
   const [grouping, setGrouping] = useState('months');
@@ -89,6 +93,7 @@ export function QuarterlyRevenue({ year, compareYear, salesChannel, paymentStatu
 
 // Thanh ngang 100% dùng để so cơ cấu nguồn bán. Mỗi hàng tự chia theo
 // tổng giá trị đơn của kỳ đó; giữ bảng số liệu cho kỳ có tổng bằng 0.
+/** Chuẩn hóa từng nguồn bán theo tổng kỳ của nó để đối chiếu cơ cấu giữa hai kỳ. Bảng số liệu vẫn thể hiện giá trị gốc. */
 export function ChannelMixComparison({ data, dates, labels }) {
   const periods = [
     { label: dateRange(dates.from, dates.to), sales: data.sales },
@@ -124,6 +129,7 @@ export function ChannelMixComparison({ data, dates, labels }) {
 /**
  * Mỗi kỳ có một truy vấn trend riêng, cùng điều kiện nguồn bán và thanh toán.
  * Căn điểm theo thứ tự ngày/tháng trong kỳ để có thể so sánh hai khoảng thời gian khác nhau.
+ * Đọc chuỗi của hai kỳ rồi ghép theo vị trí thời gian để vẽ trên cùng một trục. Các điểm ngoài phạm vi một kỳ để trống.
  */
 function ComparisonTrend({ dates, metric, title, currency }) {
   const span = Math.max(Date.parse(dates.to) - Date.parse(dates.from), Date.parse(dates.compareTo) - Date.parse(dates.compareFrom));

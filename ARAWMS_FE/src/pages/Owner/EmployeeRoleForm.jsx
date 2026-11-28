@@ -2,16 +2,18 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: OWNER-EXT-01; GBR-01 - Gán vai trò và xác nhận bỏ quyền riêng của vai trò cũ.
+ * Report 3 — UC-011. Đổi vai trò và thông báo về việc xóa các quyền riêng của vai trò trước.
  */
 import { WmsField, WmsSelect, WmsTextArea, WmsButton } from '../../components/ui/WmsControls';
 import { useState } from 'react';
 import { ownerService } from '../../services/ownerService';
 import { reasonError } from '../../utils/ownerValidation';
 import { Notice, labels } from './OwnerUI';
+/** Hiển thị vai trò hiện tại, chọn vai trò mới và gửi dữ liệu kèm phiên bản tài khoản để phát hiện thay đổi đồng thời. */
 export default function EmployeeRoleForm({ employee, roles, setBusy, onDone }) {
   const [roleCode, setRoleCode] = useState(''); const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false); const [error, setError] = useState('');
+  /** Kiểm tra lựa chọn và lý do trước khi gửi. Giữ form để sửa nếu API trả lỗi. */
   const submit = async (event) => {
     event.preventDefault(); const message = reasonError(reason); setError(message);
     if (message) return;

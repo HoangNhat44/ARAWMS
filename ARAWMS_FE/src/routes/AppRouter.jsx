@@ -51,6 +51,7 @@ import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { getRoleHome } from './roleHome';
 
+// Tải các trang Owner khi truy cập để tách chúng khỏi gói mã khởi tạo của các vai trò khác.
 const OwnerLayout = lazy(() => import('../pages/Owner/OwnerLayout'));
 const InboundPlanDetailPage = lazy(() => import('../pages/Owner/InboundPlanDetailPage'));
 const ContractDetailPage = lazy(() => import('../pages/Owner/ContractDetailPage'));
@@ -178,7 +179,7 @@ export default function AppRouter() {
           <Route path="/garment/remnant-recovery" element={<GarmentCuttingAndRemnantPage />} />
         </Route>
 
-        {/* Phân hệ Chủ xưởng (Owner) */}
+        {/* Route cha kiểm tra vai trò Owner. Các route con dùng chung bố cục của chủ cửa hàng. */}
         <Route path="/owner" element={<ProtectedRoute role="OWNER"><OwnerLayout /></ProtectedRoute>}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<OperationsPage key="dashboard" />} />

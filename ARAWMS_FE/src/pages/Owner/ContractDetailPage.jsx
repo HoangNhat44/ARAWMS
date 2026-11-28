@@ -1,3 +1,6 @@
+/**
+ * Chi tiết hợp đồng, quy cách nguyên liệu và các đợt nhập cho Owner theo UC-044 và UC-103.
+ */
 import { useEffect } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
@@ -13,6 +16,7 @@ const fieldLabels = {
   installmentNumber: 'Đợt thanh toán', installmentNo: 'Đợt thanh toán', installmentLabel: 'Tên đợt', installment: 'Đợt', label: 'Tên đợt', description: 'Nội dung', paymentPercent: 'Tỷ lệ thanh toán (%)', paymentAmount: 'Số tiền thanh toán', percent: 'Tỷ lệ (%)', percentage: 'Tỷ lệ (%)', amount: 'Số tiền', dueDate: 'Hạn thanh toán', dueDays: 'Số ngày đến hạn', trigger: 'Điều kiện thanh toán', condition: 'Điều kiện', note: 'Ghi chú', status: 'Trạng thái', paidAmount: 'Đã thanh toán', paidAt: 'Ngày thanh toán',
 };
 const values = { CONFIRMED: 'Đã xác nhận, chưa thanh toán', SUPPLIER_PAYMENT: 'Thanh toán nhà cung cấp', BANK_TRANSFER: 'Chuyển khoản', CASH: 'Tiền mặt', COD_BALANCE_OFFSET: 'Bù trừ thu hộ', VND: 'VND', PAID: 'Đã thanh toán', UNPAID: 'Chưa thanh toán', PARTIAL: 'Thanh toán một phần' };
+/** Hiển thị giá trị quy cách theo kiểu dữ liệu của trường, với giá trị dự phòng cho dữ liệu thiếu. */
 function FieldValue({ name, value }) {
   if (value === null || value === undefined || value === '') return 'Chưa ghi nhận';
   if (typeof value === 'boolean') return value ? 'Có' : 'Không';
@@ -22,6 +26,7 @@ function FieldValue({ name, value }) {
   if (/amount|subtotal/i.test(name || '')) return money(value);
   return typeof value === 'number' ? quantity(value) : values[value] || labels[value] || String(value);
 }
+/** Dựng danh sách trường quy cách động từ dữ liệu API, hỗ trợ bố cục theo hàng hoặc xếp dọc. */
 function DataFields({ data, stacked = false }) {
   const entries = Object.entries(data || {}).filter(([key, value]) => !['_id', 'id', 'materialId'].includes(key) && value !== undefined && value !== null && value !== '');
   if (!entries.length) return <p>Chưa ghi nhận.</p>;
@@ -35,6 +40,7 @@ function DataFields({ data, stacked = false }) {
   </dl>;
 }
 
+/** Tải hợp đồng theo mã trên URL và mở nguyên liệu theo số thứ tự của dòng. Giữ đường dẫn quay lại hồ sơ cha. */
 export function ContractMaterialPage() {
   const { id, line } = useParams();
   const location = useLocation();
@@ -56,6 +62,7 @@ export function ContractMaterialPage() {
   </>;
 }
 
+/** Hiển thị mã, đơn vị, số lượng theo hợp đồng, thông số kỹ thuật và chi tiết cuộn của nguyên liệu đã chọn. */
 function MaterialSpecification({ item, contractCode }) {
   const { materialId, code, name, unit, quantity: qty, unitPrice, vatRatePct, rollCount, rollDetails, ...spec } = item;
   const rolls = Array.isArray(rollDetails) ? rollDetails : [];
@@ -86,6 +93,7 @@ function MaterialSpecification({ item, contractCode }) {
     </section>}
   </div>;
 }
+/** Tải hợp đồng cùng nhà cung cấp, khoản thanh toán và kế hoạch nhập đã ghép từ API để Owner đối chiếu. */
 export default function ContractDetailPage() {
   const location = useLocation();
   const { id } = useParams(); const resource = useOwnerResource(`contracts/${id}`); const data = resource.data;

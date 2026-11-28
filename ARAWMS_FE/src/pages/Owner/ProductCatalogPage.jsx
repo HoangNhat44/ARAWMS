@@ -1,8 +1,12 @@
+/**
+ * Danh mục chỉ đọc cho Owner, phục vụ tra cứu sản phẩm và tồn khả dụng theo UC-030 và UC-083.
+ */
 import { useState } from 'react';
 import { useOwnerQuery } from '../../hooks/useOwnerQuery';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
 import { WmsField, WmsInput, WmsSelect, WmsButton } from '../../components/ui/WmsControls';
 import { ResourceState, Table, Pagination, Status, money, quantity } from './OwnerUI';
+/** Tải trang sản phẩm theo từ khóa và trạng thái. Mỗi dòng hiển thị số biến thể và tổng tồn khả dụng lấy từ các SKU. */
 export default function ProductCatalogPage() {
   const [query, setQuery] = useOwnerQuery({ page: 1, search: '', status: '' });
   const [search, setSearch] = useState(query.search);

@@ -1,7 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-10, UC-11 - Tìm nhật ký và truy vết lịch sử theo đối tượng/người thực hiện.
+ * Report 3 — UC-017. Xem nhật ký hệ thống và truy vết hoạt động.
  */
 import { WmsField, WmsInput, WmsButton } from '../../components/ui/WmsControls';
 import { useState } from 'react';
@@ -11,8 +11,9 @@ import { dateRangeError } from '../../utils/ownerValidation';
 import { Table, ResourceState, Pagination, Notice, Modal, datetime, labels } from './OwnerUI';
 import { businessLabel, permissionLabel } from '../../utils/businessLabels';
 const initial = { search: '', from: '', to: '', targetCode: '', targetId: '', actorId: '', action: '' };
+/** Lọc nhật ký theo chức năng, thao tác hoặc người thực hiện. Chế độ truy vết dùng mã đối tượng hoặc người thao tác để mở lịch sử liên quan. */
 export default function ActivityPage() {
-  // UC-10/11: Tách bộ lọc đang nhập và bộ lọc đã áp dụng để không gọi API sau mỗi ký tự.
+  // Chỉ gửi bộ lọc lên API khi người dùng áp dụng để tránh tải lại sau mỗi ký tự.
   const [filters, setFilters] = useOwnerQuery({ ...initial, page: 1, trace: '' }); const { trace: applied, ...query } = filters;
   const setQuery = (next) => setFilters({ ...next, trace: applied });
   const [draft, setDraft] = useState(() => Object.fromEntries(Object.keys(initial).map((key) => [key, filters[key]]))); const [trace, setTrace] = useState(applied === '1');
@@ -20,6 +21,7 @@ export default function ActivityPage() {
   // Chế độ truy vết dùng API yêu cầu khóa đối tượng; xem nhật ký thông thường dùng API danh sách.
   const resource = useOwnerResource(appliedTrace ? 'activity/trace' : 'activity', query);
   // Chỉ áp dụng khi đủ mốc ngày, ID đúng định dạng và có đối tượng cần truy vết.
+  /** Áp dụng bộ lọc nhật ký hoặc truy vết sau khi kiểm tra cặp ngày và mã đối tượng/người thao tác. */
   const submit = (event) => {
     event.preventDefault(); setError('');
     if ((draft.from || draft.to) && dateRangeError(draft)) { setError(dateRangeError(draft)); return; }
@@ -43,7 +45,8 @@ export default function ActivityPage() {
   </>;
 }
 
-// Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-10/11 - Hiển thị lịch sử bằng nhãn nghiệp vụ thay cho cấu trúc dữ liệu kỹ thuật.
+// Dùng nhãn nghiệp vụ để người đọc nhận ra các trường trong snapshot.
+/** Hiển thị các cặp trường và giá trị của ảnh chụp dữ liệu trong nhật ký kiểm toán. */
 function AuditValues({ value }) {
   const fields = { status: 'Trạng thái', fullName: 'Họ tên', email: 'Thư điện tử', phone: 'Điện thoại', roleCode: 'Vai trò', employeeCode: 'Mã nhân viên', managementVersion: 'Lần cập nhật', permissionOverrides: 'Quyền được cấp riêng', code: 'Quyền', granted: 'Được cấp', reason: 'Lý do', totalPaidAmount: 'Đã thanh toán', voucherId: 'Mã phiếu chi', note: 'Ghi chú', plannedQty: 'Số lượng kế hoạch', completedQty: 'Số lượng hoàn thành', items: 'Sản phẩm', materialRequirements: 'Nhu cầu nguyên liệu', requiredQty: 'Số lượng cần', materialId: 'Mã nguyên liệu', by: 'Người thực hiện', at: 'Thời gian' };
   if (value == null) return <p>Chưa có thông tin.</p>;

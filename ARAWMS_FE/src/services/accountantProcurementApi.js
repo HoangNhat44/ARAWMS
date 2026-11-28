@@ -52,6 +52,7 @@ export const accountantProcurementApi = {
     return res.data.data || [];
   },
 
+  /** Tải hợp đồng chi tiết từ API mua hàng dùng chung. Owner dùng kết quả để dựng văn bản trong trang sai lệch. */
   getContractDetail: async (contractId) => {
     const res = await apiClient.get(`/supplier-contracts/contracts/${contractId}`);
     return res.data.data;
@@ -88,11 +89,13 @@ export const accountantProcurementApi = {
   },
 
   // UC: Lập kế hoạch lịch trình tiếp nhận nguyên vật liệu
+  /** Tải kế hoạch nhập theo bộ lọc truyền vào. Trang Owner dùng danh sách này để nhận diện hồ sơ sai lệch KCS. */
   getInboundPlans: async (params = {}) => {
     const res = await apiClient.get('/supplier-contracts/inbound-plans', { params });
     return res.data.data || [];
   },
 
+  /** Đọc kế hoạch theo mã, cùng kết quả KCS và thông tin trình báo dùng trên màn hình Owner. */
   getInboundPlanDetail: async (planId) => {
     const res = await apiClient.get(`/supplier-contracts/inbound-plans/${planId}`);
     return res.data.data;

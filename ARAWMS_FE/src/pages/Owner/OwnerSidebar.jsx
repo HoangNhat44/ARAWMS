@@ -1,10 +1,13 @@
+/**
+ * Thanh điều hướng dùng chung cho các trang Owner, hỗ trợ menu gọn trên thiết bị nhỏ.
+ */
 import { useEffect, useRef } from 'react';
 import { NavLink, Link } from 'react-router-dom';
 import { PanelLeftClose, PanelLeftOpen, Home, X } from 'lucide-react';
 
 /**
- * OwnerSidebar - Thanh điều hướng chính của phân hệ Chủ cửa hàng (Owner)
- * Đồng bộ 100% với cấu trúc, màu sắc, cỡ chữ, font chữ và layout của Kế toán kho (AccountantSidebar)
+ * Dựng các nhóm menu, đánh dấu trang đang mở và chuyển giữa chế độ đầy đủ, thu gọn hoặc menu di động.
+ * Khi mở menu di động, đặt tiêu điểm vào nút đóng để người dùng thao tác bằng bàn phím.
  */
 export default function OwnerSidebar({
   groups,

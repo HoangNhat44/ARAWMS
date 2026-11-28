@@ -1,13 +1,14 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-15, UC-16 - Định giá tồn hiện tại theo số lượng và giá được ghi nhận trong source hiện hành.
+ * Report 3 — UC-102, UC-109, UC-110. Định giá tồn kho hiện tại theo giá danh mục.
  */
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import Sku from '../../../models/Sku.model.js';
 import { readQuery } from '../../../common/utils/ownerReadQuery.js';
 import { httpError } from '../../../common/utils/httpError.js';
 
+/** Tính giá trị từ tồn thực tế và đơn giá của SKU hoặc nguyên liệu. Trả tổng cho cả tập lọc và chi tiết theo trang. */
 export const valuationReport = async (query) => {
   const { filter, page, limit } = readQuery(query, { fields: query.type === 'skus' ? ['skuCode', 'styleName'] : ['materialCode', 'materialName'], extra: ['type'] });
   // UC-15/16: Chọn đúng model và đơn giá của nguyên liệu hoặc thành phẩm.
@@ -18,7 +19,7 @@ export const valuationReport = async (query) => {
   const [items, totals, total] = await Promise.all([
     // Bảng chỉ lấy một trang, nhưng số tổng bên dưới được tính trên toàn bộ kết quả lọc.
     Model.find(filter).sort({ _id: 1 }).skip((page - 1) * limit).limit(limit),
-    // GBR-13: Định giá tồn chính và hàng cách ly riêng; không trộn số lượng khác đơn vị.
+    // [BR: GBR-16] Định giá riêng phần hàng thành phẩm cách ly và tồn chính của SKU.
     Model.aggregate([{ $match: filter }, { $group: { _id: null, onHandValue: { $sum: { $multiply: ['$onHandQty', type === 'materials' ? '$unitCost' : '$unitCogs'] } },
       quarantineValue: type === 'materials' ? { $sum: 0 } : { $sum: { $multiply: ['$defectQuarantineQty', '$unitCogs'] } } } }]), Model.countDocuments(filter),
   ]);

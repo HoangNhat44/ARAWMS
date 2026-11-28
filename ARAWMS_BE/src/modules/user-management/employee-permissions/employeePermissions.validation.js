@@ -1,11 +1,12 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-09 - Kiểm tra danh sách quyền ngoại lệ, cấm quyền tùy ý/trùng.
+ * Report 3 — UC-011. Kiểm tra cấu trúc và tính hợp lệ của quyền ngoại lệ.
  */
 import { httpError } from '../../../common/utils/httpError.js';
 import { objectFields, textField } from '../../../common/utils/ownerValidation.js';
 import { validateEmployeeAction } from '../employee-management/employeeManagement.validation.js';
+/** Kiểm tra phiên bản, lý do và từng mục ngoại lệ. Từ chối mã quyền bị lặp và dữ liệu cấp hoặc thu hồi sai kiểu. */
 export const validatePermissions = (body) => {
   // Dùng chung kiểm tra phiên bản và lý do với thao tác quản trị nhân viên.
   const input = validateEmployeeAction(body, ['permissionOverrides']);

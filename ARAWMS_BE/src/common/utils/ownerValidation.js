@@ -1,11 +1,12 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-06 đến UC-20 - Kiểm tra dữ liệu quản trị Owner.
+ * Kiểm tra dữ liệu và phân trang cho các API quản trị Owner.
  */
 import { httpError } from './httpError.js';
 
 // Kiểm tra đúng cấu trúc object và từ chối trường ngoài danh sách được phép.
+/** Xác nhận giá trị là object và mọi khóa đều thuộc danh sách API cho phép. */
 export const objectFields = (value, fields) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || Object.keys(value).some((key) => !fields.includes(key))) {
@@ -13,25 +14,30 @@ export const objectFields = (value, fields) => {
   }
 };
 // Chuỗi phải có nội dung, đúng độ dài và không chứa ký tự điều khiển ẩn.
+/** Kiểm tra kiểu, độ dài và ký tự điều khiển, sau đó chuẩn hóa Unicode và bỏ khoảng trắng hai đầu. */
 export const textField = (value, label, max = 500, min = 1) => {
   if (typeof value !== 'string' || value.trim().length < min || value.length > max
     || /[\u0000-\u001f\u007f]/u.test(value)) throw httpError(400, `${label} cần từ ${min} đến ${max} ký tự hợp lệ.`);
   return value.normalize('NFC').trim();
 };
 // Chặn số âm ngoài giới hạn, NaN/Infinity và số lẻ ở trường yêu cầu số nguyên.
+/** Yêu cầu kiểu số hữu hạn và đúng khoảng. Khi trường cần số nguyên, kiểm tra số nguyên an toàn. */
 export const numberField = (value, label, min = 0, max = 1e12, integer = false) => {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max
     || (integer && !Number.isSafeInteger(value))) throw httpError(400, `${label} không hợp lệ (${min} đến ${max}).`);
   return value;
 };
 // ID MongoDB phải là chuỗi 24 ký tự hex trước khi đưa vào truy vấn.
+/** Xác thực định dạng mã MongoDB được dùng để truy vấn bản ghi. */
 export const objectId = (value) => {
   if (typeof value !== 'string' || !/^[a-f0-9]{24}$/i.test(value)) throw httpError(400, 'Mã định danh không hợp lệ.');
   return value;
 };
 // Phiên bản chỉ là số nguyên không âm, dùng để phát hiện dữ liệu quản trị cũ.
+/** Kiểm tra phiên bản quản trị gửi từ giao diện trước khi so khớp với dữ liệu đã lưu. */
 export const versionField = (value) => numberField(value, 'Phiên bản dữ liệu', 0, Number.MAX_SAFE_INTEGER, true);
 // Query phân trang là chuỗi số dương; giới hạn tối đa 100 bản ghi mỗi trang.
+/** Đọc page và limit từ query string, dùng giá trị mặc định khi thiếu và chặn số ngoài giới hạn. */
 export const pagination = (query) => {
   const parse = (v, fallback, max) => {
     if (v === undefined) return fallback;

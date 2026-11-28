@@ -10,8 +10,11 @@ import { Alert, Button, Card, Empty, Grid, Modal as AntModal, Pagination as AntP
 import { AlertCircle, CheckCircle2, Clock3, Info } from 'lucide-react';
 
 // Số chưa có khác số 0; mọi trang dùng cùng định dạng VND và giờ Việt Nam.
+/** Định dạng giá trị hữu hạn theo VND và hiển thị trạng thái chưa có dữ liệu khi thiếu số. */
 export const money = (value) => Number.isFinite(value) ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(value) : 'Chưa có';
+/** Định dạng số lượng theo tiếng Việt, giữ tối đa ba chữ số thập phân. */
 export const quantity = (value) => Number.isFinite(value) ? new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 3 }).format(value) : 'Chưa có';
+/** Định dạng ngày giờ theo múi giờ Việt Nam và dùng dấu gạch khi giá trị ngày không hợp lệ. */
 export const datetime = (value) => value && Number.isFinite(new Date(value).getTime()) ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' }) : '—';
 export const labels = {
   DRAFT_FRAMEWORK: 'Hợp đồng nháp', PENDING_OWNER_APPROVAL: 'Chờ Owner duyệt', DEVIATION_FLAGGED: 'Hợp đồng có chênh lệch', TERMINATED: 'Đã chấm dứt', SUPERSEDED: 'Đã thay thế', ACTIVE: 'Đang hoạt động', LOCKED: 'Đã khóa', INACTIVE: 'Ngừng hoạt động', OWNER: 'Chủ cửa hàng',
@@ -36,6 +39,7 @@ export const labels = {
 };
 
 // Trạng thái luôn có chữ và biểu tượng; cùng một trạng thái luôn dùng cùng màu.
+/** Đổi mã trạng thái của API thành nhãn và màu hiển thị dùng chung. */
 export function Status({ value }) {
   const kind = ['ACTIVE', 'COMPLETED', 'APPROVED', 'REVIEWED', 'APPROVED_COMPLETED', 'DONE'].includes(value) ? 'success'
     : ['LOCKED', 'REJECTED', 'BLOCKED', 'MATERIAL_SHORTAGE'].includes(value) ? 'error'
@@ -44,14 +48,17 @@ export function Status({ value }) {
   const Icon = kind === 'success' ? CheckCircle2 : kind === 'error' ? AlertCircle : kind === 'warning' ? Clock3 : Info;
   return <Tag className={`owner-status owner-status-${kind}`} icon={<Icon size={14} aria-hidden="true" />}>{labels[value] || 'Chưa cập nhật'}</Tag>;
 }
+/** Hiển thị lỗi hoặc thông báo thành công bằng thành phần phản hồi có hỗ trợ trình đọc màn hình. */
 export const Notice = ({ error, success }) => <>{error && <Alert type="error" showIcon title={error} role="alert" />}{success && <Alert type="success" showIcon title={success} role="status" />}</>;
 
 // Không nhầm lỗi kết nối với dữ liệu trống; luôn có nút thử lại khi tải lỗi.
+/** Hiển thị trạng thái đang tải hoặc lỗi của API trước khi dựng nội dung đã tải. */
 export function ResourceState({ resource, children }) {
   if (resource.loading) return <Card className="owner-loading"><div role="status" aria-live="polite"><span className="wms-sr-only">Đang tải dữ liệu…</span><Skeleton active={false} title paragraph={{ rows: 4 }} /></div></Card>;
   if (resource.error) return <Alert type="error" showIcon title="Không tải được dữ liệu" description={resource.error} role="alert" action={<Button onClick={resource.reload}>Thử lại</Button>} />;
   return children;
 }
+/** Dùng tổng số bản ghi, số dòng mỗi trang và trang hiện tại từ API để dựng điều khiển phân trang. */
 export function Pagination({ data, onPage }) {
   const screens = Grid.useBreakpoint();
   if (!data) return null;
@@ -60,6 +67,7 @@ export function Pagination({ data, onPage }) {
 }
 
 // Chỉ dùng hộp thoại cho xác nhận/chỉnh sửa ngắn; nghiệp vụ dài được tách thành trang.
+/** Dùng chung cách hiển thị hộp thoại và ngăn đóng trong lúc thao tác lưu đang chạy. */
 export function Modal({ title, children, onClose, busy = false }) {
   return <AntModal open title={title} footer={null} onCancel={() => { if (!busy) onClose(); }} keyboard={!busy} maskClosable={!busy} closable={!busy}
     width="min(760px, calc(100vw - 32px))" className="owner-modal" rootClassName="owner-modal-root" destroyOnHidden styles={{ body: { maxHeight: 'calc(100dvh - 184px)', overflowY: 'auto', overflowX: 'hidden' } }}>{children}</AntModal>;
@@ -67,6 +75,7 @@ export function Modal({ title, children, onClose, busy = false }) {
 // Chuyển các dòng JSX sẵn có thành dữ liệu bảng Ant Design, giữ nguyên nút và handler nghiệp vụ.
 const flatten = (nodes) => Children.toArray(nodes).flatMap((node) => isValidElement(node) && node.type === Fragment ? flatten(node.props.children) : [node]);
 const numeric = (heading) => /(số lượng|số đơn|số chứng từ|giá|tiền|doanh thu|chi phí|lợi nhuận|tồn|giữ chỗ|cách ly|khả dụng|thực đếm|chênh lệch|hao hụt|ngưỡng|đầu vào|đầu ra|hoàn thành|tỷ lệ|kế hoạch|định mức|tiêu hao)/i.test(heading);
+/** Dựng bảng dùng chung với tiêu đề cột, trạng thái rỗng và cách hiển thị cho màn hình nhỏ. */
 export function Table({ headings, children, empty = false, mobileCards = true, caption, paginated = true }) {
   const screens = Grid.useBreakpoint();
   const tableRoot = useRef(null);
@@ -93,4 +102,5 @@ export function Table({ headings, children, empty = false, mobileCards = true, c
     <AntTable className="owner-table" columns={columns} dataSource={visibleRows} pagination={false} size="middle" rowClassName={(row) => row.className || ''}
       scroll={{ x: 'max-content' }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có dữ liệu phù hợp." /> }} /></div>{pager}</>;
 }
+/** Hiển thị một chỉ số đã định dạng kèm ghi chú giải thích nếu có. */
 export const Metric = ({ label, value, note }) => <Card className="owner-metric"><Statistic title={label} value={value} />{note && <p className="owner-method">{note}</p>}</Card>;

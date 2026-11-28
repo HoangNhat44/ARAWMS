@@ -20,8 +20,11 @@ const refusalReasons = ['CUSTOMER_REFUSED', 'INVALID_ORDER'];
 const validPurchase = { status: { $ne: 'CANCELLED' }, orderType: { $ne: 'EXCHANGE_ORDER' } };
 const active = { isDeleted: { $ne: true } };
 const sourceFields = { salesChannel: 1, channel: 1, sourceDetails: 1, conversationId: 1 };
+/** Tính tỷ lệ phần trăm theo mẫu số. Không có mẫu số thì trả null để biểu đồ biết đang thiếu dữ liệu. */
 const rate = (count, total) => total ? count / total * 100 : null;
+/** Kiểm tra ngày thuộc khoảng báo cáo có cận trên mở. */
 const contains = (range, date) => date && date >= range.$gte && date < range.$lt;
+/** Gom bản ghi theo giá trị của một trường để tra cứu theo mã nhanh khi ghép báo cáo. */
 function groupBy(rows, field) {
   const groups = new Map();
   for (const row of rows) {
@@ -36,6 +39,7 @@ const returnPolicy = { alertRate: 10, inspectionHours: 24, restockHours: 24 };
 
 // Chỉ tính quay đầu trước khi giao thành công. Phiếu đổi/trả sau khi giao có mẫu số
 // khác nên chỉ theo dõi ở nhóm xử lý hàng hoàn. Lấy sự kiện đầu tiên nếu có lịch sử.
+/** Xác định một đơn có quay đầu trước khi giao thành công và thời điểm hàng về dựa trên lịch sử vận chuyển đến mốc đang thống kê. */
 export function shippingReturn(order, asOf) {
   const fulfillment = order.warehouseFulfillment || {};
   const history = (order.statusHistory || []).filter(event => event.at && event.at <= asOf)
@@ -63,6 +67,7 @@ export function shippingReturn(order, asOf) {
 
 // Sau khi xác định tập khách trong kỳ, tìm đúng đơn hợp lệ đầu tiên trong toàn bộ
 // lịch sử từng khách, gồm kênh khác. Thứ tự mã đơn nội bộ giải quyết trường hợp trùng giờ.
+/** Đếm khách có lần mua hợp lệ đầu tiên thuộc kỳ đang xem. Đối chiếu lịch sử của từng khách để tránh tính khách cũ thành khách mới. */
 async function firstPurchases(range, scope) {
   return mongoose.connection.collection('sales_orders').aggregate([
     { $match: { ...active, ...validPurchase, ...scope, createdAt: range, customerId: { $ne: null } } },
@@ -83,11 +88,13 @@ async function firstPurchases(range, scope) {
 
 // Mỗi lần chuyển hoàn chỉ được tính một lần theo đơn gốc. Ưu tiên mã lý do
 // được ghi trong phiếu đang hiệu lực, chỉ tính bom với mã khách từ chối/đơn không hợp lệ.
+/** Chọn phiếu có mã lý do nhận biết được để hiển thị nguyên nhân cho đơn. */
 function reasonFor(requests) {
   const known = requests.find(request => reasonCodes.includes(request.reasonCode) && request.reasonCode !== 'UNKNOWN');
   return known?.reasonCode || 'UNKNOWN';
 }
 
+/** Tính số đơn và tỷ lệ theo kênh, tổng hợp nguyên nhân và tạo điểm biểu đồ theo kỳ. Một đơn cùng kênh chỉ đóng góp một dòng cho mỗi nhóm đang thống kê. */
 export function summarizeActivity(shipped, newCustomers, requestsByOrder, range, asOf) {
   const rows = channels.map(channel => {
     const orders = shipped.filter(order => salesChannelOf(order) === channel);
@@ -137,6 +144,7 @@ export function summarizeActivity(shipped, newCustomers, requestsByOrder, range,
 
 // Dùng dấu nhận từ vận chuyển và hồ sơ kiểm hàng. Chỉ đánh dấu đã nhập khi
 // phiếu kho liên kết đã hoàn tất, độc lập với trạng thái của đơn bán hàng.
+/** Ghép đơn trả về, kiểm định và phiếu nhập. Xác định bước đang chờ, hạn xử lý và hồ sơ quá hạn theo thời điểm báo cáo. */
 export function returnWorklist(orders, inspections, tickets, range, asOf, includeBacklog = false) {
   const inspectionsByOrder = groupBy(inspections, 'orderId');
   const ticketsById = new Map(tickets.map(ticket => [String(ticket._id), ticket]));
@@ -163,6 +171,7 @@ export function returnWorklist(orders, inspections, tickets, range, asOf, includ
   }).sort((a, b) => Number(b.overdue) - Number(a.overdue) || b.receivedAt - a.receivedAt);
 }
 
+/** Lấy các đơn đã bàn giao trong kỳ theo bộ lọc bán hàng. Giới hạn ở thời điểm hiện tại của báo cáo. */
 function loadShipped(range, scope, now) {
   // Preset có thể chứa ngày cuối kỳ trong tương lai. Chỉ đếm những bàn giao đã xảy ra.
   return read('sales_orders', { ...scope, 'warehouseFulfillment.handedOverAt': { ...range, $lte: now } }, {
@@ -170,6 +179,7 @@ function loadShipped(range, scope, now) {
   });
 }
 
+/** Điều phối các truy vấn bán hàng và hoàn hàng theo UC-104. Trả số liệu kỳ hiện tại, kỳ đối chiếu nếu bật và danh sách hàng hoàn. */
 export async function businessActivity(query, now = new Date()) {
   const scope = salesReportScope(query);
   const today = localDate.format(now);

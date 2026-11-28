@@ -1,7 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-18 - Nhận, xem báo cáo đã gửi và xác nhận đã xem.
+ * Report 3 — UC-107, UC-108. Đọc và xác nhận đã xem báo cáo quản lý kho.
  */
 import ManagerReport from '../../../models/ManagerReport.model.js';
 import { readQuery, safeUrl } from '../../../common/utils/ownerReadQuery.js';
@@ -9,6 +9,7 @@ import { objectId, objectFields, textField } from '../../../common/utils/ownerVa
 import { httpError } from '../../../common/utils/httpError.js';
 import { ownerAudit, ownerTransaction } from '../../../common/utils/ownerOperation.js';
 // UC-18: Danh sách chỉ chứa báo cáo đã gửi; bản nháp của Manager chưa được đưa cho Owner.
+/** Lọc báo cáo đã gửi hoặc đã xem, sắp xếp theo ngày gửi và trả thông tin tóm tắt cho bảng. */
 export const listReports = async (query) => {
   const { filter, page, limit } = readQuery(query, { fields: ['code', 'title'], statuses: ['SUBMITTED', 'REVIEWED'] });
   filter.status ||= { $in: ['SUBMITTED', 'REVIEWED'] };
@@ -17,6 +18,7 @@ export const listReports = async (query) => {
   return { items, total, page, limit };
 };
 // UC-18: Kiểm tra lại quyền xem bản ghi cụ thể và lấy tên người gửi/người đã xem.
+/** Chỉ tìm báo cáo đã gửi hoặc đã xem, ghép thông tin người gửi/người xem và chuẩn hóa liên kết đính kèm. */
 export const reportDetail = async (id) => {
   objectId(id);
   const report = await ManagerReport.findOne({ _id: id, isDeleted: { $ne: true }, status: { $in: ['SUBMITTED', 'REVIEWED'] } })
@@ -26,6 +28,7 @@ export const reportDetail = async (id) => {
   const data = report.toJSON(); data.fileUrl = safeUrl(data.fileUrl); return data;
 };
 // UC-18: Xác nhận đã xem là một lần chuyển trạng thái, không phải phê duyệt nội dung báo cáo.
+/** Chuyển một báo cáo đang chờ xem sang REVIEWED. Ghi người xem, thời điểm và ghi chú cùng nhật ký trong giao dịch. */
 export const acknowledgeReport = async (req) => {
   objectId(req.params.id); objectFields(req.body, ['comment']);
   const comment = req.body.comment === '' || req.body.comment === undefined ? '' : textField(req.body.comment, 'Ghi chú', 2000);

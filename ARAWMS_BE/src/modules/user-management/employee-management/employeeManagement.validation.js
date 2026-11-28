@@ -1,7 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-06, UC-07, UC-08 - Kiểm tra tạo, khóa và mở khóa nhân viên.
+ * Report 3 — UC-010 và UC-012. Kiểm tra tạo tài khoản và thay đổi trạng thái.
  */
 import { ROLES } from '../../../common/constants/enums.js';
 import { httpError } from '../../../common/utils/httpError.js';
@@ -10,6 +10,7 @@ import { normalizeFullName, validFullName, normalizePhone } from '../../system-a
 
 // UC-06: Danh sách này loại OWNER; giao diện không thể tự gửi thêm vai trò quản trị.
 export const employeeRoles = ROLES.filter((role) => role !== 'OWNER');
+/** Chuẩn hóa thông tin định danh và kiểm tra vai trò, liên hệ và mật khẩu tạm trước khi tạo tài khoản. */
 export const validateEmployee = (body) => {
   // Chặn trường gửi thêm như trạng thái, hash mật khẩu hoặc quyền tự cấp.
   objectFields(body, ['employeeCode', 'fullName', 'email', 'phone', 'password', 'confirmPassword', 'roleCode']);
@@ -32,6 +33,7 @@ export const validateEmployee = (body) => {
   return { employeeCode, fullName, email, phone: body.phone || undefined, roleCode: body.roleCode, password: body.password };
 };
 // UC-07, UC-08: Bắt buộc lý do; phiên bản ngăn ghi đè thao tác quản trị khác.
+/** Kiểm tra lý do và phiên bản. Cho phép bên gọi khai báo thêm trường nếu thao tác cần dữ liệu riêng. */
 export const validateEmployeeAction = (body, additional = []) => {
   objectFields(body, ['expectedVersion', 'reason', ...additional]);
   return { expectedVersion: versionField(body.expectedVersion), reason: textField(body.reason, 'Lý do', 500, 5) };

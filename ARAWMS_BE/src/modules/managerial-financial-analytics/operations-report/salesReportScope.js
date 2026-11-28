@@ -21,6 +21,7 @@ const rules = [
   ['FACEBOOK', { channel: 'FACEBOOK_MESSENGER', 'sourceDetails.sourceType': 'FANPAGE', 'sourceDetails.sourceId': { $nin: [null, ''], $exists: true } }],
 ];
 
+/** Chọn kênh theo quy tắc đầu tiên khớp dữ liệu đơn. Dùng UNKNOWN khi không đủ thông tin để phân loại. */
 export function salesChannelOf(order) {
   for (const [channel, conditions] of rules) {
     const matches = Object.entries(conditions).every(([path, expected]) => {
@@ -34,12 +35,14 @@ export function salesChannelOf(order) {
   return 'UNKNOWN';
 }
 
+/** Quy trạng thái cũ PENDING về chưa thanh toán và giữ nhóm chưa rõ cho giá trị ngoài danh sách. */
 export function paymentStatusOf(order) {
   if (order.paymentStatus === 'PENDING') return 'UNPAID';
   return paymentStatuses.includes(order.paymentStatus) ? order.paymentStatus : 'UNKNOWN';
 }
 
 // Các nhánh có thứ tự loại trừ nhau, vì vậy một đơn chỉ xuất hiện trong một kênh.
+/** Chuyển lựa chọn kênh và thanh toán thành bộ lọc MongoDB. Giữ cùng thứ tự phân loại với cách đọc một đơn. */
 export function salesReportScope({ salesChannel, paymentStatus }) {
   if (salesChannel && !channels.includes(salesChannel)) throw httpError(400, 'Nguồn bán không hợp lệ.');
   if (paymentStatus && !paymentStatuses.includes(paymentStatus)) throw httpError(400, 'Trạng thái thanh toán không hợp lệ.');

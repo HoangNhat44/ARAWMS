@@ -10,6 +10,7 @@ const valueOf = (v) => Number.isFinite(v) ? v : 0;
 const display = (v, currency) => currency ? money(v) : quantity(v);
 const short = (text, n = 24) => text.length > n ? `${text.slice(0, n - 1)}…` : text;
 // Tách nét tại mốc thiếu số liệu để không nối qua ngày không có mẫu số.
+/** Tạo từng nét biểu đồ từ các điểm hợp lệ. Khi chuỗi thiếu một giá trị, ngắt nét tại điểm đó để thể hiện khoảng trống. */
 function lineSegments(rows, key, x, y) {
   const segments = [];
   let segment = [];
@@ -25,6 +26,7 @@ function lineSegments(rows, key, x, y) {
   return segments;
 }
 // UC-13: Cùng thang đo, cột bắt đầu từ 0; hỗ trợ số âm, không dùng hai trục gây nhầm đơn vị.
+/** Vẽ nhiều chuỗi trên một thang đo, tính lại độ rộng theo thẻ và dùng định dạng phù hợp cho số lượng, tỷ lệ hoặc tiền. */
 export function SeriesPlot({ rows, series, kind = 'column', currency = false, title, categoryLabel = 'Nhóm so sánh', unitLabel = 'số lượng', compactAxis = false, valueSuffix = '', reference }) {
   const plot = useRef(null);
   const [availableWidth, setAvailableWidth] = useState(360);
@@ -99,6 +101,7 @@ export function SeriesPlot({ rows, series, kind = 'column', currency = false, ti
  * Thành phần chung cho biểu đồ cột, thanh ngang, tròn và xu hướng.
  * controls cho phép trang gọi truyền thêm bộ lọc vào cùng hàng với bộ chọn dạng biểu đồ.
  * Thành phần chỉ nhận số liệu đã tổng hợp; không tự truy vấn hoặc thay đổi dữ liệu MongoDB.
+ * Chọn dạng biểu đồ và ánh xạ dữ liệu báo cáo sang các cột hoặc lát cắt. Biểu đồ tỷ trọng yêu cầu giá trị không âm và tổng dương.
  */
 export function Columns({ rows, title, currency = false, allowDonut = false, defaultKind = 'column', categoryLabel = 'Nhóm so sánh', unitLabel = 'số lượng', controls, lineContent }) {
   const [kind, setKind] = useState(defaultKind);
@@ -152,6 +155,7 @@ export function Columns({ rows, title, currency = false, allowDonut = false, def
 /**
  * Lọc loại kho ngay trên dữ liệu tồn hiện tại đã nhận từ API.
  * Mỗi phần trên biểu đồ là số mã hàng thuộc một trạng thái; không cộng số lượng khác đơn vị.
+ * Đưa các nhóm trạng thái tồn kho vào biểu đồ để so sánh số liệu giữa các nhóm.
  */
 export function InventoryStatusChart({ inventory }) {
   const [warehouse, setWarehouse] = useState('');

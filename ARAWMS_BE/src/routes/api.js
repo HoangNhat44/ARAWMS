@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticate } from '../common/middlewares/authenticate.js';
 import { authorizeRole } from '../common/middlewares/authorizeRole.js';
-// Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13/19, phản hồi 1–7; GBR-01 - Báo cáo và kế hoạch có xác thực.
+// Router báo cáo điều hành phục vụ các màn hình tổng quan, bán hàng và nhập hàng của Owner.
 import operationsReportRoutes from '../modules/managerial-financial-analytics/operations-report/operationsReport.routes.js';
 import ghnRoutes from '../modules/ghn/ghn.routes.js';
 import contractWorkspaceRoutes from '../modules/supplier-contracts/contract-workspace/contractWorkspace.routes.js';
@@ -46,12 +46,13 @@ import customerExchangeProcessingRoutes from '../modules/reverse-logistics/custo
 import notificationRoutes from '../modules/notifications/notification.routes.js';
 
 const router = express.Router();
+// Điểm vào hợp đồng dành cho Owner. Workspace hợp đồng còn được dùng qua /supplier-contracts với quyền của từng route con.
 router.use('/owner/contracts', authenticate, authorizeRole('OWNER'), contractWorkspaceRoutes);
 router.use('/owner/products', productCatalogRoutes);
 router.use('/owner/operations-report', operationsReportRoutes);
 router.use('/auth', authRoutes);
 router.use('/accounts', accountRoutes);
-// Nguyễn Ngọc Huy-HE171157, 30-10-2026: UC Owner - Route theo đúng Major Feature/Sub Feature.
+// Các router dưới /owner dùng chung middleware xác thực và kiểm tra quyền Owner.
 router.use('/owner/employees', employeeRoutes);
 router.use('/owner/employee-permissions', permissionRoutes);
 router.use('/owner/dashboard', dashboardRoutes);

@@ -12,6 +12,7 @@ async function resolveAccountantUserId(explicitUserId) {
 
 /**
  * UC: Lập kế hoạch lịch trình tiếp nhận nguyên phụ liệu - Danh sách
+ * Tải kế hoạch kèm hợp đồng, nhà cung cấp và trạng thái KCS. Owner dùng danh sách này để tìm hồ sơ sai lệch theo UC-042.
  */
 export const listInboundPlans = async (filters = {}) => {
   const query = {};
@@ -40,6 +41,7 @@ export const listInboundPlans = async (filters = {}) => {
 
 /**
  * UC: Lập kế hoạch lịch trình tiếp nhận nguyên phụ liệu - Chi tiết theo ID
+ * UC-042 và UC-044. Tải kế hoạch cụ thể kèm kết quả KCS, người trình báo, đợt giao và thông tin phiên bản.
  */
 export const getInboundPlanById = async (planId) => {
   const plan = await MaterialInboundPlan.findById(planId)
@@ -658,6 +660,7 @@ export const recordTechnicianVerification = async (planId, payload, currentUserI
 
 /**
  * UC 06: Báo cáo / Trình báo sai lệch KCS lên Chủ sở hữu (Owner)
+ * Ghi người trình báo, thời điểm và ghi chú lên kế hoạch, sau đó thử gửi thông báo điều hướng Owner trực tiếp đến hồ sơ theo UC-041 và UC-042.
  */
 export const reportDeviationToOwner = async (planId, currentUserId, notes = '') => {
   const plan = await MaterialInboundPlan.findById(planId)
@@ -684,7 +687,7 @@ export const reportDeviationToOwner = async (planId, currentUserId, notes = '') 
   };
   await plan.save();
 
-  // Tạo thông báo khẩn gửi tới Owner
+  // Thông báo được gửi sau khi lưu hồ sơ để danh sách vẫn có thể đọc báo cáo khi dịch vụ thông báo gặp lỗi.
   try {
     const targetContractId = plan.contractId?._id || plan.contractId;
     await createNotification({

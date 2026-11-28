@@ -1,17 +1,19 @@
 /* Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 2-11-2026
- * UC-12/13: Đủ 12 tháng, so sánh hai năm, tổng hợp quý; GBR-01 - Đọc dữ liệu chưa xóa.
+ * Report 3 — UC-104. Tổng hợp theo tháng và quý để đối chiếu hai năm bằng cùng bộ lọc.
  * Doanh thu trừ hoàn theo ngày duyệt tại Việt Nam, không tính giá vốn/lợi nhuận.
  */
 import { readSalesPeriod, reportPeriod, ownerToday, salesSummary, percent } from './operationsReport.service.js';
 import { salesReportScope } from './salesReportScope.js';
 import { httpError } from '../../../common/utils/httpError.js';
 const localMonth = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit' });
+/** Lấy khóa năm và tháng của thời điểm giao dịch theo giờ Việt Nam. */
 const monthKey = (date) => {
   if (!date || !Number.isFinite(new Date(date).getTime())) return '';
   const parts = localMonth.formatToParts(new Date(date));
   return `${parts.find((p) => p.type === 'year').value}-${parts.find((p) => p.type === 'month').value}`;
 };
 // UC-13: Tháng không có giao dịch vẫn có dòng bằng 0, giữ đúng vị trí trên trục 12 tháng.
+/** Dựng đủ 12 nhóm tháng theo lịch. Lấy ngày đóng gói hoặc ngày tạo đơn và ngày duyệt hoặc ngày tạo hồ sơ hoàn để xếp giao dịch vào tháng. */
 export function monthlyRows(orders, returns, year) {
   return Array.from({ length: 12 }, (_, i) => {
     const key = `${year}-${String(i + 1).padStart(2, '0')}`;
@@ -20,6 +22,7 @@ export function monthlyRows(orders, returns, year) {
       paid: sales.paid, unpaid: sales.unpaid, late: sales.channels.reduce((s, r) => s + r.late, 0) };
   });
 }
+/** Ghép từng vị trí trong hai chuỗi và tính tỷ lệ thay đổi doanh thu khi có đủ dữ liệu. */
 export function compareMonths(current, previous) {
   return Array.from({ length: Math.max(current.length, previous.length) }, (_, i) => {
     const row = current[i], old = previous[i];
@@ -27,13 +30,16 @@ export function compareMonths(current, previous) {
       revenueChange: row && old ? percent(row.revenue, old.revenue) : null };
   });
 }
+/** Cộng nhóm ba tháng liên tiếp thành một dòng quý cho từng chỉ số. */
 export function quarterRows(rows) {
   return Array.from({ length: Math.ceil(rows.length / 3) }, (_, i) => ({ label: `Quý ${i + 1}`, ...Object.fromEntries(['revenue', 'orderValue', 'orders', 'returns', 'shipping', 'paid', 'unpaid', 'late'].map((key) => [key, rows.slice(i * 3, i * 3 + 3).reduce((s, r) => s + (r[key] || 0), 0)])) }));
 }
+/** Kiểm tra hai năm, tải cùng phạm vi bán hàng và trả số liệu theo tháng/quý để so sánh. */
 export async function annualReport(query, today = ownerToday()) {
   const year = Number(query.year), compareYear = Number(query.compareYear);
   if (![query.year, query.compareYear].every((v) => typeof v === 'string' && /^\d{4}$/.test(v)) || ![year, compareYear].every((v) => v >= 2000 && v <= 2200)) throw httpError(400, 'Chọn hai năm hợp lệ từ 2000 đến 2200.');
   const scope = salesReportScope(query);
+  /** Lấy một năm, giới hạn năm hiện tại đến tháng hiện tại và trả tập rỗng cho năm chưa bắt đầu. */
   async function load(y) {
     const from = `${y}-01-01`;
     if (from > today) return [];

@@ -2,7 +2,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-18/19/20 - Xem báo cáo quản lý kho, sản xuất theo BOM và mẫu sản phẩm mới.
+ * Report 3 — UC-107, UC-108 cho chế độ báo cáo kho. Dùng chung màn danh sách cho sản xuất và mẫu sản phẩm.
  */
 import { WmsField, WmsInput, WmsSelect, WmsButton, WmsTextArea, WmsLinkButton } from '../../components/ui/WmsControls';
 import { useState } from 'react';
@@ -11,12 +11,13 @@ import { useOwnerQuery } from '../../hooks/useOwnerQuery';
 import { useOwnerResource } from '../../hooks/useOwnerResource';
 import { ownerService } from '../../services/ownerService';
 import { ResourceState, Table, Pagination, Notice, Status, labels, money, quantity, datetime } from './OwnerUI';
-// UC-18/19/20: Mỗi chế độ có API, tiêu đề và trạng thái riêng; chỉ dùng chung cách tìm/xem bản ghi.
+// Mỗi chế độ có API, tiêu đề và trạng thái riêng, dùng chung bộ lọc và cách mở chi tiết.
 export const recordConfig = {
   reports: { resource: 'manager-reports', title: 'Báo cáo từ quản lý kho', feature: 'Tài chính điều hành', statuses: ['SUBMITTED', 'REVIEWED'] },
   production: { resource: 'production-reports', title: 'Kế hoạch sản xuất theo định mức', feature: 'Vận hành sản xuất', statuses: ['DRAFT', 'PLANNED', 'MATERIAL_SHORTAGE', 'RELEASED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] },
   samples: { resource: 'product-samples', title: 'Mẫu sản phẩm mới', feature: 'Phát triển sản phẩm', statuses: ['IN_DEVELOPMENT', 'SAMPLE_READY', 'UNDER_REVIEW', 'APPROVED', 'REJECTED'] },
 };
+/** Tải danh sách theo chế độ, bộ lọc và trang đã chọn. Khi mở chi tiết, mang theo đường dẫn danh sách để quay lại đúng vị trí. */
 export default function OwnerRecordsPage({ mode }) {
   // Danh sách chỉ tải thông tin tóm tắt; trang riêng tải nội dung chi tiết khi mở bản ghi.
   const c = recordConfig[mode]; const [query, setQuery] = useOwnerQuery({ page: 1, search: '', status: '' }); const location = useLocation();
@@ -32,14 +33,17 @@ export default function OwnerRecordsPage({ mode }) {
   </>;
 }
 // Gọi đúng API chi tiết theo chế độ và chặn hiển thị kết quả tải đã bị hủy.
+/** Đọc nội dung báo cáo theo nguồn và mã bản ghi rồi chuyển sang component hiển thị chi tiết. */
 export function RecordDetail({ resourceName, id, mode, setBusy, onDone }) {
   const resource = useOwnerResource(`${resourceName}/${id}`);
   return <ResourceState resource={resource}>{resource.data && (mode === 'reports' ? <ManagerDetail data={resource.data} setBusy={setBusy} onDone={onDone} /> : mode === 'production' ? <ProductionDetail data={resource.data} /> : <SampleDetail data={resource.data} />)}</ResourceState>;
 }
-// UC-18: Cho xem nội dung báo cáo dạng văn bản; không chạy HTML từ nội dung/tệp gửi lên.
+// Nội dung cũ được hiển thị dưới dạng văn bản thuần để giữ nguyên nội dung người gửi.
+/** Hiển thị số liệu, nội dung và tệp đính kèm của báo cáo. Chỉ mở form xác nhận nếu báo cáo đang ở trạng thái đã gửi. */
 function ManagerDetail({ data, setBusy, onDone }) {
   const [comment, setComment] = useState(''); const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
   // Xác nhận đã xem là yêu cầu lưu riêng; lỗi từ BE giữ form mở để Owner xử lý lại.
+  /** Gửi ghi chú xác nhận đã xem. Phản hồi trang cha khi lưu thành công và giữ ghi chú nếu có lỗi. */
   const review = async (event) => { event.preventDefault(); setError(''); setSaving(true); setBusy(true);
     try { const response = await ownerService.reviewReport(data.id, comment); onDone(response.message); }
     catch (err) { setError(err.message); } finally { setSaving(false); setBusy(false); } };

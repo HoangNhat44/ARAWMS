@@ -1,7 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: OWNER-EXT-02..05; GBR-05/06/11/12/19 - Kiểm tra cấu hình Owner.
+ * Report 3 — UC-013 đến UC-016. Kiểm tra dữ liệu cấu hình trên máy chủ.
  */
 import { objectFields, textField, numberField, versionField } from '../../../common/utils/ownerValidation.js';
 import { httpError } from '../../../common/utils/httpError.js';
@@ -14,6 +14,11 @@ const fields = {
   returns: ['returnSurchargePercent', 'returnPolicyNotes'],
 };
 export const secretFields = ['ghnToken', 'facebookVerifyToken', 'facebookPageAccessToken'];
+/**
+ * Chỉ nhận các trường của nhóm cấu hình đang sửa. Kiểm tra kiểu dữ liệu, khoảng giá trị và phiên bản trước khi tạo payload cập nhật.
+ * @param {string} section Nhóm thiết lập đọc từ route.
+ * @param {object} body Thay đổi gửi từ form cùng phiên bản cấu hình.
+ */
 export const validateSettings = (section, body) => {
   if (!Object.hasOwn(fields, section)) throw httpError(404, 'Nhóm cấu hình không tồn tại.');
   objectFields(body, ['expectedVersion', ...fields[section]]);
@@ -34,7 +39,7 @@ export const validateSettings = (section, body) => {
     } else if (key === 'returnPolicyNotes') {
       data[key] = value === '' ? '' : textField(value, 'Nội dung chính sách', 2000);
     } else if (key === 'returnSurchargePercent') {
-      // GBR-11: Không cho Owner lưu tỷ lệ khác 10% khi tài liệu chưa cho phép ngoại lệ.
+      // [BR: GBR-14] Phụ phí khi khách có lỗi được cố định ở mức 10% giá trị hàng trả.
       if (value !== 10) throw httpError(400, 'GBR-11 quy định phụ phí lỗi khách là 10%.');
       data[key] = value;
     } else {
@@ -48,6 +53,7 @@ export const validateSettings = (section, body) => {
 };
 
 // OWNER-EXT-04: Mỗi mặt hàng có ngưỡng riêng, lưu kèm phiên bản để tránh ghi đè thay đổi tồn.
+/** Kiểm tra số lượng tồn an toàn, số ngày cảnh báo nguyên dương và phiên bản của mặt hàng. */
 export const validateInventoryThreshold = (body) => {
   objectFields(body, ['expectedVersion', 'safetyStockThreshold', 'fifoAgingThresholdDays']);
   return { expectedVersion: versionField(body.expectedVersion),

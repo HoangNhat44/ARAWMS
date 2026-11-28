@@ -13,8 +13,10 @@ import { datetime, quantity } from './OwnerUI';
 import { dateRangeError, defaultOwnerDates } from '../../utils/ownerValidation';
 import { channelLabels } from './BusinessActivity';
 
+/** Chuẩn hóa chữ thường và bỏ dấu tiếng Việt để tìm tên mục bằng từ khóa có dấu hoặc không dấu. */
 const normalize = (value) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').trim();
 
+/** Gộp tìm chức năng, thông báo hệ thống, báo cáo chưa xem và cảnh báo bán hàng trên đầu trang. Cảnh báo bán hàng lấy kỳ và bộ lọc của dashboard khi đang mở dashboard. */
 export default function OwnerHeaderTools({ groups }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -46,6 +48,7 @@ export default function OwnerHeaderTools({ groups }) {
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [loadingNotifs, setLoadingNotifs] = useState(false);
 
+  /** UC-008. Lấy thông báo Owner và tổng chưa đọc. Dùng số dòng chưa đọc trong kết quả làm giá trị dự phòng nếu API thiếu trường tổng. */
   const fetchSystemNotifications = async () => {
     try {
       setLoadingNotifs(true);
@@ -62,12 +65,14 @@ export default function OwnerHeaderTools({ groups }) {
 
   useEffect(() => {
     fetchSystemNotifications();
+    // Làm mới định kỳ khi còn ở khu vực Owner và hủy bộ hẹn giờ khi rời trang.
     const timer = setInterval(fetchSystemNotifications, 20000);
     return () => clearInterval(timer);
   }, []);
 
   const totalUnread = unreadNotifCount + reportsTotal + unreadAlerts;
 
+  /** Đánh dấu thông báo đã đọc rồi mở hồ sơ liên quan. Đổi đường dẫn từ workspace kế toán sang trang Owner khi thông báo dẫn tới sai lệch. */
   const handleNotificationClick = async (notif) => {
     try {
       if (!notif.isRead) {
@@ -92,6 +97,7 @@ export default function OwnerHeaderTools({ groups }) {
     }
   };
 
+  /** Đánh dấu các cảnh báo tính từ báo cáo trong phiên giao diện và gửi yêu cầu đánh dấu đã đọc cho thông báo hệ thống. */
   const handleMarkAllRead = async () => {
     setSeenAlerts(previous => ({ ...previous, ...Object.fromEntries(alerts.map(alert => [alert.key, true])) }));
     try {
@@ -113,6 +119,7 @@ export default function OwnerHeaderTools({ groups }) {
     setSearch('');
   }, [location.pathname, location.search]);
 
+  /** Sau khi chọn một gợi ý, đóng ô tìm kiếm và mở trang tương ứng. */
   const selectPage = (path) => {
     setSearch('');
     setSearchOpen(false);
@@ -253,6 +260,7 @@ export default function OwnerHeaderTools({ groups }) {
 }
 
 // Dùng chính khoảng thời gian và nguồn bán đã tạo cảnh báo khi mở phần chi tiết.
+/** Tạo cảnh báo theo kênh vượt ngưỡng và các hồ sơ hoàn hàng quá hạn. Đường dẫn đính kèm giữ bộ lọc để mở đúng nhóm dữ liệu. */
 function businessAlerts(data, filters) {
   if (!data) return [];
   const { activity, policy, worklist } = data;

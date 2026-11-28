@@ -1,5 +1,5 @@
 /* Nguyễn Ngọc Huy-HE171157 | 2-11-2026
- * UC-12/13/19, phản hồi 6; GBR-01: Báo cáo, giao việc, điều chỉnh kế hoạch có kiểm tra quyền và phiên bản.
+ * Report 3 — UC-009, UC-103, UC-104, UC-113, UC-114. API tổng hợp báo cáo, lập phiếu chi và phân công kế hoạch nhập.
  */
 import mongoose from 'mongoose';
 import { ownerRouter } from '../../../common/middlewares/ownerRouter.js';
@@ -23,24 +23,33 @@ router.get('/return-trend-demo', asyncHandler(async (_req, res) => {
   res.json({ success: true, data: await returnTrendDemo() });
 }));
 // Báo cáo đọc dữ liệu điều hành và xử lý hàng hoàn của chủ cửa hàng.
+/** Đọc hành trình đơn, tỷ lệ hoàn và khối theo dõi xử lý hàng trả theo bộ lọc. */
 router.get('/business-activity', asyncHandler(async (req, res) => {
   res.json({ success: true, data: await businessActivity(req.query) });
 }));
 // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-12/13 - Biểu đồ 12 tháng độc lập khoảng ngày của báo cáo tổng hợp.
+/** Đọc xếp hạng bán chạy theo kỳ và phạm vi bán hàng. */
 router.get('/best-sellers', asyncHandler(async (req, res) => res.json({ success: true, data: await bestSellersReport(req.query) })));
+/** Trả chuỗi điểm theo ngày hoặc theo tháng cho biểu đồ xu hướng. */
 router.get('/trend', asyncHandler(async (req, res) => res.json({ success: true, data: await trendReport(req.query) })));
+/** Trả số liệu tháng và quý của năm cần xem cùng năm đối chiếu. */
 router.get('/annual', asyncHandler(async (req, res) => res.json({ success: true, data: await annualReport(req.query) })));
+/** Trả báo cáo tổng hợp bán hàng, nhập hàng, tồn và công nợ. */
 router.get('/', asyncHandler(async (req, res) => res.json({ success: true, data: await operationsReport(req.query) })));
-// Phản hồi 3/8; GBR-14: Phiếu trả nợ có hợp đồng gốc, số tiền không vượt dư nợ; cập nhật cùng một giao dịch.
+// Lập phiếu chi, cập nhật công nợ và ghi nhật ký trong cùng giao dịch.
+/** UC-113. Kiểm tra khoản thanh toán trước khi lập phiếu chi nhà cung cấp và trả HTTP 201. */
 router.post('/payments', asyncHandler(async (req, res) => {
   objectId(req.body.contractId); numberField(req.body.amount, 'Số tiền', 1, 1e12); const note = textField(req.body.note, 'Nội dung thanh toán', 500, 5);
   if (!['CASH', 'BANK_TRANSFER'].includes(req.body.paymentMethod)) throw httpError(400, 'Chọn tiền mặt hoặc chuyển khoản.');
   const data = await mongoose.connection.transaction(async (session) => {
+    // [BR: GBR-17] Phiếu chi cần tham chiếu hợp đồng còn có thể thanh toán.
     const contract = await SupplierContract.findOne({ _id: req.body.contractId, isDeleted: { $ne: true }, status: { $nin: ['CANCELLED', 'DRAFT_FRAMEWORK', 'SUPERSEDED'] } }).session(session);
     if (!contract || req.body.amount > contract.totalContractAmount - contract.totalPaidAmount) throw httpError(409, 'Số tiền vượt dư nợ hoặc hợp đồng không thể thanh toán.');
+    // Cộng phần đã trả của hợp đồng và giảm công nợ của nhà cung cấp trong cùng phiên giao dịch.
     const before = contract.totalPaidAmount; contract.totalPaidAmount += req.body.amount; await contract.save({ session });
     await Supplier.updateOne({ _id: contract.supplierId, isDeleted: { $ne: true } }, [{ $set: { totalPayableDebt: { $max: [0, { $subtract: ['$totalPayableDebt', req.body.amount] }] } } }], { session });
     const voucherId = new mongoose.Types.ObjectId();
+    // Lưu liên kết hợp đồng và nhà cung cấp trên phiếu để có thể đối chiếu chứng từ nguồn.
     const [voucher] = await CashFlowVoucher.create([{ _id: voucherId, voucherCode: `CHI-NCC-${voucherId}`, flowType: 'CASH_OUT', category: 'SUPPLIER_INSTALLMENT', amount: req.body.amount, paymentMethod: req.body.paymentMethod, contractId: contract._id, supplierId: contract.supplierId, createdByAccountantId: req.user._id, voucherDate: new Date(), note }], { session });
     await SystemLog.create([{ actorId: req.user._id, actorRole: 'OWNER', majorFeature: 'Financial Intelligence', subFeature: 'Accounts Payable', action: 'PAY_SUPPLIER_DEBT', targetCollection: 'supplier_contracts', targetId: contract._id, beforeSnapshot: { totalPaidAmount: before }, afterSnapshot: { totalPaidAmount: contract.totalPaidAmount, voucherId, note } }], { session });
     return voucher;
@@ -48,6 +57,7 @@ router.post('/payments', asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data });
 }));
 // Phản hồi 3/6: Phân công người mua và người nhận; chỉ nhận nhân viên hoạt động và phát hiện thay đổi đồng thời.
+/** Cập nhật người mua và người nhận của kế hoạch còn hiệu lực. Chấp nhận bản ghi cũ chưa có phiên bản khi yêu cầu dùng phiên bản 0. */
 router.patch('/inbound/:id/assignment', asyncHandler(async (req, res) => {
   objectId(req.params.id); objectId(req.body.buyerId); objectId(req.body.receiverId); numberField(req.body.revision, 'Phiên bản', 0, 1e9, true);
   const ids = [...new Set([req.body.buyerId, req.body.receiverId])];

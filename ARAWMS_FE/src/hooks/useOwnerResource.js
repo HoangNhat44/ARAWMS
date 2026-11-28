@@ -1,10 +1,15 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-06 đến UC-20 - Tải dữ liệu, hủy yêu cầu cũ và ngăn hiển thị kết quả lỗi thời.
+ * Tải dữ liệu trang Owner và hủy yêu cầu cũ khi tài nguyên hoặc bộ lọc thay đổi.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { ownerService } from '../services/ownerService';
+/**
+ * Tải dữ liệu qua ownerService, cung cấp dữ liệu, trạng thái tải, thông báo lỗi và hàm làm mới cho component.
+ * @param {string} resource Tên tài nguyên hoặc đường dẫn con của API Owner.
+ * @param {object} [params] Bộ lọc dùng làm query string.
+ */
 export function useOwnerResource(resource, params = {}) {
   const [data, setData] = useState(null); const [loading, setLoading] = useState(true);
   const [error, setError] = useState(''); const [revision, setRevision] = useState(0);
