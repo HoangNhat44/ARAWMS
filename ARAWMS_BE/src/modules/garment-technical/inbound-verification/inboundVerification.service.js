@@ -119,6 +119,8 @@ export const listInboundPlans = async (query = {}, user) => {
 
   if (query.status && query.status !== 'ALL') {
     dbFilter.status = query.status;
+  } else {
+    dbFilter.status = { $nin: ['RESOLVED_SUPERSEDED', 'CANCELLED'] };
   }
 
   if (query.supplierId) {

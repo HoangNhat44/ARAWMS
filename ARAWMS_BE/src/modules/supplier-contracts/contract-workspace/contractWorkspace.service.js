@@ -1284,6 +1284,13 @@ export const updateContractStatus = async (contractId, payload, currentUserId) =
 
   const prevStatus = contract.status;
   const nextStatus = payload.status;
+
+  if (['TERMINATED', 'SUPERSEDED', 'EXPIRED', 'CANCELLED'].includes(prevStatus)) {
+    const err = new Error(`Không thể thay đổi trạng thái của hợp đồng đã kết thúc (${prevStatus}).`);
+    err.statusCode = 409;
+    throw err;
+  }
+
   contract.status = nextStatus;
 
   if (payload.signedContractDocumentUrl !== undefined) {

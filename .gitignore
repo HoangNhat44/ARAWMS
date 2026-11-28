@@ -25,6 +25,7 @@ dist-ssr
 
 # Documentation and support files (not part of source code)
 /*.md
+!/README.md
 /docs/
 /image/
 /.migration-backups/
@@ -43,5 +44,10 @@ dist-ssr
 # Design files (HTML prototypes and mockups in ARAWMS_FE root)
 /ARAWMS_FE/*.html
 
-# Tài liệu kiểm toán database và bản sao lưu dữ liệu (chỉ giữ ở máy)
-/ARAWMS_DOCS/db-audit/
+# Tài liệu và học liệu cá nhân (chỉ giữ ở máy local, không commit lên git)
+/ARAWMS_DOCS/
+
+# Tài liệu test cá nhân (chỉ giữ ở máy, không thuộc mã nguồn chung)
+/ARAWMS_BE/gear_test/
+/ARAWMS_BE/tests/
+/ARAWMS_BE/jest.finishedGoodsInbound.config.cjs

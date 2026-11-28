@@ -15,6 +15,7 @@ import FinishedGoodsTicket from '../../../models/FinishedGoodsTicket.model.js';
 import InventoryTransaction from '../../../models/InventoryTransaction.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import { requestError } from '../shared/warehouseHttp.js';
+import { assertWarehouseUnlockedForStocktake } from '../../../common/services/stocktakeLockGuard.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 const LISTED_STATUSES = ['DEFECT_PENDING', 'DEFECTIVE'];
@@ -76,6 +77,7 @@ export const takeOutDefectUnits = async ({ barcodes, reason }, user) => {
   try {
     let result;
     await session.withTransaction(async () => {
+      await assertWarehouseUnlockedForStocktake('FINISHED_GOODS', 'xuất hàng lỗi', session);
       const units = await ProductUnit.find({ barcode: { $in: barcodes } }).session(session);
       const byBarcode = new Map(units.map((unit) => [unit.barcode, unit]));
       const unknown = barcodes.filter((barcode) => !byBarcode.has(barcode));

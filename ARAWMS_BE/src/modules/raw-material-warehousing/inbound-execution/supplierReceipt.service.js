@@ -14,6 +14,7 @@ import MaterialStockLot from '../../../models/MaterialStockLot.model.js';
 import MaterialTicket from '../../../models/MaterialTicket.model.js';
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import Supplier from '../../../models/Supplier.model.js';
+import { findFrozenStocktake } from '../../../common/services/stocktakeLockGuard.js';
 import SystemLog from '../../../models/SystemLog.model.js';
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import { ReceiptError, getReceiptOptions } from './inboundExecution.service.js';
@@ -598,6 +599,13 @@ export async function confirmSupplierReceipt(receiptId, input, user) {
       }
       fail(editable.includes(receipt.status), 'Phiếu không thể xác nhận', 'RECEIPT_LOCKED', 409);
       fail(Number(input.expectedVersion) === receipt.receiptVersion, 'Phiếu đã thay đổi; hãy tải lại', 'VERSION_CONFLICT', 409);
+      const activeStocktake = await findFrozenStocktake('RAW_MATERIAL', session);
+      fail(
+        !activeStocktake,
+        `Kho nguyên phụ liệu đang khóa kiểm kê (${activeStocktake?.sessionCode || ''}); tạm dừng xác nhận nhập kho.`,
+        'STOCKTAKE_LOCKED',
+        409,
+      );
       if (receipt.inboundRequestId) {
         const request = await validateInboundRequestReceipt(receipt.inboundRequestId,
           receipt.receiptLines, session, receipt.inboundRequestVersion);
