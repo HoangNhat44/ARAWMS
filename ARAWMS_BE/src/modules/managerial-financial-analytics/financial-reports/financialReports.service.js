@@ -1,7 +1,16 @@
 /*
- * Người thực hiện: Nguyễn Ngọc Huy-HE171157
- * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-13, UC-14, UC-17; GBR-11/12/14/17 - Báo cáo doanh thu, giá vốn, dòng tiền.
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 30-10-2026 | UC-13,14,17; [BR: GBR-14/15/16/17/20]
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & CÔNG THỨC - BE: BÁO CÁO TÀI CHÍNH OWNER (financialReports.service.js)]
+ * ====================================================================================================================================
+ * | STT | Chỉ số tài chính             | Nguồn DB (Collection.field)              | Công thức & Quy tắc BR                                            |
+ * |-----|------------------------------|------------------------------------------|-------------------------------------------------------------------|
+ * | 1   | revenue (Doanh thu bán hàng) | sales_orders (packedAt trong kỳ)         | Σ (financialSummary.itemsSubtotal - financialSummary.discount)    |
+ * | 2   | cogs (Giá vốn hàng bán)      | sales_orders.items[].unitCogsSnapshot    | [BR: GBR-20] Σ (orderedQty * unitCogsSnapshot) chốt theo lô FIFO  |
+ * | 3   | returnedRevenue (Hàng trả)   | return_requests (APPROVED / COMPLETED)   | [BR: GBR-14/15] Σ financialAccounting.returnedMerchandiseValue    |
+ * | 4   | returnedCogs (Hoàn giá vốn)  | return_requests.warehouseInspection.items| [BR: GBR-16/20] Chỉ cộng dòng RESTOCK_SALEABLE × unitCogsSnapshot |
+ * | 5   | Lợi nhuận & Dòng tiền        | financialReports.validation.js + vouchers| summarizeFinance(): netRevenue, grossProfit, netProfit, cashFlow  |
+ * ====================================================================================================================================
  */
 import SalesOrder from '../../../models/SalesOrder.model.js';
 import ReturnRequest from '../../../models/ReturnRequest.model.js';
@@ -10,7 +19,7 @@ import { dashboardRange } from '../executive-dashboard/executiveDashboard.valida
 import { summarizeFinance } from './financialReports.validation.js';
 import { pagination } from '../../../common/utils/ownerValidation.js';
 const active = { isDeleted: { $ne: true } };
-// GBR-13/17: Chỉ giảm giá vốn phần hàng trả được nhập lại bán; lấy đúng giá vốn của dòng đơn gốc.
+// [BR: GBR-16]/[BR: GBR-20]: Chỉ giảm giá vốn phần hàng trả được nhập lại bán (RESTOCK_SALEABLE); lấy đúng giá vốn FIFO của dòng đơn gốc.
 const returnedCogsExpression = {
   $sum: {
     $map: {
@@ -31,7 +40,7 @@ const returnedCogsExpression = {
 export const financialReport = async (query) => {
   // UC-13/14/17: Kiểm tra khoảng ngày trước khi đọc dữ liệu tài chính.
   const range = dashboardRange(query); const period = { $gte: range.start, $lt: range.end };
-  // GBR-17: Ghi nhận đơn khi đã đóng gói (packedAt), dùng snapshot giá vốn từng dòng.
+  // [BR: GBR-20]: Ghi nhận đơn khi đã đóng gói (packedAt), dùng snapshot giá vốn FIFO từng dòng.
   // Không dùng ngày tạo đơn, đơn hủy hoặc giá vốn SKU hiện tại để tính lợi nhuận.
   const saleMatch = { ...active, 'warehouseFulfillment.packedAt': period,
     status: { $in: ['PACKED', 'HANDED_OVER_CARRIER', 'CARRIER_PICKED_UP', 'DELIVERED', 'RETURN_REQUESTED', 'RETURNED', 'RETURN_COMPLETED'] } };
@@ -40,7 +49,7 @@ export const financialReport = async (query) => {
     SalesOrder.aggregate([{ $match: saleMatch }, { $group: { _id: null, count: { $sum: 1 },
       revenue: { $sum: { $subtract: [{ $ifNull: ['$financialSummary.itemsSubtotal', 0] }, { $ifNull: ['$financialSummary.discountAmount', 0] }] } },
       cogs: { $sum: { $sum: { $map: { input: '$items', as: 'item', in: { $multiply: ['$$item.orderedQty', '$$item.unitCogsSnapshot'] } } } } } } }]),
-    // GBR-11/12: Chỉ tính giảm trừ sau khi Accountant đã duyệt quyết toán hàng trả.
+    // [BR: GBR-14]/[BR: GBR-15]: Chỉ tính giảm trừ sau khi Accountant đã duyệt quyết toán hàng trả.
     ReturnRequest.aggregate([{ $match: { ...active, status: { $in: ['ACCOUNTANT_APPROVED', 'COMPLETED'] }, 'financialAccounting.approvedAt': period } },
       { $lookup: { from: 'sales_orders', localField: 'originalOrderId', foreignField: '_id', as: 'original' } },
       { $unwind: { path: '$original', preserveNullAndEmptyArrays: true } },
@@ -61,11 +70,11 @@ export const financialReport = async (query) => {
       cogs: { $sum: { $sum: { $map: { input: '$items', as: 'item', in: { $multiply: ['$$item.orderedQty', '$$item.unitCogsSnapshot'] } } } } }, orders: { $sum: 1 } } }, { $sort: { _id: 1 } }]),
     // UC-17: Tách thu/chi theo hạng mục để Owner đối chiếu nguồn tiền.
     CashFlowVoucher.aggregate([{ $match: { ...active, voucherDate: period } }, { $group: { _id: { category: '$category', flowType: '$flowType' }, amount: { $sum: '$amount' }, count: { $sum: 1 } } }, { $sort: { '_id.category': 1 } }]),
-    // GBR-17: Đếm đơn thiếu giá vốn đã chốt để FE cảnh báo số lợi nhuận chưa đầy đủ.
+    // [BR: GBR-20]: Đếm đơn thiếu giá vốn đã chốt để FE cảnh báo số lợi nhuận chưa đầy đủ.
     SalesOrder.countDocuments({ ...saleMatch, items: { $elemMatch: { unitCogsSnapshot: { $exists: false } } } }),
   ]);
   const s = sales[0] || {}; const r = returns[0] || {}; const c = cash[0] || {};
-  // GBR-11/12: Giá trị trả lấy từ quyết toán đã duyệt; không tính lại 10% trên dữ liệu lịch sử.
+  // [BR: GBR-14]/[BR: GBR-15]: Giá trị trả lấy từ quyết toán đã duyệt; không tính lại 10% trên dữ liệu lịch sử.
   const totals = summarizeFinance({ revenue: s.revenue, cogs: s.cogs, returnedRevenue: r.revenue, returnedCogs: r.cogs, ...c });
   delete totals._id;
   return { period: { from: range.from, to: range.to }, generatedAt: new Date(), totals, orders: s.count || 0, approvedReturns: r.count || 0,
@@ -74,7 +83,7 @@ export const financialReport = async (query) => {
     dataQuality: { ordersMissingCogsSnapshot: missingSnapshots },
     basis: 'Doanh thu hàng hóa và giá vốn chốt lúc đóng gói; giảm trừ hàng trả theo ngày duyệt; phiếu thu chi theo ngày chứng từ. Chưa gồm thuế và khoản chi phí ngoài sổ hiện có.' };
 };
-// UC-17, GBR-14: Trả từng phiếu và ID chứng từ nguồn để đối chiếu số tổng hợp.
+// UC-17, [BR: GBR-17]: Trả từng phiếu thu/chi kèm ID chứng từ nguồn bắt buộc để đối chiếu số tổng hợp.
 export const listCashVouchers = async (query) => {
   const { page, limit, ...dates } = query;
   const range = dashboardRange(dates);

@@ -1,7 +1,17 @@
 /*
- * Người thực hiện: Nguyễn Ngọc Huy-HE171157
- * Ngày thực hiện: 30-10-2026
- * Chức năng: OWNER-EXT-06; GBR-18/19 - Owner xem và duyệt chênh lệch kiểm kê lớn.
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 30-10-2026 | OWNER-EXT-06; [BR: GBR-21]/[BR: GBR-22]/[BR: GBR-27]
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU, BỘ LỌC & TRẠNG THÁI - KIỂM KÊ & DUYỆT CHÊNH LỆCH KHO (OWNER)]
+ * ====================================================================================================================================
+ * | STT | Mục trên UI (Bộ lọc / Status / KPI) | Hàm FE & Trường hiển thị                       | API, Hàm BE & Nguồn DB (Collection.field)                          | Nghiệp vụ / Công thức / Điều kiện                 |
+ * |-----|-------------------------------------|------------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | Bộ lọc Mã phiên / Loại kho / Status | query.{search,warehouseType,status,page}       | GET /api/owner/stock-adjustments -> stockAdjustment.service.js     | Lọc stocktake_sessions theo mã, kho NL/TP, status |
+ * | 2   | Status: FROZEN_COUNTING             | Status(row.status) = 'Đang kiểm đếm'           | stocktake_sessions.status                                          | [BR: GBR-27] Khóa xuất/nhập kho, chưa thể duyệt   |
+ * | 3   | Status: VARIANCE_REVIEW             | Status(row.status) = 'Chờ duyệt'               | stocktake_sessions.status                                          | [BR: GBR-22] Chờ Owner duyệt khi lệch lớn/tồn lâu |
+ * | 4   | Status: APPROVED_PENDING_ADJUSTMENT | Status(row.status) = 'Đã duyệt, chờ điều chỉnh'| ownerService.approveStocktake() -> stocktake_sessions              | Owner đã duyệt; chờ Manager chạy phiếu điều chỉnh |
+ * | 5   | Status: APPROVED_COMPLETED          | Status(row.status) = 'Đã hoàn tất'             | stocktake_sessions.status                                          | [BR: GBR-21] Chỉ đóng khi xử lý xong mọi chênh    |
+ * | 6   | KPI: Tổng chênh lệch & Giá trị lệch | summary.{absoluteQuantity, absoluteValue}      | stockAdjustment.validation.js:varianceSummary (stocktake_records)  | var=actual-snapshot; Σ|var| & Σ(|var|*unitCost)   |
+ * ====================================================================================================================================
  */
 import { WmsField, WmsInput, WmsSelect, WmsButton, WmsTextArea, WmsLinkButton } from '../../components/ui/WmsControls';
 import { useState } from 'react';
@@ -27,13 +37,13 @@ function ApprovalForm({ data, setBusy, onDone }) {
   const [confirming, setConfirming] = useState(false);
   const [reason, setReason] = useState(''); const [plan, setPlan] = useState(data.stocktake.approvalInfo?.agingStockActionPlan || '');
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const { stocktake, records, summary } = data;
-  // GBR-19: Phiên có hàng tồn lâu cũng cần Owner, dù chênh lệch số lượng/giá trị còn nhỏ.
+  // [BR: GBR-22]: Phiên có hàng tồn lâu cũng cần Owner phê duyệt, dù chênh lệch số lượng/giá trị còn nhỏ.
   const ownerRequired = summary.requiresOwner || stocktake.approvalInfo?.approvalLevelRequired === 'MAJOR_OWNER';
-  // GBR-18: Giá trị thực đếm mặc định bằng 0 chưa chứng minh dòng đã được kiểm đếm.
+  // [BR: GBR-21]: Giá trị thực đếm mặc định bằng 0 chưa chứng minh dòng đã được kiểm đếm.
   const counted = records.length > 0 && records.every((row) => row.scannedAt);
   const submit = async (event) => {
     event.preventDefault(); setError('');
-    // GBR-19: Có hàng tồn lâu thì phải nhập rõ kế hoạch Owner đã xem, không chỉ bấm duyệt trống.
+    // [BR: GBR-22]: Có hàng tồn lâu thì phải nhập rõ kế hoạch Owner đã xem, không chỉ bấm duyệt trống.
     if (reason.trim().length < 10 || reason.length > 2000 || (summary.hasAging && plan.trim().length < 10) || plan.length > 2000) { setError('Lý do cần 10–2000 ký tự; kế hoạch tồn lâu cần ít nhất 10 ký tự khi bắt buộc.'); return; }
     setConfirming(true);
   };

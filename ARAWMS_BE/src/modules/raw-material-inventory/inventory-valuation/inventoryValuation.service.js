@@ -1,7 +1,15 @@
 /*
- * Người thực hiện: Nguyễn Ngọc Huy-HE171157
- * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-15, UC-16 - Định giá tồn hiện tại theo số lượng và giá được ghi nhận trong source hiện hành.
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 30-10-2026 | UC-15, UC-16; [BR: GBR-16]
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & CÔNG THỨC - BE: ĐỊNH GIÁ TÀI SẢN KHO (inventoryValuation.service.js)]
+ * ====================================================================================================================================
+ * | STT | Trường trả về                | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Công thức & Quy tắc BR                            |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | availableQty                 | Cột Tồn khả dụng                         | raw_materials / skus.{onHandQty, reservedQty}     | onHandQty - reservedQty                           |
+ * | 2   | onHandValue                  | KPI Nguyên vật liệu / Thành phẩm bán được| raw_materials.unitCost / skus.unitCogs            | onHandQty * unitCost (hoặc unitCogs)              |
+ * | 3   | quarantineValue              | KPI Hàng cách ly (Lỗi)                   | product_units(DEFECT_QUARANTINE) × skus.unitCogs  | [BR: GBR-16] Tách riêng hàng lỗi khỏi tồn bán được|
+ * | 4   | totalValue                   | KPI Tổng tài sản & Cột Giá trị từng dòng | Tổng hợp toàn kho / từng dòng đang lọc            | (onHandQty + defectQty) * cost = onHand+quarantine|
+ * ====================================================================================================================================
  */
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import Sku from '../../../models/Sku.model.js';
@@ -19,7 +27,7 @@ export const valuationReport = async (query) => {
   const [items, totals, total] = await Promise.all([
     // Bảng chỉ lấy một trang, nhưng số tổng bên dưới được tính trên toàn bộ kết quả lọc.
     Model.find(filter).sort({ _id: 1 }).skip((page - 1) * limit).limit(limit),
-    // GBR-13: Định giá tồn chính và hàng cách ly riêng; không trộn số lượng khác đơn vị.
+    // [BR: GBR-16]: Định giá tồn chính bán được và hàng lỗi cách ly riêng; không trộn số lượng khác đơn vị.
     Model.aggregate([{ $match: filter }, ...(type === 'skus' ? withDefectQty() : []), { $group: { _id: null, onHandValue: { $sum: { $multiply: ['$onHandQty', type === 'materials' ? '$unitCost' : '$unitCogs'] } },
       quarantineValue: type === 'materials' ? { $sum: 0 } : { $sum: { $multiply: ['$defectQty', '$unitCogs'] } } } }]), Model.countDocuments(filter),
   ]);

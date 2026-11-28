@@ -162,6 +162,19 @@ function reasonFor(requests) {
   return known?.reasonCode || 'UNKNOWN';
 }
 
+/**
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & CÔNG THỨC - BE: HOẠT ĐỘNG KINH DOANH / BOM / ĐỔI TRẢ (summarizeActivity)]
+ * ====================================================================================================================================
+ * | STT | Trường trả về                | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Công thức & Điều kiện                             |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | shipped & newCustomers       | BusinessActivity.jsx (Giao hàng & KH mới)| sales_orders (handedOverAt), firstPurchases()     | Đơn bàn giao GHN; KH mới = đơn hợp lệ đầu tiên    |
+ * | 2   | turnbackRate                 | ReturnTrendChart (% đơn quay đầu)        | sales_orders (shippingReturn.turnedBack)          | (turnedBack / shipped) * 100                      |
+ * | 3   | bom.{count, rate, amount}    | BomOrderAnalytics (Đơn bom hàng)         | sales_orders + return_requests (REFUSED/INVALID)  | rate=(bom.count/shipped)*100 (ngưỡng 10%)         |
+ * | 4   | returns.{count,rate,amount}  | CustomerReturnAnalytics (Đổi / Trả RMA)  | return_requests (status !== 'REJECTED')           | count=exchange+refund; rate=(count/shipped)*100   |
+ * | 5   | orderStatuses[] (15 status)  | OrderStatusPipeline (4 khâu trạng thái)  | sales_orders (theo createdAt trong kỳ)            | Đếm số đơn & tổng totalAmount theo 15 ORDER_STATUS|
+ * ====================================================================================================================================
+ */
 export function summarizeActivity(shipped, newCustomers, requestsByOrder, range, asOf) {
   const rows = channels.map(channel => {
     const orders = shipped.filter(order => salesChannelOf(order) === channel);
@@ -375,8 +388,18 @@ export function summarizeActivity(shipped, newCustomers, requestsByOrder, range,
   };
 }
 
-// Dùng dấu nhận từ vận chuyển và hồ sơ kiểm hàng. Chỉ đánh dấu đã nhập khi
-// phiếu kho liên kết đã hoàn tất, độc lập với trạng thái của đơn bán hàng.
+/**
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU 4 TRẠNG THÁI XỬ LÝ HÀNG HOÀN & SLA QUÁ HẠN - BE: returnWorklist]
+ * ====================================================================================================================================
+ * | STT | Trạng thái (step)            | Nhãn trên FE (BusinessActivity.jsx)      | Nguồn DB (Collection.field)                       | Điều kiện & Hạn SLA (returnPolicy: 24h / 24h)     |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | WAIT_INSPECTION              | Chờ kiểm hàng                            | sales_orders (hàng đã về) chưa có return_inspect  | Hạn = receivedAt + 24h; overdue nếu asOf>deadline |
+ * | 2   | WAIT_RESTOCK                 | Chờ nhập lại kho                         | return_inspections (đạt) + ticket chưa COMPLETED  | Hạn = inspectedAt + 24h; [BR: GBR-26]             |
+ * | 3   | FAILED_INSPECTION            | Hàng kiểm không đạt                      | return_inspections.inspectionResult === 'FAILED'  | Cách ly hàng lỗi theo [BR: GBR-16]                |
+ * | 4   | RESTOCKED                    | Đã nhập lại kho                          | finished_goods_tickets.status === 'COMPLETED'     | Hoàn tất nhập lại tồn khả dụng                    |
+ * ====================================================================================================================================
+ */
 export function returnWorklist(orders, inspections, tickets, range, asOf, includeBacklog = false) {
   const inspectionsByOrder = groupBy(inspections, 'orderId');
   const ticketsById = new Map(tickets.map(ticket => [String(ticket._id), ticket]));

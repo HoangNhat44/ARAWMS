@@ -87,8 +87,17 @@ export function QuarterlyRevenue({ year, compareYear, salesChannel, paymentStatu
   </section>;
 }
 
-// Thanh ngang 100% dùng để so cơ cấu nguồn bán. Mỗi hàng tự chia theo
-// tổng giá trị đơn của kỳ đó; giữ bảng số liệu cho kỳ có tổng bằng 0.
+/**
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & CÔNG THỨC - XU HƯỚNG & TỶ TRỌNG NGUỒN BÁN (AnnualAnalytics / ChannelMixComparison)]
+ * ====================================================================================================================================
+ * | STT | Mục trên UI (Biểu đồ / Bộ lọc)      | Hàm FE & Trường hiển thị                 | API, Hàm BE & Nguồn DB (Collection.field)                          | Nghiệp vụ / Công thức / Điều kiện                 |
+ * |-----|-------------------------------------|------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | Xu hướng trong kỳ (Ngày/Tháng)      | AnnualAnalytics: metric, kind -> rows[]  | GET /api/owner/operations-report/trend (sales_orders)              | <31 ngày chia theo ngày, >=31 ngày chia theo tháng|
+ * | 2   | So sánh 2 năm theo Tháng / Quý      | QuarterlyRevenue: grouping, kind         | GET /api/owner/operations-report/annual (sales_orders)             | So sánh orderValue năm hiện tại vs compareYear    |
+ * | 3   | Tỷ trọng giá trị đơn theo nguồn bán | ChannelMixComparison: share(sales, value)| data.{sales, previous} <- operationsReport.service.js:salesSummary | (channel.orderValue / sales.orderValue) * 100     |
+ * ====================================================================================================================================
+ */
 export function ChannelMixComparison({ data, dates, labels }) {
   const periods = [
     { label: dateRange(dates.from, dates.to), sales: data.sales },

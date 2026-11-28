@@ -5,6 +5,21 @@ import { WmsField, WmsSelect } from '../../components/ui/WmsControls';
 import { ResourceState, Table, money, quantity } from './OwnerUI';
 import { Columns } from './OwnerCharts';
 const metricLabels = { quantity: 'Số lượng bán (cái)', grossAmount: 'Tiền hàng trước giảm giá / hoàn', orders: 'Số đơn có mặt hàng' };
+/**
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU, BỘ LỌC & HÀM XỬ LÝ - TOP SẢN PHẨM BÁN CHẠY (OWNER)]
+ * ====================================================================================================================================
+ * | STT | Mục trên UI (Bộ lọc / Cột / Biểu đồ)      | Hàm FE & Trường hiển thị                      | API, Hàm BE & Nguồn DB (Collection.field)                                | Nghiệp vụ / Công thức / Điều kiện                 |
+ * |-----|-------------------------------------------|-----------------------------------------------|--------------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | Bộ lọc Kỳ / Nguồn bán / Thanh toán (props)| BestSellers({from,to,salesChannel,payment...})| GET /api/owner/operations-report/best-sellers -> bestSellerRows()        | Lọc đơn sales_orders.packedAt trong kỳ            |
+ * | 2   | Bộ lọc Xem theo (Sản phẩm / SKU)          | state group ('products' | 'skus') -> all      | resource.data.{products, skus} (join products & skus)                    | Gộp theo productId hoặc tách riêng từng skuId     |
+ * | 3   | Bộ lọc Xếp hạng theo & Danh sách          | state metric, show -> sorted, tableRows       | Sắp xếp & lọc client trên resource.data[group]                           | sold: quantity > 0; all: gồm cả hàng chưa bán     |
+ * | 4   | Bộ lọc So sánh tối đa 5 mặt hàng          | state selection -> selected, chartRows        | Lọc theo r.id từ all = resource.data[group]                              | Để trống => tự lấy Top 10 bán chạy (quantity > 0) |
+ * | 5   | Cột Số lượng bán (cái)                    | row.quantity (format: quantity())             | bestSellers.service.js:bestSellerRows() <- sales_orders.items.orderedQty | Σ line.orderedQty (loại đơn status='CANCELLED')   |
+ * | 6   | Cột Số đơn có mặt hàng                    | row.orders (format: quantity())               | bestSellers.service.js:bestSellerRows() <- sales_orders._id              | Đếm số order._id duy nhất có chứa mặt hàng        |
+ * | 7   | Cột Tiền hàng trước giảm giá / hoàn       | row.grossAmount (format: money())             | bestSellers.service.js:bestSellerRows() <- orderedQty * unitSalePrice    | Σ (line.orderedQty * line.unitSalePrice)          |
+ * ====================================================================================================================================
+ */
 export default function BestSellers({ from, to, salesChannel, paymentStatus }) {
   const resource = useOwnerResource('operations-report/best-sellers', { from, to, salesChannel, paymentStatus });
   const [group, setGroup] = useState('products'); const [metric, setMetric] = useState('quantity'); const [show, setShow] = useState('sold');

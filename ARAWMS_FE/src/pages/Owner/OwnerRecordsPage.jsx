@@ -1,8 +1,16 @@
 // Nguyễn Ngọc Huy-HE171157, 2-11-2026: Phản hồi 8 - Thống nhất nhãn hiển thị bằng tiếng Việt phổ thông.
 /*
- * Người thực hiện: Nguyễn Ngọc Huy-HE171157
- * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-18/19/20 - Xem báo cáo quản lý kho, sản xuất theo BOM và mẫu sản phẩm mới.
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 30-10-2026 | UC-18/19/20
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC DỮ LIỆU, BỘ LỌC & TRẠNG THÁI - BÁO CÁO KHO / SẢN XUẤT BOM / MẪU MỚI (OWNER)]
+ * ====================================================================================================================================
+ * | STT | Chế độ / Mục trên UI                | Hàm FE & Trường hiển thị                     | API, Hàm BE & Nguồn DB (Collection.field)                          | Nghiệp vụ / Công thức / Điều kiện                 |
+ * |-----|-------------------------------------|----------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | Bộ lọc Tìm mã/tên & Trạng thái      | OwnerRecordsPage: query.{search,status,page} | useOwnerResource(recordConfig[mode].resource, query)               | Trạng thái lấy từ recordConfig[mode].statuses     |
+ * | 2   | Mode 'reports' (Báo cáo quản lý kho)| ManagerDetail -> ownerService.reviewReport() | GET /api/owner/manager-reports -> warehouse_manager_reports        | Status: SUBMITTED (chờ xem) -> REVIEWED (đã xem)  |
+ * | 3   | Mode 'production' (Sản xuất BOM)    | row.{plannedQty,completedQty,completionPct}  | GET /api/owner/production-reports -> production_orders + boms      | Định mức KH = qtyPerUnit * planned * (1+wastage)  |
+ * | 4   | Mode 'samples' (Mẫu sản phẩm mới)   | SampleDetail: estimatedCost, proposedPrice   | GET /api/owner/product-samples -> product_samples                  | Status: IN_DEV -> SAMPLE_READY -> APPROVED/REJECT |
+ * ====================================================================================================================================
  */
 import { WmsField, WmsInput, WmsSelect, WmsButton, WmsTextArea, WmsLinkButton } from '../../components/ui/WmsControls';
 import { useState } from 'react';
@@ -52,7 +60,7 @@ function ManagerDetail({ data, setBusy, onDone }) {
       : <><p>Kỳ báo cáo: {datetime(data.periodStart)} – {datetime(data.periodEnd)}</p><p>{data.summary}</p><pre className="owner-json">{typeof data.content === 'string' ? data.content : JSON.stringify(data.content ?? {}, null, 2)}</pre></>}
     {data.fileUrl && <a href={data.fileUrl} target="_blank" rel="noopener noreferrer">Mở tệp đính kèm</a>}
     {data.status === 'SUBMITTED' ? <form className="owner-form" onSubmit={review}><Notice error={error} /><WmsField>Ghi chú khi xem<WmsTextArea maxLength={2000} value={comment} disabled={saving} onChange={(e) => setComment(e.target.value)} /></WmsField><WmsButton className="btn-ara-primary" disabled={saving}>{saving ? 'Đang lưu…' : 'Xác nhận đã xem báo cáo'}</WmsButton></form>
-      : <p>Đã xem bởi {data.reviewedBy?.fullName || 'Chủ cửa hàng'} · {datetime(data.reviewedAt)}<br />{data.ownerComment}</p>}</div>;
+      : <p style={{ overflowWrap: 'anywhere', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>Đã xem bởi {data.reviewedBy?.fullName || 'Chủ cửa hàng'} · {datetime(data.reviewedAt)}<br />{data.ownerComment}</p>}</div>;
 }
 // UC-19: Đối chiếu tiến độ, phiên bản BOM và tiêu hao; thiếu dữ liệu được báo rõ trên từng phần.
 function ProductionDetail({ data }) {

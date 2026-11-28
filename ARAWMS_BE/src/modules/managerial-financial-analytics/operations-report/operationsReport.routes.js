@@ -31,7 +31,7 @@ router.get('/best-sellers', asyncHandler(async (req, res) => res.json({ success:
 router.get('/trend', asyncHandler(async (req, res) => res.json({ success: true, data: await trendReport(req.query) })));
 router.get('/annual', asyncHandler(async (req, res) => res.json({ success: true, data: await annualReport(req.query) })));
 router.get('/', asyncHandler(async (req, res) => res.json({ success: true, data: await operationsReport(req.query) })));
-// Phản hồi 3/8; GBR-14: Phiếu trả nợ có hợp đồng gốc, số tiền không vượt dư nợ; cập nhật cùng một giao dịch.
+// Phản hồi 3/8; [BR: GBR-17]: Phiếu chi trả nợ bắt buộc có hợp đồng gốc (`contractId`), số tiền không vượt dư nợ; cập nhật cùng một giao dịch.
 router.post('/payments', asyncHandler(async (req, res) => {
   objectId(req.body.contractId); numberField(req.body.amount, 'Số tiền', 1, 1e12); const note = textField(req.body.note, 'Nội dung thanh toán', 500, 5);
   if (!['CASH', 'BANK_TRANSFER'].includes(req.body.paymentMethod)) throw httpError(400, 'Chọn tiền mặt hoặc chuyển khoản.');

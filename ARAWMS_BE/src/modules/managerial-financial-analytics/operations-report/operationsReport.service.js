@@ -1,6 +1,6 @@
 /* Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 2-11-2026
  * UC-12/13/19 và phản hồi 1–7: Báo cáo nhập hàng, doanh thu theo kỳ, nhu cầu nguyên liệu.
- * GBR-01/13: Chỉ đọc dữ liệu chưa xóa; hàng cách ly tách khỏi tồn dùng được. Không tính giá vốn/lợi nhuận.
+ * [BR: GBR-01]/[BR: GBR-16]: Chỉ đọc dữ liệu chưa xóa; hàng lỗi cách ly tách khỏi tồn dùng được. Không tính giá vốn/lợi nhuận.
  */
 import mongoose from 'mongoose';
 import { httpError } from '../../../common/utils/httpError.js';
@@ -61,7 +61,20 @@ export async function readSalesPeriod(range, scope) {
   ]);
   return { orders, returns };
 }
-// UC-13: Doanh thu ghi nhận khi đóng gói, trừ giá trị hàng trả được duyệt trong kỳ; thanh toán đếm theo trường riêng.
+/**
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & CÔNG THỨC - BE: TỔNG HỢP DOANH THU & KÊNH BÁN (salesSummary - UC-13)]
+ * ====================================================================================================================================
+ * | STT | Trường trả về                | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Công thức & Điều kiện                             |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | orderValue                   | KPI Tổng giá trị đơn hàng (Operations)   | sales_orders.financialSummary.totalOrderAmount    | Σ totalOrderAmount (loại status === 'CANCELLED')  |
+ * | 2   | grossRevenue & refunded      | Tách tiền hàng bán & tiền hàng trả       | sales_orders(packedAt) + return_requests(APPROVED)| gross=Σ(sub-disc); refunded=Σ returnedValue       |
+ * | 3   | revenue                      | KPI Tiền hàng sau giảm giá và trả hàng   | Tính từ grossRevenue và refunded                  | grossRevenue - refunded                           |
+ * | 4   | shipping                     | Cột Phí vận chuyển (SalesByChannel)      | sales_orders.financialSummary.shippingFee         | Σ shippingFee của đơn chưa hủy                    |
+ * | 5   | paid / unpaid / late         | KPI Đơn đã TT & Biểu đồ nguồn bán        | sales_orders (paymentStatusOf, expectedDeliveryAt)| Đếm theo TT thanh toán; late: delivered>expected  |
+ * | 6   | orderValueChange (%)         | KPI % Thay đổi so với kỳ đối chiếu       | percent(sales.orderValue, previous.orderValue)    | (current - prev) / |prev| * 100 (null nếu prev=0) |
+ * ====================================================================================================================================
+ */
 export function salesSummary(orders, returns) {
   const refundsByChannel = new Map();
   for (const request of returns) {

@@ -1,7 +1,15 @@
 /*
- * Người thực hiện: Nguyễn Ngọc Huy-HE171157
- * Ngày thực hiện: 30-10-2026
- * Chức năng: OWNER-EXT-06; GBR-18/19 - Đọc báo cáo và phê duyệt chênh lệch kiểm kê lớn.
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 30-10-2026 | OWNER-EXT-06; [BR: GBR-21]/[BR: GBR-22]
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & CÔNG THỨC - BE: PHÊ DUYỆT KIỂM KÊ OWNER (stockAdjustment.service.js)]
+ * ====================================================================================================================================
+ * | STT | Trường trả về / Bộ lọc       | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Nghiệp vụ / Công thức / BR                        |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | items[] (phiên kiểm kê)      | Bảng StockAdjustmentPage.jsx             | stocktake_sessions (lọc sessionCode, kho, status) | Trạng thái: FROZEN/VARIANCE_REVIEW/APPROVED_*     |
+ * | 2   | varianceQty (từng dòng)      | Cột Chênh lệch (StocktakeDetail)         | stocktake_records.{actualScannedQty,snapshotQty}  | actualScannedQty - systemSnapshotQty              |
+ * | 3   | summary.absoluteQuantity/Val | 2 thẻ KPI tổng chênh lệch tuyệt đối      | stockAdjustment.validation.js:varianceSummary     | [BR: GBR-22] Σ|varianceQty| & Σ(|var|*unitCost)   |
+ * | 4   | thresholds (ngưỡng nhỏ)      | Đối chiếu thẩm quyền duyệt               | system_settings.minorStocktakeVarianceLimitQty/Val| Vượt ngưỡng hoặc có tồn lâu -> Owner phải duyệt   |
+ * ====================================================================================================================================
  */
 import { createHash } from 'node:crypto';
 import StocktakeSession from '../../../models/StocktakeSession.model.js';
@@ -80,7 +88,7 @@ export const approveStocktake = async (req) => {
     // Chặn dữ liệu bất thường đã ghi điều chỉnh nhưng vẫn ở trạng thái chưa duyệt, cần đối soát trước.
     if (await InventoryTransaction.exists({ referenceId: stocktake._id, transactionType: 'STOCKTAKE_ADJUSTMENT', ...active }).session(session)) throw httpError(409, 'Phiên đã có bút toán điều chỉnh. Cần đối soát trước khi duyệt.');
     const before = { status: stocktake.status, approvalInfo: stocktake.approvalInfo };
-    // GBR-18: Duyệt không đồng nghĩa đã ghi sổ; chỉ Manager hoàn tất điều chỉnh mới được đóng phiên.
+    // [BR: GBR-21]: Duyệt không đồng nghĩa đã ghi sổ; chỉ khi Manager hoàn tất phiếu điều chỉnh mới được đóng phiên (Completed).
     stocktake.status = 'APPROVED_PENDING_ADJUSTMENT'; stocktake.approvalRevision = input.expectedVersion + 1;
     stocktake.approvalInfo = { approvalLevelRequired: 'MAJOR_OWNER', approvedByUserId: req.user._id, approvedAt: new Date(),
       adjustmentReason: input.adjustmentReason, agingStockActionPlan: input.agingStockActionPlan,

@@ -24,6 +24,16 @@ import { Skeleton, Tag, Empty, Button } from 'antd';
 import accountantProcurementApi from '../../services/accountantProcurementApi';
 import { Status, labels, money, quantity, datetime } from './OwnerUI';
 
+/**
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC DỮ LIỆU, BỘ LỌC & TRẠNG THÁI - SAI LỆCH KẾ HOẠCH NHẬP NGUYÊN LIỆU (OWNER)]
+ * ====================================================================================================================================
+ * | STT | Mục trên UI (Bộ lọc / Status / Bảng)   | Hàm FE & Trường hiển thị                         | API, Hàm BE & Nguồn DB (Collection.field)                          | Nghiệp vụ / Công thức / Điều kiện                 |
+ * |-----|----------------------------------------|--------------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | Danh sách kế hoạch phát sinh sai lệch  | fetchDeviations() -> plans[]                     | accountantProcurementApi.getInboundPlans() (material_inbound_plans)| Lọc DEVIATION_REPORTED / MISMATCHED / reported... |
+ * | 2   | Bộ lọc Tìm kiếm & Trạng thái xử lý     | searchTerm, statusFilter -> filteredPlans[]      | Lọc client trên plans[] (ALL/UNRESOLVED/RESOLVED_SUPERSEDED/TERM.) | Khớp planCode, contractCode, supplierName, summary|
+ * ====================================================================================================================================
+ */
 export default function OwnerPlanDeviationsPage() {
   const navigate = useNavigate();
   const [plans, setPlans] = useState([]);

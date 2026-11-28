@@ -5,7 +5,18 @@
  */
 import { read, period, num } from './operationsReport.service.js';
 import { salesReportScope } from './salesReportScope.js';
-// Quantity is taken from actual order lines, never from inventory balances or catalogue prices.
+/**
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & CÔNG THỨC - BE: TOP SẢN PHẨM BÁN CHẠY (bestSellerRows)]
+ * ====================================================================================================================================
+ * | STT | Trường trả về                | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Công thức & Điều kiện                             |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | products[] / skus[]          | BestSellers.jsx (Xem theo SP / SKU)      | sales_orders (packedAt, !=CANCELLED) + products/skus| Gộp theo productId hoặc tách theo skuId         |
+ * | 2   | quantity                     | Cột Số lượng bán (cái)                   | sales_orders.items[].orderedQty                   | Σ line.orderedQty (chưa trừ hàng hoàn)            |
+ * | 3   | grossAmount                  | Cột Tiền hàng trước giảm giá / hoàn      | sales_orders.items[].{orderedQty, unitSalePrice}  | Σ (orderedQty * unitSalePrice) (null nếu thiếu giá)|
+ * | 4   | orders                       | Cột Số đơn có mặt hàng                   | sales_orders._id (Set orderIds.size)              | Đếm số đơn hàng duy nhất có chứa mặt hàng         |
+ * ====================================================================================================================================
+ */
 export function bestSellerRows(orders, products, skus) {
   const bySku = new Map(skus.map(s => [String(s._id), s]));
   const byCode = new Map(skus.map(s => [s.skuCode, s]));

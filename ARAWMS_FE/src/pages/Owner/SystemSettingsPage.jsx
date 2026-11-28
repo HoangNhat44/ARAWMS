@@ -1,8 +1,17 @@
 
 /*
- * Người thực hiện: Nguyễn Ngọc Huy-HE171157
- * Ngày thực hiện: 30-10-2026
- * Chức năng: OWNER-EXT-02..05; GBR-05/06/11/12/19 - Giao diện cấu hình Owner.
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 30-10-2026 | OWNER-EXT-02..05; [BR: GBR-08/09/14/15/22]
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC THAM SỐ CẤU HÌNH & NGƯỠNG HỆ THỐNG (OWNER SYSTEM SETTINGS)]
+ * ====================================================================================================================================
+ * | STT | Mục trên UI (Tab / Tham số / Bảng)  | Hàm FE & Trường hiển thị                         | API, Hàm BE & Nguồn DB (Collection.field)                          | Nghiệp vụ / Quy tắc BR                            |
+ * |-----|-------------------------------------|--------------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | Tab Kết nối dịch vụ (GHN / Facebook)| SettingsForm(section='api') -> data.integrations | GET/PUT /api/owner/system-settings -> system_settings(GLOBAL_CONFIG)| Khóa API không trả về FE, chỉ trả cờ *Configured  |
+ * | 2   | Tab Ngưỡng vải dư (mét)             | form.defaultFabricLeftoverThresholdMeters        | system_settings.defaultFabricLeftoverThresholdMeters               | [BR: GBR-09] Mặc định 2.0m (>= thu hồi, < phế liệu)|
+ * | 3   | Tab Ngưỡng tồn kho & Kiểm kê        | defaultFifoAgingAlertDays, minorStocktakeLimit*  | system_settings.{minorStocktakeVarianceLimitQty, Value}            | [BR: GBR-22] Vượt ngưỡng => bắt buộc Owner duyệt  |
+ * | 4   | Tab Chính sách đổi trả              | returnSurchargePercent (10%), returnPolicyNotes  | system_settings.{returnSurchargePercent, returnPolicyNotes}        | [BR: GBR-14] Lỗi khách 10%; [GBR-15] Lỗi shop 0%  |
+ * | 5   | Bảng Ngưỡng riêng từng mặt hàng     | InventoryThresholds(type, search) -> ThresholdFm | GET/PUT /api/owner/system-settings/inventory-items/:type (NL/SKUs) | [BR: GBR-08] availableQty = onHand - reserved     |
+ * ====================================================================================================================================
  */
 import { WmsButton, WmsField, WmsInput, WmsTextArea, WmsSelect } from '../../components/ui/WmsControls';
 import { useState } from 'react';
@@ -74,7 +83,7 @@ function InventoryThresholds() {
     <ResourceState resource={resource}>{resource.data && <><Table headings={['Mặt hàng', 'Đơn vị', 'Khả dụng', 'Ngưỡng an toàn', 'Ngày tồn lâu', 'Thao tác']} empty={!resource.data.items.length}>{resource.data.items.map((row) => <tr key={row.id}><td>{row.code}<small>{row.name}</small></td><td>{labels[row.unit] || row.unit}</td><td>{quantity(row.availableQty)}</td><td>{quantity(row.safetyStockThreshold)}</td><td>{row.fifoAgingThresholdDays}</td><td><WmsButton onClick={() => setSelected(row)}>Sửa ngưỡng</WmsButton></td></tr>)}</Table><Pagination data={resource.data} onPage={(page) => setQuery({ ...query, page })} /></>}</ResourceState>
     {selected && <Modal title={`Ngưỡng ${selected.code}`} busy={busy} onClose={() => setSelected(null)}><ThresholdForm type={type} item={selected} setBusy={setBusy} onDone={(message) => { setSuccess(message); setSelected(null); resource.reload(); }} /></Modal>}</>;
 }
-// GBR-05: Kiểm tra ngưỡng không âm và ngày nguyên trước khi gửi cùng phiên bản mặt hàng.
+// [BR: GBR-08]: Kiểm tra ngưỡng tồn an toàn không âm và ngày cảnh báo tồn lâu nguyên trước khi gửi cùng phiên bản mặt hàng.
 function ThresholdForm({ type, item, setBusy, onDone }) {
   const [threshold, setThreshold] = useState(item.safetyStockThreshold); const [days, setDays] = useState(item.fifoAgingThresholdDays); const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
   const submit = async (event) => {

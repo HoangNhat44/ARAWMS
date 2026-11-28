@@ -1,6 +1,6 @@
 /* Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 2-11-2026
  * Báo cáo Owner: bộ lọc thời gian, so sánh tùy chọn, nhập hàng và tồn kho.
- * GBR-01/13: Gọi API xác thực; tồn cách ly riêng, không tính giá vốn hoặc lợi nhuận.
+ * [BR: GBR-01]/[BR: GBR-16]: Gọi API xác thực; tồn lỗi cách ly tách riêng, không tính giá vốn hoặc lợi nhuận.
  */
 import { useState } from 'react';
 import { comparisonDates, quarterDates } from '../../utils/reportFilters';
@@ -148,7 +148,23 @@ export default function OperationsPage({ mode = 'dashboard' }) {
       {!['dashboard', 'bi'].includes(mode) && <div className="owner-filters"><WmsField>Tìm trong danh sách<WmsInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nhập mã hoặc tên cần tìm" /></WmsField>{!['dashboard', 'bi', 'payables'].includes(mode) && <WmsField>{mode === 'purchases' ? 'Trạng thái kế hoạch' : 'Trạng thái'}<WmsSelect value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Tất cả trạng thái</option>{[...new Set((['inventory', 'finished'].includes(mode) ? data.inventory : mode === 'purchases' ? data.purchases : []).map((r) => r.status))].filter(Boolean).map((s) => <option key={s} value={s}>{labels[s] || 'Chưa cập nhật'}</option>)}</WmsSelect></WmsField>}{['purchases', 'inventory', 'finished'].includes(mode) && <WmsField>Đơn vị tính<WmsSelect value={unit} onChange={(e) => setFilters({ ...filters, unit: e.target.value, page: 1 })}><option value="">Tất cả đơn vị</option>{['METER', 'SPOOL', 'KG', 'BOX', 'PIECE'].map((value) => <option key={value} value={value}>{labels[value]}</option>)}</WmsSelect></WmsField>}</div>}
       {mode === 'bi' && <>
 
-        {/* Các thẻ này dùng cùng kết quả sales của API; phần trăm thay đổi chỉ hiện khi bật đối chiếu. */}
+        {/*
+         * ====================================================================================================================================
+         * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU, BỘ LỌC & TRẠNG THÁI - BÁO CÁO BÁN HÀNG & VẬN HÀNH (OWNER OPERATIONS)]
+         * ====================================================================================================================================
+         * | STT | Mục trên UI (KPI / Bộ lọc / Bảng)         | Hàm FE & Trường hiển thị                      | API, Hàm BE & Nguồn DB (Collection.field)                                | Nghiệp vụ / Công thức / Điều kiện                 |
+         * |-----|-------------------------------------------|-----------------------------------------------|--------------------------------------------------------------------------|---------------------------------------------------|
+         * | 1   | Bộ lọc Kỳ / So sánh / Nguồn bán / TT      | PeriodFilter(draft,kind,mode) -> useOwnerQuery| GET /api/owner/operations-report -> operationsReport.service.js          | Đồng bộ URL query; bấm Áp dụng mới tải lại API    |
+         * | 2   | Bộ lọc Tìm kiếm / Trạng thái / Đơn vị     | search, status, unit -> match(), matchUnit()  | Lọc client trên data.{purchases, inventory, outboundPlans, debts}        | Trạng thái lấy từ danh sách row.status + labels[] |
+         * | 3   | KPI: Tổng giá trị đơn hàng trong kỳ       | money(data.sales.orderValue)                  | operationsReport.service.js:salesSummary() <- sales_orders               | Σ financialSummary.totalOrderAmount (!CANCELLED)  |
+         * | 4   | KPI: % Thay đổi so với kỳ đối chiếu       | quantity(data.orderValueChange)               | operationsReport.service.js (so sánh sales vs previous)                  | (orderValue - prev) / |prev| * 100 (null nếu 0)   |
+         * | 5   | KPI: Tiền hàng sau giảm giá và trả hàng   | money(data.sales.revenue)                     | sales_orders + return_requests (RMA đã duyệt)                            | Σ(itemsSubtotal - discount) - Σ returnedValue     |
+         * | 6   | KPI: Đơn hàng đã thanh toán               | quantity(data.sales.paid)                     | sales_orders (paymentStatusOf(order) === 'PAID')                         | Đếm đơn đã hoàn tất thu tiền                      |
+         * | 7   | Biểu đồ Nguyên nhân & Tiến độ đơn hoàn    | data.sales.returnReasons, data.returnStatuses | return_requests.{returnReason, status} (nhãn: reasonLabels, labels)      | Đếm theo nguyên nhân & trạng thái xử lý RMA       |
+         * | 8   | Bảng Kế hoạch nhập & Hợp đồng NCC         | data.purchases[], data.debts[]                | material_inbound_plans & supplier_contracts                              | Còn chờ về=max(0,planned-totalReceived); nợ=tổng-trả|
+         * | 9   | Bảng Tồn kho NL / TP & Lịch sử nhập xuất  | Inventory(rows=data.inventory, movements)     | raw_materials, skus, inventory_transactions                              | available=onHand-reserved; tách riêng quarantine  |
+         * ====================================================================================================================================
+         */}
         <div className="owner-metrics"><Metric label="Tổng giá trị đơn hàng trong kỳ" value={money(data.sales.orderValue)} />{query.comparison === 'on' && <Metric label="Thay đổi giá trị đơn so với kỳ đối chiếu" value={data.orderValueChange === null ? 'Chưa có cơ sở so sánh' : `${quantity(data.orderValueChange)}%`} />}<Metric label="Tiền hàng sau giảm giá và trả hàng" value={money(data.sales.revenue)} /><Metric label="Đơn hàng đã thanh toán" value={quantity(data.sales.paid)} /></div>
 
         {/* Xu hướng và số tổng cùng dùng chính xác khoảng ngày đang chọn. */}
@@ -212,7 +228,17 @@ function DashboardReports({ query, resource }) {
     <BusinessActivity resource={activity} salesChannel={salesChannel} />
     {data && <section className="owner-content-panel">
       <h2>Tồn kho và nhập hàng</h2>
-      {/* Đếm mỗi kế hoạch một lần dù có nhiều loại nguyên liệu. */}
+      {/*
+       * ====================================================================================================================================
+       * [BẢNG TRA CỨU KPI TỒN KHO & NHẬP HÀNG - OWNER DASHBOARD (DashboardReports)]
+       * ====================================================================================================================================
+       * | STT | Mục trên UI (Thẻ KPI)                     | Hàm FE & Trường hiển thị                               | API, Hàm BE & Nguồn DB (Collection.field)                          | Nghiệp vụ / Công thức / Điều kiện                 |
+       * |-----|-------------------------------------------|--------------------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------|
+       * | 1   | Kế hoạch nhập trong kỳ còn chờ hàng       | new Set(data.purchases.filter(...).map(planCode)).size | operationsReport.service.js <- material_inbound_plans              | Đếm planCode duy nhất: planned > totalReceived    |
+       * | 2   | Mặt hàng sắp hết hoặc đã hết hàng         | data.inventory.filter(LOW_STOCK|OUT_OF_STOCK).length   | raw_materials + skus (available = onHand - reserved)               | [BR: GBR-08] <=0: OUT_OF_STOCK; <ngưỡng: LOW_STOCK|
+       * | 3   | Hợp đồng nhà cung cấp                     | data.debts.length                                      | supplier_contracts.{totalContractAmount, totalPaidAmount}          | Dư nợ debt = max(0, totalContract - totalPaid)    |
+       * ====================================================================================================================================
+       */}
       <div className="owner-metrics">
         <Metric label="Kế hoạch nhập trong kỳ còn chờ hàng" value={new Set(data.purchases.filter(row => row.planned > row.totalReceived && row.status !== 'CANCELLED').map(row => row.planCode)).size} />
         <Metric label="Mặt hàng sắp hết hoặc đã hết hàng" value={data.inventory.filter(row => ['LOW_STOCK', 'OUT_OF_STOCK'].includes(row.status)).length} />
@@ -223,7 +249,7 @@ function DashboardReports({ query, resource }) {
   </>;
 }
 
-// Tỷ trọng tính từ tổng giá trị đơn, cùng chỉ số mặc định của biểu đồ nguồn bán.
+/* Bảng SalesByChannel: Tỷ trọng (%) = (row.orderValue / sales.orderValue) * 100 | Nguồn: operationsReport.service.js:salesSummary (sales_orders) */
 function SalesByChannel({ sales, selectedChannel }) {
   const rows = sales.channels.filter(row => !selectedChannel || row.channel === selectedChannel);
   const showShare = sales.orderValue > 0 && rows.every(row => row.orderValue >= 0);
@@ -232,7 +258,7 @@ function SalesByChannel({ sales, selectedChannel }) {
       <td>{showShare ? `${quantity(row.orderValue / sales.orderValue * 100)}%` : '—'}</td><td>{money(row.refunded)}</td><td>{money(row.shipping)}</td></tr>)}
   </Table>;
 }
-// Phản hồi 8; GBR-14: Phiếu chi trả nợ ở cuối thanh điều hướng, luôn gắn hợp đồng nguồn.
+// Phản hồi 8; [BR: GBR-17]: Phiếu chi trả nợ ở cuối thanh điều hướng, luôn bắt buộc gắn hợp đồng nguồn (`contractId`).
 function PaymentForm({ debts, action }) {
   const [form, setForm] = useState({ contractId: '', amount: '', paymentMethod: 'BANK_TRANSFER', note: '' }); const [busy, setBusy] = useState(false);
   // Lấy dư nợ của hợp đồng đang chọn để đặt giới hạn nhập tiền; BE vẫn kiểm tra lại khi lưu.

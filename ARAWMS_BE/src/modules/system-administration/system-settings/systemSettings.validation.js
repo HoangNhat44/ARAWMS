@@ -1,7 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: OWNER-EXT-02..05; GBR-05/06/11/12/19 - Kiểm tra cấu hình Owner.
+ * Chức năng: OWNER-EXT-02..05; [BR: GBR-08]/[BR: GBR-09]/[BR: GBR-14]/[BR: GBR-15]/[BR: GBR-22] - Kiểm tra cấu hình Owner.
  */
 import { objectFields, textField, numberField, versionField } from '../../../common/utils/ownerValidation.js';
 import { httpError } from '../../../common/utils/httpError.js';
@@ -34,7 +34,7 @@ export const validateSettings = (section, body) => {
     } else if (key === 'returnPolicyNotes') {
       data[key] = value === '' ? '' : textField(value, 'Nội dung chính sách', 2000);
     } else if (key === 'returnSurchargePercent') {
-      // GBR-11: Không cho Owner lưu tỷ lệ khác 10% khi tài liệu chưa cho phép ngoại lệ.
+      // [BR: GBR-14]: Không cho Owner lưu tỷ lệ phụ phí lỗi khách khác 10% khi tài liệu chưa cho phép ngoại lệ.
       if (value !== 10) throw httpError(400, 'GBR-11 quy định phụ phí lỗi khách là 10%.');
       data[key] = value;
     } else {

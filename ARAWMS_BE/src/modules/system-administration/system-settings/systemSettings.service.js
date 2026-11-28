@@ -1,7 +1,7 @@
 /*
  * Người thực hiện: Nguyễn Ngọc Huy-HE171157
  * Ngày thực hiện: 30-10-2026
- * Chức năng: OWNER-EXT-02..05; GBR-05/06/11/12/19 - Lưu cấu hình và ngưỡng từng mặt hàng.
+ * Chức năng: OWNER-EXT-02..05; [BR: GBR-08]/[BR: GBR-09]/[BR: GBR-14]/[BR: GBR-15]/[BR: GBR-22] - Lưu cấu hình và ngưỡng từng mặt hàng.
  */
 import { randomUUID } from 'node:crypto';
 import SystemSetting from '../../../models/SystemSetting.model.js';
@@ -82,7 +82,7 @@ export const listInventoryThresholds = async (req) => {
   return { items: items.map(inventoryProfile), total, page, limit };
 };
 
-// GBR-05: So sánh tồn khả dụng với ngưỡng, dùng lại được sau các giao dịch xuất kho của module nghiệp vụ.
+// [BR: GBR-08]: So sánh tồn khả dụng (`onHandQty - reservedQty`) với ngưỡng `safetyStockThreshold`, dùng lại được sau các giao dịch xuất kho của module nghiệp vụ.
 export const refreshSafetyAlert = async (item, type, req, session) => {
   const referenceModel = type === 'materials' ? 'RawMaterial' : 'Sku';
   const filter = { referenceModel, referenceId: item._id, alertType: 'LOW_SAFETY_STOCK', isResolved: false, ...active };
@@ -108,7 +108,7 @@ export const updateInventoryThreshold = async (req) => {
     const before = inventoryProfile(item);
     item.safetyStockThreshold = input.safetyStockThreshold; item.fifoAgingThresholdDays = input.fifoAgingThresholdDays;
     await item.save({ session });
-    // OWNER-EXT-04, GBR-05: Sau khi đổi ngưỡng, cập nhật ngay tình trạng cảnh báo của mặt hàng.
+    // OWNER-EXT-04, [BR: GBR-08]: Sau khi đổi ngưỡng, cập nhật ngay tình trạng cảnh báo tồn kho thấp của mặt hàng.
     await refreshSafetyAlert(item, req.params.type, req, session);
     const after = inventoryProfile(item);
     await ownerAudit(req, session, 'System Administration', 'System Settings', 'CONFIGURE_INVENTORY_THRESHOLD',

@@ -1,7 +1,17 @@
 /*
- * Người thực hiện: Nguyễn Ngọc Huy-HE171157
- * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-12; GBR-05/13/16/17 - Tổng quan tài chính và vận hành cho Owner.
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 30-10-2026 | UC-12; [BR: GBR-08/16/19/20]
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & CÔNG THỨC - BE: EXECUTIVE DASHBOARD OWNER (getDashboard)]
+ * ====================================================================================================================================
+ * | STT | Nhóm / Trường trả về         | Nguồn DB (Collection.field)              | Nghiệp vụ / Công thức / BR                                        |
+ * |-----|------------------------------|------------------------------------------|-------------------------------------------------------------------|
+ * | 1   | financial.*                  | financialReports.service.js              | Doanh thu, giá vốn FIFO [GBR-20], lợi nhuận, dòng tiền theo kỳ    |
+ * | 2   | inventory.materialValue      | raw_materials.{onHandQty, unitCost}      | Σ (onHandQty * unitCost) với isDeleted !== true                   |
+ * | 3   | inventory.finishedGoodsValue | skus.{onHandQty, unitCogs}               | Σ (onHandQty * unitCogs)                                          |
+ * | 4   | inventory.quarantineValue    | product_units[DEFECT_QUARANTINE] × cogs  | [BR: GBR-16] Tách riêng giá trị hàng lỗi cách ly                  |
+ * | 5   | inventory.lowStock*          | raw_materials & skus (isActive=true)     | [BR: GBR-08] Đếm mã có (onHandQty - reservedQty) < safetyThreshold|
+ * | 6   | operations.* (4 chỉ số)      | users, manager_reports, prod_orders, SO  | NV active; BC SUBMITTED; Lệnh SX chạy; COD RED_FLAG [BR: GBR-19]  |
+ * ====================================================================================================================================
  */
 import RawMaterial from '../../../models/RawMaterial.model.js';
 import Sku from '../../../models/Sku.model.js';
@@ -19,10 +29,10 @@ export const getDashboard = async (query) => {
   // UC-12: Đọc độc lập số tài chính theo kỳ và số vận hành tại thời điểm hiện tại.
   const [financial, materials, skus, employees, unreadReports, production, codRedFlags] = await Promise.all([
     financialReport(query),
-    // GBR-05: Nguyên liệu thiếu khi tồn khả dụng nhỏ hơn ngưỡng; hàng giữ chỗ không còn khả dụng.
+    // [BR: GBR-08]: Nguyên liệu thiếu khi tồn khả dụng (onHandQty - reservedQty) nhỏ hơn ngưỡng safetyStockThreshold; hàng giữ chỗ không còn khả dụng.
     RawMaterial.aggregate([{ $match: active }, { $group: { _id: null, value: { $sum: { $multiply: ['$onHandQty', '$unitCost'] } },
       lowStock: { $sum: { $cond: [{ $and: [{ $eq: ['$isActive', true] }, { $lt: [{ $subtract: ['$onHandQty', '$reservedQty'] }, '$safetyStockThreshold'] }] }, 1, 0] } } } }]),
-    // GBR-05/13: Thành phẩm bán được và hàng cách ly được thống kê riêng.
+    // [BR: GBR-08]/[BR: GBR-16]: Thành phẩm bán được và hàng lỗi cách ly (ProductUnit) được thống kê tách riêng.
     Sku.aggregate([{ $match: active }, ...withDefectQty(), { $group: { _id: null, value: { $sum: { $multiply: ['$onHandQty', '$unitCogs'] } },
       quarantineValue: { $sum: { $multiply: ['$defectQty', '$unitCogs'] } },
       lowStock: { $sum: { $cond: [{ $and: [{ $eq: ['$isActive', true] }, { $lt: [{ $subtract: ['$onHandQty', '$reservedQty'] }, '$safetyStockThreshold'] }] }, 1, 0] } } } }]),

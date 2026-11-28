@@ -109,6 +109,18 @@ function ReturnTrend({ points, threshold }) {
   </section>;
 }
 
+/**
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & BỘ LỌC - PHÂN TÍCH ĐƠN BOM HÀNG (GIAO KHÔNG THÀNH CÔNG)]
+ * ====================================================================================================================================
+ * | STT | Mục trên UI (KPI / Bộ lọc / Bảng)   | Hàm FE & Trường hiển thị                | API, Hàm BE & Nguồn DB (Collection.field)                                | Nghiệp vụ / Công thức / Điều kiện                 |
+ * |-----|-------------------------------------|-----------------------------------------|--------------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | KPI: Tỷ lệ bom hàng (%) & Cảnh báo  | bom.rate, isHighBomRate (> threshold)   | GET /api/owner/operations-report/business-activity -> summarizeActivity  | (bom.count / shipped) * 100 (ngưỡng cảnh báo 10%) |
+ * | 2   | KPI: Số đơn bom                     | quantity(bom.count)                     | sales_orders (đã bàn giao GHN) + return_requests                         | Đếm đơn quay đầu lý do CUSTOMER_REFUSED / INVALID |
+ * | 3   | KPI: Tổng thiệt hại                 | money(bom.amount)                       | sales_orders.financialSummary.totalOrderAmount                           | Σ totalOrderAmount của các đơn bom                |
+ * | 4   | Bộ lọc Kênh & Nguyên nhân bom       | state channel, reasonKey -> visible[]   | Lọc client trên bom.details[] (nhãn: channelLabels, reasonLabels)        | Lọc chi tiết theo row.channel & row.reasonKey     |
+ * ====================================================================================================================================
+ */
 function BomOrderAnalytics({ bom = {}, threshold }) {
   const [channel, setChannel] = useState('');
   const [reasonKey, setReasonKey] = useState('');
@@ -240,6 +252,18 @@ function BomOrderAnalytics({ bom = {}, threshold }) {
   );
 }
 
+/**
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & BỘ LỌC - PHÂN TÍCH ĐƠN ĐỔI / TRẢ HÀNG RMA (CustomerReturnAnalytics)]
+ * ====================================================================================================================================
+ * | STT | Mục trên UI (KPI / Bộ lọc / Bảng)   | Hàm FE & Trường hiển thị                | API, Hàm BE & Nguồn DB (Collection.field)                                | Nghiệp vụ / Công thức / Điều kiện                 |
+ * |-----|-------------------------------------|-----------------------------------------|--------------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | KPI: Tỷ lệ đổi / trả (%)            | returns.rate                            | GET /api/owner/operations-report/business-activity -> summarizeActivity  | (returns.count / shipped) * 100                   |
+ * | 2   | KPI: Đổi sản phẩm / Trả hoàn tiền   | returns.{exchangeCount, refundCount}    | return_requests (status !== 'REJECTED', requestType: EXCHANGE | RETURN)  | returns.count = exchangeCount + refundCount       |
+ * | 3   | KPI: Tổng trị giá đổi trả           | money(returns.amount)                   | return_requests.financialAccounting.returnedMerchandiseValue             | Σ returnedMerchandiseValue (fallback orderAmount) |
+ * | 4   | Bộ lọc Kênh / Loại yêu cầu / Lý do  | channel, returnType, reasonKey->visible | Lọc client trên returns.details[]                                        | Khớp row.channel, row.returnType, row.reasonKey   |
+ * ====================================================================================================================================
+ */
 function CustomerReturnAnalytics({ returns = {} }) {
   const [channel, setChannel] = useState('');
   const [returnType, setReturnType] = useState('');
@@ -496,6 +520,20 @@ PIPELINE_STAGES.forEach(stage => {
   });
 });
 
+/**
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU, BỘ LỌC & 4 KHÂU TRẠNG THÁI ĐƠN HÀNG (OrderStatusPipeline)]
+ * ====================================================================================================================================
+ * | STT | Mục trên UI (Khâu / Status / Bộ lọc)| Hàm FE & Trường hiển thị                      | API, Hàm BE & Nguồn DB (Collection.field)                          | Nghiệp vụ / Công thức / Điều kiện                 |
+ * |-----|-------------------------------------|-----------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | Tổng đơn & Tổng trị giá toàn kỳ     | totalOrders, totalAmount (useMemo)            | businessActivity.service.js:businessActivity() <- sales_orders     | Σ row.count; Σ row.totalAmount (theo createdAt)   |
+ * | 2   | Khâu 1 - Tại kho (4 status)         | stageStats (PENDING/CONFIRMED/PICKING/PACKED) | sales_orders.status (giữ kho [BR: GBR-10], đóng gói [BR: GBR-12])  | % khâu = (stage.count / totalOrders) * 100        |
+ * | 3   | Khâu 2 - Đang giao GHN (2 status)   | stageStats (HANDED_OVER_CARRIER/CARRIER_...)  | sales_orders.status (bàn giao GHN [BR: GBR-13])                    | % khâu = (stage.count / totalOrders) * 100        |
+ * | 4   | Khâu 3 - Thành công (2 status)      | stageStats (DELIVERED, COMPLETED)             | sales_orders.status (GHN giao xong / POS hoàn tất tại quầy)        | % khâu = (stage.count / totalOrders) * 100        |
+ * | 5   | Khâu 4 - Đổi trả / Hủy (7 status)   | stageStats (CANCELLED, RETURN_*, EXCHANGE_*)  | sales_orders.status (hủy nhả kho [GBR-11], RMA [GBR-14/15/16])     | % từng status = (row.count / totalOrders) * 100   |
+ * | 6   | Bộ lọc Khâu / Chỉ hiện có đơn / View| selectedStage, onlyWithOrders, viewMode,...   | Lọc & đổi dạng bảng/biểu đồ client trên orderStatuses[]            | Chuyển nhanh bảng chi tiết <-> biểu đồ count/tiền |
+ * ====================================================================================================================================
+ */
 function OrderStatusPipeline({ orderStatuses = [] }) {
   const [selectedStage, setSelectedStage] = useState('ALL');
   const [onlyWithOrders, setOnlyWithOrders] = useState(true);

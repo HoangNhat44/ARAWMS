@@ -1,7 +1,17 @@
 /*
- * Người thực hiện: Nguyễn Ngọc Huy-HE171157
- * Ngày thực hiện: 30-10-2026
- * Chức năng: UC-15/16; GBR-13 - Định giá kho, tách tồn bán được và hàng cách ly.
+ * Người thực hiện: Nguyễn Ngọc Huy-HE171157 | Ngày: 30-10-2026 | UC-15/16; [BR: GBR-16]
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU, BỘ LỌC & CÔNG THỨC - ĐỊNH GIÁ TÀI SẢN KHO (OWNER)]
+ * ====================================================================================================================================
+ * | STT | Mục trên UI (KPI / Bộ lọc / Cột)    | Hàm FE & Trường hiển thị                    | API, Hàm BE & Nguồn DB (Collection.field)                          | Nghiệp vụ / Công thức / Điều kiện                 |
+ * |-----|-------------------------------------|---------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | KPI: Nguyên vật liệu                | money(summary.data.materialValue)           | GET /api/owner/asset-valuation/summary -> inventoryValuation.svc   | Σ (raw_materials.onHandQty * unitCost)            |
+ * | 2   | KPI: Thành phẩm bán được            | money(summary.data.finishedGoodsValue)      | GET /api/owner/asset-valuation/summary <- skus.{onHandQty,unitCogs}| Σ (skus.onHandQty * unitCogs)                     |
+ * | 3   | KPI: Hàng cách ly (Lỗi)             | money(summary.data.quarantineValue)         | product_units(status='DEFECT_QUARANTINE') × skus.unitCogs          | [BR: GBR-16] Tách riêng khỏi tồn bán được         |
+ * | 4   | KPI: Tổng tài sản kho               | money(summary.data.totalValue)              | Tổng hợp từ 3 nguồn trên (độc lập với bộ lọc bảng)                 | materialValue + finishedGoodsValue + quarantine   |
+ * | 5   | Bộ lọc Nhóm hàng & Tìm mã/tên       | options.{type,search,page} -> useOwnerQuery | GET /api/owner/asset-valuation (hoặc material-valuation)           | type='materials' (NL) | 'skus' (Thành phẩm)       |
+ * | 6   | Thẻ nhóm đang lọc & Cột bảng chi tiết| resource.data.{totals, total, items[]}      | inventoryValuation.service.js:valuationReport()                    | Mỗi dòng: totalValue = (onHand + quarantine)*cost |
+ * ====================================================================================================================================
  */
 import { WmsField, WmsSelect, WmsInput, WmsButton } from '../../components/ui/WmsControls';
 import { useState } from 'react';
