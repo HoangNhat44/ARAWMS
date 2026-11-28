@@ -13,6 +13,8 @@ import {
   formatVnd,
   validateOutgoingMessage,
   filterConversations,
+  extractClipboardFiles,
+  normalizePastedFile,
 } from '../src/utils/sellerChatUtils.js';
 
 // ============================================================================
@@ -267,4 +269,34 @@ test('[A][B] filterConversations & parseOrderReceiptDetails: Xử lý input khô
   assert.deepEqual(parseOrderReceiptDetails(''), { orderCode: null, waybillCode: null, codAmount: null });
   assert.deepEqual(parseOrderReceiptDetails(null), { orderCode: null, waybillCode: null, codAmount: null });
 });
+
+// ============================================================================
+// 9. extractClipboardFiles & normalizePastedFile: Dán ảnh từ clipboard
+// ============================================================================
+test('[N][B] extractClipboardFiles: Trích xuất ảnh từ clipboardData.items và fallback clipboardData.files', () => {
+  const pngBlob = new File([new Uint8Array([137, 80, 78, 71])], 'image.png', { type: 'image/png' });
+  const fromItems = extractClipboardFiles({
+    items: [
+      { kind: 'string', type: 'text/plain', getAsFile: () => null },
+      { kind: 'file', type: 'image/png', getAsFile: () => pngBlob },
+    ],
+    files: [pngBlob], // Không được nhân đôi khi items đã có file
+  });
+  assert.equal(fromItems.length, 1);
+  assert.match(fromItems[0].name, /^anh-dan-\d+_1\.png$/);
+  assert.equal(fromItems[0].type, 'image/png');
+
+  const jpegFile = new File([new Uint8Array([255, 216])], 'san-pham.jpg', { type: 'image/jpeg' });
+  const fromFiles = extractClipboardFiles({
+    items: [],
+    files: [jpegFile],
+  });
+  assert.equal(fromFiles.length, 1);
+  assert.equal(fromFiles[0].name, 'san-pham.jpg'); // Giữ nguyên tên gốc nếu không phải tên mặc định
+
+  assert.deepEqual(extractClipboardFiles(null), []);
+  assert.deepEqual(extractClipboardFiles({ items: [{ kind: 'string', type: 'text/plain' }], files: [] }), []);
+  assert.equal(normalizePastedFile(null), null);
+});
+
 

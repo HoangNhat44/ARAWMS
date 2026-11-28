@@ -23,7 +23,14 @@ import { API_BASE_URL } from '../../utils/constants';
 import { useToast } from '../../context/ToastContext';
 import { Icon, Avatar, EmptyState, formatVnd } from './SellerUi';
 
-import { getMediaUrl, cleanChatMessageText, classifyOrderReceiptMessage, parseOrderReceiptDetails } from '../../utils/sellerChatUtils';
+import {
+  getMediaUrl,
+  cleanChatMessageText,
+  classifyOrderReceiptMessage,
+  parseOrderReceiptDetails,
+  extractClipboardFiles,
+  normalizePastedFile,
+} from '../../utils/sellerChatUtils';
 export { getMediaUrl, cleanChatMessageText };
 
 /**
@@ -291,19 +298,17 @@ const OrderReceiptCard = ({ text }) => {
 };
 
 /**
- * Component khung chat chính với khách hàng kèm Quick Tag Bar.
- *
- * @component
- * @param {Object} props - Thuộc tính truyền vào component.
- * @param {Object} props.conversation - Dữ liệu cuộc hội thoại đang mở.
- * @param {Function} [props.onTagAdded] - Callback thông báo khi gắn/hủy tag.
- * @param {Array<Object>} props.allTags - Danh sách tất cả thẻ tag từ DB.
- * @param {Function} [props.onTagsRefresh] - Callback làm mới danh sách thẻ tag.
- * @param {Function} [props.onOpenQuickOrder] - Callback chuyển sang tab tạo đơn nhanh.
- * @param {Function} [props.onBackToList] - Callback quay về danh sách hội thoại trên mobile.
- * @param {Function} [props.onToggleRightPanel] - Callback mở/đóng bảng tác nghiệp bên phải.
- * @param {boolean} [props.isRightPanelOpen] - Trạng thái bảng tác nghiệp đang mở.
- * @returns {JSX.Element} Khung chat hoàn chỉnh.
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC DỮ LIỆU, TRẠNG THÁI & HÀM XỬ LÝ - PANE 2: KHUNG CHAT KHÁCH HÀNG (UC-72, UC-73, UC-74)]
+ * ====================================================================================================================================
+ * | STT | Mục trên UI (Thẻ / Trạng thái / Ô nhập) | Hàm FE & Trường hiển thị                        | API, Hàm BE & Nguồn DB (Collection.field)                           | Nghiệp vụ / Công thức / Điều kiện                 |
+ * |-----|-----------------------------------------|-------------------------------------------------|---------------------------------------------------------------------|---------------------------------------------------|
+ * | 1   | Luồng tin nhắn & Realtime Socket        | fetchMessages(), socket 'new_message'           | GET /api/conversations/:id/messages -> chat_messages[]              | Chống trùng tin qua appendUniqueMessage()         |
+ * | 2   | Thẻ biên nhận đơn / GHN trong chat      | OrderReceiptCard <- getOrderNotificationCardMeta| notificationTemplate.service.js -> chat_messages.messageText        | Tách mã đơn/vận đơn/COD bằng parseOrderReceipt... |
+ * | 3   | Trạng thái gửi tin (Quá 24h / Đã gửi)   | m.deliveryStatus ('FAILED_24H_EXPIRED' | ...)   | chat_messages.deliveryStatus (Meta Send API error code 10/2018278)  | Cảnh báo khi khách không nhắn trong 24h Meta      |
+ * | 4   | Thanh gắn/tạo/xóa Tag nhanh (UC-73)     | handleToggleTag, handleCreateTag, DeleteTag     | POST/DELETE /api/conversations/:id/tags & /tags/create (tags)       | Chỉ xóa được tag tự tạo (!tag.isDefault)          |
+ * | 5   | Đính kèm / Ctrl+V dán ảnh / Kéo thả     | appendChatFiles, handlePaste, handleDrop        | POST /api/conversations/:id/attachments -> chatUpload.js (Multer)   | Tối đa 5 tệp × 8MB; tự chuẩn hóa tên ảnh dán      |
+ * ====================================================================================================================================
  */
 const ChatBox = ({
   conversation,
@@ -333,20 +338,25 @@ const ChatBox = ({
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState('#8B5CF6');
   const [creatingTag, setCreatingTag] = useState(false);
+  const [tagToDelete, setTagToDelete] = useState(null);
+  const [deletingTag, setDeletingTag] = useState(false);
 
-  // Tệp đính kèm người bán chọn gửi
+  // Tệp đính kèm người bán chọn gửi (tải từ máy, Ctrl+V dán ảnh, hoặc kéo thả)
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [previewImage, setPreviewImage] = useState(null); // Modal phóng to ảnh
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const selectedFilesRef = useRef([]);
+  selectedFilesRef.current = selectedFiles;
 
   const activeTags = conversation?.tags || [];
 
   useEffect(() => {
     if (!conversation?._id) return;
 
-    fetchMessages(conversation._id);
+    void fetchMessages(conversation._id);
 
     // Kết nối Socket.io và tham gia phòng hội thoại
     const socket = getSocket();
@@ -390,27 +400,92 @@ const ChatBox = ({
     }
   };
 
-  /** Xử lý chọn tệp từ máy tính - Cache Blob URL để tránh leak bộ nhớ */
-  const handleFileSelect = (e) => {
-    const rawFiles = Array.from(e.target.files || []);
-    if (!rawFiles.length) return;
-    if (selectedFiles.length + rawFiles.length > 5) {
+  /** Thêm danh sách tệp/ảnh vào khay đính kèm (dùng chung cho upload từ máy, Ctrl+V dán ảnh và kéo thả) */
+  const appendChatFiles = (rawFiles) => {
+    const incoming = Array.from(rawFiles || []).filter(Boolean);
+    if (!incoming.length) return false;
+    if (selectedFiles.length + incoming.length > 5) {
       showWarning('Chỉ được chọn tối đa 5 tệp mỗi lần', 'Giới hạn tệp');
-      return;
+      return false;
     }
-    // Giới hạn 25MB mỗi tệp
-    for (const f of rawFiles) {
-      if (f.size > 25 * 1024 * 1024) {
-        showWarning(`Tệp "${f.name}" vượt quá dung lượng 25MB cho phép`, 'Dung lượng tệp');
-        return;
+    // Giới hạn 8MB mỗi tệp (đồng bộ với Backend chatUpload.js)
+    const maxFileBytes = 8 * 1000 * 1000;
+    for (const f of incoming) {
+      if (f.size > maxFileBytes) {
+        showWarning(`Tệp "${f.name || 'ảnh dán'}" vượt quá dung lượng 8MB cho phép`, 'Dung lượng tệp');
+        return false;
       }
     }
-    const newItems = rawFiles.map((file) => ({
+    const newItems = incoming.map((file) => ({
       file,
-      previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+      previewUrl: file.type && file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
     }));
     setSelectedFiles((prev) => [...prev, ...newItems]);
+    return true;
+  };
+
+  /** Xử lý chọn tệp từ máy tính */
+  const handleFileSelect = (e) => {
+    appendChatFiles(e.target.files);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  /** Xử lý dán ảnh/tệp trực tiếp từ clipboard (Ctrl+V / Cmd+V) vào khung nhập chat */
+  const handlePaste = (e) => {
+    const pastedFiles = extractClipboardFiles(e.clipboardData);
+    if (pastedFiles.length === 0) return;
+
+    const plainText = e.clipboardData?.getData?.('text/plain') || '';
+    if (!plainText.trim()) {
+      e.preventDefault();
+    }
+    appendChatFiles(pastedFiles);
+  };
+
+  /** Nút đọc & dán nhanh ảnh đang copy trong clipboard bằng 1 chạm */
+  const handlePasteFromClipboardButton = async () => {
+    if (!navigator?.clipboard?.read) {
+      showWarning('Trình duyệt không hỗ trợ đọc clipboard trực tiếp. Hãy bấm Ctrl+V ngay trong ô nhập chat!', 'Dán ảnh');
+      return;
+    }
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      const imageFiles = [];
+      for (const clipItem of clipboardItems) {
+        const imageType = clipItem.types.find((t) => t.startsWith('image/'));
+        if (imageType) {
+          const blob = await clipItem.getType(imageType);
+          imageFiles.push(normalizePastedFile(blob, imageFiles.length));
+        }
+      }
+      if (imageFiles.length === 0) {
+        showWarning('Clipboard hiện chưa có ảnh. Hãy copy ảnh (hoặc chụp màn hình) rồi bấm nút này hoặc Ctrl+V!', 'Chưa có ảnh');
+        return;
+      }
+      appendChatFiles(imageFiles);
+    } catch {
+      showWarning('Hãy bấm vào ô nhập tin nhắn và nhấn Ctrl+V để dán ảnh trực tiếp!', 'Dán ảnh nhanh');
+    }
+  };
+
+  /** Xử lý kéo & thả ảnh/tệp vào khung nhập chat */
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    if (!isDraggingOver) setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    const droppedFiles = Array.from(e.dataTransfer?.files || []);
+    if (droppedFiles.length > 0) {
+      appendChatFiles(droppedFiles);
+    }
   };
 
   const removeSelectedFile = (idx) => {
@@ -421,14 +496,14 @@ const ChatBox = ({
     });
   };
 
-  // Dọn dẹp Blob URL khi unmount
+  // Chỉ dọn dẹp Blob URL còn lại khi unmount (tránh thu hồi nhầm preview khi thêm ảnh thứ 2)
   useEffect(() => {
     return () => {
-      selectedFiles.forEach((item) => {
+      selectedFilesRef.current.forEach((item) => {
         if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
       });
     };
-  }, [selectedFiles]);
+  }, []);
 
   /** Gửi tin nhắn văn bản hoặc tệp đính kèm */
   const handleSendMessage = async (e) => {
@@ -510,19 +585,28 @@ const ChatBox = ({
     }
   };
 
-  /** Xoá thẻ tuỳ chỉnh (chỉ áp dụng cho thẻ !isDefault) */
-  const handleDeleteTag = async (e, tag) => {
+  /** Mở hộp thoại xác nhận xoá thẻ tuỳ chỉnh (chỉ áp dụng cho thẻ !isDefault) */
+  const handleDeleteTag = (e, tag) => {
     e.stopPropagation();
     if (tag.isDefault) return;
-    if (!window.confirm(`Bạn có chắc muốn xóa thẻ "${tag.name}"?`)) return;
+    setTagToDelete(tag);
+  };
+
+  /** Thực hiện xoá thẻ tuỳ chỉnh sau khi xác nhận trên Modal web */
+  const handleConfirmDeleteTag = async () => {
+    if (!tagToDelete || tagToDelete.isDefault) return;
     try {
-      const res = await sellerService.deleteCustomTag(tag._id);
+      setDeletingTag(true);
+      const res = await sellerService.deleteCustomTag(tagToDelete._id);
       if (res.success) {
         if (onTagsRefresh) await onTagsRefresh();
-        showSuccess(`Đã xóa thẻ "${tag.name}"`, 'Xóa thẻ');
+        showSuccess(`Đã xóa thẻ "${tagToDelete.name}"`, 'Xóa thẻ');
+        setTagToDelete(null);
       }
     } catch (err) {
       showError(err.message, 'Lỗi xóa thẻ');
+    } finally {
+      setDeletingTag(false);
     }
   };
 
@@ -883,22 +967,65 @@ const ChatBox = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ===== Input Dock with File Attachment Tray ===== */}
-      <div className="border-top bg-white p-2.5" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
-        {/* Khay preview tệp đính kèm người bán đã chọn */}
+      {/* ===== Input Dock with File Attachment Tray (Upload + Ctrl+V Paste + Drag & Drop) ===== */}
+      <div
+        className="border-top bg-white p-2.5 position-relative"
+        style={{
+          borderColor: isDraggingOver ? 'var(--wms-accent, #8A6A46)' : 'var(--wms-border, #C8B9A6)',
+          backgroundColor: isDraggingOver ? '#FAF5EE' : '#FFFFFF',
+          outline: isDraggingOver ? '2px dashed var(--wms-accent, #8A6A46)' : 'none',
+          outlineOffset: '-4px',
+          transition: 'background-color 0.15s ease',
+        }}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {isDraggingOver && (
+          <div className="small fw-semibold text-center py-1 mb-2 rounded" style={{ backgroundColor: '#EFE6DA', color: 'var(--wms-accent-deep, #6E5233)' }}>
+            <Icon name="cloud-arrow-up" className="me-1" /> Thả ảnh hoặc tệp vào đây để gửi cho khách
+          </div>
+        )}
+
+        {/* Khay preview ảnh/tệp đính kèm người bán đã chọn hoặc dán */}
         {selectedFiles.length > 0 && (
           <div className="d-flex flex-wrap gap-2 mb-2">
-            {selectedFiles.map((item, idx) => (
-              <div key={idx} className="d-flex align-items-center gap-1 border rounded ps-1 pe-2 py-1 small" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
-                {item.previewUrl ? (
-                  <Image src={item.previewUrl} alt={item.file.name} roundedCircle className="object-fit-cover" style={{ width: 22, height: 22 }} />
-                ) : (
+            {selectedFiles.map((item, idx) =>
+              item.previewUrl ? (
+                <div
+                  key={`${item.file.name}-${idx}`}
+                  className="position-relative rounded overflow-hidden"
+                  style={{ width: 60, height: 60, border: '1px solid var(--wms-border, #C8B9A6)', backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)' }}
+                >
+                  <button
+                    type="button"
+                    className="p-0 border-0 bg-transparent w-100 h-100 d-block"
+                    style={{ cursor: 'zoom-in' }}
+                    title={`Xem ảnh ${item.file.name}`}
+                    aria-label={`Xem trước ${item.file.name}`}
+                    onClick={() => setPreviewImage(item.previewUrl)}
+                  >
+                    <Image src={item.previewUrl} alt={item.file.name} className="w-100 h-100 object-fit-cover d-block" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Xóa ${item.file.name}`}
+                    title="Xóa ảnh"
+                    onClick={() => removeSelectedFile(idx)}
+                    className="btn btn-sm btn-dark rounded-circle p-0 position-absolute top-0 end-0 m-0.5 d-flex align-items-center justify-content-center"
+                    style={{ width: 18, height: 18, fontSize: '10px', lineHeight: 1 }}
+                  >
+                    <Icon name="x" />
+                  </button>
+                </div>
+              ) : (
+                <div key={`${item.file.name}-${idx}`} className="d-flex align-items-center gap-1 border rounded ps-2 pe-2 py-1 small" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', borderColor: 'var(--wms-border, #C8B9A6)' }}>
                   <Icon name="file-earmark-text" style={{ color: 'var(--wms-accent, #8A6A46)' }} />
-                )}
-                <span className="text-truncate" style={{ maxWidth: 140 }}>{item.file.name}</span>
-                <CloseButton style={{ fontSize: '0.6rem' }} onClick={() => removeSelectedFile(idx)} title="Xóa tệp" />
-              </div>
-            ))}
+                  <span className="text-truncate" style={{ maxWidth: 140 }}>{item.file.name}</span>
+                  <CloseButton style={{ fontSize: '0.6rem' }} onClick={() => removeSelectedFile(idx)} title="Xóa tệp" />
+                </div>
+              )
+            )}
           </div>
         )}
 
@@ -914,13 +1041,24 @@ const ChatBox = ({
           />
 
           <InputGroup>
-            {/* Nút đính kèm ảnh & file */}
+            {/* Nút đính kèm ảnh & file từ máy */}
             <Button
+              type="button"
               className="btn-wms-default"
               onClick={() => fileInputRef.current?.click()}
-              title="Gửi ảnh hoặc tệp cho khách (tối đa 5 tệp x 25MB)"
+              title="Tải ảnh hoặc tệp từ máy (tối đa 5 tệp x 8MB)"
             >
               <Icon name="paperclip" />
+            </Button>
+
+            {/* Nút dán nhanh ảnh đang copy trong clipboard */}
+            <Button
+              type="button"
+              className="btn-wms-default"
+              onClick={() => { void handlePasteFromClipboardButton(); }}
+              title="Dán nhanh ảnh đã copy từ clipboard (hoặc nhấn Ctrl+V trong ô chat)"
+            >
+              <Icon name="clipboard-plus" />
             </Button>
 
             <Form.Control
@@ -928,13 +1066,14 @@ const ChatBox = ({
               rows={2}
               className="shadow-none"
               style={{ resize: 'none', borderColor: 'var(--wms-border, #C8B9A6)', fontSize: '0.86rem' }}
-              placeholder={selectedFiles.length > 0 ? 'Nhập chú thích gửi kèm tệp...' : 'Nhập nội dung tư vấn cho khách hàng... (Enter để gửi · Shift+Enter xuống dòng)'}
+              placeholder={selectedFiles.length > 0 ? 'Nhập chú thích gửi kèm ảnh/tệp...' : 'Nhập nội dung tư vấn hoặc Ctrl+V dán ảnh trực tiếp... (Enter để gửi · Shift+Enter xuống dòng)'}
               value={text}
               onChange={(e) => setText(e.target.value)}
+              onPaste={handlePaste}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  handleSendMessage(e);
+                  void handleSendMessage(e);
                 }
               }}
             />
@@ -949,7 +1088,7 @@ const ChatBox = ({
             </Button>
           </InputGroup>
           <Form.Text className="d-block mt-1 text-muted" style={{ fontSize: '11px' }}>
-            Enter để gửi · Shift+Enter xuống dòng · Có thể gửi ảnh &amp; tệp trực tiếp cho khách
+            Enter để gửi · Shift+Enter xuống dòng · Hỗ trợ <strong>Ctrl+V</strong> dán ảnh trực tiếp, kéo thả hoặc tải tệp từ máy
           </Form.Text>
         </Form>
       </div>
@@ -965,6 +1104,41 @@ const ChatBox = ({
             </Button>
           </div>
         </Modal.Body>
+      </Modal>
+
+      {/* ===== Modal xác nhận xóa thẻ tự tạo ===== */}
+      <Modal
+        show={!!tagToDelete}
+        onHide={() => !deletingTag && setTagToDelete(null)}
+        size="sm"
+        centered
+      >
+        <Modal.Header closeButton={!deletingTag} className="py-2 px-3">
+          <Modal.Title className="fs-6 fw-bold">Xác nhận xóa thẻ</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="py-3 px-3 small">
+          Bạn có chắc chắn muốn xóa thẻ{' '}
+          <strong className="text-dark">"{tagToDelete?.name}"</strong> không? Hành động này không thể hoàn tác.
+        </Modal.Body>
+        <Modal.Footer className="py-2 px-3">
+          <Button
+            variant="light"
+            size="sm"
+            className="border"
+            onClick={() => setTagToDelete(null)}
+            disabled={deletingTag}
+          >
+            Hủy
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={handleConfirmDeleteTag}
+            disabled={deletingTag}
+          >
+            {deletingTag ? <Spinner animation="border" size="sm" /> : 'Xóa thẻ'}
+          </Button>
+        </Modal.Footer>
       </Modal>
     </div>
   );

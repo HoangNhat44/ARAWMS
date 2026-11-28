@@ -41,14 +41,10 @@ export const getMediaUrl = (url, baseUrl = API_BASE_URL) => {
  */
 export const cleanChatMessageText = (rawText) => {
   if (!rawText) return '';
-  let str = String(rawText);
-  str = str.replace(
-    /\s*\((ready_to_pick|picking|money_collect_picking|picked|storing|transporting|sorting|delivering|money_collect_delivering|delivered|delivery_fail|waiting_to_return|return|returned|cancel|exception|GHN|COD|TMĐT)\)/gi,
+  return String(rawText).replace(
+    /[ \t]?\((?:ready_to_pick|picking|money_collect_picking|picked|storing|transporting|sorting|delivering|money_collect_delivering|delivered|delivery_fail|waiting_to_return|return|returned|cancel|exception|GHN|COD|TMĐT)\)/gi,
     ''
   );
-  str = str.replace(/\s*\(GHN\)/gi, '');
-  str = str.replace(/\s*\(COD\)/gi, '');
-  return str;
 };
 
 /**
@@ -173,4 +169,66 @@ export const filterConversations = (conversations = [], filters = {}) => {
     return true;
   });
 };
+
+const CLIPBOARD_IMAGE_EXT = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+};
+
+/**
+ * Chuẩn hóa tên file ảnh dán từ clipboard (tránh tên rỗng hoặc trùng "image.png").
+ *
+ * @param {File|Blob} file - Ảnh từ clipboard.
+ * @param {number} [index=0] - Chỉ số thứ tự trong lượt dán.
+ * @returns {File|Blob}
+ */
+export const normalizePastedFile = (file, index = 0) => {
+  if (!file) return file;
+  const mime = String(file.type || '');
+  const rawName = String(file.name || '').trim();
+  const isGenericImageName = !rawName || /^image\.(png|jpe?g|webp|gif)$/i.test(rawName) || rawName === 'blob';
+  if (!mime.startsWith('image/') || !isGenericImageName) return file;
+
+  const ext = CLIPBOARD_IMAGE_EXT[mime.toLowerCase()] || 'png';
+  const fileName = `anh-dan-${Date.now()}_${index + 1}.${ext}`;
+  if (typeof File === 'function') {
+    return new File([file], fileName, { type: mime || 'image/png', lastModified: Date.now() });
+  }
+  return file;
+};
+
+/**
+ * Trích xuất danh sách ảnh/tệp từ sự kiện dán clipboard (`onPaste`).
+ * Hỗ trợ đồng thời `clipboardData.items` (Chrome/Edge/Snipping Tool) và `clipboardData.files` (Firefox/Safari)
+ * mà không bị nhân đôi tệp.
+ *
+ * @param {DataTransfer|null|undefined} clipboardData - Đối tượng `e.clipboardData`.
+ * @returns {Array<File|Blob>} Danh sách file đã chuẩn hóa.
+ */
+export const extractClipboardFiles = (clipboardData) => {
+  if (!clipboardData) return [];
+
+  const collected = [];
+  const items = Array.from(clipboardData.items || []);
+  for (const item of items) {
+    if (item && item.kind === 'file' && typeof item.getAsFile === 'function') {
+      const file = item.getAsFile();
+      if (file) collected.push(file);
+    }
+  }
+
+  // Fallback cho trình duyệt chỉ điền clipboardData.files
+  if (collected.length === 0) {
+    const files = Array.from(clipboardData.files || []);
+    for (const file of files) {
+      if (file) collected.push(file);
+    }
+  }
+
+  return collected.map((f, idx) => normalizePastedFile(f, idx));
+};
+
 

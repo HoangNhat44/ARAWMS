@@ -21,7 +21,7 @@ import multer from 'multer';
 export const CHAT_UPLOAD_DIR = path.resolve(process.cwd(), 'uploads', 'chat');
 fs.mkdirSync(CHAT_UPLOAD_DIR, { recursive: true });
 
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // NOTE: Giới hạn 25MB của Messenger Send API
+const MAX_FILE_SIZE = 8 * 1000 * 1000; // NOTE: Giới hạn 8MB an toàn (<= 8_000_000 bytes theo SonarQube S5693)
 const MAX_FILES = 5;
 
 /** Danh sách MIME cho phép: ảnh, video, audio và tài liệu văn phòng phổ biến */
@@ -36,11 +36,23 @@ const ALLOWED_MIME = [
   /^text\/plain$/,
 ];
 
+const MIME_EXTENSION_FALLBACK = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'application/pdf': '.pdf',
+};
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, CHAT_UPLOAD_DIR),
   filename: (req, file, cb) => {
-    // Đặt tên ngẫu nhiên để tránh trùng lặp và chặn path traversal từ tên gốc
-    const ext = path.extname(file.originalname || '').toLowerCase().slice(0, 10);
+    // Đặt tên ngẫu nhiên để tránh trùng lặp và chặn path traversal từ tên gốc;
+    // hỗ trợ ảnh dán từ clipboard không có đuôi tệp bằng cách suy từ mimetype.
+    const rawExt = path.extname(file.originalname || '').toLowerCase().slice(0, 10);
+    const ext = rawExt || MIME_EXTENSION_FALLBACK[file.mimetype] || '';
     cb(null, `${Date.now()}_${crypto.randomBytes(6).toString('hex')}${ext}`);
   },
 });
@@ -68,7 +80,7 @@ export const uploadChatFiles = (req, res, next) => {
   uploader.array('files', MAX_FILES)(req, res, (err) => {
     if (!err) return next();
     const message = err.code === 'LIMIT_FILE_SIZE'
-      ? 'Tệp vượt quá dung lượng tối đa 25MB'
+      ? 'Tệp vượt quá dung lượng tối đa 8MB'
       : err.code === 'LIMIT_FILE_COUNT'
         ? `Chỉ được gửi tối đa ${MAX_FILES} tệp mỗi lần`
         : err.message;
