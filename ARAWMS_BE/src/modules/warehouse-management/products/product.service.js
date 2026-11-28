@@ -16,6 +16,7 @@ import InventoryTransaction from '../../../models/InventoryTransaction.model.js'
 import WarehouseLocation from '../../../models/WarehouseLocation.model.js';
 import FinishedGoodsBatch from '../../../models/FinishedGoodsBatch.model.js';
 import { configureProductCloudinary, productMediaOptions } from '../../../common/services/productMediaStorage.js';
+import { assertWarehouseUnlockedForStocktake } from '../../../common/services/stocktakeLockGuard.js';
 import { pickableQtyBySku } from './productDetail.service.js';
 import { requestError } from '../shared/warehouseHttp.js';
 
@@ -86,6 +87,7 @@ export async function issueSkuStock(productId, { direction, skuId, quantity, not
       const product = await Product.findOne({ _id: productId, isDeleted: { $ne: true } }).session(session);
       if (!product) throw requestError('Không tìm thấy sản phẩm', 'PRODUCT_NOT_FOUND', 404);
       if (!product.isActive) throw requestError('Sản phẩm đang ở trạng thái nháp', 'PRODUCT_INACTIVE', 409);
+      await assertWarehouseUnlockedForStocktake('FINISHED_GOODS', 'nhập/xuất kho', session);
       const sku = skuId ? await Sku.findOne({ _id: skuId, productId, isDeleted: { $ne: true } }).session(session) : null;
       if (!sku) throw requestError('Không tìm thấy SKU của sản phẩm', 'SKU_NOT_FOUND', 404);
       if (!sku.isActive) throw requestError('SKU đã ngừng sử dụng', 'SKU_INACTIVE', 409);

@@ -259,6 +259,29 @@ export const scheduleInboundPlan = async (payload, currentUserId) => {
     });
   }
 
+  // Đối soát tổng số lượng kế hoạch từng nguyên phụ liệu không được vượt quá số lượng cam kết trên hợp đồng
+  const contractedQtyByMat = new Map();
+  (contract.contractedMaterials || []).forEach((cm) => {
+    const matKey = String(cm.rawMaterialId?._id || cm.rawMaterialId || '');
+    if (!matKey) return;
+    contractedQtyByMat.set(matKey, (contractedQtyByMat.get(matKey) || 0) + Number(cm.contractedQty || 0));
+  });
+  for (const [matKey, item] of aggregatedItemsMap.entries()) {
+    const allowedQty = contractedQtyByMat.get(matKey);
+    if (allowedQty === undefined) {
+      const err = new Error('Nguyên phụ liệu trong kế hoạch tiếp nhận không thuộc danh mục cam kết của hợp đồng.');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (Number(item.plannedQty || 0) > allowedQty + 0.001) {
+      const err = new Error(
+        `Tổng số lượng phân bổ (${item.plannedQty}) vượt quá số lượng cam kết trên hợp đồng (${allowedQty}).`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
   const rootExpectedItems = Array.from(aggregatedItemsMap.values());
   const firstDeliveryDate = normalizedBatches.length > 0
     ? normalizedBatches[0].scheduledDeliveryDate
@@ -296,6 +319,12 @@ export const updateInboundPlanStatus = async (planId, payload) => {
   if (!plan) {
     const err = new Error('Không tìm thấy kế hoạch tiếp nhận nguyên liệu');
     err.statusCode = 404;
+    throw err;
+  }
+
+  if (['RESOLVED_SUPERSEDED', 'CANCELLED'].includes(plan.status)) {
+    const err = new Error(`Không thể đối chiếu giao nhận trên kế hoạch đã bị thay thế hoặc hủy (${plan.status}).`);
+    err.statusCode = 409;
     throw err;
   }
 
@@ -463,6 +492,29 @@ export const amendInboundPlanVersion = async (planId, payload, currentUserId) =>
     });
   }
 
+  // Đối soát tổng số lượng kế hoạch từng nguyên phụ liệu không được vượt quá số lượng cam kết trên hợp đồng
+  const contractedQtyByMat = new Map();
+  (contract.contractedMaterials || []).forEach((cm) => {
+    const matKey = String(cm.rawMaterialId?._id || cm.rawMaterialId || '');
+    if (!matKey) return;
+    contractedQtyByMat.set(matKey, (contractedQtyByMat.get(matKey) || 0) + Number(cm.contractedQty || 0));
+  });
+  for (const [matKey, item] of aggregatedItemsMap.entries()) {
+    const allowedQty = contractedQtyByMat.get(matKey);
+    if (allowedQty === undefined) {
+      const err = new Error('Nguyên phụ liệu trong kế hoạch tiếp nhận không thuộc danh mục cam kết của hợp đồng.');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (Number(item.plannedQty || 0) > allowedQty + 0.001) {
+      const err = new Error(
+        `Tổng số lượng phân bổ (${item.plannedQty}) vượt quá số lượng cam kết trên hợp đồng (${allowedQty}).`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
   const rootExpectedItems = Array.from(aggregatedItemsMap.values());
   const firstDeliveryDate =
     normalizedBatches.length > 0
@@ -532,6 +584,12 @@ export const getInboundPlanVersions = async (planId) => {
     err.statusCode = 404;
     throw err;
   }
+
+  if (['RESOLVED_SUPERSEDED', 'CANCELLED'].includes(plan.status)) {
+    const err = new Error(`Không thể đối chiếu giao nhận trên kế hoạch đã bị thay thế hoặc hủy (${plan.status}).`);
+    err.statusCode = 409;
+    throw err;
+  }
   const rootId = plan.rootPlanId || plan._id;
   const baseCode = (plan.planCode || '').replace(/-V\d+$/i, '').trim();
 
@@ -577,6 +635,12 @@ export const recordTechnicianVerification = async (planId, payload, currentUserI
   if (!plan) {
     const err = new Error('Không tìm thấy kế hoạch tiếp nhận nguyên liệu');
     err.statusCode = 404;
+    throw err;
+  }
+
+  if (['RESOLVED_SUPERSEDED', 'CANCELLED'].includes(plan.status)) {
+    const err = new Error(`Không thể đối chiếu giao nhận trên kế hoạch đã bị thay thế hoặc hủy (${plan.status}).`);
+    err.statusCode = 409;
     throw err;
   }
 
@@ -666,6 +730,12 @@ export const reportDeviationToOwner = async (planId, currentUserId, notes = '') 
   if (!plan) {
     const err = new Error('Không tìm thấy kế hoạch tiếp nhận nguyên liệu');
     err.statusCode = 404;
+    throw err;
+  }
+
+  if (['RESOLVED_SUPERSEDED', 'CANCELLED'].includes(plan.status)) {
+    const err = new Error(`Không thể gửi báo cáo sai lệch trên kế hoạch đã bị thay thế hoặc hủy (${plan.status}).`);
+    err.statusCode = 409;
     throw err;
   }
 

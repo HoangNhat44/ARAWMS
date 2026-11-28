@@ -261,6 +261,11 @@ export default function FinishedGoodsPage({ isStaffMode = false }) {
       setError('Vui lòng chọn SKU.');
       return;
     }
+    const parsedQty = Number(quantity);
+    if (!Number.isInteger(parsedQty) || parsedQty < 1 || parsedQty > 100000) {
+      setError('Số lượng nhập/xuất phải là số nguyên từ 1 đến 100.000.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {

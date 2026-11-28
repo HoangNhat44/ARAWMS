@@ -17,6 +17,7 @@ import WarehouseLayout from '../../../models/WarehouseLayout.model.js';
 import { publishRealtime } from '../../../common/services/realtime.js';
 import { notifyWorkflow, ROLE_PAGES } from '../../../common/services/workflowNotify.js';
 import { canAccessLocation, hasWholeWarehouseAccess } from '../../../common/services/warehouseAccess.js';
+import { assertWarehouseUnlockedForStocktake } from '../../../common/services/stocktakeLockGuard.js';
 
 const id = (value) => String(value || '');
 const round = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
@@ -71,6 +72,44 @@ const notifyOutboundStep = (ticket, step, user, extra = '') => {
   };
   for (const item of messages[step] || []) {
     notifyWorkflow({ type: 'OUTBOUND_REQUEST', metadata, actor: user, ...item });
+  }
+};
+
+/** Kiểm tra và gửi cảnh báo tồn kho thấp khi tồn khả dụng nguyên phụ liệu tụt xuống ngưỡng an toàn. */
+const notifyLowMaterialStock = async (ticket, user) => {
+  const materialIds = [...new Set((ticket?.lines || []).map((line) => id(line.rawMaterialId)).filter(Boolean))];
+  if (!materialIds.length) return;
+  try {
+    const materials = await RawMaterial.find({ _id: { $in: materialIds }, isDeleted: { $ne: true } })
+      .select('materialCode materialName unit onHandQty safetyStockThreshold')
+      .lean();
+    for (const mat of materials) {
+      const threshold = Number(mat.safetyStockThreshold || 0);
+      const onHand = Number(mat.onHandQty || 0);
+      if (threshold > 0 && onHand <= threshold) {
+        await notifyWorkflow({
+          type: 'STOCK_ALERT',
+          priority: 'HIGH',
+          actor: user,
+          roles: {
+            WAREHOUSE_MANAGER: ROLE_PAGES.WAREHOUSE_MANAGER.outbound,
+            OWNER: '/owner/material-valuation',
+          },
+          title: `Cảnh báo tồn kho an toàn: ${mat.materialCode}`,
+          message: `Nguyên phụ liệu "${mat.materialName}" (${mat.materialCode}) còn ${onHand} ${mat.unit || ''}, đã chạm/dưới ngưỡng tồn an toàn (${threshold} ${mat.unit || ''}) sau phiếu xuất ${ticket.ticketCode || ''}.`,
+          metadata: {
+            materialId: id(mat._id),
+            materialCode: mat.materialCode,
+            onHandQty: onHand,
+            safetyStockThreshold: threshold,
+            ticketId: id(ticket._id),
+            ticketCode: ticket.ticketCode,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[notifyLowMaterialStock] Lỗi gửi cảnh báo tồn kho thấp:', err.message);
   }
 };
 
@@ -315,6 +354,7 @@ export async function confirmOutbound(ticketId, input, user) {
       if (ticket.status === 'COMPLETED' && ticket.confirmationKey === key) { result = ticket; return; }
       requireRule(ticket.status === 'DRAFT', 'Phiếu đã xác nhận hoặc hủy', 'TICKET_LOCKED', 409);
       requireRule(Number(input.version) === ticket.version, 'Bản nháp đã thay đổi, hãy tải lại', 'VERSION_CONFLICT', 409);
+      await assertWarehouseUnlockedForStocktake('RAW_MATERIAL', 'xác nhận xuất kho', session);
       requireRule(input.reviewed === true, 'Cần xác nhận đã kiểm tra bàn giao', 'REVIEW_REQUIRED');
       requireRule(ticket.department?.trim() && ticket.recipient?.trim() && ticket.purpose?.trim(),
         'Điền đủ thông tin bàn giao', 'REQUIRED_HANDOVER');
@@ -374,6 +414,9 @@ export async function confirmOutbound(ticketId, input, user) {
       result = ticket;
     });
   } finally { await session.endSession(); }
+  if (result?.status === 'COMPLETED') {
+    await notifyLowMaterialStock(result, user);
+  }
   return result;
 }
 
@@ -1519,6 +1562,7 @@ export async function confirmHandoverAndOutbound(ticketId, input, user) {
 
       requireRule(['PICKING', 'WAITING_PICKING', 'WAITING_DISCREPANCY'].includes(ticket.status),
         'Yêu cầu đã được xác nhận hoặc đã hủy', 'TICKET_LOCKED', 409);
+      await assertWarehouseUnlockedForStocktake('RAW_MATERIAL', 'xác nhận bàn giao xuất kho', session);
 
       const hasUnresolvedShortage = (ticket.lines || []).some(
         (l) => l.shortageReport?.reported && !l.shortageReport?.approvedByManagerId
@@ -1719,5 +1763,6 @@ export async function confirmHandoverAndOutbound(ticketId, input, user) {
   });
 
   notifyOutboundStep(result, 'COMPLETED', user);
+  await notifyLowMaterialStock(result, user);
   return getOutboundRequestDetail(result._id, user);
 }

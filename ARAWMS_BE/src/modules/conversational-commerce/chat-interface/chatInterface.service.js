@@ -22,6 +22,21 @@ import { ENV } from '../../../config/env.js';
 import { resolveAttachmentType } from '../../../common/middlewares/chatUpload.js';
 import { emitNewMessage, emitConversationUpdated, emitConversationRead } from '../../../config/socket.js';
 
+/** Chuẩn hóa lỗi trả về từ Facebook Graph Send API sang deliveryStatus/deliveryError. */
+const resolveFacebookError = (fbErr) => {
+  const errData = fbErr.response?.data?.error || {};
+  if (errData.code === 10 || errData.error_subcode === 2018278) {
+    return {
+      deliveryStatus: 'FAILED_24H_EXPIRED',
+      deliveryError: 'Tin nhắn gửi ngoài khoảng thời gian cho phép 24h của Meta.',
+    };
+  }
+  return {
+    deliveryStatus: 'FAILED_META_ERROR',
+    deliveryError: errData.message || fbErr.message,
+  };
+};
+
 /**
  * Ghi SystemLog kiểm toán
  * @businessRule GBR-23 Ghi log kiểm toán cho dữ liệu quan trọng
@@ -269,13 +284,7 @@ export const sendCustomerMessage = async (conversationId, { messageText, attachm
     } catch (fbErr) {
       const errData = fbErr.response?.data?.error || {};
       console.warn('⚠️ [Facebook Send API Warning]:', errData.message || fbErr.message);
-      if (errData.code === 10 || errData.error_subcode === 2018278) {
-        deliveryStatus = 'FAILED_24H_EXPIRED';
-        deliveryError = 'Tin nhắn gửi ngoài khoảng thời gian cho phép 24h của Meta.';
-      } else {
-        deliveryStatus = 'FAILED_META_ERROR';
-        deliveryError = errData.message || fbErr.message;
-      }
+      ({ deliveryStatus, deliveryError } = resolveFacebookError(fbErr));
     }
   } else {
     deliveryStatus = 'NOT_CONNECTED';
@@ -345,6 +354,8 @@ export const sendCustomerAttachments = async (conversationId, files = [], messag
   const canPushToFacebook = Boolean(customer?.facebookPsid && pageToken);
   const attachments = [];
   let fbMessageId = null;
+  let deliveryStatus = null;
+  let deliveryError = null;
 
   // 2. Gửi phần chú thích văn bản trước (Messenger không cho gộp text + attachment)
   if (messageText && canPushToFacebook) {
@@ -389,10 +400,7 @@ export const sendCustomerAttachments = async (conversationId, files = [], messag
     } catch (fbErr) {
       const errData = fbErr.response?.data?.error || {};
       console.warn('⚠️ [Facebook Send API - attachment]:', errData.message || fbErr.message);
-      if (errData.code === 10 || errData.error_subcode === 2018278) {
-        deliveryStatus = 'FAILED_24H_EXPIRED';
-        deliveryError = 'Tin nhắn gửi ngoài khoảng thời gian cho phép 24h của Meta.';
-      }
+      ({ deliveryStatus, deliveryError } = resolveFacebookError(fbErr));
     }
   }
 
