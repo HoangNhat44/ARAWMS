@@ -936,12 +936,14 @@ const ContractFrameworkPage = () => {
     return { total, active, deviationFlagged, draft, terminated };
   }, [contracts]);
 
+  // [UC-039] Mở modal nhập lý do chấm dứt hợp đồng trước hạn
   const handleOpenTerminateModal = (contract) => {
     setSelectedForTerminate(contract);
     setTerminateReason('');
     setTerminateErrors({});
   };
 
+  // [UC-039] Update Contract - Xác nhận chấm dứt hiệu lực hợp đồng trước hạn
   const handleConfirmTerminate = async (e) => {
     e.preventDefault();
     if (!terminateReason || !terminateReason.trim()) {
@@ -976,6 +978,7 @@ const ContractFrameworkPage = () => {
     }
   };
 
+  // Cập nhật trường thông tin chung của hợp đồng trên form và xóa lỗi validation tương ứng
   const handleContractFieldChange = (field, value) => {
     if (contractErrors[field]) {
       setContractErrors((prev) => {
@@ -1015,6 +1018,7 @@ const ContractFrameworkPage = () => {
     });
   };
 
+  // Cập nhật điều khoản thương mại (VAT, % đặt cọc, số đợt thanh toán, điều kiện giao hàng) và tự động tính lại lịch thanh toán
   const handleCommercialChange = (field, value) => {
     setContractErrors((prev) => {
       const next = { ...prev };
@@ -1076,6 +1080,7 @@ const ContractFrameworkPage = () => {
     });
   };
 
+  // Chỉnh sửa thông tin từng đợt trong lịch thanh toán hợp đồng và tự động cân đối phần trăm/số tiền đợt cuối
   const handleInstallmentChange = (index, field, value) => {
     setContractErrors((prev) => {
       const next = { ...prev };
@@ -1197,6 +1202,7 @@ const ContractFrameworkPage = () => {
     });
   };
 
+  // Cập nhật tiêu chuẩn kiểm định chất lượng KCS (hệ 4 điểm, số điểm lỗi tối đa, bảo hành đổi trả)
   const handleQualityChange = (field, value) => {
     if (contractErrors[field]) {
       setContractErrors((prev) => {
@@ -1214,6 +1220,7 @@ const ContractFrameworkPage = () => {
     }));
   };
 
+  // [UC-027, UC-038] Cập nhật dòng nguyên phụ liệu cam kết (chọn NVL từ danh mục hoặc tạo mới, số lượng, đơn giá, đơn vị tính)
   const handleMaterialLineChange = (index, field, value) => {
     if (contractErrors.materialLines?.[index]?.[field]) {
       setContractErrors((prev) => {
@@ -1317,6 +1324,7 @@ const ContractFrameworkPage = () => {
   };
 
   // Thêm 1 dòng cuộn vải mới vào danh sách của dòng nguyên phụ liệu
+  // Thêm một cuộn vải mới vào chi tiết quy cách cuộn của dòng nguyên liệu và cộng lại tổng số mét
   const handleAddRoll = (matIndex) => {
     setContractForm((prev) => {
       const updated = [...prev.contractedMaterials];
@@ -1358,6 +1366,7 @@ const ContractFrameworkPage = () => {
   };
 
   // Xóa 1 dòng cuộn vải khỏi danh sách
+  // Xóa một cuộn vải khỏi danh sách cuộn chi tiết và cập nhật lại tổng số lượng cam kết
   const handleRemoveRoll = (matIndex, rollIndexToRemove) => {
     setContractForm((prev) => {
       const updated = [...prev.contractedMaterials];
@@ -1395,6 +1404,7 @@ const ContractFrameworkPage = () => {
   };
 
   // Cập nhật thuộc tính của 1 dòng cuộn vải (số lượng cuộn, chiều dài mét, ghi chú)
+  // Chỉnh sửa thông số từng cuộn vải (chiều dài mét, trọng lượng kg, số lượng cuộn) và đồng bộ lại số lượng dòng hàng
   const handleRollDetailChange = (matIndex, rollIdx, rollField, val) => {
     setContractForm((prev) => {
       const updated = [...prev.contractedMaterials];
@@ -1444,6 +1454,7 @@ const ContractFrameworkPage = () => {
     });
   };
 
+  // Thêm một dòng nguyên phụ liệu mới vào bảng danh mục cam kết của hợp đồng
   const handleAddMaterialLine = () => {
     setContractErrors((prev) => {
       const next = { ...prev };
@@ -1485,6 +1496,7 @@ const ContractFrameworkPage = () => {
     });
   };
 
+  // Xóa một dòng nguyên phụ liệu khỏi hợp đồng và đồng bộ lại danh sách phân bổ đợt nhập
   const handleRemoveMaterialLine = (index) => {
     if (contractForm.contractedMaterials.length <= 1) return;
     setContractErrors((prev) => {
@@ -1523,6 +1535,7 @@ const ContractFrameworkPage = () => {
   };
 
   // UC: Kế hoạch Lịch trình Tiếp nhận Nguyên vật liệu (Inbound Delivery Schedule Handlers)
+  // [UC-038, UC-040] Thay đổi số lượng đợt giao hàng dự kiến và tự động chia đều số lượng từng mặt hàng qua các đợt
   const handleInboundBatchesCountChange = (newCount) => {
     if (newCount === '') {
       setContractForm((prev) => ({
@@ -1554,6 +1567,7 @@ const ContractFrameworkPage = () => {
     });
   };
 
+  // Xóa một đợt giao hàng khỏi lịch nhập và tự động dồn lại số lượng vào các đợt còn lại
   const handleRemoveInboundBatch = (bIdxToRemove) => {
     setContractForm((prev) => {
       const currentLen = (prev.inboundBatches || []).length;
@@ -1580,6 +1594,7 @@ const ContractFrameworkPage = () => {
     });
   };
 
+  // Cập nhật ngày giao dự kiến hoặc ghi chú của một đợt nhập hàng cụ thể
   const handleInboundBatchFieldChange = (bIdx, field, value) => {
     setContractForm((prev) => {
       const next = [...(prev.inboundBatches || [])];
@@ -1603,6 +1618,7 @@ const ContractFrameworkPage = () => {
     }
   };
 
+  // Chỉnh sửa số lượng mặt hàng của 1 đợt nhập và tự động cân bằng phần còn thiếu vào đợt cuối cùng
   const handleInboundBatchItemQtyChange = (bIdx, itemIdx, value) => {
     const rawVal = value === '' ? '' : Math.max(0, Number(value));
     setContractForm((prev) => {
@@ -1679,6 +1695,7 @@ const ContractFrameworkPage = () => {
   };
 
   // Chọn/bỏ chọn cuộn vải hoặc cập nhật số lượng cuộn giao cho từng đợt nhập trong Hợp đồng
+  // Điều chỉnh số lượng cuộn vải phân bổ trong từng đợt giao hàng
   const handleContractBatchRollQtyChange = (bIdx, itemIdx, targetRoll, newRollQty) => {
     setContractForm((prev) => {
       const next = (prev.inboundBatches || []).map((b) => ({
@@ -1811,6 +1828,7 @@ const ContractFrameworkPage = () => {
     });
   };
 
+  // Bật/tắt chọn một cuộn vải cụ thể đưa vào đợt giao hàng
   const handleToggleContractBatchRoll = (bIdx, itemIdx, targetRoll) => {
     const batch = contractForm.inboundBatches?.[bIdx];
     const targetItem = batch?.expectedItems?.[itemIdx];
@@ -1827,6 +1845,7 @@ const ContractFrameworkPage = () => {
     handleContractBatchRollQtyChange(bIdx, itemIdx, targetRoll, isCurrentlySelected ? 0 : totalRollQty);
   };
 
+  // Tự động chia đều và cân bằng lại tổng số lượng các đợt giao khớp 100% số lượng cam kết hợp đồng
   const handleAutoBalanceInboundBatches = () => {
     setContractForm((prev) => {
       const count = prev.inboundBatchesCount || 2;
@@ -1894,6 +1913,7 @@ const ContractFrameworkPage = () => {
   const [highlightedMismatchItem, setHighlightedMismatchItem] = useState(null);
 
   // Cuộn đến đúng dòng nguyên phụ liệu đang bị lệch số lượng trong các đợt giao
+  // Cuộn màn hình tới đúng mặt hàng đang bị lệch tổng số lượng phân bổ giữa các đợt giao
   const handleScrollToMismatchItem = (targetItemIdx) => {
     const itemIdx =
       targetItemIdx !== undefined
@@ -1986,6 +2006,7 @@ const ContractFrameworkPage = () => {
     setActiveTab('DRAFT_FORM');
   };
 
+  // [UC-039] Mở hợp đồng hiện có lên form để chỉnh sửa bản nháp (DRAFT) hoặc khởi tạo phiên bản mới (v2, v3...) nếu đã ACTIVE
   const handleEditExistingContract = async (contractOrTarget) => {
     let contract = contractOrTarget;
     const contractId = contract?._id || contract?.id || contractOrTarget;
@@ -2238,6 +2259,7 @@ const ContractFrameworkPage = () => {
     setActiveTab('DRAFT_FORM');
   };
 
+  // [UC-039] Mở modal xem lịch sử các phiên bản (v1, v2, v3...) của cùng một hợp đồng
   const handleOpenVersionHistory = async (contract) => {
     const contractId = contract._id || contract.id;
     setHistoryModalContract(contract);
@@ -2253,6 +2275,7 @@ const ContractFrameworkPage = () => {
     }
   };
 
+  // [UC-038, UC-039] Create / Update Contract - Lưu mới khung hợp đồng (tự tạo kế hoạch nhập v1), cập nhật bản thảo hoặc tạo phiên bản mới (v2, v3...)
   const handleSaveContract = async (e) => {
     e.preventDefault();
     console.log('[ContractFrameworkPage] handleSaveContract called', { contractForm });
@@ -2365,6 +2388,7 @@ const ContractFrameworkPage = () => {
     }
   };
 
+  // [UC-039] Update Contract - Chuyển trạng thái hợp đồng (Kích hoạt / Hủy)
   const handleTransitionStatus = async (contractId, nextStatus) => {
     try {
       setSubmitting(true);
@@ -5463,6 +5487,7 @@ const ContractFrameworkPage = () => {
                 <Eye size={16} />
                 Xem trước Hợp đồng (Bản in)
               </button>
+              {/* [UC-038, UC-039] Nút lưu mới khung hợp đồng / cập nhật bản thảo / tạo phiên bản mới */}
               <button
                 type="submit"
                 className="wms-btn wms-btn-primary"

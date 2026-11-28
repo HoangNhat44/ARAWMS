@@ -41,6 +41,7 @@ const SUPPLY_CATEGORY_LABELS = {
   BOTH: 'Vải & Phụ liệu may',
 };
 
+// Định dạng số tiền sang đơn vị tiền tệ Việt Nam (VND)
 const formatVnd = (value) =>
   `${Number(value || 0).toLocaleString('vi-VN')} ₫`;
 
@@ -64,6 +65,7 @@ const SupplierManagementPage = () => {
   const [formData, setFormData] = useState(INITIAL_SUPPLIER_FORM);
   const [formErrors, setFormErrors] = useState({});
 
+  // [UC-036, UC-037] Tải danh sách nhà cung ứng từ API theo bộ lọc tìm kiếm, trạng thái và nhóm hàng
   const fetchSuppliers = async () => {
     try {
       setLoading(true);
@@ -130,6 +132,7 @@ const SupplierManagementPage = () => {
     return { total, activeCount, totalDebt };
   }, [suppliers]);
 
+  // [UC-036] Mở modal thêm mới nhà cung ứng và khởi tạo dữ liệu form trống mặc định
   const openAddModal = () => {
     setEditingSupplier(null);
     setFormData({
@@ -141,6 +144,7 @@ const SupplierManagementPage = () => {
     setIsModalOpen(true);
   };
 
+  // [UC-037] Mở modal chỉnh sửa và đổ sẵn thông tin nhà cung ứng được chọn vào form
   const openEditModal = (supplier) => {
     setEditingSupplier(supplier);
     setFormData({
@@ -168,6 +172,7 @@ const SupplierManagementPage = () => {
     setIsModalOpen(true);
   };
 
+  // Cập nhật giá trị từng trường trong form nhà cung ứng (hỗ trợ cả trường lồng bankInfo.*) và xóa lỗi cũ
   const handleFormChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (formErrors[field]) {
@@ -179,6 +184,7 @@ const SupplierManagementPage = () => {
     }
   };
 
+  // [UC-036, UC-037] Add / Update Suppliers - Lưu thêm mới hoặc cập nhật thông tin nhà cung ứng
   const handleSubmitSupplier = async (e) => {
     e.preventDefault();
     const { isValid, errors } = validateSupplierForm(formData);
@@ -865,6 +871,7 @@ const SupplierManagementPage = () => {
                 >
                   Hủy bỏ
                 </button>
+                {/* [UC-036, UC-037] Nút lưu thêm mới / cập nhật nhà cung ứng */}
                 <button
                   type="submit"
                   className="wms-btn wms-btn-primary"

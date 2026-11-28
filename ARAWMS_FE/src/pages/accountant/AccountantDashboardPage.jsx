@@ -50,6 +50,7 @@ const AccountantDashboardPage = () => {
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState('');
 
+  // [UC-009, UC-111] View Dashboard & Report Cash Flow - Tải KPI tổng quan & biểu đồ phân tích dòng tiền theo kỳ
   const fetchDashboard = useCallback(async (type, start, end) => {
     setFilterError('');
     setApiError('');
@@ -96,6 +97,7 @@ const AccountantDashboardPage = () => {
     }
   }, [periodType, fetchDashboard]);
 
+  // [UC-111] Report Cash Flow - Áp dụng bộ lọc khoảng thời gian tùy chọn cho báo cáo dòng tiền
   const handleApplyCustom = (e) => {
     e.preventDefault();
     fetchDashboard('CUSTOM', fromDate, toDate);

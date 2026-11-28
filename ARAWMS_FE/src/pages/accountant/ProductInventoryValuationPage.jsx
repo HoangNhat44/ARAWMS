@@ -40,6 +40,7 @@ import accountantProcurementApi from '../../services/accountantProcurementApi.js
 import './productInventoryValuation.css';
 
 // Formatter tiền tệ VNĐ
+// Định dạng giá trị tiền tệ sang đơn vị VND
 const formatVND = (val) => {
   if (val === undefined || val === null || isNaN(val)) return '0 ₫';
   return new Intl.NumberFormat('vi-VN', {
@@ -50,6 +51,7 @@ const formatVND = (val) => {
 };
 
 // Formatter số lượng
+// Định dạng số lượng có dấu phân cách hàng nghìn
 const formatNumber = (val) => {
   if (val === undefined || val === null || isNaN(val)) return '0';
   return new Intl.NumberFormat('vi-VN').format(val);
@@ -79,6 +81,7 @@ export default function ProductInventoryValuationPage() {
   const [exportingExcel, setExportingExcel] = useState(false);
 
   // 1. Tải Summary & Categories
+  // [UC-109] View Total Inventory Valuation - Tải tổng hợp giá trị định giá tồn kho thành phẩm & danh mục lọc
   const fetchSummaryAndCategories = useCallback(async () => {
     try {
       setLoadingSummary(true);
@@ -96,6 +99,7 @@ export default function ProductInventoryValuationPage() {
   }, []);
 
   // 2. Tải danh sách sản phẩm theo bộ lọc & phân trang
+  // [UC-109] View Total Inventory Valuation - Tải danh sách định giá tồn kho chi tiết theo từng SKU
   const fetchProductList = useCallback(
     async (targetPage = 1) => {
       try {
@@ -136,12 +140,14 @@ export default function ProductInventoryValuationPage() {
   }, [selectedCategory, selectedSize, stockStatus, sortBy]);
 
   // Debounced Search Handle
+  // [UC-109] Thực thi tìm kiếm sản phẩm theo từ khóa và đặt lại phân trang về trang 1
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     fetchProductList(1);
   };
 
   // Copy helper
+  // Sao chép mã SKU/barcode vào clipboard và hiện phản hồi ngắn
   const handleCopy = (text) => {
     if (!text) return;
     navigator.clipboard.writeText(text);
@@ -150,6 +156,7 @@ export default function ProductInventoryValuationPage() {
   };
 
   // 3. Xuất file Excel báo cáo định giá tài sản tồn kho
+  // [UC-109] View Total Inventory Valuation - Xuất báo cáo Excel định giá tồn kho thành phẩm
   const handleExportExcel = async () => {
     try {
       setExportingExcel(true);

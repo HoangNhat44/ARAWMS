@@ -33,6 +33,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
     groupKey: 'overview',
     groupTitle: 'Tổng quan',
     items: [
+      // [UC-009, UC-111] View Dashboard & Report Cash Flow - Tổng quan Dashboard Kế toán & báo cáo dòng tiền
       {
         key: 'dashboard',
         label: 'Bảng điều khiển Kế toán',
@@ -48,7 +49,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
     groupKey: 'supplier_contracts',
     groupTitle: 'Mua sắm & Hợp đồng NCC',
     items: [
-      // UC: Quản lý nhà cung ứng nguyên phụ liệu
+      // [UC-036, UC-037] Add / Update Suppliers - Quản lý nhà cung ứng nguyên phụ liệu
       {
         key: 'suppliers',
         label: 'Nhà cung ứng nguyên liệu',
@@ -57,7 +58,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
         ucCode: 'UC 01–03',
         description: 'Manage Material Suppliers (Xem, Thêm mới, Cập nhật nhà cung ứng)',
       },
-      // UC: Soạn thảo khung hợp đồng với nhà cung cấp
+      // [UC-027, UC-038, UC-039] Create Material, Create / Update Contract - Soạn & cập nhật khung hợp đồng NCC
       {
         key: 'contracts',
         label: 'Khung hợp đồng mua sắm',
@@ -66,7 +67,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
         ucCode: 'UC 04',
         description: 'Draft Supplier Contract Framework (Soạn thảo khung hợp đồng NCC)',
       },
-      // UC: Lập kế hoạch lịch trình tiếp nhận nguyên phụ liệu
+      // [UC-040, UC-044] Schedule / View Material Inbound Plan - Lập và xem kế hoạch lịch trình tiếp nhận nguyên phụ liệu
       {
         key: 'inbound-plans',
         label: 'Kế hoạch lịch trình nhập',
@@ -75,7 +76,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
         ucCode: 'UC 05',
         description: 'Schedule Material Inbound Plan (Lập kế hoạch tiếp nhận nguyên vật liệu)',
       },
-      // UC: Xử lý sai lệch hợp đồng mua sắm
+      // [UC-041] Report Contract Deviation - Điều tra, xử lý & trình báo sai lệch hợp đồng
       {
         key: 'contract-deviations',
         label: 'Xử lý sai lệch hợp đồng',
@@ -90,6 +91,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
     groupKey: 'debt_and_cashflow',
     groupTitle: 'Công nợ & Dòng tiền',
     items: [
+      // [UC-114] View Debt - Theo dõi công nợ Nhà cung cấp & công nợ COD/cước GHN
       {
         key: 'supplier-debts',
         label: 'Quản lý công nợ',
@@ -98,6 +100,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
         ucCode: 'UC 07',
         description: 'Manage Debts (Theo dõi công nợ phải trả NCC và công nợ phải thu GHN)',
       },
+      // [UC-112, UC-113] View Cash Flow History & Create Cash Flow Voucher - Lịch sử dòng tiền & lập phiếu thu/chi
       {
         key: 'cash-flow-vouchers',
         label: 'Lập phiếu thu / chi',
@@ -112,6 +115,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
     groupKey: 'cod_and_disputes',
     groupTitle: 'Đối soát COD & Giao vận',
     items: [
+      // [UC-115, UC-118, UC-119] Đối soát COD tự động GHN & Lập/Xem khiếu nại tranh chấp vận chuyển
       {
         key: 'cod-statements',
         label: 'Đối soát bảng kê COD',
@@ -129,6 +133,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
     groupTitle: 'Giá vốn, Định giá & P&L',
     items: [
 
+      // [UC-109] View Total Inventory Valuation - Xem tổng giá trị định giá tồn kho thành phẩm
       {
         key: 'inventory-valuation',
         label: 'Giá trị tồn kho sản phẩm',
@@ -137,6 +142,7 @@ export const ACCOUNTANT_NAV_GROUPS = [
         ucCode: 'UC 10',
         description: 'View Total Inventory Valuation (Xem tổng giá trị định giá tài sản tồn kho)',
       },
+      // [UC-110] View Total Raw Material Inventory Value - Xem tổng giá trị định giá tồn kho nguyên vật liệu
       {
         key: 'raw-material-valuation',
         label: 'Giá trị tồn kho nguyên liệu',

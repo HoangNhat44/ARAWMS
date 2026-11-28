@@ -76,6 +76,7 @@ const CATEGORY_LABELS = {
   OPERATIONAL_EXPENSE: 'Chi phí vận hành',
 };
 
+// Trả về cấu hình nhãn và màu sắc badge trạng thái của phiếu thu/chi (DRAFT, CONFIRMED, PAID, CANCELLED)
 const getVoucherStatusBadge = (voucher) => {
   const isCashIn = voucher.flowType === 'CASH_IN';
   if (voucher.status === 'PAID') {
@@ -118,9 +119,11 @@ const getVoucherStatusBadge = (voucher) => {
   };
 };
 
+// Định dạng số tiền sang đơn vị tiền tệ VND
 const formatVnd = (amount) =>
   Number(amount || 0).toLocaleString('vi-VN') + ' đ';
 
+// Định dạng ngày sang dd/mm/yyyy
 const formatDate = (val) => {
   if (!val) return '—';
   try {
@@ -131,6 +134,7 @@ const formatDate = (val) => {
   }
 };
 
+// Định dạng ngày giờ sang dd/mm/yyyy hh:mm
 const formatDateTime = (val) => {
   if (!val) return '—';
   try {
@@ -146,6 +150,7 @@ const formatDateTime = (val) => {
 /**
  * Nén ảnh tự động trên trình duyệt trước khi chuyển sang Base64
  */
+// Nén ảnh chứng từ thanh toán trên trình duyệt (Canvas -> JPEG Base64) để giảm dung lượng khi đính kèm
 const compressImage = (file, maxWidth = 1600, quality = 0.82) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -176,6 +181,7 @@ const compressImage = (file, maxWidth = 1600, quality = 0.82) => {
 /**
  * Lấy danh sách các đợt thanh toán hợp đồng (Bao gồm Đặt cọc và các Đợt paymentSchedule)
  */
+// Trích xuất danh sách các đợt thanh toán (đặt cọc + từng đợt) của một hợp đồng nhà cung cấp
 const getContractInstallments = (contract) => {
   if (!contract) return [];
   const list = [];
@@ -223,6 +229,7 @@ const getContractInstallments = (contract) => {
 /**
  * Lấy Map các đợt đã có phiếu chi (CONFIRMED/PAID/DRAFT) cho hợp đồng
  */
+// Quét danh sách phiếu chi hiện có để tìm các đợt thanh toán của hợp đồng đã được lập phiếu (chống chi trùng đợt)
 const getPaidInstallmentsForContract = (contractId, voucherList) => {
   const map = new Map();
   if (!contractId || !Array.isArray(voucherList)) return map;
@@ -329,6 +336,7 @@ const PaymentVoucherPage = () => {
   const [formErrors, setFormErrors] = useState({});
 
   // 1. Tải dữ liệu ban đầu
+  // [UC-112] View Cash Flow History - Tải danh sách lịch sử phiếu thu/chi và danh mục liên quan
   const loadData = async () => {
     try {
       setLoading(true);
@@ -416,6 +424,7 @@ const PaymentVoucherPage = () => {
   }, []);
 
   // 2. Điền thông tin nhà cung ứng vào form khi được chọn
+  // Tự động điền thông tin người nhận, số tài khoản ngân hàng và công nợ của nhà cung cấp vào form phiếu chi
   const applySupplierToForm = (supplier, contractId = '') => {
     if (!supplier) return;
     setVoucherForm((prev) => ({
@@ -440,6 +449,7 @@ const PaymentVoucherPage = () => {
     }));
   };
 
+  // Cập nhật tổng số tiền và lý do chi trên form dựa trên danh sách các đợt thanh toán hợp đồng đã chọn
   const updateFormWithSelectedInstallments = (contract, selectedNums) => {
     if (!contract) return;
     const contractId = contract._id || contract.id;
@@ -480,6 +490,7 @@ const PaymentVoucherPage = () => {
     }));
   };
 
+  // [UC-113] Xử lý khi kế toán chọn Nhà cung cấp trong form lập phiếu chi (tự động lọc hợp đồng ACTIVE liên quan)
   const handleSelectSupplier = (supplierId) => {
     const found = suppliers.find((s) => (s._id || s.id) === supplierId);
     setFormErrors((prev) => {
@@ -514,6 +525,7 @@ const PaymentVoucherPage = () => {
     }
   };
 
+  // [UC-113] Xử lý khi kế toán chọn Hợp đồng cụ thể (tự động chọn đợt thanh toán chưa trả tiếp theo)
   const handleContractChange = (contractId) => {
     setFormErrors((prev) => {
       const next = { ...prev };
@@ -583,6 +595,7 @@ const PaymentVoucherPage = () => {
     }
   };
 
+  // [UC-113] Chọn/bỏ chọn một đợt thanh toán trong hợp đồng (hỗ trợ chế độ đơn đợt và gom nhiều đợt tuần tự)
   const handleToggleInstallment = (inst, instIdx) => {
     if (!selectedContract) return;
     const instList = currentContractInstallments;
@@ -648,6 +661,7 @@ const PaymentVoucherPage = () => {
     updateFormWithSelectedInstallments(selectedContract, newSelectedNums);
   };
 
+  // Chuyển chế độ chọn đợt thanh toán giữa thanh toán đơn đợt (SINGLE) và gộp nhiều đợt (MULTI)
   const handleSwitchInstallmentMode = (mode) => {
     setInstallmentMode(mode);
     setFormErrors((prev) => {
@@ -679,6 +693,7 @@ const PaymentVoucherPage = () => {
     }
   };
 
+  // [UC-113] Create Cash Flow Voucher - Mở form lập mới phiếu thu (CASH_IN) hoặc phiếu chi (CASH_OUT)
   const handleOpenCreateVoucher = (targetFlow = 'CASH_OUT') => {
     setFormErrors({});
     setFeedback(null);
@@ -750,11 +765,13 @@ const PaymentVoucherPage = () => {
     setActiveTab('CREATE_VOUCHER');
   };
 
+  // Chuyển loại chứng từ đang lập giữa Phiếu chi (CASH_OUT) và Phiếu thu (CASH_IN) và đặt lại hạng mục mặc định
   const switchFormFlowType = (targetFlow) => {
     if (voucherForm.flowType === targetFlow) return;
     handleOpenCreateVoucher(targetFlow);
   };
 
+  // Cập nhật hạng mục thu/chi và tự động thiết lập loại đối tượng thụ hưởng tương ứng
   const handleCategoryChange = (catCode) => {
     setFormErrors((prev) => {
       const next = { ...prev };
@@ -827,6 +844,7 @@ const PaymentVoucherPage = () => {
   };
 
   // 3. Tải và nén ảnh chứng từ đính kèm
+  // Đọc, nén và đính kèm ảnh chứng từ thanh toán (hóa đơn/ủy nhiệm chi) vào phiếu thu/chi
   const handlePhotoUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -878,6 +896,7 @@ const PaymentVoucherPage = () => {
     e.target.value = '';
   };
 
+  // Xóa một ảnh chứng từ đính kèm khỏi danh sách trên form
   const handleRemovePhoto = (photoIdx) => {
     setVoucherForm((prev) => ({
       ...prev,
@@ -886,6 +905,7 @@ const PaymentVoucherPage = () => {
   };
 
   // 4. Lưu phiếu thu / chi (Mặc định CONFIRMED sẵn sàng thu/chi tiền)
+  // [UC-113] Create Cash Flow Voucher - Lưu phiếu thu/chi mới (nháp, duyệt hoặc chi tiền ngay)
   const handleSubmitVoucher = async (targetStatus = 'CONFIRMED', andDisburseImmediately = false) => {
     const isCashIn = voucherForm.flowType === 'CASH_IN';
     const submissionForm = {
@@ -963,6 +983,7 @@ const PaymentVoucherPage = () => {
   };
 
   // 5. Thao tác Xác nhận duyệt phiếu (DRAFT -> CONFIRMED)
+  // [UC-113] Create Cash Flow Voucher - Xác nhận duyệt phiếu chi (DRAFT -> CONFIRMED)
   const handleConfirmVoucher = async (voucher) => {
     const voucherId = voucher._id || voucher.id;
     try {
@@ -988,6 +1009,7 @@ const PaymentVoucherPage = () => {
   };
 
   // 6. Thao tác Thực chi tiền (CONFIRMED -> PAID)
+  // [UC-113] Mở modal xác nhận chi tiền thực tế (nhập mã giao dịch/ngày chi) cho phiếu ở trạng thái CONFIRMED
   const handleOpenDisbursementModal = (voucher) => {
     setDisbursementModalVoucher(voucher);
     setDisbursementForm({
@@ -996,6 +1018,7 @@ const PaymentVoucherPage = () => {
     });
   };
 
+  // [UC-113] Create Cash Flow Voucher - Xác nhận giải ngân / chi tiền thực tế (CONFIRMED -> PAID)
   const handleExecutePaymentSubmit = async (e) => {
     e.preventDefault();
     if (!disbursementModalVoucher) return;
@@ -1025,11 +1048,13 @@ const PaymentVoucherPage = () => {
   };
 
   // 7. Thao tác Hủy phiếu chi
+  // [UC-113] Mở modal nhập lý do hủy cho phiếu thu/chi chưa thanh toán
   const handleOpenCancelModal = (voucher) => {
     setCancelModalVoucher(voucher);
     setCancellationReason('');
   };
 
+  // [UC-113] Create Cash Flow Voucher - Hủy phiếu chi chưa thanh toán
   const handleCancelVoucherSubmit = async (e) => {
     e.preventDefault();
     if (!cancelModalVoucher) return;

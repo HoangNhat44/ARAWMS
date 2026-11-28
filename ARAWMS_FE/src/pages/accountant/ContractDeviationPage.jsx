@@ -65,6 +65,7 @@ const ContractDeviationPage = () => {
   });
   const [resolveErrors, setResolveErrors] = useState({});
 
+  // Kiểm tra một biên bản sai lệch đã được xử lý xong hay chưa (đã chấm dứt, đã thay thế hoặc đã có phương án giải quyết)
   const isItemResolved = (item) => {
     if (!item) return false;
     return (
@@ -79,6 +80,7 @@ const ContractDeviationPage = () => {
 
   // Tự tải lại khi role khác thay đổi dữ liệu liên quan (không cần reload trang)
   useRealtimeRefresh(['arawms-inbound-plan-realtime'], () => loadData());
+  // [UC-041] Tải danh sách toàn bộ sai lệch hợp đồng KCS từ server
   const loadData = async () => {
     try {
       setLoading(true);
@@ -173,6 +175,7 @@ const ContractDeviationPage = () => {
     return { total, unresolved, resolved };
   }, [deviations]);
 
+  // [UC-041] Report Contract Deviation - Mở modal xử lý sai lệch hợp đồng
   const handleOpenResolveModal = (item) => {
     setSelectedForResolve(item);
     setResolveErrors({});
@@ -184,12 +187,14 @@ const ContractDeviationPage = () => {
     });
   };
 
+  // [UC-039, UC-041] Chuyển hướng sang trang Khung hợp đồng để lập phiên bản phụ lục sửa đổi (v2, v3...)
   const handleNavigateToAmendContract = (contractId) => {
     if (!contractId) return;
     setSelectedForResolve(null);
     navigate(`/accountant/contracts?amendContractId=${contractId}`);
   };
 
+  // [UC-041] Report Contract Deviation - Xác nhận phương án giải quyết sai lệch (tạo phụ lục mới hoặc chấm dứt HĐ)
   const handleConfirmResolve = async (e) => {
     e.preventDefault();
     if (resolveOption === 'AMEND_NEW_VERSION') {
@@ -243,6 +248,7 @@ const ContractDeviationPage = () => {
     }
   };
 
+  // Định dạng chuỗi ngày sang dd/mm/yyyy theo chuẩn Việt Nam
   const formatDate = (dateString) => {
     if (!dateString) return '—';
     try {
@@ -258,6 +264,7 @@ const ContractDeviationPage = () => {
     }
   };
 
+  // Định dạng chuỗi thời gian sang dd/mm/yyyy hh:mm theo chuẩn Việt Nam
   const formatDateTime = (dateString) => {
     if (!dateString) return '—';
     try {

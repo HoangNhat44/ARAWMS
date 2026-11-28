@@ -386,6 +386,7 @@ const InboundPlanningPage = () => {
   const [feedback, setFeedback] = useState(null);
   const [reportingOwner, setReportingOwner] = useState(false);
 
+  // [UC-041] Report Contract Deviation - Trình báo biên bản sai lệch KCS lên Chủ sở hữu (Owner)
   const handleReportToOwner = async (plan) => {
     const planId = plan?._id || plan?.id;
     if (!planId) return;
@@ -541,6 +542,7 @@ const InboundPlanningPage = () => {
     loadData();
   }, []);
 
+  // [UC-040] Chọn hợp đồng nguồn cho kế hoạch tiếp nhận và tự động nạp danh sách nguyên phụ liệu cam kết
   const handleSelectContract = (contractId) => {
     const found = contracts.find((c) => String(c._id || c.id) === String(contractId));
     setPlanErrors((prev) => {
@@ -602,6 +604,7 @@ const InboundPlanningPage = () => {
     }));
   };
 
+  // [UC-040] Thay đổi số đợt giao hàng và tự động chia đều số lượng từng nguyên phụ liệu qua các đợt
   const handleBatchesCountChange = (newCount) => {
     if (newCount === '') {
       setBatchesCount('');
@@ -625,6 +628,7 @@ const InboundPlanningPage = () => {
     });
   };
 
+  // Cập nhật ngày giao dự kiến hoặc ghi chú của một đợt nhập trong kế hoạch
   const handleBatchFieldChange = (bIdx, field, value) => {
     setBatches((prev) => {
       const next = [...prev];
@@ -643,6 +647,7 @@ const InboundPlanningPage = () => {
     }
   };
 
+  // Chỉnh sửa số lượng mặt hàng của 1 đợt nhập và tự động điền phần còn thiếu vào đợt cuối
   const handleBatchItemQtyChange = (bIdx, itemIdx, value) => {
     const rawVal = value === '' ? '' : Math.max(0, Number(value));
     setBatches((prev) => {
@@ -713,6 +718,7 @@ const InboundPlanningPage = () => {
   };
 
   // Chọn/bỏ chọn cuộn vải hoặc cập nhật số lượng cuộn giao cho từng đợt nhập, đợt cuối cùng tự động nhận tất cả các cuộn còn thiếu
+  // Điều chỉnh số lượng cuộn vải phân bổ cho từng đợt giao trong modal kế hoạch
   const handleBatchRollQtyChange = (bIdx, itemIdx, targetRoll, newRollQty) => {
     setBatches((prev) => {
       const next = prev.map((b) => ({
@@ -838,6 +844,7 @@ const InboundPlanningPage = () => {
     }
   };
 
+  // Bật/tắt chọn một cuộn vải cụ thể đưa vào đợt giao hàng
   const handleToggleBatchRoll = (bIdx, itemIdx, targetRoll) => {
     const targetItem = batches[bIdx]?.expectedItems?.[itemIdx];
     const allRolls = targetItem?.allRolls || [];
@@ -851,6 +858,7 @@ const InboundPlanningPage = () => {
     handleBatchRollQtyChange(bIdx, itemIdx, targetRoll, isCurrentlySelected ? 0 : totalRollQty);
   };
 
+  // Xóa một đợt giao hàng khỏi kế hoạch và tự động cân bằng lại các đợt còn lại
   const handleRemoveBatch = (bIdxToRemove) => {
     if (batches.length <= 1) return;
     const nextCount = batches.length - 1;
@@ -871,6 +879,7 @@ const InboundPlanningPage = () => {
     });
   };
 
+  // Tự động chia đều và cân bằng tổng số lượng các đợt giao đạt 100% cam kết hợp đồng
   const handleAutoBalanceBatches = () => {
     const selectedContract =
       currentContract ||
@@ -928,6 +937,7 @@ const InboundPlanningPage = () => {
 
   const [highlightedMismatchItem, setHighlightedMismatchItem] = useState(null);
 
+  // Cuộn tới dòng nguyên liệu đang bị lệch tổng số lượng phân bổ trong modal kế hoạch
   const handleScrollToPlanMismatchItem = (targetItemIdx) => {
     const itemIdx =
       targetItemIdx !== undefined
@@ -969,6 +979,7 @@ const InboundPlanningPage = () => {
     }, 3500);
   };
 
+  // Tải lên và đính kèm ảnh chụp hợp đồng giấy/chứng từ vào kế hoạch tiếp nhận
   const handlePhotoUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -1011,6 +1022,7 @@ const InboundPlanningPage = () => {
     e.target.value = '';
   };
 
+  // [UC-044] View Material Inbound Plan - Mở modal xem chi tiết kế hoạch tiếp nhận & lịch sử phiên bản
   const handleOpenDetailModal = async (plan) => {
     setSelectedPlanForDetail(plan);
     const planBaseCode = (plan.planCode || '').replace(/-V\d+$/i, '').trim().toUpperCase();
@@ -1044,6 +1056,7 @@ const InboundPlanningPage = () => {
     }
   };
 
+  // [UC-044] Chuyển đổi xem chi tiết giữa các phiên bản (v1, v2, v3...) trong modal kế hoạch
   const handleSwitchViewingVersion = async (versionPlan) => {
     if (!versionPlan) return;
     setSelectedPlanForDetail(versionPlan);
@@ -1060,6 +1073,7 @@ const InboundPlanningPage = () => {
     }
   };
 
+  // Xóa ảnh chứng từ đính kèm khỏi form kế hoạch tiếp nhận
   const handleRemovePhoto = (photoIndex) => {
     setPlanForm((prev) => ({
       ...prev,
@@ -1067,6 +1081,7 @@ const InboundPlanningPage = () => {
     }));
   };
 
+  // [UC-040] Schedule Material Inbound Plan - Mở form tạo phiên bản mới (v2, v3...) điều chỉnh lịch giao
   const handleOpenAmendModal = async (plan) => {
     setPlanErrors({});
     setFeedback(null);
@@ -1165,6 +1180,7 @@ const InboundPlanningPage = () => {
     setIsModalOpen(true);
   };
 
+  // [UC-040] Schedule Material Inbound Plan - Lưu kế hoạch tiếp nhận / phiên bản điều chỉnh nhiều đợt
   const handleSubmitPlan = async (e) => {
     e.preventDefault();
     const validationResult = validateInboundPlanForm({
@@ -1343,6 +1359,7 @@ const InboundPlanningPage = () => {
     return { total, matched, mismatched, resolved };
   }, [plans]);
 
+  // Kiểm tra hợp đồng gắn với kế hoạch này đã bị chấm dứt/hủy hiệu lực hay chưa
   const isPlanContractTerminated = (plan) => {
     if (!plan) return false;
     if (plan.contractId?.status === 'TERMINATED') return true;
@@ -1351,6 +1368,7 @@ const InboundPlanningPage = () => {
     return match?.status === 'TERMINATED';
   };
 
+  // Lấy lý do chấm dứt hiệu lực của hợp đồng liên kết để hiển thị cảnh báo trên kế hoạch
   const getPlanContractTerminationReason = (plan) => {
     if (!plan) return '';
     if (plan.contractId?.terminationReason) return plan.contractId.terminationReason;

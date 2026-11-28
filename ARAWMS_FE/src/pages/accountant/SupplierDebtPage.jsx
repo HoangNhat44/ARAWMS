@@ -56,6 +56,7 @@ const AGING_BADGE = {
   },
 };
 
+// Định dạng số tiền sang đơn vị ₫ theo chuẩn Việt Nam
 const formatVnd = (amount) => {
   return new Intl.NumberFormat('vi-VN', {
     style: 'currency',
@@ -64,6 +65,7 @@ const formatVnd = (amount) => {
   }).format(Number(amount) || 0);
 };
 
+// Định dạng ngày sang dd/mm/yyyy
 const formatDate = (dateStr) => {
   if (!dateStr) return '—';
   try {
@@ -168,6 +170,7 @@ const SupplierDebtPage = () => {
   // Modal Lịch sử các đợt thanh toán & đối soát GHN
   const [showSettlementHistoryModal, setShowSettlementHistoryModal] = useState(false);
 
+  // [UC-114] View Debt - Tải tổng quan công nợ phải trả NCC và công nợ COD/cước GHN
   const loadData = async () => {
     try {
       setLoading(true);
@@ -205,6 +208,7 @@ const SupplierDebtPage = () => {
   }, []);
 
   // Lưu cấu hình cước phí đối tác GHN
+  // [UC-114] Lưu cấu hình mức cước phí thỏa thuận mặc định với hãng vận chuyển GHN
   const handleSaveCarrierConfig = async (e) => {
     e.preventDefault();
     const fee = Number(configuredShippingFee);
@@ -234,6 +238,7 @@ const SupplierDebtPage = () => {
   };
 
   // Mở modal xác nhận đã nhận tiền COD từ GHN
+  // [UC-113, UC-114] Mở modal tất toán thu tiền COD từ GHN và điền sẵn số tiền còn phải thu
   const handleOpenSettleCodModal = () => {
     const netReceivable = carrierDebtData.metrics?.netReceivableAmount || 0;
     setSettleAmount(netReceivable);
@@ -245,6 +250,7 @@ const SupplierDebtPage = () => {
   };
 
   // Xác nhận lưu phiếu thu và tất toán công nợ GHN
+  // [UC-113, UC-114] Lập phiếu thu xác nhận đã nhận tiền COD từ GHN (Tất toán công nợ COD)
   const handleSubmitSettleCod = async (e) => {
     e.preventDefault();
     const amountNum = Number(settleAmount);
@@ -287,6 +293,7 @@ const SupplierDebtPage = () => {
   };
 
   // Mở modal xác nhận Shop thanh toán tiền cước cho GHN
+  // [UC-113, UC-114] Mở modal tất toán chi tiền cước vận chuyển cho GHN và điền sẵn số tiền cước còn nợ
   const handleOpenSettleShippingModal = () => {
     const debtAmount = carrierDebtData.metrics?.shopDebtToCarrier || 0;
     setSettleShippingAmount(debtAmount);
@@ -298,6 +305,7 @@ const SupplierDebtPage = () => {
   };
 
   // Xác nhận lưu phiếu chi cước phí cho GHN
+  // [UC-113, UC-114] Lập phiếu chi thanh toán cước vận chuyển cho GHN (Tất toán nợ cước)
   const handleSubmitSettleShipping = async (e) => {
     e.preventDefault();
     const amountNum = Number(settleShippingAmount);
@@ -384,6 +392,7 @@ const SupplierDebtPage = () => {
   }, [supplierDebtData.suppliers, searchTerm, debtStatusFilter, sortBy]);
 
   // Mở Sổ chi tiết công nợ NCC
+  // [UC-114] View Debt - Mở sổ chi tiết công nợ của từng nhà cung cấp
   const handleOpenLedgerModal = async (supplier) => {
     setSelectedSupplierForLedger(supplier);
     setLedgerLoading(true);

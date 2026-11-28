@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import accountantProcurementApi from '../../services/accountantProcurementApi.js';
 
+// Định dạng số tiền sang đơn vị ₫ theo chuẩn Việt Nam
 const formatVnd = (val) => `${Number(val || 0).toLocaleString('vi-VN')} ₫`;
 
 const RECON_STATUS_MAP = {
@@ -120,6 +121,7 @@ const CodReconciliationPage = () => {
     });
   }, [redFlagsList, sortBy]);
 
+  // [UC-115, UC-119] Tải danh sách đơn COD đối soát và danh sách cờ đỏ/tranh chấp hãng vận chuyển
   const loadData = async () => {
     try {
       setLoading(true);
@@ -159,6 +161,7 @@ const CodReconciliationPage = () => {
   }, [searchQuery]);
 
   // Nút 1: Thực thi Đối soát Tự động qua API GHN
+  // [UC-115] Execute Carrier COD Reconciliation - Nhấn nút thực thi đối soát COD tự động qua API GHN
   const handleSyncGhn = async () => {
     try {
       setSyncing(true);
@@ -180,6 +183,7 @@ const CodReconciliationPage = () => {
   };
 
   // Nút 2: Khởi tạo 5 đơn hàng mẫu (4 đơn tiền mặt + 1 chuyển khoản) để kiểm chứng
+  // [UC-115] Khởi tạo 5 đơn hàng mẫu (4 COD + 1 chuyển khoản) phục vụ kiểm thử luồng đối soát GHN
   const handleSeedSample = async () => {
     try {
       setSeeding(true);
@@ -201,6 +205,7 @@ const CodReconciliationPage = () => {
   };
 
   // Gửi khiếu nại hãng vận chuyển
+  // [UC-118] Create Shipping Carrier Dispute - Lập & gửi khiếu nại đơn lệch COD lên hãng vận chuyển
   const handleSendDispute = async (e) => {
     e.preventDefault();
     if (!disputeItem || !disputeNote.trim()) return;
@@ -227,6 +232,7 @@ const CodReconciliationPage = () => {
   };
 
   // Nhận phản hồi kết luận tra soát chính thức từ Bưu cục GHN
+  // [UC-119] View Shipping Carrier Dispute - Nhận/mô phỏng phản hồi khiếu nại từ GHN
   const handleReceiveGhnFeedback = async (item) => {
     if (!item) return;
 
@@ -247,6 +253,7 @@ const CodReconciliationPage = () => {
   };
 
   // Mở modal nhập lý do và chọn nguyên nhân sai lệch
+  // [UC-118, UC-119] Mở modal chốt phương án xử lý cuối cùng cho đơn lệch COD (chọn lỗi do ARA Store hay GHN)
   const handleOpenResolveModal = (item) => {
     setResolveModalItem(item);
 
@@ -275,6 +282,7 @@ const CodReconciliationPage = () => {
   };
 
   // Xác nhận lưu lý do và phương án hạch toán công nợ
+  // [UC-118] Gửi xác nhận chốt xử lý sai lệch COD (RESOLVED_ADJUSTED) lên backend và tải lại danh sách
   const handleConfirmResolveSubmit = async (e) => {
     e.preventDefault();
     if (!resolveModalItem) return;

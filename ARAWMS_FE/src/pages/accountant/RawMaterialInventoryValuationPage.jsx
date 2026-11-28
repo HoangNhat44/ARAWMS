@@ -37,6 +37,7 @@ import accountantProcurementApi from '../../services/accountantProcurementApi.js
 import './rawMaterialValuation.css';
 
 // Formatter tiền tệ VNĐ
+// Định dạng giá trị tiền tệ sang đơn vị VND
 const formatVND = (val) => {
   if (val === undefined || val === null || isNaN(val)) return '0 ₫';
   return new Intl.NumberFormat('vi-VN', {
@@ -47,6 +48,7 @@ const formatVND = (val) => {
 };
 
 // Formatter số lượng
+// Định dạng số lượng có dấu phân cách hàng nghìn
 const formatNumber = (val) => {
   if (val === undefined || val === null || isNaN(val)) return '0';
   return new Intl.NumberFormat('vi-VN').format(val);
@@ -111,6 +113,7 @@ export default function RawMaterialInventoryValuationPage() {
   const [exportingExcel, setExportingExcel] = useState(false);
 
   // 1. Tải Summary & Metadata
+  // [UC-110] View Total Raw Material Inventory Value - Tải tổng hợp định giá tồn kho nguyên vật liệu & bộ lọc
   const fetchSummaryAndMetadata = useCallback(async () => {
     try {
       setLoadingSummary(true);
@@ -128,6 +131,7 @@ export default function RawMaterialInventoryValuationPage() {
   }, []);
 
   // 2. Tải danh sách nguyên phụ liệu theo bộ lọc & phân trang
+  // [UC-110] View Total Raw Material Inventory Value - Tải danh sách định giá chi tiết từng cuộn vải/phụ liệu
   const fetchMaterialList = useCallback(
     async (targetPage = 1) => {
       try {
@@ -169,12 +173,14 @@ export default function RawMaterialInventoryValuationPage() {
   }, [selectedType, selectedCategory, selectedSupplier, stockStatus, sortBy]);
 
   // Handle Search Submit
+  // [UC-110] Thực thi tìm kiếm nguyên phụ liệu theo từ khóa và đặt lại phân trang về trang 1
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     fetchMaterialList(1);
   };
 
   // Copy helper
+  // Sao chép mã nguyên vật liệu vào clipboard và hiện phản hồi ngắn
   const handleCopy = (text) => {
     if (!text) return;
     navigator.clipboard.writeText(text);
@@ -183,6 +189,7 @@ export default function RawMaterialInventoryValuationPage() {
   };
 
   // 3. Xuất file Excel báo cáo định giá nguyên phụ liệu
+  // [UC-110] View Total Raw Material Inventory Value - Xuất báo cáo Excel định giá tồn kho nguyên vật liệu
   const handleExportExcel = async () => {
     try {
       setExportingExcel(true);

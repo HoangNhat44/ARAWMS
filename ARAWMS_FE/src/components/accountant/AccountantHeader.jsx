@@ -24,6 +24,7 @@ import { getSocket } from '../../services/socketService';
 import './accountantLayout.css';
 import '../../styles/wmsLayout.css';
 
+// Chuẩn hóa chuỗi tiếng Việt không dấu, viết thường để tìm kiếm nhanh chức năng Kế toán
 const normalize = (value) =>
   (value || '')
     .toLowerCase()
@@ -80,6 +81,7 @@ const AccountantHeader = ({
     .map((w) => w[0]?.toUpperCase())
     .join('');
 
+  // Đăng xuất phiên làm việc hiện tại của Kế toán và chuyển về trang đăng nhập
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -119,6 +121,7 @@ const AccountantHeader = ({
     );
   }, [search]);
 
+  // Điều hướng tới trang chức năng khi người dùng chọn kết quả từ ô tìm kiếm nhanh trên Header
   const selectPage = (path) => {
     setSearch('');
     setSearchOpen(false);
@@ -126,6 +129,7 @@ const AccountantHeader = ({
   };
 
   // 1. Fetch notifications từ backend
+  // [UC-008] Tải danh sách thông báo và số lượng chưa đọc của role Kế toán từ backend
   const fetchNotifications = async () => {
     try {
       setIsLoadingNotifs(true);
@@ -222,7 +226,7 @@ const AccountantHeader = ({
     }
   }, [toastNotif]);
 
-  // Handle click on a single notification
+  // [UC-008] View Notifications As Read - Đánh dấu đã đọc 1 thông báo khi nhấn vào mục thông báo
   const handleItemClick = async (item) => {
     try {
       if (!item.isRead) {
@@ -244,7 +248,7 @@ const AccountantHeader = ({
     }
   };
 
-  // Handle Mark All As Read
+  // [UC-008] View Notifications As Read - Đánh dấu đã đọc toàn bộ thông báo của Kế toán
   const handleMarkAllRead = async () => {
     try {
       await notificationService.markAllAsRead('ACCOUNTANT');
@@ -391,6 +395,7 @@ const AccountantHeader = ({
       },
       { type: 'divider' },
       {
+        // [UC-002] View Account - Mở trang xem hồ sơ tài khoản cá nhân
         key: 'account-profile',
         icon: <User size={15} />,
         label: 'Xem hồ sơ cá nhân',
