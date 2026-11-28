@@ -3,11 +3,12 @@
  * @title        : Order Management Service
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-11-14
+ * @lastModified : 2026-11-29
  * @description  : Xử lý toàn bộ logic nghiệp vụ cốt lõi cho phân hệ Seller Order:
- *                 tạo đơn hàng (UC-78), xác nhận giữ chỗ tồn kho (UC-79, GBR-10),
- *                 cập nhật trạng thái (UC-80), hủy đơn và giải phóng tồn kho (UC-81, GBR-11),
- *                 ghi nhận SystemLog kiểm toán (GBR-23).
+ *                 tạo đơn hàng (UC-78), xác nhận giữ chỗ tồn kho (UC-79, [BR: GBR-10]),
+ *                 cảnh báo tồn kho tối thiểu ([BR: GBR-08]), đồng bộ vận đơn GHN ([BR: GBR-13]),
+ *                 cập nhật trạng thái (UC-80), hủy đơn và giải phóng tồn kho (UC-81, [BR: GBR-11]),
+ *                 ghi nhận SystemLog kiểm toán nội bộ.
  * @module       : Order Fulfillment / Order Management
  * @layer        : Service
  * ============================================================================
@@ -32,8 +33,7 @@ import {
 import { applyGhnStatusToSalesOrder } from '../../ghn/ghn.webhook.controller.js';
 
 /**
- * Ghi SystemLog kiểm toán
- * @businessRule GBR-23 Ghi log kiểm toán cho dữ liệu trọng yếu
+ * Ghi SystemLog kiểm toán nội bộ cho mọi thao tác nghiệp vụ trọng yếu trên SalesOrder.
  */
 const recordSystemLog = async ({ actor, majorFeature, subFeature, action, targetCollection, targetId, targetCode, beforeSnapshot, afterSnapshot, req }) => {
   try {
@@ -57,17 +57,28 @@ const recordSystemLog = async ({ actor, majorFeature, subFeature, action, target
 };
 
 /**
- * Đánh giá tồn kho khả dụng của danh sách sản phẩm trong đơn.
- * - shortage: không đủ hàng (khả dụng < số đặt)
- * - belowThreshold: còn đủ nhưng sau đơn sẽ thấp hơn ngưỡng cảnh báo tồn (Sku.safetyStockThreshold)
- *
- * @param {Array<{skuId: any, orderedQty: number}>} items
- * @returns {Promise<Array<Object>>} Mỗi phần tử: { skuCode, available, requested, remainingAfter, threshold, shortage, belowThreshold, message }
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU CÔNG THỨC CẢNH BÁO TỒN KHO - BE: evaluateStockForItems / buildStockWarningsFromSkuMap]
+ * ====================================================================================================================================
+ * | STT | Biến tính toán               | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Công thức & Quy tắc BR                            |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | available (tồn khả dụng)     | QuickOrderModal (stockWarnings)          | skus.{onHandQty, reservedQty}                     | [BR: GBR-10] onHandQty - reservedQty              |
+ * | 2   | remainingAfter               | Hộp cảnh báo sau tạo đơn                 | skus.{onHandQty, reservedQty}                     | available - orderedQty                            |
+ * | 3   | shortage & belowThreshold    | Cảnh báo thiếu hàng / sắp hết            | skus.safetyStockThreshold (mặc định 10)           | [BR: GBR-08] shortage: <qty; below: <threshold    |
+ * ====================================================================================================================================
+ * @businessRule GBR-08 Cảnh báo tồn kho thấp khi tồn khả dụng giảm dưới ngưỡng safetyStockThreshold
+ * @businessRule GBR-10 Tính tồn khả dụng dựa trên tồn vật lý trừ tồn đã giữ chỗ
  */
-export const evaluateStockForItems = async (items = []) => {
+/**
+ * Tính danh sách cảnh báo tồn kho từ tập bản ghi SKU đã tải sẵn (không truy vấn DB lặp lại).
+ * @param {Array<{skuId: any, orderedQty: number}>} items
+ * @param {Map<string, Object>} skuMap
+ * @returns {Array<Object>}
+ */
+const buildStockWarningsFromSkuMap = (items = [], skuMap = new Map()) => {
   const results = [];
   for (const item of items) {
-    const sku = await Sku.findById(item.skuId).select('skuCode onHandQty reservedQty safetyStockThreshold');
+    const sku = skuMap.get(String(item.skuId));
     if (!sku) continue;
     const available = (sku.onHandQty || 0) - (sku.reservedQty || 0);
     const requested = Number(item.orderedQty) || 0;
@@ -85,6 +96,126 @@ export const evaluateStockForItems = async (items = []) => {
     results.push({ skuCode: sku.skuCode, available, requested, remainingAfter, threshold, shortage, belowThreshold, message });
   }
   return results;
+};
+
+export const evaluateStockForItems = async (items = []) => {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const uniqueIds = [...new Set(items.map((it) => String(it.skuId)).filter(Boolean))];
+  const skus = await Sku.find({ _id: { $in: uniqueIds } })
+    .select('skuCode onHandQty reservedQty safetyStockThreshold')
+    .lean();
+  const skuMap = new Map(skus.map((s) => [String(s._id), s]));
+  return buildStockWarningsFromSkuMap(items, skuMap);
+};
+
+/**
+ * Thời gian chờ tối đa (ms) cho API GHN trên luồng đồng bộ khi tạo/chốt đơn.
+ * Nếu GHN phản hồi nhanh (hoặc mock trong test): trả waybillCode ngay trong HTTP response.
+ * Nếu GHN Sandbox chậm hơn ngưỡng này: trả kết quả chốt đơn ngay cho Seller và tiếp tục
+ * cập nhật mã vận đơn + bắn tin xác nhận vào chat ở nền để tránh treo nút loading.
+ */
+const GHN_INLINE_WAIT_MS = 1200;
+
+/**
+ * Gửi thông báo chốt đơn vào chat không chặn luồng HTTP response của Seller.
+ */
+const fireOrderConfirmedChatNotify = (order, waybillCode, userId) => {
+  void notificationTemplateService
+    .sendOrderNotificationToChat({
+      order,
+      messageText: notificationTemplateService.buildOrderConfirmedSuccessText(order, waybillCode),
+      notificationType: 'CONFIRMED_SUCCESS',
+      senderSellerId: userId,
+    })
+    .catch((chatErr) => {
+      console.warn('⚠️ [Auto-Confirm Chat Notify]:', chatErr.message);
+    });
+};
+
+/**
+ * Đồng bộ mã vận đơn GHN với giới hạn thời gian chờ trên luồng chính + bắn tin chat ở nền.
+ * Đảm bảo đơn đã CONFIRMED_RESERVED & giữ chỗ kho phản hồi tức thì ngay cả khi GHN/Meta phản hồi chậm.
+ */
+const syncGhnWaybillWithGraceAndNotify = async ({ order, userId, inlineTimeoutMs = GHN_INLINE_WAIT_MS }) => {
+  const existingWaybill = order.warehouseFulfillment?.waybillCode;
+  if (existingWaybill) {
+    fireOrderConfirmedChatNotify(order, existingWaybill, userId);
+    return;
+  }
+
+  let finishedInline = false;
+  const ghnTask = (async () => {
+    try {
+      const ghnRes = await ghnService.createShippingOrderFromSalesOrder(order);
+      if (!ghnRes?.waybillCode) return null;
+
+      const fulfillmentPatch = {
+        carrierName: 'GHN',
+        waybillCode: ghnRes.waybillCode,
+        ghnStatus: ghnRes.ghnStatus || 'ready_to_pick',
+        ghnStatusName: ghnRes.ghnStatusName || 'Chờ lấy hàng',
+        ghnUpdatedAt: new Date(),
+        ...(ghnRes.expectedDeliveryTime
+          ? { ghnExpectedDeliveryTime: new Date(ghnRes.expectedDeliveryTime) }
+          : {}),
+      };
+
+      if (finishedInline) {
+        await SalesOrder.findByIdAndUpdate(order._id, {
+          $set: {
+            'warehouseFulfillment.carrierName': fulfillmentPatch.carrierName,
+            'warehouseFulfillment.waybillCode': fulfillmentPatch.waybillCode,
+            'warehouseFulfillment.ghnStatus': fulfillmentPatch.ghnStatus,
+            'warehouseFulfillment.ghnStatusName': fulfillmentPatch.ghnStatusName,
+            'warehouseFulfillment.ghnUpdatedAt': fulfillmentPatch.ghnUpdatedAt,
+            ...(fulfillmentPatch.ghnExpectedDeliveryTime
+              ? { 'warehouseFulfillment.ghnExpectedDeliveryTime': fulfillmentPatch.ghnExpectedDeliveryTime }
+              : {}),
+          },
+        });
+      } else {
+        order.warehouseFulfillment = {
+          ...(order.warehouseFulfillment?.toObject ? order.warehouseFulfillment.toObject() : order.warehouseFulfillment),
+          ...fulfillmentPatch,
+        };
+      }
+      return ghnRes.waybillCode;
+    } catch (ghnErr) {
+      console.warn(`⚠️ [GHN Auto-Create Waybill] Chưa lấy được mã vận đơn GHN cho đơn ${order.orderCode}:`, ghnErr.message);
+      return null;
+    }
+  })();
+
+  let timeoutHandle = null;
+  const timeoutSentinel = Symbol('GHN_INLINE_TIMEOUT');
+  const timeoutPromise = new Promise((resolve) => {
+    timeoutHandle = setTimeout(() => resolve(timeoutSentinel), inlineTimeoutMs);
+    if (typeof timeoutHandle.unref === 'function') {
+      timeoutHandle.unref();
+    }
+  });
+
+  const raceResult = await Promise.race([ghnTask, timeoutPromise]);
+  if (timeoutHandle) clearTimeout(timeoutHandle);
+
+  if (raceResult === timeoutSentinel) {
+    finishedInline = true;
+    // GHN phản hồi chậm: trả HTTP ngay cho Seller; khi GHN xong ở nền sẽ tự lưu waybillCode và gửi tin chat
+    void ghnTask
+      .then((waybillCode) => {
+        fireOrderConfirmedChatNotify(order, waybillCode, userId);
+      })
+      .catch(() => {
+        fireOrderConfirmedChatNotify(order, null, userId);
+      });
+    return;
+  }
+
+  // GHN phản hồi kịp trong ngưỡng: lưu waybillCode đồng bộ trước khi trả về, còn tin nhắn Facebook gửi ở nền
+  if (raceResult) {
+    await order.save();
+  }
+  fireOrderConfirmedChatNotify(order, raceResult, userId);
 };
 
 /**
@@ -139,20 +270,29 @@ export const createDirectOrder = async (orderData, user, req) => {
     }
   }
 
-  // 2. Validate từng SKU và snapshot giá vốn / thông tin
+  // 2. Truy vấn hàng loạt tất cả SKU trong 1 lần query thay vì N+1 query lặp lại
+  const uniqueSkuIds = [...new Set(items.map((it) => String(it.skuId)).filter(Boolean))];
+  const fetchedSkus = await Sku.find({ _id: { $in: uniqueSkuIds } }).lean();
+  const skuMap = new Map(fetchedSkus.map((s) => [String(s._id), s]));
+
   let itemsSubtotal = 0;
   const processedItems = [];
+  const requestedQtyBySku = new Map();
 
   for (const item of items) {
-    const sku = await Sku.findById(item.skuId);
+    const sku = skuMap.get(String(item.skuId));
     if (!sku || !sku.isActive) {
       throw new Error(`Sản phẩm SKU ${item.skuId} không tồn tại hoặc đã ngừng kinh doanh`);
     }
 
     const qty = Number(item.orderedQty) || 1;
-    const salePrice = Number(item.unitSalePrice) !== undefined ? Number(item.unitSalePrice) : sku.retailPrice;
+    const salePrice = item.unitSalePrice !== undefined && item.unitSalePrice !== null && !Number.isNaN(Number(item.unitSalePrice))
+      ? Number(item.unitSalePrice)
+      : sku.retailPrice;
 
     itemsSubtotal += qty * salePrice;
+    const skuKey = String(sku._id);
+    requestedQtyBySku.set(skuKey, (requestedQtyBySku.get(skuKey) || 0) + qty);
 
     processedItems.push({
       skuId: sku._id,
@@ -170,7 +310,19 @@ export const createDirectOrder = async (orderData, user, req) => {
     });
   }
 
-  // Phí ship mặc định nội bộ là 30.000đ cho đơn Online (0đ cho POS). Tuyệt đối không đẩy phí này lên API GHN.
+  /*
+   * ====================================================================================================================================
+   * [BẢNG TRA CỨU CÔNG THỨC TÍNH TIỀN & TRẠNG THÁI ĐƠN HÀNG - BE: createDirectOrder (UC-78)]
+   * ====================================================================================================================================
+   * | STT | Trường tài chính / Status    | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Công thức & Quy tắc BR                            |
+   * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+   * | 1   | itemsSubtotal                | PaymentSummary, SellerOrders, OrderDetail| sales_orders.financialSummary.itemsSubtotal       | Σ (orderedQty * unitSalePrice)                    |
+   * | 2   | shippingFee                  | Phí GHN (nội bộ, không đẩy sang GHN)     | sales_orders.financialSummary.shippingFee         | POS: 0đ; Online: mặc định 30.000đ                 |
+   * | 3   | totalOrderAmount             | Cột Tổng tiền / Tổng COD                 | sales_orders.financialSummary.totalOrderAmount    | itemsSubtotal + shippingFee - discountAmount      |
+   * | 4   | expectedCodAmount            | Đối soát COD ([BR: GBR-18])              | sales_orders.financialSummary.expectedCodAmount   | BANK_TRANSFER: 0đ; COD: totalOrderAmount          |
+   * | 5   | initialStatus (PENDING/CONF) | Trạng thái khởi tạo đơn hàng             | sales_orders.status & skus.reservedQty            | PENDING: chưa giữ kho; autoConfirm: +reservedQty  |
+   * ====================================================================================================================================
+   */
   const isPosOrder = orderData.orderType === 'POS_DIRECT';
   const shippingFee = isPosOrder
     ? 0
@@ -181,16 +333,16 @@ export const createDirectOrder = async (orderData, user, req) => {
   const totalOrderAmount = itemsSubtotal + shippingFee - discountAmount;
   const expectedCodAmount = orderData.paymentMethod === 'BANK_TRANSFER' ? 0 : totalOrderAmount;
 
-  // 2b. Nếu Seller chọn "Tạo & Chốt đơn ngay" (autoConfirm = true): kiểm tra đủ tồn khả dụng trước khi tạo đơn
+  // 2b. [BR: GBR-10] Nếu Seller chọn "Tạo & Chốt đơn ngay" (autoConfirm = true): kiểm tra đủ tồn khả dụng trên skuMap đã tải (0 query thừa)
   const shouldAutoConfirm = Boolean(autoConfirm) && !isPosOrder;
   if (shouldAutoConfirm) {
-    for (const item of processedItems) {
-      const sku = await Sku.findById(item.skuId);
+    for (const [skuKey, totalNeeded] of requestedQtyBySku.entries()) {
+      const sku = skuMap.get(skuKey);
       const available = (sku?.onHandQty || 0) - (sku?.reservedQty || 0);
-      if (available < item.orderedQty) {
+      if (available < totalNeeded) {
         throw new Error(
-          `Không thể tạo và chốt đơn ngay: sản phẩm ${item.skuCode} không đủ tồn khả dụng ` +
-          `(còn ${available}, cần ${item.orderedQty}). Vui lòng chọn "Chờ khách xác nhận" hoặc điều chỉnh số lượng.`
+          `Không thể tạo và chốt đơn ngay: sản phẩm ${sku?.skuCode || skuKey} không đủ tồn khả dụng ` +
+          `(còn ${available}, cần ${totalNeeded}). Vui lòng chọn "Chờ khách xác nhận" hoặc điều chỉnh số lượng.`
         );
       }
     }
@@ -268,10 +420,11 @@ export const createDirectOrder = async (orderData, user, req) => {
     codReconciliationStatus: 'UNRECONCILED',
   });
 
-  // 4b. Nếu autoConfirm = true: khóa giữ chỗ tồn kho (GBR-07), tạo vận đơn GHN và gửi thông báo chốt đơn vào chat
+  // 4b. [BR: GBR-10] Nếu autoConfirm = true: khóa giữ chỗ tồn kho nguyên tử (+reservedQty), tạo vận đơn GHN ([BR: GBR-13]) và gửi thông báo chốt đơn vào chat
   //     Nếu đơn đang PENDING (khách chưa chốt): KHÔNG đẩy vận đơn GHN sớm để tránh tự nhảy trạng thái.
   if (shouldAutoConfirm) {
     const reservedSoFar = [];
+    const txPayloads = [];
     try {
       for (const item of processedItems) {
         const sku = await Sku.findOneAndUpdate(
@@ -286,100 +439,92 @@ export const createDirectOrder = async (orderData, user, req) => {
           },
           { $inc: { reservedQty: item.orderedQty } },
           { new: true }
-        );
+        ).lean();
         if (!sku) {
           throw new Error(`Sản phẩm ${item.skuCode} vừa có đơn khác chốt trước và không còn đủ tồn khả dụng.`);
         }
         reservedSoFar.push({ skuId: item.skuId, qty: item.orderedQty });
-
-        const txCode = await CounterSequence.getNextSequence('INVENTORY_TX', 'TX', 6);
-        await InventoryTransaction.create({
-          transactionCode: txCode,
-          warehouseType: 'FINISHED_GOODS',
-          itemType: 'FINISHED_SKU',
-          skuId: sku._id,
-          transactionType: 'ORDER_RESERVE',
-          referenceModel: 'SalesOrder',
-          referenceId: newOrder._id,
-          quantityChange: item.orderedQty,
-          onHandBefore: sku.onHandQty,
-          onHandAfter: sku.onHandQty,
-          unitCostSnapshot: sku.unitCogs || 0,
-          performedByUserId: user._id,
-        });
+        skuMap.set(String(sku._id), sku);
+        txPayloads.push({ item, sku });
       }
     } catch (reserveErr) {
       // Rollback giữ chỗ nếu xảy ra race-condition giữa chừng
-      for (const r of reservedSoFar) {
-        await Sku.findByIdAndUpdate(r.skuId, { $inc: { reservedQty: -r.qty } });
-      }
+      await Promise.all(
+        reservedSoFar.map((r) => Sku.findByIdAndUpdate(r.skuId, { $inc: { reservedQty: -r.qty } }))
+      );
       await SalesOrder.findByIdAndDelete(newOrder._id);
       throw reserveErr;
     }
 
-    // Tự động đẩy lên GHN lấy mã vận đơn (chỉ khi đơn đã CONFIRMED_RESERVED)
-    try {
-      const ghnRes = await ghnService.createShippingOrderFromSalesOrder(newOrder);
-      if (ghnRes?.waybillCode) {
-        newOrder.warehouseFulfillment = {
-          ...(newOrder.warehouseFulfillment?.toObject ? newOrder.warehouseFulfillment.toObject() : newOrder.warehouseFulfillment),
-          carrierName: 'GHN',
-          waybillCode: ghnRes.waybillCode,
-          ghnStatus: ghnRes.ghnStatus || 'ready_to_pick',
-          ghnStatusName: ghnRes.ghnStatusName || 'Chờ lấy hàng',
-          ghnUpdatedAt: new Date(),
-          ghnExpectedDeliveryTime: ghnRes.expectedDeliveryTime ? new Date(ghnRes.expectedDeliveryTime) : undefined,
-        };
-        await newOrder.save();
-      }
-    } catch (ghnErr) {
-      console.warn(`⚠️ [GHN Auto-Create Waybill] Chưa lấy được mã vận đơn GHN cho đơn ${newOrder.orderCode}:`, ghnErr.message);
-    }
+    // Sinh mã và ghi sổ cái InventoryTransaction theo lô (giảm số lần round-trip DB)
+    const txCodes = await Promise.all(
+      txPayloads.map(() => CounterSequence.getNextSequence('INVENTORY_TX', 'TX', 6))
+    );
+    await InventoryTransaction.insertMany(
+      txPayloads.map(({ item, sku }, idx) => ({
+        transactionCode: txCodes[idx],
+        warehouseType: 'FINISHED_GOODS',
+        itemType: 'FINISHED_SKU',
+        skuId: sku._id,
+        transactionType: 'ORDER_RESERVE',
+        referenceModel: 'SalesOrder',
+        referenceId: newOrder._id,
+        quantityChange: item.orderedQty,
+        onHandBefore: sku.onHandQty,
+        onHandAfter: sku.onHandQty,
+        unitCostSnapshot: sku.unitCogs || 0,
+        performedByUserId: user._id,
+      }))
+    );
 
-    // Gửi thông báo chốt đơn thành công kèm mã vận đơn (nếu đơn có liên kết chat Facebook)
-    try {
-      await notificationTemplateService.sendOrderNotificationToChat({
-        order: newOrder,
-        messageText: notificationTemplateService.buildOrderConfirmedSuccessText(
-          newOrder,
-          newOrder.warehouseFulfillment?.waybillCode
-        ),
-        notificationType: 'CONFIRMED_SUCCESS',
-        senderSellerId: user?._id,
-      });
-    } catch (chatErr) {
-      console.warn('⚠️ [Auto-Confirm Chat Notify]:', chatErr.message);
-    }
+    // Chạy song song: đồng bộ GHN (giới hạn thời gian chờ trên luồng chính) + cập nhật thống kê khách hàng + ghi SystemLog
+    await Promise.all([
+      syncGhnWaybillWithGraceAndNotify({ order: newOrder, userId: user?._id }),
+      Customer.findByIdAndUpdate(customer._id, {
+        $inc: { totalOrders: 1, totalSpent: totalOrderAmount },
+      }),
+      recordSystemLog({
+        actor: user,
+        majorFeature: 'Order Fulfillment',
+        subFeature: 'Order Management',
+        action: 'CREATE_DIRECT_ORDER',
+        targetCollection: 'SalesOrder',
+        targetId: newOrder._id,
+        targetCode: newOrder.orderCode,
+        afterSnapshot: newOrder.toObject(),
+        req,
+      }),
+    ]);
+  } else {
+    // Đơn PENDING: cập nhật thống kê khách hàng + ghi SystemLog song song
+    await Promise.all([
+      Customer.findByIdAndUpdate(customer._id, {
+        $inc: { totalOrders: 1, totalSpent: totalOrderAmount },
+      }),
+      recordSystemLog({
+        actor: user,
+        majorFeature: 'Order Fulfillment',
+        subFeature: 'Order Management',
+        action: 'CREATE_DIRECT_ORDER',
+        targetCollection: 'SalesOrder',
+        targetId: newOrder._id,
+        targetCode: newOrder.orderCode,
+        afterSnapshot: newOrder.toObject(),
+        req,
+      }),
+    ]);
   }
 
-  // 5. Cập nhật chỉ số khách hàng
-  await Customer.findByIdAndUpdate(customer._id, {
-    $inc: { totalOrders: 1, totalSpent: totalOrderAmount },
-  });
-
-  // 6. Ghi SystemLog
-  await recordSystemLog({
-    actor: user,
-    majorFeature: 'Order Fulfillment',
-    subFeature: 'Order Management',
-    action: 'CREATE_DIRECT_ORDER',
-    targetCollection: 'SalesOrder',
-    targetId: newOrder._id,
-    targetCode: newOrder.orderCode,
-    afterSnapshot: newOrder.toObject(),
-    req,
-  });
-
-  // [Cảnh báo cho Sale] Báo ngay khi sản phẩm trong đơn hết hàng / dưới ngưỡng tồn
-  const stockWarnings = (await evaluateStockForItems(processedItems))
+  // [Cảnh báo cho Sale] Tính trực tiếp từ skuMap mới nhất (0 query DB bổ sung)
+  const stockWarnings = buildStockWarningsFromSkuMap(processedItems, skuMap)
     .filter((r) => r.shortage || r.belowThreshold);
 
   return { ...newOrder.toObject(), stockWarnings };
 };
 
 /**
- * Cập nhật danh sách sản phẩm và chi tiết đơn hàng khi đang ở trạng thái PENDING
- * @businessRule GBR-08 Đơn hàng chỉ được phép sửa sản phẩm khi ở trạng thái PENDING. Sau khi xác nhận chốt đơn thì khóa hoàn toàn.
+ * Cập nhật danh sách sản phẩm và chi tiết đơn hàng khi đang ở trạng thái PENDING (chưa giữ chỗ kho).
+ * @businessRule GBR-10 Đơn hàng chỉ được phép sửa sản phẩm khi ở trạng thái PENDING (chưa kích hoạt giữ chỗ). Sau khi xác nhận chốt đơn thì khóa hoàn toàn.
  */
 export const updateOrderItemsAndDetails = async (orderId, updateData, user, req) => {
   const order = await SalesOrder.findById(orderId);
@@ -387,7 +532,7 @@ export const updateOrderItemsAndDetails = async (orderId, updateData, user, req)
     throw new Error('Đơn hàng không tồn tại');
   }
 
-  // [BR: GBR-08] Chỉ cho phép sửa sản phẩm khi PENDING
+  // [BR: GBR-10] Chỉ cho phép sửa sản phẩm khi đơn đang PENDING (chưa giữ chỗ tồn kho)
   if (order.status !== 'PENDING') {
     throw new Error(`Chỉ có thể chỉnh sửa sản phẩm khi đơn hàng ở trạng thái Chờ xác nhận (chưa chốt đơn). Trạng thái hiện tại: ${getOrderStatusLabel(order.status)}.`);
   }
@@ -424,7 +569,9 @@ export const updateOrderItemsAndDetails = async (orderId, updateData, user, req)
       }
 
       const qty = Math.max(1, Number(item.orderedQty) || 1);
-      const salePrice = Number(item.unitSalePrice) !== undefined ? Number(item.unitSalePrice) : sku.retailPrice;
+      const salePrice = item.unitSalePrice !== undefined && item.unitSalePrice !== null && !Number.isNaN(Number(item.unitSalePrice))
+      ? Number(item.unitSalePrice)
+      : sku.retailPrice;
 
       itemsSubtotal += qty * salePrice;
 
@@ -484,8 +631,17 @@ export const updateOrderItemsAndDetails = async (orderId, updateData, user, req)
 };
 
 /**
- * UC-79: Xác nhận đơn hàng & Kích hoạt giữ chỗ tồn kho (+ReservedQty)
- * Confirm Order Creation & Stock Reservation
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU LOGIC GIỮ CHỖ TỒN KHO & ĐỒNG BỘ GHN - BE: confirmOrderReserve (UC-79)]
+ * ====================================================================================================================================
+ * | STT | Bước xử lý                   | Tác động DB (Collection.field)           | Nghiệp vụ / Công thức / BR                                        |
+ * |-----|------------------------------|------------------------------------------|-------------------------------------------------------------------|
+ * | 1   | Kiểm tra tồn nguyên tử       | skus.{onHandQty, reservedQty}            | [BR: GBR-10] (onHandQty - reservedQty) >= orderedQty              |
+ * | 2   | Khóa tồn giữ chỗ & Sổ cái    | skus.reservedQty (+=qty), inventory_tx   | Ghi ORDER_RESERVE (chưa trừ onHandQty; trừ khi đóng gói [GBR-12]) |
+ * | 3   | Chuyển trạng thái & GHN      | sales_orders.{status,warehouseFulfillment}| PENDING -> CONFIRMED_RESERVED + tạo mã GHN [BR: GBR-13]          |
+ * ====================================================================================================================================
+ * @businessRule GBR-10 Chuyển số lượng SKU từ tồn khả dụng sang tồn giữ chỗ khi xác nhận đơn hàng
+ * @businessRule GBR-13 Tự động khởi tạo/đồng bộ mã vận đơn GHN cho đơn đã chốt
  */
 export const confirmOrderReserve = async (orderId, user, req) => {
   const order = await SalesOrder.findById(orderId);
@@ -499,9 +655,13 @@ export const confirmOrderReserve = async (orderId, user, req) => {
 
   const beforeSnapshot = order.toObject();
 
-  // Kiểm tra tồn kho khả dụng cho tất cả SKU trước
+  // Kiểm tra tồn kho khả dụng cho tất cả SKU trong 1 lần query (tránh N+1)
+  const uniqueOrderSkuIds = [...new Set(order.items.map((it) => String(it.skuId)).filter(Boolean))];
+  const preCheckSkus = await Sku.find({ _id: { $in: uniqueOrderSkuIds } }).lean();
+  const preCheckSkuMap = new Map(preCheckSkus.map((s) => [String(s._id), s]));
+
   for (const item of order.items) {
-    const sku = await Sku.findById(item.skuId);
+    const sku = preCheckSkuMap.get(String(item.skuId));
     if (!sku) {
       throw new Error(`Sản phẩm mã ${item.skuCode} không còn tồn tại trong hệ thống`);
     }
@@ -517,32 +677,47 @@ export const confirmOrderReserve = async (orderId, user, req) => {
     }
   }
 
-  // Tăng tồn giữ chỗ (+reservedQty) nguyên tử và ghi nhận InventoryTransaction (ORDER_RESERVE)
-  for (const item of order.items) {
-    const sku = await Sku.findOneAndUpdate(
-      {
-        _id: item.skuId,
-        $expr: {
-          $gte: [
-            { $subtract: [{ $ifNull: ['$onHandQty', 0] }, { $ifNull: ['$reservedQty', 0] }] },
-            item.orderedQty,
-          ],
+  // Tăng tồn giữ chỗ (+reservedQty) nguyên tử và ghi nhận InventoryTransaction (ORDER_RESERVE) theo lô
+  const reservedSoFar = [];
+  const txPayloads = [];
+  try {
+    for (const item of order.items) {
+      const sku = await Sku.findOneAndUpdate(
+        {
+          _id: item.skuId,
+          $expr: {
+            $gte: [
+              { $subtract: [{ $ifNull: ['$onHandQty', 0] }, { $ifNull: ['$reservedQty', 0] }] },
+              item.orderedQty,
+            ],
+          },
         },
-      },
-      { $inc: { reservedQty: item.orderedQty } },
-      { new: true }
-    );
+        { $inc: { reservedQty: item.orderedQty } },
+        { new: true }
+      ).lean();
 
-    if (!sku) {
-      throw new Error(
-        `Không thể chốt đơn ${order.orderCode}: sản phẩm ${item.skuCode} vừa có đơn khác chốt trước và không còn đủ tồn khả dụng. ` +
-        'Vui lòng làm mới danh sách và kiểm tra lại số lượng.'
-      );
+      if (!sku) {
+        throw new Error(
+          `Không thể chốt đơn ${order.orderCode}: sản phẩm ${item.skuCode} vừa có đơn khác chốt trước và không còn đủ tồn khả dụng. ` +
+          'Vui lòng làm mới danh sách và kiểm tra lại số lượng.'
+        );
+      }
+      reservedSoFar.push({ skuId: item.skuId, qty: item.orderedQty });
+      txPayloads.push({ item, sku });
     }
+  } catch (reserveErr) {
+    await Promise.all(
+      reservedSoFar.map((r) => Sku.findByIdAndUpdate(r.skuId, { $inc: { reservedQty: -r.qty } }))
+    );
+    throw reserveErr;
+  }
 
-    const txCode = await CounterSequence.getNextSequence('INVENTORY_TX', 'TX', 6);
-    await InventoryTransaction.create({
-      transactionCode: txCode,
+  const txCodes = await Promise.all(
+    txPayloads.map(() => CounterSequence.getNextSequence('INVENTORY_TX', 'TX', 6))
+  );
+  await InventoryTransaction.insertMany(
+    txPayloads.map(({ item, sku }, idx) => ({
+      transactionCode: txCodes[idx],
       warehouseType: 'FINISHED_GOODS',
       itemType: 'FINISHED_SKU',
       skuId: sku._id,
@@ -554,11 +729,11 @@ export const confirmOrderReserve = async (orderId, user, req) => {
       onHandAfter: sku.onHandQty,
       unitCostSnapshot: sku.unitCogs || 0,
       performedByUserId: user._id,
-    });
-  }
+    }))
+  );
 
   const prevConfirmStatus = order.status;
-  // Cập nhật trạng thái đơn hàng
+  // Cập nhật trạng thái đơn hàng và lưu DB ngay trước khi gọi dịch vụ ngoài
   order.status = 'CONFIRMED_RESERVED';
   order.statusHistory = [
     ...(order.statusHistory || []),
@@ -579,63 +754,51 @@ export const confirmOrderReserve = async (orderId, user, req) => {
     stockReservedAt: new Date(),
   };
 
-  // [GBR-10] Tự động lấy mã vận đơn (order_code) từ GHN API nếu đơn chưa có, hoặc đồng bộ trạng thái realtime từ GHN
-  if (order.orderType !== 'POS_DIRECT') {
-    try {
-      const existingWaybill = order.warehouseFulfillment?.waybillCode;
-      if (!existingWaybill) {
-        const ghnRes = await ghnService.createShippingOrderFromSalesOrder(order);
-        if (ghnRes?.waybillCode) {
-          order.warehouseFulfillment.waybillCode = ghnRes.waybillCode;
-          order.warehouseFulfillment.ghnStatus = ghnRes.ghnStatus || 'ready_to_pick';
-          order.warehouseFulfillment.ghnStatusName = ghnRes.ghnStatusName || 'Chờ lấy hàng';
-          order.warehouseFulfillment.ghnUpdatedAt = new Date();
-          if (ghnRes.expectedDeliveryTime) {
-            order.warehouseFulfillment.ghnExpectedDeliveryTime = new Date(ghnRes.expectedDeliveryTime);
-          }
-        }
-      } else {
-        const detailRes = await ghnService.getOrderDetail(existingWaybill);
-        if (detailRes?.status) {
-          order.warehouseFulfillment.ghnStatus = detailRes.status;
-          order.warehouseFulfillment.ghnStatusName = detailRes.statusName;
-          order.warehouseFulfillment.ghnUpdatedAt = new Date();
-        }
-      }
-    } catch (ghnErr) {
-      console.warn(`⚠️ [GHN Confirm Sync] Không thể lấy/đồng bộ vận đơn GHN cho đơn ${order.orderCode}:`, ghnErr.message);
-    }
-  }
-
   await order.save();
 
-  // Gửi thông báo tự động xác nhận chốt đơn kèm mã vận đơn GHN vào chat
-  try {
-    await notificationTemplateService.sendOrderNotificationToChat({
-      order,
-      messageText: notificationTemplateService.buildOrderConfirmedSuccessText(
-        order,
-        order.warehouseFulfillment?.waybillCode
-      ),
-      notificationType: 'CONFIRMED_SUCCESS',
-      senderSellerId: user?._id,
-    });
-  } catch (notifyErr) {
-    console.warn('⚠️ Lỗi gửi thông báo chốt đơn tự động:', notifyErr.message);
+  // [BR: GBR-13] Đồng bộ GHN có giới hạn thời gian chờ + gửi thông báo chat không chặn luồng + ghi SystemLog song song
+  const sideEffects = [
+    recordSystemLog({
+      actor: user,
+      majorFeature: 'Order Fulfillment',
+      subFeature: 'Order Management',
+      action: 'CONFIRM_ORDER_RESERVE',
+      targetCollection: 'SalesOrder',
+      targetId: order._id,
+      targetCode: order.orderCode,
+      beforeSnapshot,
+      afterSnapshot: order.toObject(),
+      req,
+    }),
+  ];
+
+  if (order.orderType !== 'POS_DIRECT') {
+    const existingWaybill = order.warehouseFulfillment?.waybillCode;
+    if (!existingWaybill) {
+      sideEffects.push(syncGhnWaybillWithGraceAndNotify({ order, userId: user?._id }));
+    } else {
+      fireOrderConfirmedChatNotify(order, existingWaybill, user?._id);
+      void ghnService
+        .getOrderDetail(existingWaybill)
+        .then((detailRes) => {
+          if (!detailRes?.status) return null;
+          return SalesOrder.findByIdAndUpdate(order._id, {
+            $set: {
+              'warehouseFulfillment.ghnStatus': detailRes.status,
+              'warehouseFulfillment.ghnStatusName': detailRes.statusName,
+              'warehouseFulfillment.ghnUpdatedAt': new Date(),
+            },
+          });
+        })
+        .catch((ghnErr) => {
+          console.warn(`⚠️ [GHN Confirm Sync] Không thể đồng bộ vận đơn GHN cho đơn ${order.orderCode}:`, ghnErr.message);
+        });
+    }
+  } else {
+    fireOrderConfirmedChatNotify(order, null, user?._id);
   }
 
-  await recordSystemLog({
-    actor: user,
-    majorFeature: 'Order Fulfillment',
-    subFeature: 'Order Management',
-    action: 'CONFIRM_ORDER_RESERVE',
-    targetCollection: 'SalesOrder',
-    targetId: order._id,
-    targetCode: order.orderCode,
-    beforeSnapshot,
-    afterSnapshot: order.toObject(),
-    req,
-  });
+  await Promise.all(sideEffects);
 
   return order;
 };
@@ -731,7 +894,7 @@ export const switchOrderGhnStatus = async (orderId, targetGhnStatus, user, req) 
     throw new Error('Vui lòng chọn trạng thái GHN cần chuyển đổi.');
   }
 
-  // Nếu đơn đang PENDING và chuyển sang trạng thái GHN đang lấy/giao -> kích hoạt giữ chỗ kho theo GBR-07 trước
+  // [BR: GBR-10] Nếu đơn đang PENDING và chuyển sang trạng thái GHN đang lấy/giao -> kích hoạt giữ chỗ kho trước
   if (order.status === 'PENDING' && cleanGhnStatus !== 'cancel') {
     await confirmOrderReserve(orderId, user, req);
   }
@@ -762,9 +925,16 @@ export const switchOrderGhnStatus = async (orderId, targetGhnStatus, user, req) 
 };
 
 /**
- * UC-81: Hủy đơn hàng & Giải phóng tồn kho giữ chỗ (-ReservedQty)
- * Cancel Order & Stock Release
- * @businessRule GBR-08 / GBR-11 Bắt buộc phải có lý do hủy đơn. Chỉ cho phép hủy khi chưa đóng gói.
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU LOGIC HỦY ĐƠN & GIẢI PHÓNG TỒN KHO - BE: cancelOrder (UC-81)]
+ * ====================================================================================================================================
+ * | STT | Bước xử lý                   | Tác động DB (Collection.field)           | Nghiệp vụ / Công thức / BR                                        |
+ * |-----|------------------------------|------------------------------------------|-------------------------------------------------------------------|
+ * | 1   | Điều kiện được phép hủy      | sales_orders.{status, ghnStatus}         | [BR: GBR-11] Chỉ hủy PENDING/CONFIRMED/PICKING & shipper chưa lấy |
+ * | 2   | Nhả tồn giữ chỗ về khả dụng  | skus.reservedQty (-=qty), inventory_tx   | Ghi ORDER_CANCEL_RELEASE khi đơn đã giữ chỗ; PENDING không đổi    |
+ * | 3   | Hoàn trừ thống kê khách hàng | customers.{totalOrders, totalSpent}      | totalOrders -= 1; totalSpent -= financialSummary.totalOrderAmount |
+ * ====================================================================================================================================
+ * @businessRule GBR-11 Đơn hàng bị hủy tự động giải phóng tồn kho giữ chỗ về lại tồn khả dụng. Bắt buộc lý do hủy và chỉ hủy khi shipper chưa lấy hàng.
  */
 export const cancelOrder = async (orderId, cancelReason, user, req) => {
   const order = await SalesOrder.findById(orderId);
@@ -796,7 +966,7 @@ export const cancelOrder = async (orderId, cancelReason, user, req) => {
 
   const beforeSnapshot = order.toObject();
 
-  // [BR: GBR-08] Đơn đã giữ chỗ (CONFIRMED_RESERVED / PICKING): nhả reservedQty của từng SKU
+  // [BR: GBR-11] Đơn đã giữ chỗ (CONFIRMED_RESERVED / PICKING): nhả reservedQty của từng SKU về lại tồn khả dụng
   if (['CONFIRMED_RESERVED', 'PICKING'].includes(order.status)) {
     for (const item of order.items) {
       const sku = await Sku.findByIdAndUpdate(
@@ -891,9 +1061,16 @@ export const cancelOrder = async (orderId, cancelReason, user, req) => {
 };
 
 /**
- * Tạo đơn bán lẻ trực tiếp tại quầy AraStore POS (Khách lấy hàng ngay)
- * Trừ trực tiếp onHandQty (không qua bước giữ chỗ), trạng thái COMPLETED.
- * @businessRule GBR-07 / GBR-08 / Offline POS Flow
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU LOGIC ĐƠN BÁN TẠI QUẦY POS - BE: createPosDirectOrder]
+ * ====================================================================================================================================
+ * | STT | Bước xử lý                   | Tác động DB (Collection.field)           | Nghiệp vụ / Công thức / BR                                        |
+ * |-----|------------------------------|------------------------------------------|-------------------------------------------------------------------|
+ * | 1   | Kiểm tra tồn khả dụng        | skus.{onHandQty, reservedQty}            | [BR: GBR-10] onHandQty - reservedQty >= orderedQty                |
+ * | 2   | Tính tiền đơn POS            | sales_orders.financialSummary            | sub=Σ(qty*price); ship=0đ; total=sub-discount; COD=0đ             |
+ * | 3   | Trừ kho ngay & Hoàn tất      | skus.onHandQty (-=qty), status=COMPLETED | Ghi POS_DIRECT_SALE; customers.totalOrders+=1, totalSpent+=total  |
+ * ====================================================================================================================================
+ * @businessRule GBR-10 Kiểm tra tồn khả dụng trước khi xuất kho bán tại quầy
  */
 export const createPosDirectOrder = async (posData, user, req) => {
   const { customerId, items, shippingRecipient, financialSummary = {}, paymentMethod = 'CASH', notes = '' } = posData;
@@ -935,7 +1112,9 @@ export const createPosDirectOrder = async (posData, user, req) => {
       throw new Error(`Sản phẩm ${sku.skuCode} không đủ tồn khả dụng tại quầy (Tồn khả dụng: ${available}, Cần: ${qty})`);
     }
 
-    const salePrice = Number(item.unitSalePrice) !== undefined ? Number(item.unitSalePrice) : sku.retailPrice;
+    const salePrice = item.unitSalePrice !== undefined && item.unitSalePrice !== null && !Number.isNaN(Number(item.unitSalePrice))
+      ? Number(item.unitSalePrice)
+      : sku.retailPrice;
     itemsSubtotal += qty * salePrice;
 
     processedItems.push({
@@ -1122,8 +1301,15 @@ const SORTABLE_FIELDS = {
 };
 
 /**
- * Tra cứu danh sách đơn hàng kèm số lượng theo từng trạng thái (phục vụ thanh tab lọc).
- *
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ ĐẾM TRẠNG THÁI & PHÂN TRANG - BE: getOrderList]
+ * ====================================================================================================================================
+ * | STT | Trường trả về / Bộ lọc       | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Nghiệp vụ / Công thức                             |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | statusCounts[status]         | Dải nút đếm Status (SellerOrdersPage)    | SalesOrder.aggregate($match baseQuery, $group)    | Đếm số đơn từng status (độc lập tab status bấm)   |
+ * | 2   | statusCounts.ALL             | Pill "Tất cả (N)" (SellerOrdersPage)     | Tổng hợp từ kết quả aggregate statusCounts        | Σ statusCounts[status]                            |
+ * | 3   | items[] & pagination         | Bảng đơn hàng & phân trang               | SalesOrder.find(query) + countDocuments(query)    | Seller mặc định chỉ thấy đơn sellerId=user._id    |
+ * ====================================================================================================================================
  * @async
  * @function getOrderList
  * @param {Object} filters - { status, search, page, limit, customerId, fromDate, toDate, sortBy, sortDir, viewAll }.

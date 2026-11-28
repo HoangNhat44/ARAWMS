@@ -284,9 +284,7 @@ export const sendOrderNotificationToChat = async ({
 }) => {
   try {
     const cleanMessageText = String(messageText || '')
-      .replace(/\s*\((ready_to_pick|picking|money_collect_picking|picked|storing|transporting|sorting|delivering|money_collect_delivering|delivered|delivery_fail|waiting_to_return|return|returned|cancel|exception|GHN|COD|TMĐT)\)/gi, '')
-      .replace(/\s*\(GHN\)/gi, '')
-      .replace(/\s*\(COD\)/gi, '');
+      .replace(/[ \t]?\((?:ready_to_pick|picking|money_collect_picking|picked|storing|transporting|sorting|delivering|money_collect_delivering|delivered|delivery_fail|waiting_to_return|return|returned|cancel|exception|GHN|COD|TMĐT)\)/gi, '');
 
     let convId = conversationId || order.conversationId;
 
@@ -369,7 +367,7 @@ export const sendOrderNotificationToChat = async ({
           standardPayload,
           {
             params: { access_token: pageToken },
-            timeout: 10000,
+            timeout: 5000,
           }
         );
 
@@ -383,7 +381,8 @@ export const sendOrderNotificationToChat = async ({
         const errData = fbErr.response?.data?.error || {};
         console.warn('⚠️ [Meta Messenger Standard Send Failed]:', errData.message || fbErr.message);
 
-        if (errData.code === 10 || errData.error_subcode === 2018278) {
+        const is24hWindowError = errData.code === 10 || errData.error_subcode === 2018278;
+        if (is24hWindowError) {
           deliveryStatus = 'FAILED_24H_EXPIRED';
           deliveryError = 'Tin nhắn gửi ngoài khoảng thời gian cho phép 24h của Meta.';
         } else {
@@ -391,34 +390,36 @@ export const sendOrderNotificationToChat = async ({
           deliveryError = errData.message || fbErr.message;
         }
 
-        // 2. Fallback nếu ngoài khung 24h: Thử lại với MESSAGE_TAG (chú ý: Meta cấm quick_replies khi dùng tag)
-        try {
-          const tagPayload = {
-            recipient: { id: customer.facebookPsid },
-            messaging_type: 'MESSAGE_TAG',
-            tag: 'POST_PURCHASE_UPDATE',
-            message: {
-              text: cleanMessageText,
-            },
-          };
+        // 2. Chỉ thử fallback MESSAGE_TAG khi thực sự bị chặn bởi khung 24h Meta (tránh nhân đôi độ trễ khi timeout/lỗi mạng/token hết hạn)
+        if (is24hWindowError) {
+          try {
+            const tagPayload = {
+              recipient: { id: customer.facebookPsid },
+              messaging_type: 'MESSAGE_TAG',
+              tag: 'POST_PURCHASE_UPDATE',
+              message: {
+                text: cleanMessageText,
+              },
+            };
 
-          const fbTagRes = await axios.post(
-            'https://graph.facebook.com/v19.0/me/messages',
-            tagPayload,
-            {
-              params: { access_token: pageToken },
-              timeout: 10000,
+            const fbTagRes = await axios.post(
+              'https://graph.facebook.com/v19.0/me/messages',
+              tagPayload,
+              {
+                params: { access_token: pageToken },
+                timeout: 5000,
+              }
+            );
+
+            if (fbTagRes.data?.message_id) {
+              fbMessageId = fbTagRes.data.message_id;
+              deliveryStatus = 'DELIVERED';
+              deliveryError = null;
+              console.log(`✅ [Meta Messenger Success] Gửi tin tự động thành công (Fallback Tag), msgId: ${fbMessageId}`);
             }
-          );
-
-          if (fbTagRes.data?.message_id) {
-            fbMessageId = fbTagRes.data.message_id;
-            deliveryStatus = 'DELIVERED';
-            deliveryError = null;
-            console.log(`✅ [Meta Messenger Success] Gửi tin tự động thành công (Fallback Tag), msgId: ${fbMessageId}`);
+          } catch (tagErr) {
+            console.error('❌ [Meta Messenger Fallback Tag Failed]:', tagErr.response?.data?.error || tagErr.message);
           }
-        } catch (tagErr) {
-          console.error('❌ [Meta Messenger Fallback Tag Failed]:', tagErr.response?.data?.error || tagErr.message);
         }
       }
     } else {
@@ -442,11 +443,10 @@ export const sendOrderNotificationToChat = async ({
     conversation.lastMessageAt = new Date();
     await conversation.save();
 
-    // Phát socket realtime cho Seller UI
+    // Phát socket realtime cho Seller UI (tái sử dụng bản ghi conversation đã populate sẵn customerId)
     try {
       emitNewMessage(conversation._id, newMsg);
-      const populated = await ChatConversation.findById(conversation._id).populate('customerId').lean();
-      emitConversationUpdated(populated || conversation);
+      emitConversationUpdated(conversation.toObject ? conversation.toObject() : conversation);
     } catch (sockErr) {
       console.warn('⚠️ Lỗi socket notification:', sockErr.message);
     }

@@ -74,11 +74,12 @@ class GhnService {
     this.token = config.TOKEN || ENV.GHN.TOKEN;
     this.shopId = Number(config.SHOP_ID || ENV.GHN.SHOP_ID || 232136);
     this.clientId = Number(config.CLIENT_ID || ENV.GHN.CLIENT_ID || 2542532);
-    this._cachedWardByDistrict = new Map();
+    // Pre-seed ward mặc định cho Quận 10 (1444) để tránh gọi thừa API /master-data/ward ở lượt tạo vận đơn đầu tiên
+    this._cachedWardByDistrict = new Map([[1444, '20314']]);
 
     this.client = axios.create({
       baseURL: this.baseURL,
-      timeout: 20000,
+      timeout: 8000,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -297,30 +298,15 @@ class GhnService {
     });
 
     const waybillCode = createRes.order_code || createRes.orderCode;
-    let detailStatus = 'ready_to_pick';
-    let detailStatusName = GHN_STATUS_MAP.ready_to_pick.ghnStatusName;
-
-    // Lấy trạng thái realtime ngay lập tức từ GHN sau khi tạo mã vận đơn
-    if (waybillCode) {
-      try {
-        const detailRes = await this.getOrderDetail(waybillCode);
-        if (detailRes?.status) {
-          detailStatus = String(detailRes.status).toLowerCase().trim();
-          const mapped = mapGhnStatusToOrderStatus(detailStatus);
-          detailStatusName = mapped.ghnStatusName;
-        }
-      } catch (detailErr) {
-        console.warn(`⚠️ [GHN Detail Sync] Không lấy được chi tiết ngay cho ${waybillCode}:`, detailErr.message);
-      }
-    }
-
-    const mappedStatus = mapGhnStatusToOrderStatus(detailStatus);
+    // Đơn vừa tạo trên GHN luôn khởi đầu ở trạng thái ready_to_pick — bỏ qua lời gọi thừa getOrderDetail
+    // ngay sau create để giảm một nửa độ trễ khi Seller bấm "Tạo & Chốt đơn ngay" / "Xác nhận đơn".
+    const mappedStatus = mapGhnStatusToOrderStatus('ready_to_pick');
 
     return {
       ...createRes,
       waybillCode,
       ghnStatus: mappedStatus.ghnStatus,
-      ghnStatusName: detailStatusName,
+      ghnStatusName: mappedStatus.ghnStatusName,
       mappedOrderStatus: mappedStatus.orderStatus,
     };
   }

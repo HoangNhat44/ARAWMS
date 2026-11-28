@@ -32,7 +32,7 @@ export const validateCreateOrder = (req, res, next) => {
 
   for (const item of items) {
     const qty = Number(item.orderedQty);
-    if (!item.skuId || isNaN(qty) || qty < 1) {
+    if (!item.skuId || Number.isNaN(qty) || qty < 1) {
       return res.status(400).json({
         success: false,
         message: 'Số lượng đặt mua của mỗi sản phẩm phải là số nguyên từ 1 trở lên.',
@@ -81,7 +81,7 @@ export const validateCreateOrder = (req, res, next) => {
 };
 
 /**
- * Validation rules cho Sửa sản phẩm đơn hàng (GBR-08)
+ * Validation rules cho Sửa sản phẩm đơn hàng khi đang ở trạng thái PENDING (chưa giữ chỗ theo GBR-10)
  */
 export const validateUpdateOrderItems = (req, res, next) => {
   const { items } = req.body;
@@ -108,7 +108,7 @@ export const validateUpdateOrderItems = (req, res, next) => {
     }
     if (it.unitSalePrice !== undefined && it.unitSalePrice !== null) {
       const price = Number(it.unitSalePrice);
-      if (isNaN(price) || price < 0) {
+      if (Number.isNaN(price) || price < 0) {
         return res.status(400).json({
           success: false,
           message: 'Đơn giá bán không được là số âm.',
