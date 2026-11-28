@@ -325,6 +325,14 @@ test('[N][A][B] inventoryWidget.lookupRealtimeStock: computes stock statuses, ex
   assert.equal(all.find((i) => i.skuCode === 'SKU-ZERO-L').stockStatus, 'OUT_OF_STOCK');
   assert.equal(all.find((i) => i.skuCode === 'SKU-STOP-XL'), undefined);
 
+  const inStockOnly = await inventoryWidgetService.lookupRealtimeStock('', 'IN_STOCK');
+  assert.equal(inStockOnly.length, 2);
+  assert.ok(inStockOnly.every((i) => i.availableQty > 0));
+
+  const outOfStockOnly = await inventoryWidgetService.lookupRealtimeStock('', 'OUT_OF_STOCK');
+  assert.equal(outOfStockOnly.length, 1);
+  assert.equal(outOfStockOnly[0].skuCode, 'SKU-ZERO-L');
+
   const bySearch = await inventoryWidgetService.lookupRealtimeStock('SKU-LOW');
   assert.equal(bySearch.length, 1);
   assert.equal(bySearch[0].availableQty, 10);

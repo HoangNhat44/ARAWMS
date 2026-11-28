@@ -12,7 +12,7 @@ import { successResponse, errorResponse } from '../../../common/utils/apiRespons
  */
 export const lookupRealtimeStock = async (req, res) => {
   try {
-    const skus = await inventoryWidgetService.lookupRealtimeStock(req.query.search);
+    const skus = await inventoryWidgetService.lookupRealtimeStock(req.query.search, req.query.stockFilter);
     return successResponse(res, skus, 'Tra cứu tồn kho khả dụng theo SKU thành công');
   } catch (error) {
     return errorResponse(res, error.message, 500);

@@ -21,6 +21,7 @@ import { sellerService } from '../../services/sellerService';
 import { Icon } from './SellerUi';
 import {
   RecipientFields, SkuSearchBox, SelectedItemsList, AvailableSkuList, PaymentSummary,
+  StockFilterBar, ProductImagePreviewModal, filterSkusByStock,
   getAvailQty, getSkuId, isValidVnPhone,
 } from './OrderFormParts';
 
@@ -61,6 +62,8 @@ const QuickOrderModal = ({
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [availableSkus, setAvailableSkus] = useState([]);
+  const [stockFilter, setStockFilter] = useState('ALL'); // 'ALL' | 'IN_STOCK' | 'OUT_OF_STOCK'
+  const [previewSku, setPreviewSku] = useState(null);
   const [loadingSkus, setLoadingSkus] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -104,7 +107,7 @@ const QuickOrderModal = ({
       }
       setSuccessOrder(null);
       setError('');
-      fetchAvailableProducts();
+      void fetchAvailableProducts();
     }
   }, [isOpen, customerId, fetchAvailableProducts]);
 
@@ -119,6 +122,7 @@ const QuickOrderModal = ({
           size: sku.size,
           color: sku.color,
           thumbnailUrl: sku.thumbnailUrl || '',
+          additionalImageUrls: Array.isArray(sku.additionalImageUrls) ? sku.additionalImageUrls : [],
           availableStock: sku.availableQty ?? sku.availableStock ?? 0,
           orderedQty: sku.orderedQty || 1,
           unitSalePrice: sku.retailPrice || sku.unitSalePrice || 0,
@@ -171,6 +175,7 @@ const QuickOrderModal = ({
         size: sku.size,
         color: sku.color,
         thumbnailUrl: sku.thumbnailUrl || '',
+        additionalImageUrls: Array.isArray(sku.additionalImageUrls) ? sku.additionalImageUrls : [],
         availableStock: getAvailQty(sku),
         orderedQty: 1,
         unitSalePrice: sku.retailPrice || 0,
@@ -190,6 +195,20 @@ const QuickOrderModal = ({
     setItems(items.filter((it) => it.skuId !== skuId));
   };
 
+  /*
+   * ====================================================================================================================================
+   * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU, BỘ LỌC & CÔNG THỨC - MODAL TẠO ĐƠN NHANH (UC-78 / UC-79)]
+   * ====================================================================================================================================
+   * | STT | Mục trên UI (Số liệu / Bộ lọc / Status) | Hàm FE & Trường hiển thị                        | API, Hàm BE & Nguồn DB (Collection.field)                           | Nghiệp vụ / Công thức / Điều kiện                 |
+   * |-----|-----------------------------------------|-------------------------------------------------|---------------------------------------------------------------------|---------------------------------------------------|
+   * | 1   | Kênh bán (Giao hàng / Tại quầy POS)     | orderChannel ('ONLINE' | 'POS'), shippingFee    | POST /api/orders hoặc /api/orders/pos-direct                        | Online: ship mặc định 30.000đ; POS: ship 0đ       |
+   * | 2   | Badge "X sản phẩm sẵn kho" & Bộ lọc     | inStockCount, stockFilter -> StockFilterBar     | GET /api/conversations/inventory/sku-lookup -> lookupRealtimeStock  | Lọc ALL / IN_STOCK (>0) / OUT_OF_STOCK (<=0)      |
+   * | 3   | Tìm kiếm SP & Xem phóng to ảnh SP       | handleSearch(), previewSku -> PreviewModal      | skus + products.{productName, thumbnailUrl, additionalImageUrls}    | Debounce 300ms; bấm ảnh xem phóng to sản phẩm     |
+   * | 4   | Tiền hàng / Phí GHN / Chiết khấu / Tổng | itemsSubtotal, shippingFee, discount, total     | Lưu vào sales_orders.financialSummary tại createDirectOrder         | sub=Σ(qty*price); total=max(0,sub+ship-discount)  |
+   * | 5   | Cảnh báo tồn kho sau tạo đơn            | successOrder.stockWarnings[]                    | orderManagement.service.js:buildStockWarningsFromSkuMap (skus)      | Báo thiếu hàng / chạm ngưỡng safetyStock [GBR-08] |
+   * | 6   | Trạng thái đơn sau tạo                  | successOrder.status (PENDING/CONFIRMED/COMPLETE)| sales_orders.status (chốt ngay giữ reservedQty theo [BR: GBR-10])   | PENDING chưa giữ kho; POS trừ thẳng onHandQty     |
+   * ====================================================================================================================================
+   */
   const itemsSubtotal = items.reduce((sum, it) => sum + (it.orderedQty || 1) * (it.unitSalePrice || 0), 0);
   const totalAmount = Math.max(0, itemsSubtotal + Number(shippingFee || 0) - Number(discountAmount || 0));
 
@@ -283,9 +302,21 @@ const QuickOrderModal = ({
     }
   };
 
-  const dropdownList = searchQuery.trim() ? searchResults : availableSkus;
+  const inStockCount = availableSkus.filter((sku) => getAvailQty(sku) > 0).length;
+  const outOfStockCount = availableSkus.length - inStockCount;
+  const filteredAvailableSkus = filterSkusByStock(availableSkus, stockFilter);
+  const rawDropdownList = searchQuery.trim() ? searchResults : availableSkus;
+  const dropdownList = filterSkusByStock(rawDropdownList, stockFilter);
+
+  const emptySkuMessage =
+    stockFilter === 'IN_STOCK'
+      ? 'Không có sản phẩm nào đang còn hàng'
+      : stockFilter === 'OUT_OF_STOCK'
+      ? 'Không có sản phẩm nào đang hết hàng'
+      : 'Chưa có sản phẩm nào trong kho dữ liệu';
 
   return (
+    <>
     <Modal show={isOpen} onHide={onClose} centered size="lg" fullscreen="md-down" backdrop="static" scrollable>
       {/* Header */}
       <Modal.Header closeButton style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--wms-border, #C8B9A6)' }}>
@@ -403,7 +434,7 @@ const QuickOrderModal = ({
                     <Icon name="box-seam" style={{ color: 'var(--wms-accent, #8A6A46)' }} /> Chọn sản phẩm - {items.length} món đã chọn
                   </Card.Title>
                   <span className="badge rounded px-2 py-0.5" style={{ backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)', color: 'var(--wms-secondary, #574F46)', border: '1px solid var(--wms-border, #C8B9A6)' }}>
-                    {availableSkus.length} sản phẩm có sẵn
+                    {inStockCount} sản phẩm sẵn kho
                   </span>
                 </div>
 
@@ -415,29 +446,45 @@ const QuickOrderModal = ({
                   onShowChange={setShowDropdown}
                   list={dropdownList}
                   header={searchQuery.trim()
-                    ? `KẾT QUẢ TÌM KIẾM: ${searchResults.length}`
-                    : `SẢN PHẨM CÓ SẴN TRONG KHO: ${availableSkus.length}`}
+                    ? `KẾT QUẢ TÌM KIẾM: ${dropdownList.length}`
+                    : `SẢN PHẨM TRONG KHO: ${dropdownList.length}`}
                   onPick={addItem}
+                  onPreviewImage={setPreviewSku}
                 />
 
                 {/* Danh sách sản phẩm ĐÃ CHỌN */}
-                {items.length > 0 ? (
-                  <SelectedItemsList items={items} onQty={updateQuantity} onRemove={removeItem} maxHeight={180} />
-                ) : (
-                  /* Gợi ý sản phẩm khi chưa có sản phẩm nào được chọn */
-                  <div className="mt-2">
-                    <div className="fw-semibold small mb-2" style={{ color: 'var(--wms-secondary, #574F46)' }}>
-                      Sản phẩm có sẵn trong kho:
-                    </div>
-                    <AvailableSkuList
-                      skus={availableSkus}
-                      loading={loadingSkus}
-                      limit={8}
-                      onAdd={addItem}
-                      maxHeight={200}
-                    />
-                  </div>
+                {items.length > 0 && (
+                  <SelectedItemsList
+                    items={items}
+                    onQty={updateQuantity}
+                    onRemove={removeItem}
+                    maxHeight={180}
+                    onPreviewImage={setPreviewSku}
+                  />
                 )}
+
+                {/* Bộ lọc tồn kho (Tất cả / Còn hàng / Hết hàng) & Danh sách sản phẩm */}
+                <div className="mt-2">
+                  <div className="fw-semibold small mb-2" style={{ color: 'var(--wms-secondary, #574F46)' }}>
+                    Sản phẩm trong kho ({filteredAvailableSkus.length}/{availableSkus.length}):
+                  </div>
+                  <StockFilterBar
+                    value={stockFilter}
+                    onChange={setStockFilter}
+                    totalCount={availableSkus.length}
+                    inStockCount={inStockCount}
+                    outOfStockCount={outOfStockCount}
+                  />
+                  <AvailableSkuList
+                    skus={filteredAvailableSkus}
+                    loading={loadingSkus}
+                    selectedItems={items}
+                    onAdd={addItem}
+                    onPreviewImage={setPreviewSku}
+                    maxHeight={220}
+                    emptyText={emptySkuMessage}
+                  />
+                </div>
               </Card.Body>
             </Card>
 
@@ -497,6 +544,16 @@ const QuickOrderModal = ({
         </Modal.Footer>
       )}
     </Modal>
+
+    <ProductImagePreviewModal
+      sku={previewSku}
+      onHide={() => setPreviewSku(null)}
+      onAdd={(sku) => {
+        addItem(sku);
+        setPreviewSku(null);
+      }}
+    />
+    </>
   );
 };
 

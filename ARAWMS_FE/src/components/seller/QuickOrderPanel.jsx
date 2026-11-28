@@ -20,6 +20,7 @@ import { useToast } from '../../context/ToastContext';
 import { Icon } from './SellerUi';
 import {
   RecipientFields, SkuSearchBox, SelectedItemsList, AvailableSkuList, PaymentSummary,
+  StockFilterBar, ProductImagePreviewModal, filterSkusByStock,
   getAvailQty, getSkuId, isValidVnPhone,
 } from './OrderFormParts';
 
@@ -47,6 +48,8 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [defaultSkus, setDefaultSkus] = useState(globalCachedSkus || []);
+  const [stockFilter, setStockFilter] = useState('ALL'); // 'ALL' | 'IN_STOCK' | 'OUT_OF_STOCK'
+  const [previewSku, setPreviewSku] = useState(null);
   const [loadingDefaultSkus, setLoadingDefaultSkus] = useState(false);
   const [searching, setSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -74,7 +77,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
 
   // 2. Tự động tải danh sách sản phẩm có sẵn trong kho ngay khi mở bảng tạo đơn (ưu tiên cache 60s)
   useEffect(() => {
-    fetchAvailableSkus();
+    void fetchAvailableSkus();
   }, []);
 
   const fetchAvailableSkus = async (force = false) => {
@@ -134,7 +137,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
 
   /**
    * Thêm sản phẩm vào danh sách đơn hàng.
-   * [BR: GBR-03] Định danh SKU chính xác theo ID và mã SKU.
+   * [BR: GBR-06] Định danh SKU duy nhất theo ID và mã SKU.
    */
   const addItem = (sku) => {
     const existing = items.find((it) => it.skuId === getSkuId(sku));
@@ -150,6 +153,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
         size: sku.size,
         color: sku.color,
         thumbnailUrl: sku.thumbnailUrl || '',
+        additionalImageUrls: Array.isArray(sku.additionalImageUrls) ? sku.additionalImageUrls : [],
         availableStock: getAvailQty(sku),
         orderedQty: 1,
         unitSalePrice: sku.retailPrice || 0,
@@ -168,6 +172,20 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
 
   const removeItem = (skuId) => setItems(items.filter((it) => it.skuId !== skuId));
 
+  /*
+   * ====================================================================================================================================
+   * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU, BỘ LỌC & CÔNG THỨC - PANEL TẠO ĐƠN NHANH (PANE 3)]
+   * ====================================================================================================================================
+   * | STT | Mục trên UI (Số liệu / Bộ lọc / Status) | Hàm FE & Trường hiển thị                        | API, Hàm BE & Nguồn DB (Collection.field)                           | Nghiệp vụ / Công thức / Điều kiện                 |
+   * |-----|-----------------------------------------|-------------------------------------------------|---------------------------------------------------------------------|---------------------------------------------------|
+   * | 1   | Badge "X sẵn kho"                       | inStockCount = filter(getAvailQty(sku) > 0)     | GET /api/conversations/inventory/sku-lookup -> lookupRealtimeStock  | Đếm SKU có availableQty = onHand - reserved > 0   |
+   * | 2   | Bộ lọc Tất cả / Còn hàng / Hết hàng     | stockFilter -> StockFilterBar, filterSkusByStock| Lọc trên defaultSkus / searchResults (skus: onHandQty, reservedQty) | ALL / IN_STOCK (>0) / OUT_OF_STOCK (<=0)          |
+   * | 3   | Ô tìm kiếm SP (debounce 300ms)          | handleSearch() -> searchResults -> SkuSearchBox | lookupRealtimeStock(q) <- skus + products.{productName,thumbnailUrl}| Trả tối đa 200 SKU mặc định, 100 khi tìm kiếm     |
+   * | 4   | Ảnh thu nhỏ & Modal xem ảnh sản phẩm    | SkuThumb(onClick) -> previewSku -> PreviewModal | products.{thumbnailUrl, additionalImageUrls}                        | Bấm ảnh mở phóng to + nút Thêm vào đơn            |
+   * | 5   | Tiền hàng / Phí GHN / Chiết khấu / COD  | subtotal, shippingFee, discountAmount, total    | POST /api/orders -> orderManagement.service.js:createDirectOrder    | subtotal=Σ(qty*price); total=max(0,sub+ship-disc) |
+   * | 6   | Nút "Chờ khách xác nhận" vs "Chốt ngay" | handleCreate({ autoConfirm: false | true })     | sales_orders.status ('PENDING' vs 'CONFIRMED_RESERVED' / 'COMPLETED')| PENDING chưa giữ kho; Chốt ngay +reserved [GBR-10]|
+   * ====================================================================================================================================
+   */
   const subtotal = items.reduce((s, it) => s + it.orderedQty * it.unitSalePrice, 0);
   const total = Math.max(0, subtotal + Number(shippingFee || 0) - Number(discountAmount || 0));
 
@@ -313,7 +331,18 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
     );
   }
 
-  const dropdownList = searchQuery.trim() ? searchResults : defaultSkus;
+  const inStockCount = defaultSkus.filter((sku) => getAvailQty(sku) > 0).length;
+  const outOfStockCount = defaultSkus.length - inStockCount;
+  const filteredDefaultSkus = filterSkusByStock(defaultSkus, stockFilter);
+  const rawDropdownList = searchQuery.trim() ? searchResults : defaultSkus;
+  const dropdownList = filterSkusByStock(rawDropdownList, stockFilter);
+
+  const emptySkuMessage =
+    stockFilter === 'IN_STOCK'
+      ? 'Không có sản phẩm nào đang còn hàng'
+      : stockFilter === 'OUT_OF_STOCK'
+      ? 'Không có sản phẩm nào đang hết hàng'
+      : 'Chưa có sản phẩm nào trong kho dữ liệu';
 
   return (
     <Stack gap={3} className="w-100 overflow-x-hidden">
@@ -385,7 +414,7 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
               className="badge rounded-pill px-2 py-0.5"
               style={{ backgroundColor: '#ECFDF5', color: '#006C4A', border: '1px solid #A7F3D0', fontSize: '11px' }}
             >
-              {defaultSkus.length} sẵn kho
+              {inStockCount} sẵn kho
             </span>
           </div>
 
@@ -397,9 +426,10 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
             onShowChange={setShowDropdown}
             list={dropdownList}
             header={searchQuery.trim()
-              ? `Kết quả tìm kiếm (${searchResults.length})`
-              : `Sản phẩm có sẵn (${defaultSkus.length})`}
+              ? `Kết quả tìm kiếm (${dropdownList.length})`
+              : `Sản phẩm trong kho (${dropdownList.length})`}
             onPick={addItem}
+            onPreviewImage={setPreviewSku}
           />
 
           {/* Danh sách sản phẩm đã thêm vào đơn */}
@@ -408,21 +438,35 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
               <div className="fw-semibold small mt-2 mb-1" style={{ fontSize: '11.5px', color: 'var(--wms-text-secondary, #514536)' }}>
                 Đã chọn vào đơn ({items.length} món)
               </div>
-              <SelectedItemsList items={items} onQty={updateQty} onRemove={removeItem} maxHeight="none" />
+              <SelectedItemsList
+                items={items}
+                onQty={updateQty}
+                onRemove={removeItem}
+                maxHeight="none"
+                onPreviewImage={setPreviewSku}
+              />
             </>
           )}
 
-          {/* Khối gợi ý sản phẩm có sẵn trong kho */}
+          {/* Bộ lọc tồn kho (Tất cả / Còn hàng / Hết hàng) & Danh sách sản phẩm trong kho */}
           <div className="fw-semibold small mt-3 mb-2" style={{ fontSize: '11.5px', color: 'var(--wms-text-secondary, #514536)' }}>
-            Sản phẩm có sẵn trong kho ({defaultSkus.length})
+            Sản phẩm trong kho ({filteredDefaultSkus.length}/{defaultSkus.length})
           </div>
+          <StockFilterBar
+            value={stockFilter}
+            onChange={setStockFilter}
+            totalCount={defaultSkus.length}
+            inStockCount={inStockCount}
+            outOfStockCount={outOfStockCount}
+          />
           <AvailableSkuList
-            skus={defaultSkus}
+            skus={filteredDefaultSkus}
             loading={loadingDefaultSkus}
-            limit={10}
             selectedItems={items}
             onAdd={addItem}
-            maxHeight={240}
+            onPreviewImage={setPreviewSku}
+            maxHeight={260}
+            emptyText={emptySkuMessage}
           />
         </Card.Body>
       </Card>
@@ -511,6 +555,16 @@ const QuickOrderPanel = ({ customer, conversationId, onOrderCreated }) => {
           </Button>
         </Stack>
       )}
+
+      {/* Modal phóng to ảnh sản phẩm khi bấm vào thumbnail */}
+      <ProductImagePreviewModal
+        sku={previewSku}
+        onHide={() => setPreviewSku(null)}
+        onAdd={(sku) => {
+          addItem(sku);
+          setPreviewSku(null);
+        }}
+      />
     </Stack>
   );
 };

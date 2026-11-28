@@ -108,34 +108,62 @@ export const Avatar = ({ name, size = 36, className = '' }) => {
 
 /**
  * Ảnh thu nhỏ sản phẩm, fallback icon hộp khi không có ảnh.
+ * Hỗ trợ bấm vào ảnh để mở xem ảnh lớn (khi truyền `onClick`).
  * @param {Object} props
  * @param {string} [props.src] - URL ảnh.
  * @param {string} [props.alt] - Mô tả ảnh.
  * @param {number} [props.size=36] - Kích thước (px).
+ * @param {Function} [props.onClick] - Callback khi bấm vào ảnh sản phẩm.
+ * @param {string} [props.title] - Tooltip gợi ý khi hover ảnh.
  */
-export const SkuThumb = ({ src, alt, size = 36 }) =>
-  src ? (
+export const SkuThumb = ({ src, alt, size = 36, onClick, title }) => {
+  if (!src) {
+    return (
+      <div
+        className="rounded flex-shrink-0 d-flex align-items-center justify-content-center"
+        style={{
+          width: size,
+          height: size,
+          backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)',
+          border: '1px solid var(--wms-border, #C8B9A6)',
+          borderRadius: '6px',
+          color: 'var(--wms-accent, #8A6A46)',
+        }}
+      >
+        <Icon name="box-seam" />
+      </div>
+    );
+  }
+
+  const imgEl = (
     <img
       src={src}
       alt={alt || 'SKU'}
-      className="rounded flex-shrink-0 object-fit-cover"
+      className="rounded flex-shrink-0 object-fit-cover d-block"
       style={{ width: size, height: size, border: '1px solid var(--wms-border, #C8B9A6)', borderRadius: '6px' }}
     />
-  ) : (
-    <div
-      className="rounded flex-shrink-0 d-flex align-items-center justify-content-center"
-      style={{
-        width: size,
-        height: size,
-        backgroundColor: 'var(--wms-bg-subtle, #F3EDE4)',
-        border: '1px solid var(--wms-border, #C8B9A6)',
-        borderRadius: '6px',
-        color: 'var(--wms-accent, #8A6A46)',
-      }}
-    >
-      <Icon name="box-seam" />
-    </div>
   );
+
+  if (typeof onClick === 'function') {
+    return (
+      <button
+        type="button"
+        className="p-0 border-0 bg-transparent flex-shrink-0 rounded position-relative"
+        style={{ width: size, height: size, cursor: 'zoom-in', lineHeight: 0 }}
+        title={title || 'Bấm để xem ảnh sản phẩm'}
+        aria-label={`Xem ảnh ${alt || 'sản phẩm'}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick(e);
+        }}
+      >
+        {imgEl}
+      </button>
+    );
+  }
+
+  return imgEl;
+};
 
 /**
  * Badge tồn kho khả dụng tuân thủ AraWMS Haute Logistics:

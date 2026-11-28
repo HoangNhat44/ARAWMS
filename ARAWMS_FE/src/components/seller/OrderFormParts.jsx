@@ -12,8 +12,8 @@
  * ============================================================================
  */
 
-import React, { useEffect, useRef } from 'react';
-import { Form, InputGroup, ListGroup, Button, Spinner, Row, Col, Stack } from 'react-bootstrap';
+import React, { useEffect, useRef, useState } from 'react';
+import { Form, InputGroup, ListGroup, Button, Spinner, Row, Col, Stack, Modal } from 'react-bootstrap';
 import { Icon, SkuThumb, StockBadge, formatVnd } from './SellerUi';
 
 /** Lấy số lượng khả dụng của SKU từ các tên trường khác nhau của API. */
@@ -21,6 +21,226 @@ export const getAvailQty = (sku) => sku.availableQty ?? sku.availableStock ?? 0;
 
 /** Lấy ID của SKU từ các tên trường khác nhau của API. */
 export const getSkuId = (sku) => sku.skuId || sku._id;
+
+/**
+ * Lọc danh sách SKU theo trạng thái tồn kho khả dụng (`ALL` | `IN_STOCK` | `OUT_OF_STOCK`).
+ * [BR: GBR-10] Dựa trên tồn khả dụng thực tế `availableQty = Math.max(0, onHandQty - reservedQty)`.
+ * @param {Array<Object>} skus - Danh sách SKU gốc.
+ * @param {'ALL'|'IN_STOCK'|'OUT_OF_STOCK'} stockFilter - Bộ lọc trạng thái tồn.
+ * @returns {Array<Object>} Danh sách SKU đã lọc.
+ */
+export const filterSkusByStock = (skus = [], stockFilter = 'ALL') => {
+  if (stockFilter === 'IN_STOCK') {
+    return skus.filter((sku) => getAvailQty(sku) > 0);
+  }
+  if (stockFilter === 'OUT_OF_STOCK') {
+    return skus.filter((sku) => getAvailQty(sku) <= 0);
+  }
+  return skus;
+};
+
+/**
+ * Lấy danh sách URL ảnh duy nhất của sản phẩm (ảnh đại diện + ảnh phụ nếu có).
+ * @param {Object|null} sku
+ * @returns {string[]}
+ */
+export const getSkuImageList = (sku) => {
+  if (!sku) return [];
+  const raw = [sku.thumbnailUrl, ...(Array.isArray(sku.additionalImageUrls) ? sku.additionalImageUrls : [])]
+    .filter((url) => typeof url === 'string' && url.trim().length > 0);
+  return [...new Set(raw)];
+};
+
+/**
+ * Thanh nút lọc tồn kho cho Seller: Tất cả / Còn hàng / Hết hàng.
+ */
+export const StockFilterBar = ({ value = 'ALL', onChange, totalCount = 0, inStockCount = 0, outOfStockCount = 0 }) => {
+  const options = [
+    {
+      key: 'ALL',
+      label: 'Tất cả',
+      count: totalCount,
+      icon: 'grid',
+      activeStyle: { backgroundColor: 'var(--wms-accent, #8A6A46)', color: '#FFFFFF', borderColor: 'var(--wms-accent, #8A6A46)' },
+    },
+    {
+      key: 'IN_STOCK',
+      label: 'Còn hàng',
+      count: inStockCount,
+      icon: 'check-circle',
+      activeStyle: { backgroundColor: '#006C4A', color: '#FFFFFF', borderColor: '#006C4A' },
+    },
+    {
+      key: 'OUT_OF_STOCK',
+      label: 'Hết hàng',
+      count: outOfStockCount,
+      icon: 'x-circle',
+      activeStyle: { backgroundColor: '#514536', color: '#FFFFFF', borderColor: '#514536' },
+    },
+  ];
+
+  return (
+    <div className="d-flex flex-wrap align-items-center gap-1.5 mb-2" role="group" aria-label="Lọc sản phẩm theo trạng thái tồn kho">
+      {options.map((opt) => {
+        const isActive = value === opt.key;
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            aria-pressed={isActive}
+            onClick={() => onChange(opt.key)}
+            className="btn btn-sm rounded-pill d-inline-flex align-items-center gap-1 fw-semibold px-2.5 py-1"
+            style={{
+              fontSize: '11.5px',
+              lineHeight: 1.2,
+              transition: 'all 0.15s ease',
+              ...(isActive
+                ? opt.activeStyle
+                : {
+                    backgroundColor: '#FFFFFF',
+                    color: 'var(--wms-text-secondary, #514536)',
+                    borderColor: 'var(--wms-border, #C8B9A6)',
+                  }),
+            }}
+          >
+            <Icon name={opt.icon} />
+            <span>{opt.label}</span>
+            <span
+              className="rounded-pill px-1.5 tabular-nums"
+              style={{
+                fontSize: '10.5px',
+                backgroundColor: isActive ? 'rgba(255, 255, 255, 0.22)' : 'var(--wms-bg-subtle, #F3EDE4)',
+                color: isActive ? '#FFFFFF' : 'var(--wms-text-primary, #141210)',
+              }}
+            >
+              {opt.count}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
+/**
+ * Modal phóng to xem ảnh chi tiết sản phẩm khi Seller bấm vào ảnh thu nhỏ.
+ */
+export const ProductImagePreviewModal = ({ sku, onHide, onAdd }) => {
+  const images = getSkuImageList(sku);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [sku?.skuId, sku?._id, sku?.thumbnailUrl]);
+
+  const currentSrc = images[activeIndex] || images[0] || '';
+  const productTitle = sku?.productName || sku?.styleName || sku?.skuCode || 'Ảnh sản phẩm';
+  const availQty = sku ? getAvailQty(sku) : 0;
+  const price = sku?.retailPrice ?? sku?.unitSalePrice ?? 0;
+
+  return (
+    <Modal show={Boolean(sku && currentSrc)} onHide={onHide} centered size="md">
+      <Modal.Header closeButton className="py-2.5 px-3" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
+        <Modal.Title as="h6" className="fw-bold text-truncate mb-0 pe-2" style={{ color: 'var(--wms-text-primary, #141210)', fontSize: '0.95rem' }}>
+          {productTitle}
+        </Modal.Title>
+      </Modal.Header>
+      <Modal.Body className="p-3" style={{ backgroundColor: '#FAF7F2' }}>
+        <div
+          className="position-relative d-flex align-items-center justify-content-center rounded-3 overflow-hidden bg-white mb-3"
+          style={{ minHeight: 280, maxHeight: '60vh', border: '1px solid var(--wms-border, #C8B9A6)' }}
+        >
+          {currentSrc && (
+            <img
+              src={currentSrc}
+              alt={productTitle}
+              className="img-fluid"
+              style={{ maxHeight: '60vh', width: '100%', objectFit: 'contain' }}
+            />
+          )}
+          {images.length > 1 && (
+            <>
+              <button
+                type="button"
+                aria-label="Ảnh trước"
+                className="btn btn-sm btn-light rounded-circle shadow position-absolute top-50 start-0 translate-middle-y ms-2 d-flex align-items-center justify-content-center"
+                style={{ width: 32, height: 32 }}
+                onClick={() => setActiveIndex((prev) => (prev - 1 + images.length) % images.length)}
+              >
+                <Icon name="chevron-left" />
+              </button>
+              <button
+                type="button"
+                aria-label="Ảnh tiếp theo"
+                className="btn btn-sm btn-light rounded-circle shadow position-absolute top-50 end-0 translate-middle-y me-2 d-flex align-items-center justify-content-center"
+                style={{ width: 32, height: 32 }}
+                onClick={() => setActiveIndex((prev) => (prev + 1) % images.length)}
+              >
+                <Icon name="chevron-right" />
+              </button>
+            </>
+          )}
+        </div>
+
+        {images.length > 1 && (
+          <div className="d-flex align-items-center justify-content-center gap-2 mb-3 flex-wrap">
+            {images.map((imgUrl, idx) => (
+              <button
+                key={imgUrl}
+                type="button"
+                onClick={() => setActiveIndex(idx)}
+                aria-label={`Xem ảnh ${idx + 1}`}
+                className="p-0 bg-white rounded overflow-hidden"
+                style={{
+                  width: 48,
+                  height: 48,
+                  border: idx === activeIndex ? '2px solid var(--wms-accent, #8A6A46)' : '1px solid var(--wms-border, #C8B9A6)',
+                }}
+              >
+                <img src={imgUrl} alt={`${productTitle} ${idx + 1}`} className="w-100 h-100 object-fit-cover d-block" />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {sku && (
+          <div className="bg-white rounded-3 p-2.5 d-flex align-items-center justify-content-between gap-2 flex-wrap" style={{ border: '1px solid var(--wms-border, #C8B9A6)' }}>
+            <div className="small">
+              <div className="fw-semibold" style={{ color: 'var(--wms-text-secondary, #574F46)', fontSize: '12px' }}>
+                {sku.skuCode}
+                {sku.color ? ` · ${sku.color}` : ''}
+                {sku.size ? ` · Size ${sku.size}` : ''}
+              </div>
+              <div className="fw-bold tabular-nums mt-0.5" style={{ color: 'var(--wms-accent, #8A6A46)', fontSize: '0.95rem' }}>
+                {formatVnd(price)}
+              </div>
+            </div>
+            <StockBadge qty={availQty} />
+          </div>
+        )}
+      </Modal.Body>
+      <Modal.Footer className="py-2 px-3 d-flex justify-content-between" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
+        <Button as="a" href={currentSrc} target="_blank" rel="noreferrer" size="sm" className="btn-wms-default">
+          <Icon name="box-arrow-up-right" className="me-1" /> Mở ảnh gốc
+        </Button>
+        <div className="d-flex gap-2">
+          {typeof onAdd === 'function' && sku && (
+            <Button
+              size="sm"
+              className="btn-wms-accent"
+              onClick={() => onAdd(sku)}
+            >
+              <Icon name="plus-lg" className="me-1" /> Thêm vào đơn
+            </Button>
+          )}
+          <Button size="sm" className="btn-wms-default" onClick={onHide}>
+            Đóng
+          </Button>
+        </div>
+      </Modal.Footer>
+    </Modal>
+  );
+};
 
 /**
  * Kiểm tra tính hợp lệ của số điện thoại Việt Nam (10 chữ số, đầu số 03, 05, 07, 08, 09)
@@ -118,7 +338,7 @@ export const RecipientFields = ({ recipient, onChange }) => {
 /**
  * Ô tìm kiếm SKU kèm dropdown gợi ý (tồn kho realtime).
  */
-export const SkuSearchBox = ({ query, onQueryChange, searching, show, onShowChange, list, header, onPick }) => {
+export const SkuSearchBox = ({ query, onQueryChange, searching, show, onShowChange, list, header, onPick, onPreviewImage }) => {
   const wrapRef = useRef(null);
 
   useEffect(() => {
@@ -160,13 +380,22 @@ export const SkuSearchBox = ({ query, onQueryChange, searching, show, onShowChan
           {list.map((sku) => (
             <ListGroup.Item
               key={getSkuId(sku)}
-              action
-              onClick={() => onPick(sku)}
-              className="d-flex align-items-center justify-content-between gap-2 py-2"
+              as="div"
+              className="d-flex align-items-center gap-2 py-2 px-3 bg-white"
               style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}
             >
-              <div className="d-flex align-items-center gap-2 text-truncate">
-                <SkuThumb src={sku.thumbnailUrl} alt={sku.productName || sku.styleName} size={34} />
+              <SkuThumb
+                src={sku.thumbnailUrl}
+                alt={sku.productName || sku.styleName}
+                size={34}
+                onClick={onPreviewImage && sku.thumbnailUrl ? () => onPreviewImage(sku) : undefined}
+              />
+              <button
+                type="button"
+                onClick={() => onPick(sku)}
+                className="d-flex align-items-center justify-content-between gap-2 flex-grow-1 text-start border-0 bg-transparent p-0 text-truncate"
+                style={{ cursor: 'pointer' }}
+              >
                 <div className="text-truncate">
                   <div className="fw-semibold small text-truncate" style={{ color: 'var(--wms-text-primary, #141210)' }}>
                     {sku.productName || sku.styleName || sku.skuCode}
@@ -175,11 +404,11 @@ export const SkuSearchBox = ({ query, onQueryChange, searching, show, onShowChan
                     {sku.skuCode} · {sku.color} · Size <strong>{sku.size}</strong>
                   </div>
                 </div>
-              </div>
-              <div className="text-end flex-shrink-0">
-                <div className="fw-bold small tabular-nums" style={{ color: 'var(--wms-accent, #8A6A46)' }}>{formatVnd(sku.retailPrice)}</div>
-                <StockBadge qty={getAvailQty(sku)} />
-              </div>
+                <div className="text-end flex-shrink-0">
+                  <div className="fw-bold small tabular-nums" style={{ color: 'var(--wms-accent, #8A6A46)' }}>{formatVnd(sku.retailPrice)}</div>
+                  <StockBadge qty={getAvailQty(sku)} />
+                </div>
+              </button>
             </ListGroup.Item>
           ))}
         </ListGroup>
@@ -191,11 +420,16 @@ export const SkuSearchBox = ({ query, onQueryChange, searching, show, onShowChan
 /**
  * Danh sách SKU đã được thêm vào đơn (Khớp hình ảnh tham khảo).
  */
-export const SelectedItemsList = ({ items, onQty, onRemove, maxHeight = 240 }) => (
+export const SelectedItemsList = ({ items, onQty, onRemove, maxHeight = 240, onPreviewImage }) => (
   <ListGroup className="mb-3 overflow-auto" style={{ maxHeight, border: '1px solid var(--wms-border, #C8B9A6)', borderRadius: '8px' }}>
     {items.map((it) => (
       <ListGroup.Item key={it.skuId} className="d-flex align-items-center gap-2.5 py-2.5 px-3 bg-white" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
-        <SkuThumb src={it.thumbnailUrl} alt={it.styleName} size={42} />
+        <SkuThumb
+          src={it.thumbnailUrl}
+          alt={it.styleName}
+          size={42}
+          onClick={onPreviewImage && it.thumbnailUrl ? () => onPreviewImage(it) : undefined}
+        />
         <div className="flex-grow-1 text-truncate small">
           <div className="fw-bold text-truncate" style={{ color: 'var(--wms-text-primary, #141210)', fontSize: '0.84rem' }}>
             {it.styleName || it.productName || it.skuCode}
@@ -232,9 +466,18 @@ export const SelectedItemsList = ({ items, onQty, onRemove, maxHeight = 240 }) =
 );
 
 /**
- * Danh sách SKU có sẵn trong kho kèm nút "+ Thêm".
+ * Danh sách SKU trong kho kèm nút "+ Thêm" và xem ảnh phóng to khi bấm vào thumbnail.
  */
-export const AvailableSkuList = ({ skus, loading, limit = 10, selectedItems = [], onAdd, maxHeight = 240 }) => {
+export const AvailableSkuList = ({
+  skus,
+  loading,
+  limit = null,
+  selectedItems = [],
+  onAdd,
+  onPreviewImage,
+  maxHeight = 240,
+  emptyText = 'Chưa có sản phẩm nào trong kho dữ liệu',
+}) => {
   if (loading) {
     return (
       <div className="text-center py-3 text-secondary small">
@@ -245,13 +488,14 @@ export const AvailableSkuList = ({ skus, loading, limit = 10, selectedItems = []
   if (skus.length === 0) {
     return (
       <div className="text-center py-3 text-secondary small border rounded-3 bg-white" style={{ borderColor: 'var(--wms-border, #C8B9A6)' }}>
-        Chưa có sản phẩm nào trong kho dữ liệu
+        {emptyText}
       </div>
     );
   }
+  const visibleSkus = typeof limit === 'number' ? skus.slice(0, limit) : skus;
   return (
     <ListGroup className="overflow-auto" style={{ maxHeight, border: '1px solid var(--wms-border, #C8B9A6)', borderRadius: '8px' }}>
-      {skus.slice(0, limit).map((sku) => {
+      {visibleSkus.map((sku) => {
         const isSelected = selectedItems.some((it) => it.skuId === getSkuId(sku));
         return (
           <ListGroup.Item
@@ -263,7 +507,12 @@ export const AvailableSkuList = ({ skus, loading, limit = 10, selectedItems = []
             }}
           >
             <div className="d-flex align-items-center gap-2 text-truncate small">
-              <SkuThumb src={sku.thumbnailUrl} alt={sku.productName || sku.styleName} size={36} />
+              <SkuThumb
+                src={sku.thumbnailUrl}
+                alt={sku.productName || sku.styleName}
+                size={36}
+                onClick={onPreviewImage && sku.thumbnailUrl ? () => onPreviewImage(sku) : undefined}
+              />
               <div className="text-truncate">
                 <div className="fw-semibold text-truncate" title={sku.productName || sku.styleName} style={{ color: 'var(--wms-text-primary, #141210)' }}>
                   {sku.productName || sku.styleName || sku.skuCode}

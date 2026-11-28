@@ -19,13 +19,22 @@ import Product from '../../../models/Product.model.js';
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * UC-77: Tra cứu số lượng tồn kho khả dụng theo từng mã SKU ngay trong màn hình chat.
- * Tích hợp tìm kiếm đa tầng an toàn theo Product và Sku collection.
- * Công thức: Available = onHandQty - reservedQty
- * @businessRule GBR-10 Phản ánh tồn khả dụng sau khi trừ tồn giữ chỗ
- * @businessRule GBR-08 Kiểm tra ngưỡng cảnh báo tồn kho tối thiểu
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU, BỘ LỌC & TRẠNG THÁI - BE: TRA CỨU TỒN KHO REALTIME (UC-77)]
+ * ====================================================================================================================================
+ * | STT | Trường trả về / Bộ lọc       | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Nghiệp vụ / Công thức / BR                        |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | availableQty                 | Badge "Còn X" / "Hết hàng" / "X sẵn kho" | skus.{onHandQty, reservedQty} (isActive=true)     | [BR: GBR-10] max(0, onHandQty - reservedQty)      |
+ * | 2   | stockStatus                  | Nhãn IN_STOCK / LOW_STOCK / OUT_OF_STOCK | skus.{onHandQty,reservedQty,safetyStockThreshold} | [BR: GBR-08] <=0: Hết; <=threshold(10): Sắp hết   |
+ * | 3   | stockFilter (ALL/IN/OUT)     | Thanh lọc Tất cả/Còn hàng/Hết hàng       | Lọc trên availableQty (>0 hoặc <=0)               | Hỗ trợ lọc ở cả API (query.stockFilter) & FE      |
+ * | 4   | thumbnailUrl, additionalImg  | Ảnh thu nhỏ & Modal phóng to ảnh SP      | products.{thumbnailUrl, additionalImageUrls[]}    | Bấm thumbnail trên QuickOrder mở ảnh sản phẩm     |
+ * | 5   | retailPrice                  | Giá bán trên danh sách & đơn nhanh       | skus.retailPrice (fallback products.basePrice)    | Đơn giá bán lẻ mặc định khi thêm vào đơn          |
+ * ====================================================================================================================================
+ *
+ * @businessRule GBR-10 Phản ánh tồn khả dụng sau khi trừ tồn giữ chỗ (availableQty = onHandQty - reservedQty)
+ * @businessRule GBR-08 Kiểm tra ngưỡng cảnh báo tồn kho tối thiểu (safetyStockThreshold)
  */
-export const lookupRealtimeStock = async (searchQuery) => {
+export const lookupRealtimeStock = async (searchQuery, stockFilter = 'ALL') => {
   const filter = { isActive: true };
 
   if (searchQuery && searchQuery.trim()) {
@@ -59,12 +68,14 @@ export const lookupRealtimeStock = async (searchQuery) => {
   // Truy vấn danh sách SKU kèm thông tin từ Product collection (chỉ lấy các trường cần thiết)
   const skus = await Sku.find(filter)
     .select('_id skuCode skuBarcode productId styleName color size retailPrice onHandQty reservedQty safetyStockThreshold')
-    .populate('productId', 'productName productCode category basePrice thumbnailUrl')
+    .populate('productId', 'productName productCode category basePrice thumbnailUrl additionalImageUrls')
     .sort({ onHandQty: -1, styleName: 1, size: 1 }) // Ưu tiên hàng có sẵn tồn kho lên đầu
-    .limit(searchQuery ? 50 : 24)
+    .limit(searchQuery ? 100 : 200)
     .lean();
 
-  return skus.map((sku) => {
+  const normalizedFilter = String(stockFilter || 'ALL').trim().toUpperCase();
+
+  const mapped = skus.map((sku) => {
     const onHand = sku.onHandQty || 0;
     const reserved = sku.reservedQty || 0;
     const available = Math.max(0, onHand - reserved);
@@ -77,6 +88,9 @@ export const lookupRealtimeStock = async (searchQuery) => {
     }
 
     const prod = sku.productId || {};
+    const additionalImageUrls = Array.isArray(prod.additionalImageUrls)
+      ? prod.additionalImageUrls.filter(Boolean)
+      : [];
 
     return {
       skuId: sku._id,
@@ -85,6 +99,7 @@ export const lookupRealtimeStock = async (searchQuery) => {
       productId: prod._id || null,
       productName: prod.productName || sku.styleName,
       thumbnailUrl: prod.thumbnailUrl || '',
+      additionalImageUrls,
       category: prod.category || '',
       styleName: sku.styleName || prod.productName,
       color: sku.color,
@@ -96,6 +111,14 @@ export const lookupRealtimeStock = async (searchQuery) => {
       stockStatus,
     };
   });
+
+  if (normalizedFilter === 'IN_STOCK') {
+    return mapped.filter((item) => item.availableQty > 0);
+  }
+  if (normalizedFilter === 'OUT_OF_STOCK') {
+    return mapped.filter((item) => item.availableQty <= 0);
+  }
+  return mapped;
 };
 
 export default {
