@@ -3,10 +3,10 @@
  * @title        : Chat Interface Service
  * @author       : Nguyễn Quang Huy
  * @createdDate  : 2026-10-27
- * @lastModified : 2026-10-27
+ * @lastModified : 2026-11-29
  * @description  : Xử lý logic nghiệp vụ cho khung chat Messenger của Seller:
  *                 truy vấn hội thoại (UC-72), gắn/gỡ thẻ tag khách hàng (UC-73),
- *                 gửi tin nhắn qua Meta Graph API (UC-74), và ghi log kiểm toán (GBR-23).
+ *                 gửi tin nhắn qua Meta Graph API (UC-74), và ghi nhật ký kiểm toán nội bộ (SystemLog).
  * @module       : Conversational Commerce / Chat Interface
  * @layer        : Service
  * ============================================================================
@@ -23,8 +23,7 @@ import { resolveAttachmentType } from '../../../common/middlewares/chatUpload.js
 import { emitNewMessage, emitConversationUpdated, emitConversationRead } from '../../../config/socket.js';
 
 /**
- * Ghi SystemLog kiểm toán
- * @businessRule GBR-23 Ghi log kiểm toán cho dữ liệu quan trọng
+ * Ghi SystemLog kiểm toán nội bộ cho thao tác trên hộp thoại bán hàng.
  */
 const recordSystemLog = async ({ actor, majorFeature, subFeature, action, targetCollection, targetId, beforeSnapshot, afterSnapshot, req }) => {
   try {
@@ -47,7 +46,15 @@ const recordSystemLog = async ({ actor, majorFeature, subFeature, action, target
 };
 
 /**
- * UC-72: Xem danh sách hội thoại tập trung (View Messenger Conversations)
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & BỘ LỌC - BE: DANH SÁCH HỘI THOẠI (UC-72)]
+ * ====================================================================================================================================
+ * | STT | Trường trả về / Bộ lọc       | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Nghiệp vụ / Công thức                             |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | items[] (hội thoại)          | ConversationList.jsx, SellerChatPage.jsx | chat_conversations populate customers.*           | Shared Inbox (lọc status, tag, search regex)      |
+ * | 2   | unreadCount                  | Badge đỏ tin chưa đọc (ConversationList) | chat_conversations.unreadCount                    | +1 khi khách nhắn (chatRouting); 0 khi Seller mở  |
+ * | 3   | pagination.total             | Nút "Tất cả (N)" (ConversationList)      | ChatConversation.countDocuments(query)            | Tổng hội thoại khớp bộ lọc hiện tại               |
+ * ====================================================================================================================================
  */
 export const getConversations = async (filters, user) => {
   const { status, tag, search, page = 1, limit = 20 } = filters;
@@ -324,7 +331,6 @@ export const sendCustomerMessage = async (conversationId, { messageText, attachm
  * @param {Object} [req] - Express Request để ghi log.
  * @returns {Promise<Object>} Document ChatMessage vừa tạo.
  * @throws {Error} Nếu hội thoại không tồn tại, không có tệp, hoặc Seller không được phân công.
- * @businessRule GBR-23 Ghi SystemLog cho thao tác gửi tệp đến khách hàng.
  */
 export const sendCustomerAttachments = async (conversationId, files = [], messageText, user, req) => {
   if (!files.length) throw new Error('Vui lòng chọn ít nhất một tệp để gửi');
@@ -345,6 +351,8 @@ export const sendCustomerAttachments = async (conversationId, files = [], messag
   const canPushToFacebook = Boolean(customer?.facebookPsid && pageToken);
   const attachments = [];
   let fbMessageId = null;
+  let deliveryStatus = null;
+  let deliveryError = null;
 
   // 2. Gửi phần chú thích văn bản trước (Messenger không cho gộp text + attachment)
   if (messageText && canPushToFacebook) {
@@ -413,7 +421,7 @@ export const sendCustomerAttachments = async (conversationId, files = [], messag
   conversation.lastMessageAt = new Date();
   await conversation.save();
 
-  // 5. [BR: GBR-23] Ghi vết kiểm toán thao tác gửi tệp
+  // 5. Ghi vết kiểm toán nội bộ (SystemLog) cho thao tác gửi tệp
   await recordSystemLog({
     actor: user,
     action: 'SEND_CHAT_ATTACHMENT',

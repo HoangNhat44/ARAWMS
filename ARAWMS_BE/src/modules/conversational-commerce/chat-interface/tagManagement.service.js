@@ -66,7 +66,6 @@ export const getAllTags = async () => {
  * @param {Object} [user] - Thông tin Seller thực hiện tạo thẻ (req.user).
  * @returns {Promise<Object>} Document ConversationTag vừa được tạo.
  * @throws {Error} Nếu tên thẻ trống hoặc tên thẻ đã tồn tại trong DB.
- * @businessRule GBR-23 Ghi nhận người dùng tạo thẻ (createdBy) để phục vụ kiểm toán hệ thống.
  */
 export const createTag = async ({ name, color, textColor }, user) => {
   // 1. Kiểm tra tính hợp lệ của tên thẻ
@@ -80,7 +79,7 @@ export const createTag = async ({ name, color, textColor }, user) => {
     throw new Error(`Thẻ "${name.trim()}" đã tồn tại`);
   }
 
-  // 3. [BR: GBR-23] Lưu thẻ mới kèm thông tin tác giả thực hiện
+  // 3. Lưu thẻ mới vào collection `conversation_tags` kèm thông tin tác giả (`createdBy`) để kiểm toán nội bộ
   const tag = await ConversationTag.create({
     name: name.trim(),
     color: color || '#9F8365',
@@ -92,23 +91,22 @@ export const createTag = async ({ name, color, textColor }, user) => {
 };
 
 /**
- * Xoá thẻ tag tuỳ chỉnh (ngăn chặn xoá thẻ mặc định của hệ thống).
+ * Xoá thẻ tag tuỳ chỉnh (ngăn chặn xoá 8 thẻ mặc định của hệ thống).
  *
  * @async
  * @function deleteTag
  * @param {string} tagId - MongoDB ObjectId của thẻ cần xoá.
  * @returns {Promise<{deleted: boolean}>} Trạng thái xoá thành công.
  * @throws {Error} Nếu thẻ không tồn tại hoặc là thẻ mặc định hệ thống.
- * @businessRule GBR-23 Ghi vết thao tác xóa thẻ cấu hình của Seller.
  */
 export const deleteTag = async (tagId) => {
   const tag = await ConversationTag.findById(tagId);
   if (!tag) throw new Error('Thẻ không tồn tại');
   
-  // Ràng buộc: Không cho phép xoá thẻ mặc định của hệ thống
+  // Ràng buộc: Không cho phép xoá thẻ mặc định của hệ thống (`isDefault: true`)
   if (tag.isDefault) throw new Error('Không thể xoá thẻ mặc định của hệ thống');
   
-  // [BR: GBR-23] Thực hiện xoá thẻ custom
+  // Thực hiện xoá thẻ tự tạo khỏi collection `conversation_tags`
   await tag.deleteOne();
   return { deleted: true };
 };

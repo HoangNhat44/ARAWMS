@@ -55,15 +55,25 @@ export const splitOrderItemsFromCell = (rawCellText, defaultQty = 1, defaultPric
   let itemStrings = [];
   if (text.includes('\n')) {
     itemStrings = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-  } else if (/(?<=x\s*\d+)\s*,\s*/i.test(text)) {
-    itemStrings = text.split(/(?<=x\s*\d+)\s*,\s*/i).map((s) => s.trim()).filter(Boolean);
   } else {
-    itemStrings = [text];
+    // Tách theo dấu phẩy sau cụm "x <số lượng>" bằng duyệt tuyến tính O(n) (tránh backtracking S8786)
+    const parts = text.split(',');
+    const merged = [];
+    for (const part of parts) {
+      if (merged.length > 0 && /x\s*\d+$/i.test(merged[merged.length - 1])) {
+        merged.push(part.trim());
+      } else if (merged.length > 0) {
+        merged[merged.length - 1] = `${merged[merged.length - 1]},${part}`;
+      } else {
+        merged.push(part.trim());
+      }
+    }
+    itemStrings = merged.map((s) => s.trim()).filter(Boolean);
   }
 
   return itemStrings.map((subStr) => {
     const qtyMatch = subStr.match(/x\s*(\d+)\s*$/i);
-    const itemQty = qtyMatch ? parseInt(qtyMatch[1], 10) : (itemStrings.length === 1 ? defaultQty : 1);
+    const itemQty = qtyMatch ? Number.parseInt(qtyMatch[1], 10) : (itemStrings.length === 1 ? defaultQty : 1);
     return {
       rawSkuOrName: subStr,
       quantity: Math.max(1, itemQty || 1),
@@ -324,7 +334,7 @@ export const parseExcelFile = async (fileBuffer, channel, sourceId) => {
     const rawSkuOrName = rawSku || combinedProd;
 
     const rawQty = getVal(colMapping.quantity);
-    const quantity = Math.max(1, parseInt(rawQty, 10) || 1);
+    const quantity = Math.max(1, Number.parseInt(rawQty, 10) || 1);
 
     const rawPrice = getVal(colMapping.unitPrice);
     const unitPrice = Number(String(rawPrice || 0).replace(/[^0-9]/g, '')) || 0;
@@ -347,13 +357,13 @@ export const parseExcelFile = async (fileBuffer, channel, sourceId) => {
 
     const noteParts = [];
     if (rawNotes) noteParts.push(rawNotes);
-    if (isExpress === '1' || isExpress === 1 || String(isExpress).toLowerCase().includes('hỏa tốc')) {
+    if (isExpress === '1' || String(isExpress).toLowerCase().includes('hỏa tốc')) {
       noteParts.push('Giao hỏa tốc');
     }
-    if (eveningDelivery === '1' || eveningDelivery === 1 || String(eveningDelivery).toLowerCase().includes('tối')) {
+    if (eveningDelivery === '1' || String(eveningDelivery).toLowerCase().includes('tối')) {
       noteParts.push('Giao tối');
     }
-    if (shopPaysShip === '1' || shopPaysShip === 1) {
+    if (shopPaysShip === '1') {
       noteParts.push('Shop trả ship');
     }
     if (weight) {
@@ -487,8 +497,18 @@ export const parseExcelFile = async (fileBuffer, channel, sourceId) => {
 };
 
 /**
- * Seller thực hiện "Xử lý đơn" (Marketplace Order Processing)
- * Lưu các đơn hàng hợp lệ vào hệ thống với importStatus: 'PENDING_WAREHOUSE_APPROVAL'
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & CÔNG THỨC - BE: IMPORT ĐƠN SÀN TMĐT (processImportOrders)]
+ * ====================================================================================================================================
+ * | STT | Trường trả về / Nghiệp vụ    | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Nghiệp vụ / Công thức / BR                        |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | validOrders / invalidOrders  | MarketplaceOrderImportModal.jsx          | skus.{skuCode,isActive,onHandQty,reservedQty}     | [BR: GBR-06] Khớp duy nhất SKU đang hoạt động     |
+ * | 2   | itemsSubtotal, totalAmount   | Bảng xem trước & đơn lưu vào SellerOrders| sales_orders.financialSummary                     | sub=Σ(unitPrice*qty); total=ord.total hoặc sub    |
+ * | 3   | status = CONFIRMED_RESERVED  | SellerOrdersPage.jsx                     | sales_orders.status & skus.reservedQty            | [BR: GBR-10] Tự giữ chỗ (+reservedQty) khi import |
+ * ====================================================================================================================================
+ *
+ * @businessRule GBR-06 Khớp duy nhất mã SKU đang hoạt động trong hệ thống
+ * @businessRule GBR-10 Tự động giữ chỗ tồn kho (+reservedQty) khi đơn import được chốt (CONFIRMED_RESERVED)
  */
 export const processImportOrders = async (ordersData, sourceInfo, user, req) => {
   const { channel, sourceId, sourceName, orders } = ordersData;

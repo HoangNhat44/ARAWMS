@@ -23,7 +23,10 @@ import { authorizeRole } from '../../../common/middlewares/authorizeRole.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB (<= 8MB ngưỡng an toàn cho upload Excel trên memoryStorage)
+    files: 1,
+  },
 });
 
 const router = express.Router();

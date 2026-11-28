@@ -44,7 +44,6 @@ const salesOrderSchema = new Schema(
     orderCode: { type: String, required: true, unique: true, uppercase: true, index: true },
     // Nguyễn Ngọc Huy-HE171157, 2-11-2026: UC-13 - Nguồn bán, thanh toán và hạn giao tách riêng để báo cáo đúng nghiệp vụ.
     salesChannel: { type: String, enum: ['FACEBOOK', 'SHOPEE', 'TIKTOK', 'WHOLESALE', 'RETAIL', 'DIRECT', 'UNKNOWN'], default: 'UNKNOWN', index: true },
-    paymentStatus: { type: String, enum: ['PAID', 'UNPAID', 'PARTIAL', 'UNKNOWN'], default: 'UNKNOWN' },
     expectedDeliveryAt: Date,
     deliveredAt: Date,
     customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: true, index: true },
@@ -128,7 +127,7 @@ const salesOrderSchema = new Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ['PENDING', 'PAID', 'REFUNDED'],
+      enum: ['PENDING', 'PAID', 'UNPAID', 'PARTIAL', 'REFUNDED', 'UNKNOWN'],
       default: 'PENDING',
     },
     notes: { type: String, trim: true },

@@ -20,7 +20,8 @@
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "test:packing": "node --test test/packingBarcodeScan.test.js tests/warehouseCollectionMerge.test.mjs",
     "test:inbound": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.finishedGoodsInbound.config.cjs --runInBand",
-    "test:seller": "node --test tests/sellerOrderManagement.test.mjs",
+    "test:seller": "node --test tests/sellerPureValidationAndRules.unit.test.mjs tests/sellerConversationalCommerce.unit.test.mjs tests/sellerOrderAndMarketplace.unit.test.mjs tests/sellerReverseLogistics.unit.test.mjs tests/sellerOrderManagement.test.mjs",
+    "test:seller:unit": "node --test tests/sellerPureValidationAndRules.unit.test.mjs tests/sellerConversationalCommerce.unit.test.mjs tests/sellerOrderAndMarketplace.unit.test.mjs tests/sellerReverseLogistics.unit.test.mjs",
     "provision:employee": "node scripts/provisionEmployee.js"
   },
   "keywords": [

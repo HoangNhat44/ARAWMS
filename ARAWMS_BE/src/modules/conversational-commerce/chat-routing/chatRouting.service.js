@@ -227,8 +227,8 @@ export const processInboundWebhookMessage = async (messagingEvent, entryPageId =
       .toLowerCase()
       .trim();
 
-    const confirmKeywordsRegex = /(?:^|[\s.,!?:;👍✅❤️])(ok|oke|oki|okie|chot|chot don|xac nhan|confirm|dong y|dung roi|giao di)(?=$|[\s.,!?:;👍✅❤️])/i;
-    const cancelNegationRegex = /(?:^|[\s.,!?:;❌])(huy|huy don|khong lay|khong mua|bo don|cancel)(?=$|[\s.,!?:;❌])/i;
+    const confirmKeywordsRegex = /(?:^|[\s.,!?:;]|👍|✅|❤️)(ok|oke|oki|okie|chot|chot don|xac nhan|confirm|dong y|dung roi|giao di)(?=$|[\s.,!?:;]|👍|✅|❤️)/iu;
+    const cancelNegationRegex = /(?:^|[\s.,!?:;]|❌)(huy|huy don|khong lay|khong mua|bo don|cancel)(?=$|[\s.,!?:;]|❌)/iu;
     const isConfirmKeyword =
       Boolean(normalizedText) &&
       !isCancelConfirmPayload &&

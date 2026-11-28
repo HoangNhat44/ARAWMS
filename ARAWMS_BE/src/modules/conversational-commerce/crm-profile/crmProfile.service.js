@@ -19,8 +19,7 @@ import SystemLog from '../../../models/SystemLog.model.js';
 import { emitConversationUpdated } from '../../../config/socket.js';
 
 /**
- * Ghi SystemLog kiểm toán
- * @businessRule GBR-23 Ghi log kiểm toán cho dữ liệu khách hàng
+ * Ghi SystemLog kiểm toán nội bộ cho dữ liệu hồ sơ khách hàng CRM.
  */
 const recordSystemLog = async ({ actor, majorFeature, subFeature, action, targetCollection, targetId, targetCode, beforeSnapshot, afterSnapshot, req }) => {
   try {
@@ -245,7 +244,18 @@ export const getCustomerPurchaseHistory = async (customerId) => {
 const escapeRegex = (s) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * Lấy danh sách khách hàng CRM có tìm kiếm, lọc theo tag / kênh Messenger, sắp xếp và phân trang
+ * ====================================================================================================================================
+ * [BẢNG TRA CỨU NGUỒN GỐC SỐ LIỆU & BỘ LỌC - BE: QUẢN LÝ KHÁCH HÀNG CRM (getCustomerList)]
+ * ====================================================================================================================================
+ * | STT | Trường trả về / Bộ lọc       | Màn hình FE hiển thị                     | Nguồn DB (Collection.field)                       | Nghiệp vụ / Công thức                             |
+ * |-----|------------------------------|------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+ * | 1   | summary.totalCustomers       | KPI "Tổng khách hàng" (SellerCustomers)  | customers (isDeleted !== true)                    | Customer.aggregate: $sum: 1 (toàn tệp chưa xóa)   |
+ * | 2   | summary.messengerLinkedCount | KPI "Liên kết Facebook Messenger"        | customers.facebookPsid                            | $sum: 1 khi facebookPsid != null và != ''         |
+ * | 3   | summary.vipCount             | KPI "Khách hàng VIP"                     | customers.tags[]                                  | $sum: 1 khi mảng tags chứa 'Khách VIP'            |
+ * | 4   | summary.totalRevenue         | KPI "Tổng chi tiêu tích lũy"             | customers.totalSpent                              | Σ customers.totalSpent (cập nhật khi đặt/hủy đơn) |
+ * | 5   | availableTags[]              | Dropdown "Tất cả thẻ phân loại"          | Customer.distinct('tags', isDeleted != true)      | Tập hợp tag đang gắn trên hồ sơ khách hàng        |
+ * | 6   | items[] & pagination.total   | Bảng khách hàng & Phân trang (10/trang)  | customers (search/channel/tag/sortBy/page/limit)  | countDocuments(query) + skip/limit                |
+ * ====================================================================================================================================
  */
 export const getCustomerList = async (filters = {}) => {
   const {
@@ -370,7 +380,7 @@ export const getCustomerList = async (filters = {}) => {
       totalPages: Math.max(1, Math.ceil(total / limitNum)),
     },
     summary,
-    availableTags: (allTags || []).filter(Boolean).sort(),
+    availableTags: (allTags || []).filter(Boolean).sort((a, b) => a.localeCompare(b, 'vi')),
   };
 };
 

@@ -52,7 +52,7 @@ router.post('/:id/attachments', uploadChatFiles, sendCustomerAttachments);
 router.post('/:id/tags', addConversationTag);
 router.delete('/:id/tags/:tag', removeConversationTag);
 
-// UC-73 & [BR: GBR-23]: Quản lý thẻ tag tuỳ chỉnh của Seller (lưu trữ MongoDB)
+// UC-73: Quản lý thẻ tag tuỳ chỉnh của Seller (lưu trữ MongoDB trong collection conversation_tags)
 router.get('/tags/list', getTagList);
 router.post('/tags/create', createCustomTag);
 router.delete('/tags/:tagId', deleteCustomTag);

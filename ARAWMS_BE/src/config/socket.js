@@ -35,44 +35,44 @@ export const initSocket = (httpServer) => {
 
     // 1. Tham gia phòng chung Seller Workspace để nhận thông báo danh sách hội thoại
     socket.on('join_seller_workspace', () => {
-      socket.join('seller_workspace');
+      void socket.join('seller_workspace');
     });
 
     // 1b. Tham gia phòng chung Warehouse Workspace để nhận thông báo Đổi/Trả RMA và duyệt đơn
     socket.on('join_warehouse_workspace', () => {
-      socket.join('warehouse_workspace');
+      void socket.join('warehouse_workspace');
     });
 
     // 1c. Tham gia phòng chung Accountant Workspace để nhận thông báo Kế toán (sai lệch hợp đồng, COD, công nợ...)
     socket.on('join_accountant_workspace', () => {
-      socket.join('accountant_workspace');
-      socket.join('role:ACCOUNTANT');
+      void socket.join('accountant_workspace');
+      void socket.join('role:ACCOUNTANT');
     });
 
     // 1d. Tham gia phòng chung theo Role & User ID (Dùng chung cho toàn bộ 7 Roles hệ thống)
     socket.on('join_workspace', ({ role, userId } = {}) => {
       if (role) {
-        socket.join(`role:${role}`);
-        if (role === 'ACCOUNTANT') socket.join('accountant_workspace');
-        if (role === 'SELLER') socket.join('seller_workspace');
-        if (['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'].includes(role)) socket.join('warehouse_workspace');
+        void socket.join(`role:${role}`);
+        if (role === 'ACCOUNTANT') void socket.join('accountant_workspace');
+        if (role === 'SELLER') void socket.join('seller_workspace');
+        if (['WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'].includes(role)) void socket.join('warehouse_workspace');
       }
       if (userId) {
-        socket.join(`user:${userId}`);
+        void socket.join(`user:${userId}`);
       }
     });
 
     // 2. Tham gia phòng riêng của cuộc hội thoại để stream tin nhắn
     socket.on('join_conversation', (conversationId) => {
       if (conversationId) {
-        socket.join(`conversation:${conversationId}`);
+        void socket.join(`conversation:${conversationId}`);
       }
     });
 
     // 3. Rời phòng hội thoại khi chuyển tab khác
     socket.on('leave_conversation', (conversationId) => {
       if (conversationId) {
-        socket.leave(`conversation:${conversationId}`);
+        void socket.leave(`conversation:${conversationId}`);
       }
     });
 

@@ -80,7 +80,6 @@ export const sendCustomerMessage = async (req, res) => {
  * @param {Object} req - Express Request chứa req.files (Multer) và req.body.messageText (tuỳ chọn).
  * @param {Object} res - Express Response object.
  * @returns {Promise<Response>} 201 - ChatMessage chứa danh sách attachments.
- * @businessRule GBR-23 Ghi vết kiểm toán thao tác gửi tệp.
  */
 export const sendCustomerAttachments = async (req, res) => {
   try {
@@ -164,7 +163,6 @@ export const getTagList = async (req, res) => {
  * @param {Object} req - Express Request chứa { name, color, textColor } trong req.body.
  * @param {Object} res - Express Response object.
  * @returns {Promise<Response>} 201 - Trả về thông tin thẻ tag vừa tạo.
- * @businessRule GBR-23 Ghi nhận tác giả và nhật ký quản lý thẻ phân loại hội thoại.
  */
 export const createCustomTag = async (req, res) => {
   try {
@@ -184,7 +182,6 @@ export const createCustomTag = async (req, res) => {
  * @param {Object} req - Express Request chứa tagId trong req.params.
  * @param {Object} res - Express Response object.
  * @returns {Promise<Response>} 200 - Trạng thái xoá thành công.
- * @businessRule GBR-23 Ghi vết kiểm toán thao tác thu hồi/xóa cấu hình thẻ.
  */
 export const deleteCustomTag = async (req, res) => {
   try {
