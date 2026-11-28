@@ -44,9 +44,11 @@ const makeError = (message, status = 400, code = 'BAD_REQUEST') => {
 
 const roundQty = (value) => Math.round((Number(value) + Number.EPSILON) * 1000) / 1000;
 
+/** Tạo chuỗi giá trị QR cho lô thành phẩm (LOT:FG) hoặc nguyên phụ liệu (LOT:RM). */
 export const buildLotQrValue = (lotType, lotCode) =>
   `${lotType === 'FINISHED_GOODS' ? 'LOT:FG' : 'LOT:RM'}:${String(lotCode || '').trim().toUpperCase()}`;
 
+/** Sinh mã lô tự động tăng theo thứ tự (LOT-TP hoặc LOT-NL). */
 export const generateNextLotCode = async (lotType, session) => {
   const counterKey = lotType === 'FINISHED_GOODS' ? 'GARMENT_LOT_FG' : 'GARMENT_LOT_RM';
   const prefix = lotType === 'FINISHED_GOODS' ? 'LOT-TP' : 'LOT-NL';

@@ -36,6 +36,7 @@ export const listCategories = async (req, res, next) => {
  * Tạo mới danh mục phân loại NPL.
  * @route POST /api/garment-technical/raw-materials/categories
  */
+// UC-025: Tạo mới danh mục nguyên phụ liệu (FT-02 Quản lý dữ liệu gốc)
 export const createCategory = async (req, res, next) => {
   try {
     const result = await rawMaterialsService.createCategory(req.body);
@@ -53,6 +54,7 @@ export const createCategory = async (req, res, next) => {
  * Cập nhật danh mục phân loại NPL.
  * @route PUT /api/garment-technical/raw-materials/categories/:id
  */
+// UC-026: Cập nhật danh mục nguyên phụ liệu (FT-02 Quản lý dữ liệu gốc)
 export const updateCategory = async (req, res, next) => {
   try {
     const result = await rawMaterialsService.updateCategory(req.params.id, req.body);
@@ -119,6 +121,7 @@ export const getMaterial = async (req, res, next) => {
  * Tạo mới một nguyên phụ liệu vào hệ thống.
  * @route POST /api/garment-technical/raw-materials
  */
+// UC-027: Tạo mới nguyên phụ liệu (FT-02 Quản lý dữ liệu gốc)
 export const createMaterial = async (req, res, next) => {
   try {
     const result = await rawMaterialsService.createRawMaterial(req.body, req.user);
@@ -136,6 +139,7 @@ export const createMaterial = async (req, res, next) => {
  * Cập nhật thông tin nguyên phụ liệu.
  * @route PUT /api/garment-technical/raw-materials/:id
  */
+// UC-028: Cập nhật nguyên phụ liệu (FT-02 Quản lý dữ liệu gốc)
 export const updateMaterial = async (req, res, next) => {
   try {
     const result = await rawMaterialsService.updateRawMaterial(req.params.id, req.body, req.user);

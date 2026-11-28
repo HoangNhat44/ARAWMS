@@ -31,7 +31,10 @@ const handle = (message, task, status = 200) => async (req, res, next) => {
 };
 
 export const getOptions = handle('Danh mục lựa chọn kiểm định thành phẩm', () => getFinishedInspectionOptions());
+// UC-055: Xem danh sách phiếu yêu cầu nhập kho thành phẩm (FT-04)
 export const listTickets = handle('Danh sách phiếu yêu cầu nhập thành phẩm', (req) => listFinishedGoodsTickets(req.query, req.user));
+// UC-055: Xem chi tiết phiếu yêu cầu nhập kho thành phẩm (FT-04)
 export const getTicket = handle('Chi tiết phiếu yêu cầu nhập thành phẩm', (req) => getFinishedGoodsTicketDetails(req.params.id));
+// UC-054: Tạo phiếu yêu cầu nhập kho thành phẩm sau kiểm định KCS (FT-04)
 export const createTicket = handle('Đã gửi yêu cầu nhập kho thành phẩm tới Quản lý kho', (req) => createFinishedGoodsInboundTicket(req.body, req.user), 201);
 

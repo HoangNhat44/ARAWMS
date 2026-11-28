@@ -106,6 +106,7 @@ async function sourceBalance(ticket, roll, lineIndex, sourceIndex, session) {
     available: scrapped ? 0 : round(Math.max(0, issued - recorded - waiting)), scrapped };
 }
 
+/** Tra cứu nguồn cây vải và các phiếu xuất cắt hợp lệ để thu hồi vải thừa (UC-049). */
 export async function lookupRemnantSources(barcode, outboundTicketId) {
   const normalized = String(barcode || '').trim().toUpperCase();
   fail(normalized, 'Quét barcode cây vải hoặc tra cứu từ phiếu xuất', 'BARCODE_REQUIRED');
@@ -182,6 +183,7 @@ const sameOperation = (saved, input) => id(saved.outboundTicketId) === id(input.
   JSON.stringify((saved.pieces || []).map((item) => item.lengthMeters)) ===
     JSON.stringify(saved.status === 'SCRAPPED_BELOW_THRESHOLD' ? [] : lengths(input));
 
+/** Ghi nhận kết quả cắt vải và gửi yêu cầu thu hồi vải thừa theo ngưỡng (UC-050). */
 export async function submitRemnantReturn(input, user) {
   fail(canRequest(user), 'Chỉ kỹ thuật viên được gửi yêu cầu nhập lại', 'FORBIDDEN', 403);
   const key = String(input.operationKey || '').trim();
@@ -204,11 +206,13 @@ export async function submitRemnantReturn(input, user) {
   fail(input.measuredRemnantLengthMeters !== '' && input.measuredRemnantLengthMeters != null,
     'Nhập chiều dài vải thừa thực tế');
   const amount = Number(input.measuredRemnantLengthMeters);
+  // GBR-09: Kiểm tra chiều dài vải thừa đo được (> 0, tối đa 3 chữ số thập phân) và đối chiếu ngưỡng thu hồi (mặc định 2.0m)
   fail(Number.isFinite(amount) && amount > 0 && round(amount) === amount,
     'Chiều dài phải là số mét với tối đa ba chữ số thập phân');
   const threshold = await thresholdMeters();
   const qualifies = amount >= threshold;
   const pieceLengths = lengths(input);
+  // GBR-09: Nếu đạt ngưỡng và trả dạng khúc rời thì tổng chiều dài các khúc phải khớp chiều dài đo được và đủ điều kiện tái sử dụng
   fail(!qualifies || returnKind !== 'SEPARATE_PIECES' || pieceLengths.length > 0 &&
     pieceLengths.every((value) => Number.isFinite(value) && value > 0 && round(value) === value) &&
     round(pieceLengths.reduce((sum, value) => sum + value, 0)) === amount,
@@ -253,6 +257,7 @@ export async function submitRemnantReturn(input, user) {
         pieces: qualifies ? pieceLengths.map((lengthMeters) => ({ lengthMeters })) : [],
         conditionNote: String(input.conditionNote || '').trim().slice(0, 500),
         requestedAt: new Date(),
+        // GBR-09: Đạt ngưỡng (>= threshold) thì tạo yêu cầu chờ kho xác nhận nhập lại; dưới ngưỡng (< threshold) thì chốt phế liệu
         status: qualifies ? 'WAITING_WAREHOUSE_CONFIRMATION' : 'SCRAPPED_BELOW_THRESHOLD',
       }], { session });
     });
@@ -273,6 +278,7 @@ export async function submitRemnantReturn(input, user) {
   } finally { await session.endSession(); }
 }
 
+/** Lấy danh sách toàn bộ yêu cầu thu hồi vải thừa kèm thông tin cuộn vải và phiếu (UC-051). */
 export async function listRemnantReturns() {
   return RemnantRecoveryRequest.find({ isDeleted: { $ne: true } })
     .populate({ path: 'originalRollId',
@@ -286,6 +292,7 @@ export async function listRemnantReturns() {
     .sort({ createdAt: -1 }).lean();
 }
 
+/** Báo cáo sai lệch vải thừa khi kho kiểm tra thực tế và gửi thông báo cho kỹ thuật viên. */
 export async function reportRemnantDiscrepancy(requestId, reason, user) {
   fail(canManage(user), 'Chỉ quản lý kho được báo sai lệch', 'FORBIDDEN', 403);
   const message = String(reason || '').trim();
@@ -298,6 +305,7 @@ export async function reportRemnantDiscrepancy(requestId, reason, user) {
   return request;
 }
 
+/** Hủy hoặc từ chối yêu cầu trả vải thừa đang chờ xử lý theo quyền tài khoản. */
 export async function closeRemnantReturn(requestId, status, user) {
   fail(['CANCELLED', 'REJECTED'].includes(status), 'Trạng thái không hợp lệ');
   fail(status === 'CANCELLED' || canManage(user), 'Chỉ quản lý kho được từ chối', 'FORBIDDEN', 403);
@@ -312,6 +320,7 @@ export async function closeRemnantReturn(requestId, status, user) {
   return request;
 }
 
+/** Xác nhận nhập lại cuộn/mảnh vải thừa vào kho và tự động sinh phiếu nhập kho tương ứng. */
 export async function confirmRemnantReturn(requestId, input, user) {
   fail(canManage(user), 'Chỉ quản lý kho được xác nhận nhập lại', 'FORBIDDEN', 403);
   const session = await mongoose.startSession();

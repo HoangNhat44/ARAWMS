@@ -72,6 +72,7 @@ export const lookupOrder = handle('Tra cứu thông tin đơn hàng hoàn thành
  * Ghi lại biên bản kiểm tra KCS hàng hoàn (ĐẠT hoặc KHÔNG ĐẠT kèm video).
  * @route POST /garment-technical/return-inspection/submit
  */
+// UC-100: Ghi nhận quá trình kiểm tra hàng hoàn - Nộp biên bản kiểm tra (FT-10)
 export const submitInspection = handle(
   'Ghi nhận kết quả kiểm tra hàng hoàn thành công',
   (req) => submitReturnInspection(req.body, req.user),
@@ -90,6 +91,7 @@ export const listInspections = handle('Danh sách kết quả kiểm tra hàng h
  * Tạo phiếu yêu cầu nhập kho hàng hoàn gửi Quản lý kho.
  * @route POST /garment-technical/return-inspection/inbound-ticket
  */
+// UC-101: Tạo phiếu yêu cầu nhập kho hàng hoàn (FT-10)
 export const requestInboundTicket = handle(
   'Đã tạo phiếu yêu cầu nhập kho hàng hoàn gửi Quản lý kho',
   (req) => createReturnInboundTicket(req.body, req.user),
@@ -109,6 +111,7 @@ export const getRecentOrders = handle(
  * Mở hoặc tiếp tục phiên kiểm hàng hoàn cho một đơn hàng bằng mã QR / mã đơn / vận đơn.
  * @route POST /garment-technical/return-inspection/sessions/open
  */
+// UC-100: Ghi nhận quá trình kiểm tra hàng hoàn - Mở phiên kiểm hàng (FT-10)
 export const openSession = handle(
   'Đã mở phiên kiểm tra & quay video hàng hoàn',
   (req) => openReturnInspectionSession(req.body?.code, req.user)
@@ -118,6 +121,7 @@ export const openSession = handle(
  * Quét barcode sản phẩm vật lý (ProductUnit) hoặc SKU trong đơn hàng đang quay.
  * @route POST /garment-technical/return-inspection/sessions/:id/scan-unit
  */
+// UC-100: Ghi nhận quá trình kiểm tra hàng hoàn - Quét mã sản phẩm hoàn (FT-10)
 export const scanUnit = handle(
   'Đã xử lý quét barcode sản phẩm hoàn',
   (req) => scanReturnUnitBarcode(req.params.id, req.body?.barcode)
@@ -154,6 +158,7 @@ export const cancelSession = handle(
  * Stream video quay khui kiện hàng hoàn trực tiếp lên Cloudinary.
  * @route POST /garment-technical/return-inspection/sessions/:id/video
  */
+// UC-100: Ghi nhận quá trình kiểm tra hàng hoàn - Tải lên video khui kiện (FT-10)
 export const uploadVideo = async (req, res, next) => {
   try {
     const result = await uploadReturnInspectionVideo({
@@ -203,6 +208,7 @@ export const getVideo = async (req, res, next) => {
  * Chốt phân loại sản phẩm (đạt / hàng lỗi DEFECTIVE), đổi trạng thái đơn và tạo phiếu nhập kho.
  * @route POST /garment-technical/return-inspection/finalize-and-request-inbound
  */
+// UC-101: Chốt phân loại hàng hoàn và tạo yêu cầu nhập kho (FT-10)
 export const finalizeAndRequestInbound = handle(
   'Đã chốt phân loại hàng hoàn và gửi yêu cầu nhập kho cho Quản lý kho',
   (req) => finalizeReturnInspectionsAndRequestInbound(req.body, req.user),

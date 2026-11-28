@@ -48,16 +48,20 @@ export const getOptions = handle('Danh mục SKU, nguyên phụ liệu và nhà 
   getLotFormOptions()
 );
 
+// UC-053: Xem danh sách yêu cầu lô hàng (FT-04)
 export const listLots = handle('Danh sách lô hàng kỹ thuật', (req) => listGarmentLots(req.query));
 
+// UC-053: Xem chi tiết lô hàng (FT-04)
 export const getLot = handle('Chi tiết lô hàng', (req) => getGarmentLotById(req.params.id));
 
+// UC-052: Tạo mới lô hàng kỹ thuật (FT-04)
 export const createLot = handle('Đã tạo lô hàng mới', (req) => createGarmentLot(req.body, req.user), 201);
 
 export const updateLot = handle('Đã cập nhật thông tin lô hàng', (req) => updateGarmentLot(req.params.id, req.body));
 
 export const deleteLot = handle('Đã xóa lô hàng nháp', (req) => deleteGarmentLot(req.params.id));
 
+// UC-052 & UC-054: Gửi yêu cầu nhập kho lô hàng sang Quản lý kho (FT-04)
 export const sendInboundRequest = handle(
   'Đã gửi yêu cầu nhập kho cho các lô đã chọn sang Quản lý kho',
   (req) => sendLotsToWarehouse(req.body, req.user),

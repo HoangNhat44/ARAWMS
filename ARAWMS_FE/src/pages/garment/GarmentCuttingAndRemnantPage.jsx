@@ -129,7 +129,7 @@ export default function GarmentCuttingAndRemnantPage() {
     }
   };
 
-  // Live threshold check evaluation
+  // GBR-09: Đánh giá trực tiếp chiều dài vải thừa so với ngưỡng thu hồi (mặc định 2.0m) để phân loại nhập lại hay phế liệu
   const remnantValue = Number(measuredRemnantLengthMeters);
   const hasRemnantInput = measuredRemnantLengthMeters !== '' && !Number.isNaN(remnantValue);
   const isAboveThreshold = hasRemnantInput && remnantValue >= threshold;
